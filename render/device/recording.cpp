@@ -373,12 +373,12 @@ void RecordingEncoder::WriteTimestamp( BufferId buffer, std::uint64_t offset )
 
 std::uint32_t TextureView::Width( std::uint32_t mip ) const
 {
-	return std::max( 1u, desc.width >> mip );
+	return std::max<std::uint32_t>( 1u, desc.width >> mip );
 }
 
 std::uint32_t TextureView::Height( std::uint32_t mip ) const
 {
-	return std::max( 1u, desc.height >> mip );
+	return std::max<std::uint32_t>( 1u, desc.height >> mip );
 }
 
 namespace

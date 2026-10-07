@@ -1,19 +1,27 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// The 3DS fullbright renderer (see pica_renderer.h).
+// The 3DS shader API's renderer on render.device.pica (see pica_renderer.h).
 //
 //=============================================================================//
 
 #include "pica_renderer.h"
 
-#include <3ds.h>
-#include <citro3d.h>
+#include "render/device/device.h"
+#include "render/device/encoder.h"
+#include "render/device/pica/provider.h"
+#include "render/device/pica_codes.h"
+#include "render/device/pica_format.h"
 
 #include <cstdio>
 #include <cstring>
-#include <new>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
-// The vertex shader binary, assembled from fullbright.v.pica by the build.
+// The vertex program, assembled from fullbright.v.pica by the build.
 extern "C" const unsigned char fullbright_shbin[];
 extern "C" const unsigned fullbright_shbin_size;
 
@@ -26,124 +34,361 @@ namespace pica
 namespace
 {
 
-constexpr std::size_t kRingBytes = 3u * 1024u * 1024u; // per frame in flight
-constexpr int kRingCount = 2;
+using namespace render::device;
+namespace pf = render::device::pica_format;
+namespace pc = render::device::pica;
 
-// The top screen's display-transfer flags: the tiled RGBA8 render target to
-// the linear scanout buffer in the screen's own format (gfxInitDefault makes
-// it BGR8; SDL3's 3DS video driver makes it RGBA8), no scaling.
-u32 DisplayTransferFlags()
+// The target is a power of two (the presenter samples it); the frame draws
+// its top-left 400x240.
+constexpr std::uint32_t kTargetWidth = 512;
+constexpr std::uint32_t kTargetHeight = 256;
+constexpr std::size_t kVertexRingBytes = 3u * 1024u * 1024u;
+constexpr std::size_t kIndexRingBytes = 512u * 1024u;
+// c0-c3 the column-vector clip rows, c4 the tint (fullbright.v.pica).
+constexpr std::uint32_t kDrawConstantBytes = 5 * 16;
+
+// One linear allocation: a device upload buffer, mapped.
+struct Allocation
 {
-	GX_TRANSFER_FORMAT out = GX_TRANSFER_FMT_RGB8;
-	switch ( gfxGetScreenFormat( GFX_TOP ) )
-	{
-	case GSP_RGBA8_OES: out = GX_TRANSFER_FMT_RGBA8; break;
-	case GSP_BGR8_OES: out = GX_TRANSFER_FMT_RGB8; break;
-	case GSP_RGB565_OES: out = GX_TRANSFER_FMT_RGB565; break;
-	case GSP_RGB5_A1_OES: out = GX_TRANSFER_FMT_RGB5A1; break;
-	case GSP_RGBA4_OES: out = GX_TRANSFER_FMT_RGBA4; break;
-	}
-	return GX_TRANSFER_FLIP_VERT( 0 ) | GX_TRANSFER_OUT_TILED( 0 ) | GX_TRANSFER_RAW_COPY( 0 ) |
-		GX_TRANSFER_IN_FORMAT( GX_TRANSFER_FMT_RGBA8 ) | GX_TRANSFER_OUT_FORMAT( out ) |
-		GX_TRANSFER_SCALING( GX_TRANSFER_SCALE_NO );
-}
+	BufferId buffer;
+	std::size_t bytes = 0;
+	Memory kind = Memory::kVertices;
+	bool transient = false;
+	std::uint32_t usedInRecording = 0; // the recording that last read it
+};
+
+struct Ring
+{
+	BufferId buffer;
+	std::byte *data = nullptr;
+	std::size_t bytes = 0;
+	std::size_t used = 0;
+};
 
 struct State
 {
+	IRenderDevice2 *device = nullptr; // the render core's, borrowed
+	TextureId color;
+	TextureId depth;
+	BindGroupLayoutId materialLayout;
+	SamplerId samplers[2]; // clamped, repeating
+	std::vector<std::byte> vertexArtifact;
+	std::unordered_map<std::uint64_t, PipelineId> pipelines;
+	// Allocations by their first byte's address.
+	std::map<std::uintptr_t, Allocation> allocations;
+	Ring rings[2]; // Memory::kVertices, kIndices
+	std::optional<CommandEncoder> encoder;
+	std::uint32_t recording = 1; // increments at every submit
+	bool rendering = false;
+	ResourceUsage colorUsage = ResourceUsage::kUndefined;
+	ResourceUsage depthUsage = ResourceUsage::kUndefined;
+	Viewport viewport{ 0, 0, float( kScreenWidth ), float( kScreenHeight ), 0, 1 };
+	std::vector<ResourceId> releases; // after the recording that reads them
 	bool initialized = false;
 	bool inFrame = false;
-	C3D_RenderTarget *top = nullptr;
-	DVLB_s *dvlb = nullptr;
-	shaderProgram_s program;
-	int uMvp = -1;
-	int uTint = -1;
-	std::uint8_t *ring[kRingCount] = {};
-	std::size_t ringUsed = 0;
-	int ringIndex = 0;
 	Stats stats;
 	std::size_t textureBytes = 0;
-	Texture *boundTexture = nullptr;
-	bool textureEnvTextured = false;
-	bool textureEnvValid = false;
 };
 
 State g_state;
+IRenderDevice2 *g_bound = nullptr;
 
-GPU_TESTFUNC PicaCompare( Compare compare, bool reverse )
+IRenderDevice2 &Device()
 {
-	// Reversing swaps the order of the operands: a < b becomes a > b.
+	return *g_state.device;
+}
+
+CompareOp Port( Compare compare )
+{
 	switch ( compare )
 	{
-	case Compare::kNever: return GPU_NEVER;
-	case Compare::kLess: return reverse ? GPU_GREATER : GPU_LESS;
-	case Compare::kEqual: return GPU_EQUAL;
-	case Compare::kLessEqual: return reverse ? GPU_GEQUAL : GPU_LEQUAL;
-	case Compare::kGreater: return reverse ? GPU_LESS : GPU_GREATER;
-	case Compare::kNotEqual: return GPU_NOTEQUAL;
-	case Compare::kGreaterEqual: return reverse ? GPU_LEQUAL : GPU_GEQUAL;
-	case Compare::kAlways: return GPU_ALWAYS;
+	case Compare::kNever:
+		return CompareOp::kNever;
+	case Compare::kLess:
+		return CompareOp::kLess;
+	case Compare::kEqual:
+		return CompareOp::kEqual;
+	case Compare::kLessEqual:
+		return CompareOp::kLessEqual;
+	case Compare::kGreater:
+		return CompareOp::kGreater;
+	case Compare::kNotEqual:
+		return CompareOp::kNotEqual;
+	case Compare::kGreaterEqual:
+		return CompareOp::kGreaterEqual;
+	case Compare::kAlways:
+		return CompareOp::kAlways;
 	}
-	return GPU_ALWAYS;
+	return CompareOp::kAlways;
 }
 
-GPU_BLENDFACTOR PicaBlend( Blend blend )
+// The port blend mode a D3D factor pair draws, or none.
+std::optional<BlendMode> PortBlend( const DrawState &state )
 {
-	switch ( blend )
+	if ( !state.blend || ( state.src == Blend::kOne && state.dst == Blend::kZero ) )
+		return BlendMode::kOpaque;
+	struct Pair
 	{
-	case Blend::kZero: return GPU_ZERO;
-	case Blend::kOne: return GPU_ONE;
-	case Blend::kSrcColor: return GPU_SRC_COLOR;
-	case Blend::kOneMinusSrcColor: return GPU_ONE_MINUS_SRC_COLOR;
-	case Blend::kDstColor: return GPU_DST_COLOR;
-	case Blend::kOneMinusDstColor: return GPU_ONE_MINUS_DST_COLOR;
-	case Blend::kSrcAlpha: return GPU_SRC_ALPHA;
-	case Blend::kOneMinusSrcAlpha: return GPU_ONE_MINUS_SRC_ALPHA;
-	case Blend::kDstAlpha: return GPU_DST_ALPHA;
-	case Blend::kOneMinusDstAlpha: return GPU_ONE_MINUS_DST_ALPHA;
-	case Blend::kSrcAlphaSaturate: return GPU_SRC_ALPHA_SATURATE;
-	}
-	return GPU_ONE;
+		Blend src, dst;
+		BlendMode mode;
+	};
+	static const Pair pairs[] = { { Blend::kSrcAlpha, Blend::kOneMinusSrcAlpha, BlendMode::kAlpha },
+	    { Blend::kOne, Blend::kOneMinusSrcAlpha, BlendMode::kPremultiplied },
+	    { Blend::kOne, Blend::kOne, BlendMode::kAdditive },
+	    { Blend::kSrcAlpha, Blend::kOne, BlendMode::kAlphaAdditive },
+	    { Blend::kDstColor, Blend::kSrcColor, BlendMode::kModulate2x } };
+	for ( const Pair &pair : pairs )
+		if ( pair.src == state.src && pair.dst == state.dst )
+			return pair.mode;
+	return std::nullopt;
 }
 
-void SetTextureEnv( bool textured )
+// Everything a pipeline is made of, packed.
+std::uint64_t PipelineKey(
+    const DrawState &state, BlendMode blend, bool textured, Primitive primitive )
 {
-	if ( g_state.textureEnvValid && g_state.textureEnvTextured == textured )
-		return;
-	C3D_TexEnv *env = C3D_GetTexEnv( 0 );
-	C3D_TexEnvInit( env );
+	std::uint64_t key = 0;
+	int at = 0;
+	auto put = [&]( std::uint64_t value, int bits )
+	{
+		key |= value << at;
+		at += bits;
+	};
+	put( state.depthTest, 1 );
+	put( state.depthWrite, 1 );
+	put( std::uint64_t( state.depthFunc ), 3 );
+	put( std::uint64_t( blend ), 3 );
+	put( state.alphaTest, 1 );
+	put( std::uint64_t( state.alphaFunc ), 3 );
+	put( state.alphaTest ? state.alphaRef : 0, 8 );
+	put( state.cull, 1 );
+	put( state.colorWrite, 1 );
+	put( state.alphaWrite, 1 );
+	put( textured, 1 );
+	put( std::uint64_t( primitive ), 1 );
+	return key;
+}
+
+std::uint8_t GpuTest( Compare compare )
+{
+	switch ( compare )
+	{
+	case Compare::kNever:
+		return pf::test::kNever;
+	case Compare::kLess:
+		return pf::test::kLess;
+	case Compare::kEqual:
+		return pf::test::kEqual;
+	case Compare::kLessEqual:
+		return pf::test::kLessEqual;
+	case Compare::kGreater:
+		return pf::test::kGreater;
+	case Compare::kNotEqual:
+		return pf::test::kNotEqual;
+	case Compare::kGreaterEqual:
+		return pf::test::kGreaterEqual;
+	case Compare::kAlways:
+		return pf::test::kAlways;
+	}
+	return pf::test::kAlways;
+}
+
+PipelineId PipelineFor(
+    const DrawState &state, BlendMode blend, bool textured, Primitive primitive )
+{
+	const std::uint64_t key = PipelineKey( state, blend, textured, primitive );
+	if ( const auto found = g_state.pipelines.find( key ); found != g_state.pipelines.end() )
+		return found->second;
+
+	// The texel (when textured) times the vertex colour, which the vertex
+	// program has already tinted.
+	pf::FragmentProgram fragment;
+	pf::CombinerStage stage;
 	if ( textured )
 	{
-		C3D_TexEnvSrc( env, C3D_Both, GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR );
-		C3D_TexEnvFunc( env, C3D_Both, GPU_MODULATE );
+		fragment.textures.push_back( { std::uint8_t( BindGroupRole::kMaterial ), 0,
+		    std::uint8_t( BindGroupRole::kMaterial ), 1 } );
+		stage.rgbSources = {
+		    pf::source::kTexture0, pf::source::kPrimaryColor, pf::source::kPrimaryColor };
+		stage.rgbCombine = pf::combine::kModulate;
 	}
 	else
 	{
-		C3D_TexEnvSrc( env, C3D_Both, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR );
-		C3D_TexEnvFunc( env, C3D_Both, GPU_REPLACE );
+		stage.rgbSources = {
+		    pf::source::kPrimaryColor, pf::source::kPrimaryColor, pf::source::kPrimaryColor };
+		stage.rgbCombine = pf::combine::kReplace;
 	}
-	g_state.textureEnvTextured = textured;
-	g_state.textureEnvValid = true;
+	stage.alphaSources = stage.rgbSources;
+	stage.alphaCombine = stage.rgbCombine;
+	fragment.stages.push_back( stage );
+	if ( state.alphaTest )
+	{
+		fragment.alphaTest = GpuTest( state.alphaFunc );
+		fragment.alphaReference = state.alphaRef;
+	}
+	const std::vector<std::byte> fragmentArtifact = pf::WriteFragmentProgram( fragment );
+
+	static const ReflectedBinding sampled[] = {
+	    { std::uint32_t( BindGroupRole::kMaterial ), 0, BindingKind::kSampledTexture },
+	    { std::uint32_t( BindGroupRole::kMaterial ), 1, BindingKind::kSampler } };
+	const ShaderArtifactView stages[] = {
+	    { ShaderStage::kVertex, ArtifactFormat::kPica, g_state.vertexArtifact, "main", {} },
+	    { ShaderStage::kFragment, ArtifactFormat::kPica, fragmentArtifact, "main",
+	        textured ? std::span<const ReflectedBinding>( sampled )
+	                 : std::span<const ReflectedBinding>() } };
+	const BindGroupLayoutId layouts[] = {
+	    {}, {}, textured ? g_state.materialLayout : BindGroupLayoutId{} };
+	static const VertexAttribute attributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
+	    { 1, VertexFormat::kUnorm8x4, 12, 0 }, { 2, VertexFormat::kFloat2, 16, 0 } };
+	static const VertexBufferLayout buffers[] = { { sizeof( Vertex ), false } };
+	const Format colors[] = { Format::kRGBA8Unorm };
+	const BlendMode blends[] = { blend };
+	const std::uint8_t masks[] = { std::uint8_t(
+	    ( state.colorWrite ? kColorWriteRed | kColorWriteGreen | kColorWriteBlue : 0 ) |
+	    ( state.alphaWrite ? kColorWriteAlpha : 0 ) ) };
+
+	PipelineDesc desc;
+	desc.stages = stages;
+	desc.layouts = layouts;
+	desc.drawConstantBytes = kDrawConstantBytes;
+	desc.vertex = { attributes, buffers };
+	desc.topology = primitive == Primitive::kTriangleStrip ? PrimitiveTopology::kTriangleStrip
+	                                                       : PrimitiveTopology::kTriangleList;
+	// D3D's front faces are clockwise; it culls the counter-clockwise ones.
+	desc.raster.cull = state.cull ? CullMode::kBack : CullMode::kNone;
+	desc.raster.frontCounterClockwise = false;
+	desc.depthStencil.depthTest = state.depthTest;
+	desc.depthStencil.depthWrite = state.depthWrite;
+	desc.depthStencil.compare = state.depthTest ? Port( state.depthFunc ) : CompareOp::kAlways;
+	desc.colorFormats = colors;
+	desc.blends = blends;
+	desc.colorWriteMasks = masks;
+	desc.depthFormat = Format::kD24UnormS8;
+	desc.debugName = "shaderapipica";
+	auto pipeline = Device().CreatePipeline( desc );
+	const PipelineId id = pipeline ? pipeline.Value() : PipelineId{};
+	g_state.pipelines.emplace( key, id );
+	return id;
+}
+
+// The allocation holding ptr, or null.
+Allocation *Find( const void *ptr, std::size_t *offset )
+{
+	const std::uintptr_t at = reinterpret_cast<std::uintptr_t>( ptr );
+	auto found = g_state.allocations.upper_bound( at );
+	if ( found == g_state.allocations.begin() )
+		return nullptr;
+	--found;
+	if ( at - found->first >= found->second.bytes )
+		return nullptr;
+	if ( offset )
+		*offset = at - found->first;
+	return &found->second;
+}
+
+ResourceUsage UsageOf( Memory kind )
+{
+	return kind == Memory::kVertices ? ResourceUsage::kVertex : ResourceUsage::kIndex;
+}
+
+// A mapped upload buffer, already in its drawing usage.
+std::byte *CreateLinear( Memory kind, std::size_t bytes, BufferId &out )
+{
+	BufferDesc desc;
+	desc.size = bytes;
+	desc.memory = MemoryKind::kUpload;
+	desc.usages = { UsageOf( kind ) };
+	auto buffer = Device().CreateBuffer( desc );
+	if ( !buffer )
+		return nullptr;
+	auto encoder = Device().BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return nullptr;
+	encoder.Value().TransitionBuffer( buffer.Value(), ResourceUsage::kUndefined, UsageOf( kind ) );
+	CommandEncoder list[] = { std::move( encoder ).Value() };
+	(void)Device().Submit( QueueKind::kGraphics, list, {} );
+	const std::span<std::byte> mapped = pc::MapUploadBuffer( Device(), buffer.Value() );
+	out = buffer.Value();
+	return mapped.data();
+}
+
+void BeginPass( bool clearColor, bool clearDepth, std::uint32_t rgba )
+{
+	CommandEncoder &e = *g_state.encoder;
+	if ( g_state.rendering )
+		e.EndRendering();
+	ColorAttachment color{
+	    g_state.color, clearColor ? LoadOp::kClear : LoadOp::kLoad, StoreOp::kStore, {}, {} };
+	color.clear = { float( ( rgba >> 0 ) & 0xFF ) / 255.0f, float( ( rgba >> 8 ) & 0xFF ) / 255.0f,
+	    float( ( rgba >> 16 ) & 0xFF ) / 255.0f, float( ( rgba >> 24 ) & 0xFF ) / 255.0f };
+	const ColorAttachment colors[] = { color };
+	RenderingDesc rendering;
+	rendering.colors = colors;
+	rendering.depth = DepthAttachment{
+	    g_state.depth, clearDepth ? LoadOp::kClear : LoadOp::kLoad, StoreOp::kStore, 1.0f };
+	rendering.width = kScreenWidth;
+	rendering.height = kScreenHeight;
+	e.BeginRendering( rendering );
+	e.SetViewport( g_state.viewport );
+	g_state.rendering = true;
+}
+
+// Opens the frame's recording (the target becomes an attachment).
+void OpenRecording()
+{
+	if ( g_state.encoder )
+		return;
+	auto encoder = Device().BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	g_state.encoder.emplace( std::move( encoder ).Value() );
+	CommandEncoder &e = *g_state.encoder;
+	if ( g_state.colorUsage != ResourceUsage::kColorAttachment )
+		e.TransitionTexture( g_state.color, g_state.colorUsage, ResourceUsage::kColorAttachment );
+	if ( g_state.depthUsage != ResourceUsage::kDepthWrite )
+		e.TransitionTexture( g_state.depth, g_state.depthUsage, ResourceUsage::kDepthWrite );
+	g_state.colorUsage = ResourceUsage::kColorAttachment;
+	g_state.depthUsage = ResourceUsage::kDepthWrite;
+}
+
+// Submits what is recorded; the target stays an attachment unless sample.
+void SubmitRecording( bool sample )
+{
+	if ( !g_state.encoder )
+		return;
+	CommandEncoder &e = *g_state.encoder;
+	if ( g_state.rendering )
+		e.EndRendering();
+	g_state.rendering = false;
+	if ( sample )
+	{
+		e.TransitionTexture(
+		    g_state.color, ResourceUsage::kColorAttachment, ResourceUsage::kSampled );
+		g_state.colorUsage = ResourceUsage::kSampled;
+	}
+	CommandEncoder list[] = { std::move( *g_state.encoder ) };
+	g_state.encoder.reset();
+	auto token = Device().Submit( QueueKind::kGraphics, list, {} );
+	++g_state.stats.submits;
+	++g_state.recording;
+	for ( ResourceId id : g_state.releases )
+		(void)Device().Release( id, token ? token.Value() : CompletionToken{} );
+	g_state.releases.clear();
+	(void)Device().Poll();
+	if ( !sample )
+	{
+		// Continue the frame: a new recording loads what the last one drew.
+		OpenRecording();
+		BeginPass( false, false, 0 );
+	}
 }
 
 } // namespace
 
-void ConvertClip( const float m[16], float out[16] )
+Texture::Texture()
+    : m_texture( 0 ), m_group( 0 ), m_repeat( true ), m_width( 0 ), m_height( 0 ), m_bytes( 0 )
 {
-	// Column-vector rows of the D3D row-vector matrix: r[j][i] = m[i][j].
-	float r[4][4];
-	for ( int i = 0; i < 4; ++i )
-		for ( int j = 0; j < 4; ++j )
-			r[j][i] = m[i * 4 + j];
-	for ( int i = 0; i < 4; ++i )
-	{
-		out[0 * 4 + i] = r[1][i];          // x' = y
-		out[1 * 4 + i] = -r[0][i];         // y' = -x
-		out[2 * 4 + i] = r[2][i] - r[3][i]; // z' = z - w
-		out[3 * 4 + i] = r[3][i];          // w' = w
-	}
 }
-
-Texture::Texture() : m_native( nullptr ), m_valid( false ), m_width( 0 ), m_height( 0 ), m_bytes( 0 ) {}
 
 Texture::~Texture()
 {
@@ -152,59 +397,75 @@ Texture::~Texture()
 
 void Texture::Release()
 {
-	if ( m_native )
+	if ( m_texture && g_state.initialized )
 	{
-		C3D_Tex *tex = static_cast<C3D_Tex *>( m_native );
-		if ( m_valid )
-		{
-			C3D_TexDelete( tex );
-			g_state.textureBytes -= m_bytes;
-		}
-		delete tex;
-		m_native = nullptr;
+		// Drawn by the recording, perhaps: released after it is submitted.
+		g_state.releases.push_back( TextureId{ m_texture } );
+		if ( m_group )
+			g_state.releases.push_back( BindGroupId{ m_group } );
+		g_state.textureBytes -= m_bytes;
 	}
-	if ( g_state.boundTexture == this )
-		g_state.boundTexture = nullptr;
-	m_valid = false;
+	m_texture = m_group = 0;
 	m_bytes = 0;
 }
 
-bool Texture::Upload( TexFormat format, int width, int height, int levelCount,
-	const std::uint8_t *const *levels )
+bool Texture::Upload(
+    UploadFormat format, int width, int height, int levelCount, const std::uint8_t *const *levels )
 {
 	Release();
-	if ( levelCount < 1 )
+	if ( levelCount < 1 || !g_state.initialized )
 		return false;
-	C3D_Tex *tex = new ( std::nothrow ) C3D_Tex;
-	if ( !tex )
+	TextureDesc desc;
+	desc.format = format == UploadFormat::kETC1     ? Format::kETC1Rgb
+	              : format == UploadFormat::kETC1A4 ? Format::kETC1A4
+	                                                : Format::kRGBA8Unorm;
+	desc.width = std::uint32_t( width );
+	desc.height = std::uint32_t( height );
+	desc.mipLevels = std::uint32_t( levelCount );
+	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	auto texture = Device().CreateTexture( desc );
+	if ( !texture )
 		return false;
-	C3D_TexInitParams params = {};
-	params.width = std::uint16_t( width );
-	params.height = std::uint16_t( height );
-	params.maxLevel = std::uint8_t( levelCount - 1 );
-	params.format = GPU_TEXCOLOR( format );
-	params.type = GPU_TEX_2D;
-	params.onVram = false; // linear FCRAM: VRAM holds the render targets
-	if ( !C3D_TexInitWithParams( tex, nullptr, params ) )
+	auto encoder = Device().BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
 	{
-		delete tex;
+		(void)Device().Release( texture.Value(), {} );
 		return false;
 	}
+	CommandEncoder &e = encoder.Value();
+	e.TransitionTexture(
+	    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	std::vector<BufferId> staging;
 	std::size_t total = 0;
 	for ( int level = 0; level < levelCount; ++level )
 	{
-		u32 size = 0;
-		void *dst = C3D_TexGetImagePtr( tex, tex->data, level, &size );
-		std::memcpy( dst, levels[level], size );
-		total += size;
+		const std::uint32_t w = std::uint32_t( width >> level ),
+		                    h = std::uint32_t( height >> level );
+		const std::size_t bytes =
+		    format == UploadFormat::kRGBA8
+		        ? std::size_t( w ) * h * 4
+		        : std::size_t( w / 4 ) * ( h / 4 ) * ( format == UploadFormat::kETC1 ? 8 : 16 );
+		auto buffer = Device().CreateUploadBuffer(
+		    { reinterpret_cast<const std::byte *>( levels[level] ), bytes } );
+		if ( !buffer )
+			break;
+		staging.push_back( buffer.Value() );
+		e.CopyBufferToTexture(
+		    buffer.Value(), texture.Value(), { 0, std::uint32_t( level ), 0, w, h } );
+		total += bytes;
 	}
-	C3D_TexFlush( tex );
-	C3D_TexSetFilter( tex, GPU_LINEAR, GPU_NEAREST );
-	if ( levelCount > 1 )
-		C3D_TexSetFilterMipmap( tex, GPU_LINEAR );
-	C3D_TexSetWrap( tex, GPU_REPEAT, GPU_REPEAT );
-	m_native = tex;
-	m_valid = true;
+	e.TransitionTexture(
+	    texture.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
+	CommandEncoder list[] = { std::move( e ) };
+	auto token = Device().Submit( QueueKind::kGraphics, list, {} );
+	for ( BufferId buffer : staging )
+		(void)Device().Release( buffer, token ? token.Value() : CompletionToken{} );
+	if ( !token || staging.size() != std::size_t( levelCount ) )
+	{
+		(void)Device().Release( texture.Value(), {} );
+		return false;
+	}
+	m_texture = texture.Value().value;
 	m_width = width;
 	m_height = height;
 	m_bytes = total;
@@ -214,10 +475,32 @@ bool Texture::Upload( TexFormat format, int width, int height, int levelCount,
 
 void Texture::SetWrap( bool wrapS, bool wrapT )
 {
-	if ( !m_valid )
+	const bool repeat = wrapS && wrapT;
+	if ( repeat == m_repeat )
 		return;
-	C3D_TexSetWrap( static_cast<C3D_Tex *>( m_native ), wrapS ? GPU_REPEAT : GPU_CLAMP_TO_EDGE,
-		wrapT ? GPU_REPEAT : GPU_CLAMP_TO_EDGE );
+	m_repeat = repeat;
+	if ( m_group )
+		g_state.releases.push_back( BindGroupId{ m_group } );
+	m_group = 0;
+}
+
+std::uint32_t Texture::Group()
+{
+	if ( !m_texture )
+		return 0;
+	if ( !m_group )
+	{
+		const BindGroupEntry entries[] = { { 0, {}, 0, 0, TextureId{ m_texture }, {} },
+		    { 1, {}, 0, 0, {}, g_state.samplers[m_repeat ? 1 : 0] } };
+		auto group = Device().CreateBindGroup( { g_state.materialLayout, entries } );
+		m_group = group ? group.Value().value : 0;
+	}
+	return m_group;
+}
+
+void BindDevice( IRenderDevice2 *device )
+{
+	g_bound = device;
 }
 
 bool Init()
@@ -225,31 +508,70 @@ bool Init()
 	if ( g_state.initialized )
 		return true;
 	N3ds_StartDebugConsole();
-	if ( !C3D_Init( C3D_DEFAULT_CMDBUF_SIZE * 4 ) )
-		return false;
-	g_state.top = C3D_RenderTargetCreate( 240, 400, GPU_RB_RGBA8, GPU_RB_DEPTH24_STENCIL8 );
-	if ( !g_state.top )
-		return false;
-	C3D_RenderTargetSetOutput( g_state.top, GFX_TOP, GFX_LEFT, DisplayTransferFlags() );
-
-	g_state.dvlb = DVLB_ParseFile( (u32 *)fullbright_shbin, fullbright_shbin_size );
-	shaderProgramInit( &g_state.program );
-	shaderProgramSetVsh( &g_state.program, &g_state.dvlb->DVLE[0] );
-	C3D_BindProgram( &g_state.program );
-	g_state.uMvp = shaderInstanceGetUniformLocation( g_state.program.vertexShader, "mvp" );
-	g_state.uTint = shaderInstanceGetUniformLocation( g_state.program.vertexShader, "tint" );
-
-	C3D_AttrInfo *attr = C3D_GetAttrInfo();
-	AttrInfo_Init( attr );
-	AttrInfo_AddLoader( attr, 0, GPU_FLOAT, 3 );
-	AttrInfo_AddLoader( attr, 1, GPU_UNSIGNED_BYTE, 4 );
-	AttrInfo_AddLoader( attr, 2, GPU_FLOAT, 2 );
-
-	for ( auto &ring : g_state.ring )
+	if ( !g_bound )
 	{
-		ring = static_cast<std::uint8_t *>( linearAlloc( kRingBytes ) );
-		if ( !ring )
+		std::printf( "pica: no render core device was handed to the shader API\n" );
+		return false;
+	}
+	g_state.device = g_bound;
+
+	TextureDesc desc;
+	desc.format = Format::kRGBA8Unorm;
+	desc.width = kTargetWidth;
+	desc.height = kTargetHeight;
+	desc.usages = {
+	    ResourceUsage::kColorAttachment, ResourceUsage::kSampled, ResourceUsage::kCopySource };
+	auto color = Device().CreateTexture( desc );
+	desc.format = Format::kD24UnormS8;
+	desc.usages = { ResourceUsage::kDepthWrite };
+	auto depth = Device().CreateTexture( desc );
+	static const BindingDesc bindings[] = {
+	    { 0, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
+	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
+	auto layout = Device().CreateBindGroupLayout( { BindGroupRole::kMaterial, bindings } );
+	SamplerDesc sampler;
+	sampler.magFilter = Filter::kLinear;
+	sampler.minFilter = Filter::kNearest;
+	sampler.mipFilter = Filter::kLinear;
+	sampler.address = AddressMode::kClampToEdge;
+	auto clamped = Device().CreateSampler( sampler );
+	sampler.address = AddressMode::kRepeat;
+	auto repeating = Device().CreateSampler( sampler );
+	if ( !color || !depth || !layout || !clamped || !repeating )
+	{
+		std::printf( "pica: the frame's target, layout or samplers were refused\n" );
+		g_state = State();
+		return false;
+	}
+	g_state.color = color.Value();
+	g_state.depth = depth.Value();
+	g_state.materialLayout = layout.Value();
+	g_state.samplers[0] = clamped.Value();
+	g_state.samplers[1] = repeating.Value();
+
+	pf::VertexProgram program;
+	program.drawConstantRegister = 0;
+	g_state.vertexArtifact = pf::WriteVertexProgram( program,
+	    { reinterpret_cast<const std::byte *>( fullbright_shbin ), fullbright_shbin_size } );
+
+	const std::size_t ringBytes[2] = { kVertexRingBytes, kIndexRingBytes };
+	for ( int kind = 0; kind < 2; ++kind )
+	{
+		Ring &ring = g_state.rings[kind];
+		ring.data = CreateLinear( Memory( kind ), ringBytes[kind], ring.buffer );
+		ring.bytes = ringBytes[kind];
+		if ( !ring.data )
+		{
+			std::printf( "pica: the transient rings were refused\n" );
+			g_state = State();
 			return false;
+		}
+		Allocation allocation;
+		allocation.buffer = ring.buffer;
+		allocation.bytes = ring.bytes;
+		allocation.kind = Memory( kind );
+		allocation.transient = true;
+		g_state.allocations.emplace( reinterpret_cast<std::uintptr_t>( ring.data ), allocation );
 	}
 	g_state.initialized = true;
 	return true;
@@ -261,15 +583,22 @@ void Shutdown()
 		return;
 	if ( g_state.inFrame )
 		EndFrame();
-	for ( auto &ring : g_state.ring )
-	{
-		linearFree( ring );
-		ring = nullptr;
-	}
-	shaderProgramFree( &g_state.program );
-	DVLB_Free( g_state.dvlb );
-	C3D_RenderTargetDelete( g_state.top );
-	C3D_Fini();
+	// The device is the render core's and outlives this: everything made
+	// here is released on it.
+	IRenderDevice2 &device = Device();
+	(void)device.WaitIdle();
+	for ( ResourceId id : g_state.releases )
+		(void)device.Release( id, {} );
+	for ( const auto &[key, pipeline] : g_state.pipelines )
+		if ( pipeline.IsValid() )
+			(void)device.Release( pipeline, {} );
+	for ( const auto &[address, allocation] : g_state.allocations )
+		(void)device.Release( allocation.buffer, {} );
+	for ( ResourceId id : { ResourceId( g_state.color ), ResourceId( g_state.depth ),
+			  ResourceId( g_state.materialLayout ), ResourceId( g_state.samplers[0] ),
+			  ResourceId( g_state.samplers[1] ) } )
+		(void)device.Release( id, {} );
+	(void)device.Poll();
 	g_state = State();
 }
 
@@ -287,14 +616,13 @@ void BeginFrame()
 {
 	if ( !g_state.initialized || g_state.inFrame )
 		return;
-	C3D_FrameBegin( C3D_FRAME_SYNCDRAW );
-	C3D_FrameDrawOn( g_state.top );
 	g_state.inFrame = true;
-	g_state.ringIndex = ( g_state.ringIndex + 1 ) % kRingCount;
-	g_state.ringUsed = 0;
+	for ( Ring &ring : g_state.rings )
+		ring.used = 0;
 	g_state.stats = Stats();
-	g_state.textureEnvValid = false;
-	SetViewport( 0, 0, kScreenWidth, kScreenHeight );
+	g_state.viewport = { 0, 0, float( kScreenWidth ), float( kScreenHeight ), 0, 1 };
+	OpenRecording();
+	BeginPass( false, false, 0 );
 }
 
 void EndFrame()
@@ -302,7 +630,8 @@ void EndFrame()
 	if ( !g_state.inFrame )
 		return;
 	g_state.stats.textureBytes = g_state.textureBytes;
-	C3D_FrameEnd( 0 );
+	SubmitRecording( true );
+	(void)pc::PresentTopScreen( Device(), g_state.color, kScreenWidth, kScreenHeight );
 	g_state.inFrame = false;
 }
 
@@ -310,153 +639,167 @@ void Clear( bool color, bool depth, std::uint32_t rgba )
 {
 	if ( !g_state.inFrame )
 		BeginFrame();
-	C3D_ClearBits bits = C3D_ClearBits( ( color ? C3D_CLEAR_COLOR : 0 ) | ( depth ? C3D_CLEAR_DEPTH : 0 ) );
-	if ( bits )
-		C3D_RenderTargetClear( g_state.top, bits, rgba, 0 );
+	if ( !color && !depth )
+		return;
+	// A new pass that clears; the viewport's region is the whole target, as
+	// the legacy renderer's clear was.
+	BeginPass( color, depth, rgba );
 }
 
 void SetViewport( int x, int y, int width, int height )
 {
-	// The framebuffer is the screen turned a quarter: screen x runs along the
-	// framebuffer's y, screen y along its x from the far edge.
-	const int fbX = 240 - ( y + height );
-	const int fbY = 400 - ( x + width );
-	C3D_SetViewport( u32( fbX < 0 ? 0 : fbX ), u32( fbY < 0 ? 0 : fbY ), u32( height ), u32( width ) );
+	g_state.viewport = { float( x ), float( y ), float( width ), float( height ), 0, 1 };
+	if ( g_state.rendering )
+		g_state.encoder->SetViewport( g_state.viewport );
 }
 
-void *AllocTransient( std::size_t bytes, std::size_t align )
+void *AllocTransient( Memory kind, std::size_t bytes, std::size_t align )
 {
-	std::size_t at = ( g_state.ringUsed + align - 1 ) & ~( align - 1 );
-	if ( at + bytes > kRingBytes )
+	Ring &ring = g_state.rings[int( kind )];
+	std::size_t at = ( ring.used + align - 1 ) & ~( align - 1 );
+	if ( !ring.data || at + bytes > ring.bytes )
 	{
 		++g_state.stats.ringOverflows;
 		return nullptr;
 	}
-	g_state.ringUsed = at + bytes;
-	return g_state.ring[g_state.ringIndex] + at;
+	ring.used = at + bytes;
+	return ring.data + at;
 }
 
-bool IsLinear( const void *ptr )
+void *AllocLinear( Memory kind, std::size_t bytes )
 {
-	const u32 address = reinterpret_cast<u32>( ptr );
-	return address >= OS_FCRAM_VADDR && address < OS_FCRAM_VADDR + OS_FCRAM_SIZE;
-}
-
-void *AllocLinear( std::size_t bytes )
-{
-	return linearAlloc( bytes );
+	if ( !g_state.initialized || bytes == 0 )
+		return nullptr;
+	Allocation allocation;
+	allocation.kind = kind;
+	allocation.bytes = bytes;
+	std::byte *data = CreateLinear( kind, bytes, allocation.buffer );
+	if ( !data )
+		return nullptr;
+	g_state.allocations.emplace( reinterpret_cast<std::uintptr_t>( data ), allocation );
+	return data;
 }
 
 void FreeLinear( void *ptr )
 {
-	if ( ptr )
-		linearFree( ptr );
+	if ( !ptr )
+		return;
+	const auto found = g_state.allocations.find( reinterpret_cast<std::uintptr_t>( ptr ) );
+	if ( found == g_state.allocations.end() || found->second.transient )
+		return;
+	g_state.releases.push_back( found->second.buffer );
+	g_state.allocations.erase( found );
+	if ( !g_state.encoder )
+	{
+		for ( ResourceId id : g_state.releases )
+			(void)Device().Release( id, {} );
+		g_state.releases.clear();
+	}
+}
+
+void PrepareWrite( const void *ptr )
+{
+	Allocation *allocation = Find( ptr, nullptr );
+	if ( allocation && !allocation->transient && allocation->usedInRecording == g_state.recording &&
+	     g_state.encoder )
+		SubmitRecording( false );
 }
 
 void FlushLinear( const void *ptr, std::size_t bytes )
 {
-	GSPGPU_FlushDataCache( ptr, bytes );
+	std::size_t offset = 0;
+	if ( Allocation *allocation = Find( ptr, &offset ) )
+		pc::FlushUploadBuffer( Device(), allocation->buffer, offset, bytes );
 }
 
 void Draw( const float clipFromObject[16], const DrawState &state, Texture *texture,
-	const Vertex *vertices, int vertexCount, const std::uint16_t *indices, int indexCount,
-	Primitive primitive )
+    const Vertex *vertices, int vertexCount, const std::uint16_t *indices, int indexCount,
+    Primitive primitive )
 {
 	if ( !g_state.inFrame )
 		BeginFrame();
-	if ( vertexCount <= 0 || !vertices )
+	if ( vertexCount <= 0 || !vertices || !g_state.encoder )
+		return;
+	const std::optional<BlendMode> blend = PortBlend( state );
+	if ( !blend )
+	{
+		++g_state.stats.blendRefusals;
+		return;
+	}
+	std::size_t vertexOffset = 0, indexOffset = 0;
+	Allocation *vertexMemory = Find( vertices, &vertexOffset );
+	Allocation *indexMemory = indices ? Find( indices, &indexOffset ) : nullptr;
+	if ( !vertexMemory || vertexMemory->kind != Memory::kVertices ||
+	     ( indices && ( !indexMemory || indexMemory->kind != Memory::kIndices ) ) )
+		return;
+	const bool textured = texture && texture->Valid();
+	const PipelineId pipeline = PipelineFor( state, *blend, textured, primitive );
+	if ( !pipeline.IsValid() )
 		return;
 
-	float rows[16];
-	ConvertClip( clipFromObject, rows );
-	// citro3d's float vector uniforms are stored w z y x.
-	C3D_FVec *mvp = C3D_FVUnifWritePtr( GPU_VERTEX_SHADER, g_state.uMvp, 4 );
+	// The column-vector rows of D3D's row-vector matrix (the port's clip
+	// space is D3D's), then the tint.
+	float constants[20];
 	for ( int i = 0; i < 4; ++i )
-		mvp[i] = FVec4_New( rows[i * 4 + 0], rows[i * 4 + 1], rows[i * 4 + 2], rows[i * 4 + 3] );
-	C3D_FVUnifSet( GPU_VERTEX_SHADER, g_state.uTint, state.tint[0], state.tint[1], state.tint[2], state.tint[3] );
+		for ( int j = 0; j < 4; ++j )
+			constants[j * 4 + i] = clipFromObject[i * 4 + j];
+	std::memcpy( constants + 16, state.tint, sizeof( state.tint ) );
 
-	C3D_BufInfo *buf = C3D_GetBufInfo();
-	BufInfo_Init( buf );
-	BufInfo_Add( buf, vertices, sizeof( Vertex ), 3, 0x210 );
-
-	const bool textured = texture && texture->Valid();
+	CommandEncoder &e = *g_state.encoder;
+	e.SetPipeline( pipeline );
 	if ( textured )
-		C3D_TexBind( 0, static_cast<C3D_Tex *>( texture->Native() ) );
-	SetTextureEnv( textured );
-
-	C3D_DepthTest( state.depthTest || state.depthWrite,
-		state.depthTest ? PicaCompare( state.depthFunc, true ) : GPU_ALWAYS,
-		GPU_WRITEMASK( ( state.colorWrite ? GPU_WRITE_COLOR : 0 ) |
-			( state.alphaWrite ? GPU_WRITE_ALPHA : 0 ) | ( state.depthWrite ? GPU_WRITE_DEPTH : 0 ) ) );
-	C3D_AlphaTest( state.alphaTest, PicaCompare( state.alphaFunc, false ), state.alphaRef );
-	if ( state.blend )
-		C3D_AlphaBlend( GPU_BLEND_ADD, GPU_BLEND_ADD, PicaBlend( state.src ), PicaBlend( state.dst ),
-			PicaBlend( state.src ), PicaBlend( state.dst ) );
-	else
-		C3D_AlphaBlend( GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO );
-	// D3D culls counter-clockwise (back) faces; the quarter turn keeps the
-	// winding, and the framebuffer's y axis points the other way.
-	C3D_CullFace( state.cull ? GPU_CULL_FRONT_CCW : GPU_CULL_NONE );
-
-	const GPU_Primitive_t prim = primitive == Primitive::kTriangleStrip ? GPU_TRIANGLE_STRIP :
-		( primitive == Primitive::kTriangleFan ? GPU_TRIANGLE_FAN : GPU_TRIANGLES );
+		e.SetBindGroup( BindGroupRole::kMaterial, BindGroupId{ texture->Group() } );
+	e.SetDrawConstants( 0, std::as_bytes( std::span( constants ) ) );
+	e.SetVertexBuffer( 0, vertexMemory->buffer, vertexOffset );
+	vertexMemory->usedInRecording = g_state.recording;
 	if ( indices && indexCount > 0 )
 	{
-		C3D_DrawElements( prim, indexCount, C3D_UNSIGNED_SHORT, indices );
-		g_state.stats.triangles += std::uint32_t( prim == GPU_TRIANGLES ? indexCount / 3 : indexCount - 2 );
+		indexMemory->usedInRecording = g_state.recording;
+		e.SetIndexBuffer( indexMemory->buffer, indexOffset, IndexFormat::kUint16 );
+		e.DrawIndexed( std::uint32_t( indexCount ) );
+		g_state.stats.triangles +=
+		    std::uint32_t( primitive == Primitive::kTriangles ? indexCount / 3 : indexCount - 2 );
 	}
 	else
 	{
-		C3D_DrawArrays( prim, 0, vertexCount );
-		g_state.stats.triangles += std::uint32_t( prim == GPU_TRIANGLES ? vertexCount / 3 : vertexCount - 2 );
+		e.Draw( std::uint32_t( vertexCount ) );
+		g_state.stats.triangles +=
+		    std::uint32_t( primitive == Primitive::kTriangles ? vertexCount / 3 : vertexCount - 2 );
 	}
 	++g_state.stats.draws;
 }
 
 bool CaptureTopScreen( const char *path )
 {
-	u16 fbWidth = 0, fbHeight = 0;
-	const u8 *fb = gfxGetFramebuffer( GFX_TOP, GFX_LEFT, &fbWidth, &fbHeight );
-	const GSPGPU_FramebufferFormat format = gfxGetScreenFormat( GFX_TOP );
-	const int bpp = gspGetBytesPerPixel( format );
-	FILE *file = std::fopen( path, "wb" );
-	if ( !file || !fb )
-	{
-		if ( file )
-			std::fclose( file );
+	if ( !g_state.initialized || g_state.inFrame || g_state.colorUsage != ResourceUsage::kSampled )
 		return false;
-	}
-	// The scanout buffer is column-major: fbWidth (240) texels per screen
-	// column, bottom row first; screen columns run left to right.
-	std::fprintf( file, "P6\n%d %d\n255\n", int( fbHeight ), int( fbWidth ) );
-	static std::uint8_t row[400 * 3];
-	for ( int y = 0; y < fbWidth; ++y )
-	{
-		for ( int x = 0; x < fbHeight; ++x )
-		{
-			const u8 *p = fb + ( x * fbWidth + ( fbWidth - 1 - y ) ) * bpp;
-			std::uint8_t r = 0, g = 0, b = 0;
-			switch ( format )
-			{
-			case GSP_RGBA8_OES: r = p[3], g = p[2], b = p[1]; break;
-			case GSP_BGR8_OES: r = p[2], g = p[1], b = p[0]; break;
-			case GSP_RGB565_OES:
-			{
-				const u16 v = u16( p[0] | ( p[1] << 8 ) );
-				r = u8( ( v >> 11 ) << 3 ), g = u8( ( ( v >> 5 ) & 63 ) << 2 ), b = u8( ( v & 31 ) << 3 );
-				break;
-			}
-			default:
-			{
-				const u16 v = u16( p[0] | ( p[1] << 8 ) );
-				r = u8( ( v >> 11 ) << 3 ), g = u8( ( ( v >> 6 ) & 31 ) << 3 ), b = u8( ( ( v >> 1 ) & 31 ) << 3 );
-				break;
-			}
-			}
-			row[x * 3 + 0] = r, row[x * 3 + 1] = g, row[x * 3 + 2] = b;
-		}
-		std::fwrite( row, 1, std::size_t( fbHeight ) * 3, file );
-	}
+	BufferDesc out;
+	out.size = std::uint64_t( kScreenWidth ) * kScreenHeight * 4;
+	out.usages = { ResourceUsage::kCopyDestination };
+	out.memory = MemoryKind::kReadback;
+	auto readback = Device().CreateBuffer( out );
+	auto encoder = Device().BeginEncoder( QueueKind::kGraphics );
+	if ( !readback || !encoder )
+		return false;
+	CommandEncoder &e = encoder.Value();
+	e.TransitionTexture( g_state.color, ResourceUsage::kSampled, ResourceUsage::kCopySource );
+	e.TransitionBuffer(
+	    readback.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyTextureToBuffer(
+	    g_state.color, readback.Value(), { 0, 0, 0, kScreenWidth, kScreenHeight } );
+	e.TransitionTexture( g_state.color, ResourceUsage::kCopySource, ResourceUsage::kSampled );
+	CommandEncoder list[] = { std::move( e ) };
+	auto token = Device().Submit( QueueKind::kGraphics, list, {} );
+	(void)Device().WaitIdle();
+	std::vector<std::byte> pixels( std::size_t( out.size ) );
+	const bool read = token && Device().ReadBuffer( readback.Value(), 0, pixels );
+	(void)Device().Release( readback.Value(), token ? token.Value() : CompletionToken{} );
+	FILE *file = read ? std::fopen( path, "wb" ) : nullptr;
+	if ( !file )
+		return false;
+	std::fprintf( file, "P6\n%d %d\n255\n", kScreenWidth, kScreenHeight );
+	for ( int i = 0; i < kScreenWidth * kScreenHeight; ++i )
+		std::fwrite( &pixels[std::size_t( i ) * 4], 1, 3, file );
 	std::fclose( file );
 	return true;
 }

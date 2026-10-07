@@ -1,0 +1,20 @@
+; position.vert for render.device.pica (RFC 0026): attribute 0 (v0) is the
+; clip-space position's xy; port depth 0.5, written as PICA's -0.5.
+
+.constf k(1.0, -0.5, 0.0, 0.0)
+
+.out outpos position
+.out outclr color
+.out outtc0 texcoord0
+
+.alias position v0
+
+.proc main
+	mov r0.xy, position.xyyy
+	mov r0.z, k.yyyy
+	mov r0.w, k.xxxx
+	mov outpos, r0
+	mov outtc0, k.xxxx
+	mov outclr, k.xxxx
+	end
+.end

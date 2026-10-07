@@ -208,8 +208,8 @@ DeviceResult<TextureId> VulkanDevice::CreateTexture( const TextureDesc &desc )
 	// device has no swapchain, so a presentable texture is unsupported here.
 	if ( desc.usages.Has( ResourceUsage::kPresent ) )
 		return Fail( DeviceStatus::kUnsupported, op );
-	if ( IsBlockCompressed( desc.format ) &&
-	     !m_Facts.capabilities.Has( Capability::kTextureCompressionBC ) )
+	if ( auto needed = FormatCapability( desc.format );
+	    needed && !m_Facts.capabilities.Has( *needed ) )
 		return Fail( DeviceStatus::kUnsupported, op );
 	if ( desc.dimension == TextureDimension::kCube && desc.depthOrLayers > 6 &&
 	     !m_Facts.capabilities.Has( Capability::kCubeArrays ) )

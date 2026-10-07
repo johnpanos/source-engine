@@ -669,6 +669,11 @@ struct SurfaceVariant
 	// mask's, blended by the vertex alpha (lightmappedgeneric_ps2_3_x.h's
 	// bBaseTexture2 and BUMPMAP2 paths).
 	bool blendTexture2 = false;
+	// A reduced program's alpha test (RFC 0026 decision 8, surface_reduced.h):
+	// the PICA200 tests alpha in fixed function, so Request sets the
+	// reference (0 to 255) from $alphatest; -1 none. The shader programs test
+	// alpha from the constants and leave it at -1. Not in VariantKey.
+	std::int16_t alphaTestReference = -1;
 
 	auto operator<=>( const SurfaceVariant & ) const = default;
 	bool operator==( const SurfaceVariant & ) const = default;
@@ -832,8 +837,19 @@ public:
 	    const device::SamplerDesc &sampler = {}, std::string gradient = {},
 	    std::string indirect = {}, std::string shadowMask = {} ) const;
 
+	// The device runs kPica artifacts: the program draws the reduced 3DS
+	// material model (RFC 0026 decision 8, surface_reduced.h). Its layouts
+	// hold only what that model reads: the frame and view constants, the
+	// material constants and base texture, and the draw's lightmap page and
+	// model lighting; the group builders fill those alone.
+	bool Reduced() const { return m_Reduced; }
+
 private:
 	explicit SurfaceProgram( device::IRenderDevice2 &device ) : m_Device( device ) {}
+	// surface_reduced.cpp
+	foundation::Expected<device::PipelineId, SurfaceStatus> ReducedPipeline(
+	    const SurfaceVariant &variant );
+	bool CreateReducedLayouts();
 
 	device::IRenderDevice2 &m_Device;
 	device::Format m_ColorFormat = device::Format::kUnknown;
@@ -851,6 +867,7 @@ private:
 	// The variant behind each shipped (neutral) pipeline, for DebugPipeline.
 	std::map<std::uint64_t, SurfaceVariant> m_Shipped;
 	std::function<void( const std::string & )> m_CreatedSink;
+	bool m_Reduced = false;
 };
 
 // A family's view of the program: the family's claims are drawn as the

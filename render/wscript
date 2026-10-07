@@ -13,6 +13,7 @@ PORTABLE = [
 	'math',
 	'device',
 	'device/null',
+	'device/pica',
 	'graph',
 	'shaderlib',
 	'resources',

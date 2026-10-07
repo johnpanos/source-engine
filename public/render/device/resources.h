@@ -93,6 +93,14 @@ enum class Format : std::uint8_t
 	// Packed unsigned floats: R and G 11-bit (5-bit exponent, 6-bit mantissa),
 	// B 10-bit (5-bit mantissa); half of kRGBA16Float's bytes, no alpha.
 	kRG11B10Float,
+	// ETC1 (RGB, 4x4 blocks of 8 bytes, each its specification's 64-bit word
+	// in Khronos byte order) and the 3DS's ETC1A4 (16-byte blocks: a 64-bit
+	// little-endian word of 4-bit alpha, texel (x, y) at bit 4 * (4x + y),
+	// then the ETC1 word little-endian), on a device that claims
+	// Capability::kTextureCompressionETC1 (clause D40). Blocks follow each
+	// other in raster order, as the kBC* formats' do.
+	kETC1Rgb,
+	kETC1A4,
 	kCount
 };
 

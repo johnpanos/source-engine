@@ -19,7 +19,8 @@ CommandEncoder::CommandEncoder( QueueKind queue, std::unique_ptr<IEncoderBackend
 
 CommandEncoder::CommandEncoder( CommandEncoder &&other ) noexcept
     : m_Queue( other.m_Queue ), m_Backend( std::move( other.m_Backend ) ), m_Owner( other.m_Owner ),
-      m_Violations( other.m_Violations ), m_LabelObserver( other.m_LabelObserver )
+      m_HasOwner( other.m_HasOwner ), m_Violations( other.m_Violations ),
+      m_LabelObserver( other.m_LabelObserver )
 {
 }
 
@@ -30,6 +31,7 @@ CommandEncoder &CommandEncoder::operator=( CommandEncoder &&other ) noexcept
 		m_Queue = other.m_Queue;
 		m_Backend = std::move( other.m_Backend );
 		m_Owner = other.m_Owner;
+		m_HasOwner = other.m_HasOwner;
 		m_Violations = other.m_Violations;
 		m_LabelObserver = other.m_LabelObserver;
 	}
@@ -43,8 +45,11 @@ IEncoderBackend *CommandEncoder::Enter()
 	if ( !m_Backend )
 		return nullptr;
 	const std::thread::id self = std::this_thread::get_id();
-	if ( m_Owner == std::thread::id() )
+	if ( !m_HasOwner )
+	{
 		m_Owner = self;
+		m_HasOwner = true;
+	}
 	else if ( m_Owner != self )
 		++m_Violations;
 	return m_Backend.get();

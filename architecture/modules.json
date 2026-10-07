@@ -960,6 +960,23 @@
         ]
       },
       {
+        "id": "render.device.pica",
+        "paths": [
+          "public/render/device/pica/",
+          "render/device/pica/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device"
+        ],
+        "kind": "backend",
+        "externalHeaders": [
+          "3ds/gpu/enums.h",
+          "3ds.h",
+          "citro3d.h"
+        ]
+      },
+      {
         "id": "render.graph",
         "paths": [
           "public/render/graph/",
@@ -1456,6 +1473,7 @@
           "render.device.gl",
           "render.device.metal",
           "render.device.d3d12",
+          "render.device.pica",
           "render.pass.skinning",
           "render.graph",
           "render.shader-library",
@@ -1502,6 +1520,7 @@
           "render.device.gl",
           "render.device.metal",
           "render.device.d3d12",
+          "render.device.pica",
           "render.graph",
           "render.shader-library",
           "render.resources",
@@ -1531,7 +1550,8 @@
           "EGL/eglext.h",
           "linux/dma-buf.h",
           "sys/ioctl.h",
-          "sys/mman.h"
+          "sys/mman.h",
+          "3ds.h"
         ],
         "legacyIncludes": [
           "appframework/IAppSystem.h"
@@ -2005,6 +2025,11 @@
           "METAL"
         ]
       },
+      "render_device_pica": {
+        "allowedUse": [
+          "render_device"
+        ]
+      },
       "render_device_d3d12": {
         "allowedUse": [
           "render_device",
@@ -2245,6 +2270,7 @@
           "render_device_gl",
           "render_device_metal",
           "render_device_d3d12",
+          "render_device_pica",
           "render_pass_skinning",
           "render_pass_debug",
           "mapcontainer",
@@ -2324,6 +2350,7 @@
           "targets": [
             "materialsystem",
             "shaderapiempty",
+            "shaderapipica",
             "shaderapivulkan",
             "shaderlib",
             "stdshader_dx9",
@@ -2506,6 +2533,7 @@
             "scenefilecache",
             "server",
             "shaderapiempty",
+            "shaderapipica",
             "shaderapivulkan",
             "soundemittersystem",
             "stdshader_dx9",
@@ -2637,6 +2665,7 @@
             "render.device.gl",
             "render.device.metal",
             "render.device.d3d12",
+            "render.device.pica",
             "render.device.null"
           ]
         ],
@@ -2646,6 +2675,7 @@
             "render.device.gl",
             "render.device.metal",
             "render.device.d3d12",
+            "render.device.pica",
             "render.device.null"
           ]
         },

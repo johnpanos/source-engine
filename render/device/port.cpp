@@ -109,10 +109,37 @@ const char *CapabilityName( Capability capability )
 		return "cube-arrays";
 	case Capability::kFillModeLines:
 		return "fill-mode-lines";
+	case Capability::kFloatTargets:
+		return "float-targets";
+	case Capability::kTextureCompressionETC1:
+		return "texture-compression-etc1";
 	case Capability::kCount:
 		break;
 	}
 	return "unknown";
+}
+
+std::optional<Capability> FormatCapability( Format format )
+{
+	switch ( format )
+	{
+	case Format::kETC1Rgb:
+	case Format::kETC1A4:
+		return Capability::kTextureCompressionETC1;
+	case Format::kRG16Float:
+	case Format::kRGBA16Float:
+	case Format::kR32Float:
+	case Format::kRGBA32Float:
+	case Format::kRG11B10Float:
+	case Format::kD32Float:
+	case Format::kD32FloatS8:
+		return Capability::kFloatTargets;
+	default:
+		break;
+	}
+	if ( IsBlockCompressed( format ) )
+		return Capability::kTextureCompressionBC;
+	return std::nullopt;
 }
 
 std::optional<Capability> FirstMissing( CapabilitySet have, CapabilitySet required )
@@ -160,6 +187,8 @@ std::uint32_t BytesPerTexel( Format format )
 	case Format::kBC6HUfloat:
 	case Format::kBC7Unorm:
 	case Format::kBC7Srgb:
+	case Format::kETC1Rgb:
+	case Format::kETC1A4:
 	case Format::kUnknown:
 	case Format::kCount:
 		break;
@@ -174,7 +203,8 @@ bool IsDepthFormat( Format format )
 
 bool IsBlockCompressed( Format format )
 {
-	return format >= Format::kBC1Unorm && format <= Format::kBC7Srgb;
+	return ( format >= Format::kBC1Unorm && format <= Format::kBC7Srgb ) ||
+	       format == Format::kETC1Rgb || format == Format::kETC1A4;
 }
 
 FormatBlock BlockOf( Format format )
@@ -184,7 +214,10 @@ FormatBlock BlockOf( Format format )
 	case Format::kBC1Unorm:
 	case Format::kBC1Srgb:
 	case Format::kBC4Unorm:
+	case Format::kETC1Rgb:
 		return { 4, 4, 8 };
+	case Format::kETC1A4:
+		return { 4, 4, 16 };
 	case Format::kBC2Unorm:
 	case Format::kBC2Srgb:
 	case Format::kBC3Unorm:

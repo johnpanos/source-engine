@@ -522,8 +522,8 @@ def options(opt):
 	grp.add_option('--render-backend', choices=['auto', 'legacy', 'native-vulkan', 'pica'], default='auto',
 		dest='RENDER_BACKEND',
 		help='linked renderer; clients render through native-vulkan, server, test and tool '
-			'products link none (legacy) [default: %default]')
-	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal', 'd3d12'], default='null',
+			'products link none (legacy); the 3DS client links pica [default: %default]')
+	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal', 'd3d12', 'pica'], default='null',
 		dest='RENDER_CORE_DEVICE',
 		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
 			'names another; vulkan needs the native Vulkan backend, gl and gles need --render-core-gl, '
@@ -1219,12 +1219,21 @@ def configure_render_core(conf):
 		conf.fatal('--render-core-device=vulkan needs the native Vulkan backend (--render-backend=native-vulkan)')
 	if conf.options.RENDER_CORE_DEVICE in ('gl', 'gles') and not conf.env.RENDER_CORE_GL:
 		conf.fatal('--render-core-device=%s needs --render-core-gl' % conf.options.RENDER_CORE_DEVICE)
+	if conf.options.RENDER_CORE_DEVICE == 'pica' and not conf.env.N3DS:
+		conf.fatal('--render-core-device=pica needs the 3DS build (--n3ds)')
+	# RFC 0026: the 3DS has one device, the PICA200's, which the launcher's
+	# render core owns and hands to the shader API; it links no null adapter.
+	if conf.env.N3DS:
+		if conf.options.RENDER_CORE_DEVICE not in ('null', 'pica'):
+			conf.fatal('The 3DS build has one render core device: --render-core-device=pica')
+		conf.env.RENDER_CORE_DEVICE = 'pica'
 	if conf.env.RENDER_CORE:
-		conf.msg('Render core device adapters', ', '.join(['null'] +
+		conf.msg('Render core device adapters', ', '.join(([] if conf.env.N3DS else ['null']) +
 			(['vulkan'] if conf.env.RENDER_CORE_VULKAN else []) +
 			(['gl'] if conf.env.RENDER_CORE_GL else []) +
 			(['metal'] if conf.env.RENDER_CORE_METAL else []) +
-			(['d3d12'] if conf.env.RENDER_CORE_D3D12 else [])))
+			(['d3d12'] if conf.env.RENDER_CORE_D3D12 else []) +
+			(['pica'] if conf.env.N3DS else [])))
 		# In the root environment, before any subproject derives its own:
 		# the generated SPIR-V headers' tools must exist before any project builds.
 		conf.recurse('render/shaders')

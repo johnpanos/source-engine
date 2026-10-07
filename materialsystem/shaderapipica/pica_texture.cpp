@@ -1,6 +1,6 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// PICA200 texture encoders and decoders (see pica_texture.h).
+// ETC1 encoders and decoders for render.device.pica (see pica_texture.h).
 //
 //=============================================================================//
 
@@ -190,89 +190,7 @@ std::uint64_t GetLE( const std::uint8_t *in, int bytes )
 	return value;
 }
 
-std::uint32_t PackTexel( TexFormat format, const std::uint8_t *p )
-{
-	const int r = p[0], g = p[1], b = p[2], a = p[3];
-	switch ( format )
-	{
-	case TexFormat::kRGBA8:
-		return std::uint32_t( r ) << 24 | std::uint32_t( g ) << 16 | std::uint32_t( b ) << 8 | std::uint32_t( a );
-	case TexFormat::kRGB8:
-		return std::uint32_t( r ) << 16 | std::uint32_t( g ) << 8 | std::uint32_t( b );
-	case TexFormat::kRGBA5551:
-		return ( r >> 3 ) << 11 | ( g >> 3 ) << 6 | ( b >> 3 ) << 1 | ( a >> 7 );
-	case TexFormat::kRGB565:
-		return ( r >> 3 ) << 11 | ( g >> 2 ) << 5 | ( b >> 3 );
-	case TexFormat::kRGBA4:
-		return ( r >> 4 ) << 12 | ( g >> 4 ) << 8 | ( b >> 4 ) << 4 | ( a >> 4 );
-	case TexFormat::kLA8:
-		return std::uint32_t( r ) << 8 | std::uint32_t( a );
-	case TexFormat::kL8:
-		return std::uint32_t( r );
-	default:
-		return 0;
-	}
-}
-
-void UnpackTexel( TexFormat format, std::uint32_t v, std::uint8_t *p )
-{
-	auto expand = []( std::uint32_t value, int bits ) {
-		return std::uint8_t( ( value << ( 8 - bits ) ) | ( value >> ( 2 * bits - 8 > 0 ? 2 * bits - 8 : 0 ) ) );
-	};
-	switch ( format )
-	{
-	case TexFormat::kRGBA8:
-		p[0] = v >> 24, p[1] = v >> 16, p[2] = v >> 8, p[3] = v;
-		break;
-	case TexFormat::kRGB8:
-		p[0] = v >> 16, p[1] = v >> 8, p[2] = v, p[3] = 255;
-		break;
-	case TexFormat::kRGBA5551:
-		p[0] = expand( ( v >> 11 ) & 31, 5 ), p[1] = expand( ( v >> 6 ) & 31, 5 ),
-		p[2] = expand( ( v >> 1 ) & 31, 5 ), p[3] = ( v & 1 ) ? 255 : 0;
-		break;
-	case TexFormat::kRGB565:
-		p[0] = expand( ( v >> 11 ) & 31, 5 ), p[1] = expand( ( v >> 5 ) & 63, 6 ),
-		p[2] = expand( v & 31, 5 ), p[3] = 255;
-		break;
-	case TexFormat::kRGBA4:
-		p[0] = ( ( v >> 12 ) & 15 ) * 17, p[1] = ( ( v >> 8 ) & 15 ) * 17,
-		p[2] = ( ( v >> 4 ) & 15 ) * 17, p[3] = ( v & 15 ) * 17;
-		break;
-	case TexFormat::kLA8:
-		p[0] = p[1] = p[2] = std::uint8_t( v >> 8 ), p[3] = std::uint8_t( v );
-		break;
-	case TexFormat::kL8:
-		p[0] = p[1] = p[2] = std::uint8_t( v ), p[3] = 255;
-		break;
-	default:
-		break;
-	}
-}
-
 } // namespace
-
-int BitsPerTexel( TexFormat format )
-{
-	switch ( format )
-	{
-	case TexFormat::kRGBA8: return 32;
-	case TexFormat::kRGB8: return 24;
-	case TexFormat::kRGBA5551:
-	case TexFormat::kRGB565:
-	case TexFormat::kRGBA4:
-	case TexFormat::kLA8: return 16;
-	case TexFormat::kL8:
-	case TexFormat::kETC1A4: return 8;
-	case TexFormat::kETC1: return 4;
-	}
-	return 0;
-}
-
-std::size_t LevelBytes( TexFormat format, int width, int height )
-{
-	return std::size_t( width ) * height * BitsPerTexel( format ) / 8;
-}
 
 bool HasAlpha( const std::uint8_t *rgba, int width, int height )
 {
@@ -312,90 +230,72 @@ void Resample( const std::uint8_t *src, int srcW, int srcH, std::uint8_t *dst, i
 	}
 }
 
-bool EncodeLevel( TexFormat format, const std::uint8_t *rgba, int width, int height,
-	std::vector<std::uint8_t> &out )
+bool EncodeEtc1Level(
+    bool alpha, const std::uint8_t *rgba, int width, int height, std::vector<std::uint8_t> &out )
 {
-	if ( !ValidSize( width, height ) || BitsPerTexel( format ) == 0 )
+	if ( !ValidSize( width, height ) )
 		return false;
-	out.assign( LevelBytes( format, width, height ), 0 );
-	if ( format == TexFormat::kETC1 || format == TexFormat::kETC1A4 )
-	{
-		const bool alpha = format == TexFormat::kETC1A4;
-		const int blockBytes = alpha ? 16 : 8;
-		std::size_t at = 0;
-		for ( int ty = 0; ty < height; ty += 8 )
-			for ( int tx = 0; tx < width; tx += 8 )
-				for ( int b = 0; b < 4; ++b )
+	const int blockBytes = alpha ? 16 : 8;
+	out.assign( std::size_t( width / 4 ) * ( height / 4 ) * blockBytes, 0 );
+	std::size_t at = 0;
+	for ( int by = 0; by < height; by += 4 )
+		for ( int bx = 0; bx < width; bx += 4 )
+		{
+			std::uint8_t texels[4][4][4];
+			std::uint64_t alphaWord = 0;
+			for ( int y = 0; y < 4; ++y )
+				for ( int x = 0; x < 4; ++x )
 				{
-					const int bx = tx + ( b & 1 ) * 4;
-					const int by = ty + ( b >> 1 ) * 4;
-					std::uint8_t texels[4][4][4];
-					std::uint64_t alphaWord = 0;
-					for ( int y = 0; y < 4; ++y )
-						for ( int x = 0; x < 4; ++x )
-						{
-							std::memcpy( texels[y][x], rgba + ( ( height - 1 - ( by + y ) ) * width + bx + x ) * 4, 4 );
-							alphaWord |= std::uint64_t( texels[y][x][3] >> 4 ) << ( ( x * 4 + y ) * 4 );
-						}
-					if ( alpha )
-					{
-						PutLE( out, at, alphaWord, 8 );
-						at += 8;
-					}
-					PutLE( out, at, EncodeEtc1Block( texels ), 8 );
-					at += blockBytes - ( alpha ? 8 : 0 );
+					std::memcpy( texels[y][x], rgba + ( ( by + y ) * width + bx + x ) * 4, 4 );
+					alphaWord |= std::uint64_t( texels[y][x][3] >> 4 ) << ( ( x * 4 + y ) * 4 );
 				}
-		return true;
-	}
-	const int bytes = BitsPerTexel( format ) / 8;
-	for ( int y = 0; y < height; ++y )
-		for ( int x = 0; x < width; ++x )
-			PutLE( out, std::size_t( TiledIndex( x, y, width ) ) * bytes,
-				PackTexel( format, rgba + ( ( height - 1 - y ) * width + x ) * 4 ), bytes );
+			const std::uint64_t word = EncodeEtc1Block( texels );
+			if ( alpha )
+			{
+				PutLE( out, at, alphaWord, 8 );
+				PutLE( out, at + 8, word, 8 );
+			}
+			else
+				for ( int i = 0; i < 8; ++i ) // the specification's byte order
+					out[at + i] = std::uint8_t( word >> ( 56 - 8 * i ) );
+			at += blockBytes;
+		}
 	return true;
 }
 
-bool DecodeLevel( TexFormat format, const std::uint8_t *data, int width, int height,
-	std::vector<std::uint8_t> &rgba )
+bool DecodeEtc1Level(
+    bool alpha, const std::uint8_t *data, int width, int height, std::vector<std::uint8_t> &rgba )
 {
-	if ( !ValidSize( width, height ) || BitsPerTexel( format ) == 0 )
+	if ( !ValidSize( width, height ) )
 		return false;
 	rgba.assign( std::size_t( width ) * height * 4, 0 );
-	if ( format == TexFormat::kETC1 || format == TexFormat::kETC1A4 )
-	{
-		const bool alpha = format == TexFormat::kETC1A4;
-		const std::uint8_t *at = data;
-		for ( int ty = 0; ty < height; ty += 8 )
-			for ( int tx = 0; tx < width; tx += 8 )
-				for ( int b = 0; b < 4; ++b )
+	const int blockBytes = alpha ? 16 : 8;
+	const std::uint8_t *at = data;
+	for ( int by = 0; by < height; by += 4 )
+		for ( int bx = 0; bx < width; bx += 4 )
+		{
+			std::uint64_t word = 0;
+			std::uint64_t alphaWord = 0;
+			if ( alpha )
+			{
+				alphaWord = GetLE( at, 8 );
+				word = GetLE( at + 8, 8 );
+			}
+			else
+				for ( int i = 0; i < 8; ++i )
+					word = word << 8 | at[i];
+			std::uint8_t texels[4][4][4];
+			DecodeEtc1Block( word, texels );
+			for ( int y = 0; y < 4; ++y )
+				for ( int x = 0; x < 4; ++x )
 				{
-					const int bx = tx + ( b & 1 ) * 4;
-					const int by = ty + ( b >> 1 ) * 4;
-					std::uint64_t alphaWord = ~0ull;
+					std::uint8_t *p = &rgba[( std::size_t( by + y ) * width + bx + x ) * 4];
+					std::memcpy( p, texels[y][x], 4 );
 					if ( alpha )
-					{
-						alphaWord = GetLE( at, 8 );
-						at += 8;
-					}
-					std::uint8_t texels[4][4][4];
-					DecodeEtc1Block( GetLE( at, 8 ), texels );
-					at += 8;
-					for ( int y = 0; y < 4; ++y )
-						for ( int x = 0; x < 4; ++x )
-						{
-							std::uint8_t *p = &rgba[( ( height - 1 - ( by + y ) ) * width + bx + x ) * 4];
-							std::memcpy( p, texels[y][x], 3 );
-							p[3] = std::uint8_t( ( ( alphaWord >> ( ( x * 4 + y ) * 4 ) ) & 15 ) * 17 );
-						}
+						p[3] = std::uint8_t( ( ( alphaWord >> ( ( x * 4 + y ) * 4 ) ) & 15 ) * 17 );
 				}
-		return true;
-	}
-	const int bytes = BitsPerTexel( format ) / 8;
-	for ( int y = 0; y < height; ++y )
-		for ( int x = 0; x < width; ++x )
-			UnpackTexel( format,
-				std::uint32_t( GetLE( data + std::size_t( TiledIndex( x, y, width ) ) * bytes, bytes ) ),
-				&rgba[( ( height - 1 - y ) * width + x ) * 4] );
+			at += blockBytes;
+		}
 	return true;
 }
 

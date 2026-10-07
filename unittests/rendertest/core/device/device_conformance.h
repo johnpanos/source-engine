@@ -176,6 +176,20 @@ public:
 	const DeviceDriver &m_Driver;
 };
 
+// D39: float colour targets and float depth are a capability. Clauses whose
+// fixtures use them take the device's narrower equivalent without it.
+inline bool FloatTargets( const IRenderDevice2 &device )
+{
+	return device.Facts().capabilities.Has( Capability::kFloatTargets );
+}
+
+// The depth format D13's fixture renders into: float depth where claimed,
+// else D24 (copied out as the port's 32-bit floats like every depth format).
+inline Format FixtureDepth( const IRenderDevice2 &device )
+{
+	return FloatTargets( device ) ? Format::kD32Float : Format::kD24UnormS8;
+}
+
 inline void Facts( Suite &s )
 {
 	auto device = s.Create();
@@ -318,7 +332,7 @@ inline ColorPipeline MakeColorPipeline(
 	desc.raster.cull = CullMode::kNone;
 	if ( depth )
 	{
-		desc.depthFormat = Format::kD32Float;
+		desc.depthFormat = FixtureDepth( device );
 		desc.depthStencil = { true, true, CompareOp::kLess };
 	}
 	auto pipeline = device.CreatePipeline( desc );
@@ -899,7 +913,7 @@ inline Rendered RenderFixture(
 	target.height = size;
 	target.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
 	auto colorTarget = device.CreateTexture( target );
-	target.format = Format::kD32Float;
+	target.format = FixtureDepth( device );
 	target.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kCopySource };
 	auto depthTarget = device.CreateTexture( target );
 	const std::uint64_t bytes = static_cast<std::uint64_t>( size ) * size * 4;
@@ -1306,7 +1320,12 @@ inline void ColorBlend( Suite &s, bool modulate = false )
 			return;
 		layouts[role] = layout.Value();
 	}
-	const Format colors[] = { Format::kRGBA16Float };
+	// D39: without float targets the equation is judged on RGBA8, within the
+	// rounding of 8-bit operands (the small-transmittance precision property
+	// needs a float target and is not tested there).
+	const bool half = FloatTargets( *device );
+	const Format targetFormat = half ? Format::kRGBA16Float : Format::kRGBA8Unorm;
+	const Format colors[] = { targetFormat };
 	const BlendMode blends[] = { modulate ? BlendMode::kModulate2x : BlendMode::kTransmittance };
 	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device->Facts().artifactFormat,
 	                                          s.Code( shaders::kFullScreenVertex ), "main", {} },
@@ -1326,14 +1345,15 @@ inline void ColorBlend( Suite &s, bool modulate = false )
 
 	constexpr std::uint32_t kSize = 8;
 	TextureDesc target;
-	target.format = Format::kRGBA16Float;
+	target.format = targetFormat;
 	target.width = kSize;
 	target.height = kSize;
 	target.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
 	auto color = device->CreateTexture( target );
-	if ( !s.That( color.HasValue(), clause, "the half-float target is created" ) )
+	if ( !s.That( color.HasValue(), clause, "the blend target is created" ) )
 		return;
-	const std::uint64_t outBytes = std::uint64_t( kSize ) * kSize * 8;
+	const std::uint64_t texelBytes = half ? 8 : 4;
+	const std::uint64_t outBytes = std::uint64_t( kSize ) * kSize * texelBytes;
 	const BufferId out = s.Buffer(
 	    *device, outBytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
 	auto encoder = device->BeginEncoder( QueueKind::kGraphics );
@@ -1373,7 +1393,7 @@ inline void ColorBlend( Suite &s, bool modulate = false )
 		return;
 	const std::vector<std::byte> pixels = s.ReadBack( *device, out, outBytes );
 	// Half floats decoded here (normal numbers only: the values are 0.01 to 1).
-	const auto half = [&]( std::size_t offset )
+	const auto decodeHalf = [&]( std::size_t offset )
 	{
 		std::uint16_t bits = 0;
 		std::memcpy( &bits, pixels.data() + offset, sizeof( bits ) );
@@ -1386,15 +1406,27 @@ inline void ColorBlend( Suite &s, bool modulate = false )
 	    modulate ? 2.0 * 0.03 * 0.4 : 0.03 + 0.4 * 0.05, 0.25 };
 	bool matched = pixels.size() == outBytes;
 	double worst = 0.0;
-	for ( std::size_t i = 0; matched && i < outBytes; i += 8 )
+	for ( std::size_t i = 0; matched && i < outBytes; i += texelBytes )
 	{
 		for ( int c = 0; c < 4; ++c )
 		{
-			const double error = std::fabs( half( i + 2 * c ) - want[c] ) / want[c];
-			worst = std::max( worst, error );
-			// A half float's relative precision is 2^-11; the blend rounds
-			// once more.
-			matched &= error <= 2.0 / 1024.0;
+			if ( half )
+			{
+				const double error = std::fabs( decodeHalf( i + 2 * c ) - want[c] ) / want[c];
+				worst = std::max( worst, error );
+				// A half float's relative precision is 2^-11; the blend rounds
+				// once more.
+				matched &= error <= 2.0 / 1024.0;
+			}
+			else
+			{
+				// The source and clear values are rounded to 8 bits before the
+				// blend, which rounds once more: two steps either way.
+				const double error =
+				    std::fabs( double( std::to_integer<int>( pixels[i + c] ) ) / 255.0 - want[c] );
+				worst = std::max( worst, error );
+				matched &= error <= 2.0 / 255.0;
+			}
 		}
 	}
 	s.That( matched, clause,
@@ -1818,6 +1850,15 @@ inline void PackedFloatTargets( Suite &s )
 		return;
 	TextureDesc desc;
 	desc.format = Format::kRG11B10Float;
+	if ( !FloatTargets( *device ) )
+	{
+		desc.width = desc.height = 4;
+		desc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kSampled };
+		auto refused = device->CreateTexture( desc );
+		s.That( !refused && refused.Error().status == DeviceStatus::kUnsupported, "D27",
+		    "without float targets (D39) a packed-float texture fails kUnsupported" );
+		return;
+	}
 	desc.width = 4;
 	desc.height = 4;
 	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource,
@@ -1953,7 +1994,7 @@ inline void TextureCopies( Suite &s )
 	auto from = device->CreateTexture( desc );
 	auto to = device->CreateTexture( desc );
 	TextureDesc otherDesc = desc;
-	otherDesc.format = Format::kRGBA16Float;
+	otherDesc.format = FloatTargets( *device ) ? Format::kRGBA16Float : Format::kR8Unorm;
 	auto other = device->CreateTexture( otherDesc );
 	if ( !s.That( from.HasValue() && to.HasValue() && other.HasValue(), "D37",
 	         "the copy textures are created" ) )
@@ -2115,6 +2156,127 @@ inline void Timestamps( Suite &s )
 	(void)device->Release( local, last.value_or( CompletionToken{} ) );
 }
 
+// D40: ETC1 and ETC1A4, under kTextureCompressionETC1, follow D19's rules
+// for block-compressed formats (SampledClauses decodes a block on
+// rasterizing adapters).
+inline void Etc1Formats( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	const bool claimed = device->Facts().capabilities.Has( Capability::kTextureCompressionETC1 );
+	s.That( RegionBytes( Format::kETC1Rgb, 8, 8 ) == 32 &&
+	            RegionBytes( Format::kETC1A4, 8, 4 ) == 32 && IsBlockCompressed( Format::kETC1A4 ),
+	    "D40", "ETC1 takes 8 bytes and ETC1A4 16 per 4x4 block" );
+	TextureDesc desc;
+	desc.format = Format::kETC1Rgb;
+	desc.width = desc.height = 16;
+	desc.mipLevels = 2;
+	desc.usages = {
+	    ResourceUsage::kSampled, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource };
+	if ( !claimed )
+	{
+		auto refused = device->CreateTexture( desc );
+		s.That( !refused && refused.Error().status == DeviceStatus::kUnsupported, "D40",
+		    "without the capability an ETC1 texture fails kUnsupported" );
+		return;
+	}
+	TextureDesc attachment = desc;
+	attachment.usages.Add( ResourceUsage::kColorAttachment );
+	auto badAttachment = device->CreateTexture( attachment );
+	s.That( !badAttachment && badAttachment.Error().status == DeviceStatus::kInvalidDescription,
+	    "D40", "an ETC1 attachment fails kInvalidDescription" );
+	for ( Format format : { Format::kETC1Rgb, Format::kETC1A4 } )
+	{
+		desc.format = format;
+		auto texture = device->CreateTexture( desc );
+		if ( !s.That( texture.HasValue(), "D40", "an ETC texture with two mips is created" ) )
+			return;
+		const std::uint64_t level0 = RegionBytes( format, 16, 16 ),
+		                    level1 = RegionBytes( format, 8, 8 );
+		const std::vector<std::byte> pattern = Pattern( std::size_t( level0 + level1 ), 40 );
+		const BufferId staging = s.Buffer( *device, level0 + level1,
+		    { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+		const BufferId out = s.Buffer( *device, level0 + level1,
+		    { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+		auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+		CommandEncoder &e = encoder.Value();
+		e.TransitionBuffer( staging, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.WriteBuffer( staging, 0, pattern );
+		e.TransitionBuffer( staging, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		e.TransitionTexture(
+		    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.CopyBufferToTexture( staging, texture.Value(), { 0, 0, 0, 16, 16 } );
+		e.CopyBufferToTexture( staging, texture.Value(), { level0, 1, 0, 8, 8 } );
+		e.TransitionTexture(
+		    texture.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		e.TransitionBuffer( out, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.CopyTextureToBuffer( texture.Value(), out, { 0, 0, 0, 16, 16 } );
+		e.CopyTextureToBuffer( texture.Value(), out, { level0, 1, 0, 8, 8 } );
+		e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		const std::optional<CompletionToken> token = s.Run( *device, e );
+		const bool finished = token && s.Finish( *device, *token );
+		s.That( finished && s.ReadBack( *device, out, level0 + level1 ) == pattern, "D40",
+		    format == Format::kETC1Rgb ? "two ETC1 mips copy in and back unchanged"
+		                               : "two ETC1A4 mips copy in and back unchanged" );
+		auto refused = [&]( const std::function<void( CommandEncoder & )> &body )
+		{
+			auto bad = device->BeginEncoder( QueueKind::kGraphics );
+			bad.Value().TransitionTexture(
+			    texture.Value(), ResourceUsage::kCopySource, ResourceUsage::kCopyDestination );
+			body( bad.Value() );
+			CommandEncoder list[] = { std::move( bad ).Value() };
+			auto submitted = device->Submit( QueueKind::kGraphics, list, {} );
+			return !submitted && submitted.Error().status == DeviceStatus::kInvalidState;
+		};
+		s.That( refused(
+		            [&]( CommandEncoder &b )
+		            {
+			            b.ClearTexture( texture.Value(), {} );
+		            } ) &&
+		            refused(
+		                [&]( CommandEncoder &b )
+		                {
+			                b.CopyBufferToTexture( staging, texture.Value(), { 0, 0, 0, 2, 4 } );
+		                } ),
+		    "D40", "a clear, and a copy that splits a block, are refused" );
+	}
+}
+
+// D39: float targets are claimed exactly when the device makes them.
+inline void FloatTargetFormats( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	const bool claimed = FloatTargets( *device );
+	struct Case
+	{
+		Format format;
+		ResourceUsage usage;
+		const char *what;
+	};
+	const Case cases[] = {
+	    { Format::kRGBA16Float, ResourceUsage::kColorAttachment, "an RGBA16F colour target" },
+	    { Format::kR32Float, ResourceUsage::kColorAttachment, "an R32F colour target" },
+	    { Format::kD32Float, ResourceUsage::kDepthWrite, "a D32F depth target" } };
+	for ( const Case &c : cases )
+	{
+		TextureDesc desc;
+		desc.format = c.format;
+		desc.width = desc.height = 8;
+		desc.usages = { c.usage, ResourceUsage::kCopySource };
+		auto made = device->CreateTexture( desc );
+		const std::string what = std::string( claimed ? "claimed: " : "not claimed: " ) + c.what +
+		                         ( claimed ? " is created" : " fails kUnsupported" );
+		s.That(
+		    claimed ? made.HasValue() : !made && made.Error().status == DeviceStatus::kUnsupported,
+		    "D39", what.c_str() );
+		if ( made )
+			(void)device->Release( made.Value(), {} );
+	}
+}
+
 inline void CapabilityHonesty( Suite &s )
 {
 	if ( !s.m_Driver.rasterizes )
@@ -2267,9 +2429,8 @@ inline bool SampleTexture( Suite &s, IRenderDevice2 &device, Format format,
     const std::vector<std::byte> &texels, const std::vector<std::byte> &expected, const char *what,
     std::optional<SamplerDesc> sampling = {},
     std::span<const std::uint32_t> fragment = shaders::kSampledFragment,
-    const char *clause = "sampled" )
+    const char *clause = "sampled", std::uint32_t kSize = 4 )
 {
-	constexpr std::uint32_t kSize = 4;
 	static const BindingDesc material[] = {
 	    { 0, BindingKind::kSampledTexture, 1, { ShaderStage::kFragment } },
 	    { 1, BindingKind::kSampler, 1, { ShaderStage::kFragment } } };
@@ -2372,6 +2533,12 @@ inline void ComparisonSampling( Suite &s )
 		    "SKIP %s.D24 pixels: the adapter executes no shaders\n", s.m_Driver.name.c_str() );
 		return;
 	}
+	if ( !FloatTargets( device ) )
+	{
+		std::printf( "SKIP %s.D24 pixels: the fixture samples float depth (D39)\n",
+		    s.m_Driver.name.c_str() );
+		return;
+	}
 	// D24: each result is an analytical depth comparison, then a half-texel
 	// bilinear average. Testing less and less-equal separately catches a
 	// direction/equality error; a coordinate outside the image tests clamping.
@@ -2413,9 +2580,32 @@ inline void ComparisonSampling( Suite &s )
 // (row 0 at the top for textures and framebuffers alike).
 inline void SampledClauses( Suite &s, IRenderDevice2 &device )
 {
-	const std::vector<std::byte> texels = Pattern( 4 * 4 * 4, 5 );
+	// 8x8: the smallest texture every adapter samples (the PICA200's tiles).
+	const std::vector<std::byte> texels = Pattern( 8 * 8 * 4, 5 );
 	(void)SampleTexture( s, device, Format::kRGBA8Unorm, texels, texels,
-	    "texels sampled at their centers land on the same pixels (row 0 on top)" );
+	    "texels sampled at their centers land on the same pixels (row 0 on top)", {},
+	    shaders::kSampledFragment, "sampled", 8 );
+	if ( device.Facts().capabilities.Has( Capability::kTextureCompressionETC1 ) )
+	{
+		// Individual mode, no flip, table 0, every index 0 (+2): the left
+		// sub-block's base 15,0,0 and the right's 0,15,0, each expanded by 17.
+		const std::uint8_t block[8] = { 0xF0, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+		std::vector<std::byte> blocks;
+		for ( int i = 0; i < 4; ++i )
+			for ( const std::uint8_t b : block )
+				blocks.push_back( std::byte( b ) );
+		std::vector<std::byte> decoded;
+		for ( int y = 0; y < 8; ++y )
+			for ( int x = 0; x < 8; ++x )
+			{
+				const bool left = ( x & 3 ) < 2;
+				for ( const int c : { left ? 255 : 2, left ? 2 : 255, 2, 255 } )
+					decoded.push_back( std::byte( c ) );
+			}
+		(void)SampleTexture( s, device, Format::kETC1Rgb, blocks, decoded,
+		    "D40 an ETC1 block decodes as its specification gives", {}, shaders::kSampledFragment,
+		    "sampled", 8 );
+	}
 	if ( !device.Facts().capabilities.Has( Capability::kTextureCompressionBC ) )
 		return;
 	// D19: one BC1 block in its three-color mode (color0 <= color1): each row
@@ -2973,6 +3163,8 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::CubeArrays( suite );
 	detail::FillModeLines( suite );
 	detail::ComparisonSampling( suite );
+	detail::FloatTargetFormats( suite );
+	detail::Etc1Formats( suite );
 	detail::CapabilityHonesty( suite );
 }
 

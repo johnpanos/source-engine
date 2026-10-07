@@ -101,6 +101,9 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #include "render/legacy/core_passes.h"
 #include "render/legacy/frame_source.h"
 #endif
+#if defined( LINKED_PICA_BACKEND )
+#include "render/device/pica/host_binding.h"
+#endif
 #include "render/legacy/material_blocks.h"
 #include "render/legacy/stage_markers.h"
 #include "vstdlib/jobgraph_pool_bridge.h"
@@ -1018,6 +1021,11 @@ bool CSourceAppSystemGroup::Create()
 		// The legacy backend's capabilities order their calls on the material
 		// system's render call queue (render/legacy/capabilities.h).
 		RenderCore_BindRenderCallQueue( m_pRenderCore, MaterialSystem_RenderCallQueueHost() );
+#if defined( LINKED_PICA_BACKEND )
+		// RFC 0026: the 3DS has one device, the core's; the shader API
+		// borrows it.
+		PicaShaderBackend_BindDevice( binding->device );
+#endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 		// RFC 0016 legacy device facade (F1): the material system reports the
 		// adapter the core's Vulkan adapter creates the backend's device on.
@@ -1191,6 +1199,9 @@ void CSourceAppSystemGroup::Destroy()
 	// Every system and module that borrowed the core is gone.
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 	NativeVulkanShaderBackend_BindCorePassRecorder( nullptr );
+#endif
+#if defined( LINKED_PICA_BACKEND )
+	PicaShaderBackend_BindDevice( nullptr );
 #endif
 	RenderCore_Destroy( m_pRenderCore );
 	m_pRenderCore = nullptr;

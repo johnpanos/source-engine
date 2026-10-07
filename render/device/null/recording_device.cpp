@@ -182,6 +182,8 @@ std::vector<std::byte> EncodeTexel( Format format, const ClearColor &color )
 	case Format::kBC6HUfloat:
 	case Format::kBC7Unorm:
 	case Format::kBC7Srgb:
+	case Format::kETC1Rgb:
+	case Format::kETC1A4:
 	case Format::kUnknown:
 	case Format::kCount:
 		break;
@@ -711,8 +713,8 @@ public:
 			return Fail( DeviceStatus::kDeviceLost, DeviceOperation::kCreateTexture );
 		if ( auto valid = ValidateTexture( desc, m_Facts.limits ); !valid )
 			return foundation::MakeUnexpected( valid.Error() );
-		if ( IsBlockCompressed( desc.format ) &&
-		     !m_Facts.capabilities.Has( Capability::kTextureCompressionBC ) )
+		if ( auto needed = FormatCapability( desc.format );
+		    needed && !m_Facts.capabilities.Has( *needed ) )
 			return Fail( DeviceStatus::kUnsupported, DeviceOperation::kCreateTexture );
 		if ( desc.dimension == TextureDimension::kCube && desc.depthOrLayers > 6 &&
 		     !m_Facts.capabilities.Has( Capability::kCubeArrays ) )

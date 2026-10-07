@@ -76,6 +76,8 @@ GlFormat FormatOf( Format format )
 		return { GL_COMPRESSED_RGBA_BPTC_UNORM, 0, 0, true };
 	case Format::kBC7Srgb:
 		return { GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM, 0, 0, true };
+	case Format::kETC1Rgb: // D40: not claimed
+	case Format::kETC1A4:
 	case Format::kUnknown:
 	case Format::kCount:
 		break;

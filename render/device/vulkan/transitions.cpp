@@ -206,6 +206,9 @@ VkFormat ToVkFormat( Format format )
 		return VK_FORMAT_BC7_UNORM_BLOCK;
 	case Format::kBC7Srgb:
 		return VK_FORMAT_BC7_SRGB_BLOCK;
+	// D40: not claimed (ETC2's formats decode ETC1, under textureCompressionETC2).
+	case Format::kETC1Rgb:
+	case Format::kETC1A4:
 	case Format::kUnknown:
 	case Format::kCount:
 		break;

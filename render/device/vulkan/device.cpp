@@ -107,7 +107,10 @@ DeviceResult<void> VulkanDevice::Initialize()
 	m_Facts.adapterName = m_AdapterName;
 	// Only what this adapter implements: no transient aliasing, parallel
 	// native recording, async queues or ray query yet (RFC 0016 K1).
-	m_Facts.capabilities = { Capability::kCompute, Capability::kStorageBuffers };
+	// D39: the float formats are required of every Vulkan device the adapter
+	// accepts (its format checks at creation).
+	m_Facts.capabilities = {
+	    Capability::kCompute, Capability::kStorageBuffers, Capability::kFloatTargets };
 	if ( m_Adapter.externalImages || m_Options.sensitivity.nullExternalImages )
 		m_Facts.capabilities.Add( Capability::kExternalImages );
 	// SOURCE_VK_NO_BC=1 withholds the BC formats from the port (the device

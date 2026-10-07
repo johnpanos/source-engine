@@ -6,7 +6,7 @@
 //			root selects a declared fallback or fails by name. Nothing falls
 //			back silently.
 //
-//			diagnosticBackend ("null", "vulkan", "gl") exists for logs and
+//			diagnosticBackend ("null", "vulkan", "gl", "pica") exists for logs and
 //			evidence only. Portable code must not compare it (CAP011 rule 5):
 //			behavior follows capabilities.
 //
@@ -40,6 +40,12 @@ enum class Capability : std::uint8_t
 	kIndirectFirstInstance, // indirect records may carry a nonzero firstInstance (D30)
 	kCubeArrays,            // kCube textures of more than six layers (clause D36)
 	kFillModeLines,         // RasterState::fill kLines, triangle edges as lines (clause D38)
+	// Colour targets of the float formats (kRG16Float, kRGBA16Float, kR32Float,
+	// kRGBA32Float, kRG11B10Float) and float depth (kD32Float, kD32FloatS8),
+	// as attachments and sampled (clause D39). A device without it refuses
+	// those formats with kUnsupported (RFC 0026: the PICA200 has none).
+	kFloatTargets,
+	kTextureCompressionETC1, // the kETC1* formats (clause D40)
 	kCount
 };
 
@@ -92,6 +98,14 @@ private:
 // The first capability of required that have lacks, in enum order.
 std::optional<Capability> FirstMissing( CapabilitySet have, CapabilitySet required );
 
+enum class Format : std::uint8_t; // resources.h
+
+// The capability a texture format needs (kTextureCompressionBC for kBC*,
+// kTextureCompressionETC1 for kETC1*, kFloatTargets for the float formats),
+// or nullopt for the formats every device has. Each adapter refuses a format
+// whose capability it does not claim with kUnsupported.
+std::optional<Capability> FormatCapability( Format format );
+
 // The shader artifact format an adapter accepts (RFC 0016 "Shader artifacts").
 enum class ArtifactFormat : std::uint8_t
 {
@@ -99,7 +113,8 @@ enum class ArtifactFormat : std::uint8_t
 	kGlsl450,
 	kGlslEs310, // the GL adapter's ES dialect (RFC 0022)
 	kHlsl,      // the Direct3D 12 adapter's HLSL, shader model 6.6 (RFC 0024)
-	kMsl        // the Metal adapter's Metal Shading Language 3.0 (RFC 0025)
+	kMsl,       // the Metal adapter's Metal Shading Language 3.0 (RFC 0025)
+	kPica       // PICA200: PVS1 vertex programs, PFP1 combiner programs (RFC 0026)
 };
 
 struct Limits

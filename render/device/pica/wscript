@@ -1,0 +1,53 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.device.pica (RFC 0026 adapter): render.device.v2 over the 3DS's
+# PICA200. The artifact readers, state tables and texel layout are portable
+# and build for every host (the host suite checks them); the device over
+# citro3d builds for the 3DS alone, with its built-in presenter program
+# (present.v.pica) assembled by devkitPro's picasso and embedded as C.
+
+import os
+from waflib import Task
+from waflib.TaskGen import feature, after_method, before_method
+
+class pica_device_shader(Task.Task):
+	color = 'BLUE'
+	def run(self):
+		shbin, csrc = self.outputs
+		return self.exec_command([self.picasso, '-o', shbin.abspath(), self.inputs[0].abspath()]) or \
+			self.exec_command(['python3', self.embed, shbin.abspath(), csrc.abspath(), self.symbol])
+
+@feature('pica_device_shaders')
+@after_method('process_source')
+@before_method('apply_link')
+def pica_device_shaders(self):
+	# Each program's picasso output, embedded as a C source the library
+	# compiles: a declared task output, so it exists before it is compiled.
+	picasso = os.path.join(self.env.DEVKITPRO, 'tools', 'bin', 'picasso')
+	embed = self.bld.path.find_node('tools/n3ds/embed_binary.py').abspath()
+	for name in self.to_list(getattr(self, 'pica_programs', [])):
+		node = self.path.find_resource(name)
+		shbin = node.change_ext('.shbin')
+		csrc = node.change_ext('_shbin.c')
+		self.create_task('pica_device_shader', node, [shbin, csrc], picasso=picasso, embed=embed,
+			symbol=node.name.split('.')[0] + '_shbin')
+		self.create_compiled_task('c', csrc)
+
+def build(bld):
+	features = 'c cxx capability_strict'
+	programs = []
+	if bld.env.N3DS:
+		features += ' pica_device_shaders'
+		programs = ['present.v.pica']
+	bld.stlib(
+		env          = bld.strict_cpp20_env(),
+		features     = features,
+		arch_module  = 'render.device.pica',
+		target       = 'render_device_pica',
+		name         = 'render_device_pica',
+		source       = bld.path.ant_glob('*.cpp'),
+		pica_programs = programs,
+		includes     = ['../../../public'],
+		use          = ['render_device'],
+		idx          = bld.get_taskgen_count()
+	)

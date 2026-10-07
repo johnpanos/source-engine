@@ -55,11 +55,9 @@ const char *const kDefaults[] = {
 	"-physics", "vphysics_box3d",
 	"+mat_queue_mode", "0",
 	"+mat_picmip", "2",
-	// Render and feature settings: engine/n3ds_platform_defaults.cpp.
-	// No render core until the PICA has a render.device.v2 adapter: with the
-	// null device it draws nothing here, and its desktop-sized targets cost
-	// heap the 3DS does not have.
-	"-norendercore",
+	// Render and feature settings: engine/n3ds_platform_defaults.cpp. The
+	// render core composes the one PICA200 device (render.device.pica) and
+	// hands it to the shader API (RFC 0026).
 };
 
 char *g_Args[256];

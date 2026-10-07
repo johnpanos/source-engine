@@ -308,6 +308,9 @@ private:
 	QueueKind m_Queue = QueueKind::kGraphics;
 	std::unique_ptr<IEncoderBackend> m_Backend;
 	std::thread::id m_Owner;
+	// Set by the first recording call: a thread's id may be the empty one (the
+	// 3DS main thread's is), so the empty id cannot mean "no owner".
+	bool m_HasOwner = false;
 	std::uint32_t m_Violations = 0;
 	ILabelObserver *m_LabelObserver = nullptr;
 };

@@ -6,6 +6,8 @@
 
 #include "render/material/surface_program.h"
 
+#include "surface_reduced.h"
+
 #include "render/device/errors.h"
 #include "render/pbr_ltc_table.h"
 #include "render/pbr_split_sum_table.h"
@@ -164,6 +166,19 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
     std::span<const std::uint32_t> fragmentModule,
     std::span<const std::uint32_t> shadowFragmentModule )
 {
+	// A kPica device draws the reduced 3DS material model (RFC 0026 decision
+	// 8, surface_reduced.cpp), with layouts of what that model reads.
+	if ( device.Facts().artifactFormat == ArtifactFormat::kPica )
+	{
+		std::unique_ptr<SurfaceProgram> reduced( new SurfaceProgram( device ) );
+		reduced->m_Reduced = true;
+		reduced->m_ColorFormat = colorFormat;
+		reduced->m_DepthFormat = depthFormat;
+		reduced->m_SampleCount = sampleCount;
+		if ( sampleCount != 1 || !reduced->CreateReducedLayouts() )
+			return foundation::MakeUnexpected( SurfaceStatus::kDevice );
+		return reduced;
+	}
 	// The frame group reads the map's reflection probes as a cube array (RPRB
 	// v8), so the program needs the device's cube arrays (clause D32).
 	if ( !device.Facts().capabilities.Has( Capability::kCubeArrays ) )
@@ -315,6 +330,18 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const auto key = std::make_pair( variant, debug );
 	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
 		return found->second;
+	if ( m_Reduced )
+	{
+		// The debug views are the shader programs'; the reduced model has none.
+		if ( !( debug == shaderlib::DebugSpecialization{} ) )
+			return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+		auto reduced = ReducedPipeline( variant );
+		if ( !reduced )
+			return reduced;
+		m_Pipelines.emplace( key, reduced.Value() );
+		m_Shipped.emplace( reduced.Value().value, variant );
+		return reduced;
+	}
 	// The program in the device's artifact format (RFC 0016 K10), with its
 	// reflected bindings from the store; a suite's seeded fragment replaces
 	// the core one, on a SPIR-V device only.
@@ -690,7 +717,10 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
     const SurfaceTextures &textures, const SamplerDesc &sampler )
 {
 	SurfaceVariant point = variant;
-	if ( point.terms & kSurfacePbr )
+	// The reduced model tests alpha in fixed function (surface_reduced.h).
+	if ( m_Reduced )
+		point.alphaTestReference = std::int16_t( ReducedAlphaTest( constants ) );
+	if ( !m_Reduced && ( point.terms & kSurfacePbr ) )
 	{
 		const std::uint32_t features = SurfaceMaterialFeatures( constants );
 		// Preserve the established control flow for authored warp lookups.
@@ -720,6 +750,13 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
 	                      : 0.0f;
 	const auto bytes = std::as_bytes( std::span( &packed, 1 ) );
 	request.material.constants.assign( bytes.begin(), bytes.end() );
+	if ( m_Reduced )
+	{
+		// The base alone, read as stored: the reduced model shades in gamma
+		// space (the PICA200 decodes no sRGB).
+		request.material.textures.push_back( { 1, textures.base, 2, sampler, false } );
+		return request;
+	}
 	request.material.textures.push_back(
 	    { 1, textures.base, 2, sampler, textures.baseSrgb && !variant.decalModulate } );
 	// The water point reads its env map without sRGB decoding, as
@@ -755,6 +792,8 @@ GroupRequest SurfaceProgram::FrameGroup( const SurfaceFrame &frame, std::string 
 	request.constantsBinding = 0;
 	const auto bytes = std::as_bytes( std::span( &frame, 1 ) );
 	request.constants.assign( bytes.begin(), bytes.end() );
+	if ( m_Reduced )
+		return request; // the reduced layout's constants alone
 	SamplerDesc clamped;
 	clamped.address = AddressMode::kClampToEdge;
 	request.textures.push_back( { 1, std::move( splitSumTable ), 2, clamped } );
@@ -808,6 +847,8 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	    screen.depthAlphaSourceHeight > 0 ? 1.0f / float( screen.depthAlphaSourceHeight ) : 0.0f;
 	const auto bytes = std::as_bytes( std::span( &captured, 1 ) );
 	request.constants.assign( bytes.begin(), bytes.end() );
+	if ( m_Reduced )
+		return request; // no clustered lights, shadows or screen inputs
 	auto storage = [&]( std::uint32_t binding, std::span<const std::byte> data )
 	{
 		GroupBuffer buffer;
@@ -902,7 +943,10 @@ GroupRequest SurfaceProgram::DrawGroup( std::string page, const ModelLighting &l
 	request.constantsBinding = 2;
 	const auto bytes = std::as_bytes( std::span( &lighting, 1 ) );
 	request.constants.assign( bytes.begin(), bytes.end() );
-	request.textures.push_back( { 0, std::move( page ), 1, sampler, true } );
+	// The reduced model reads the page as stored (gamma, surface_reduced.h).
+	request.textures.push_back( { 0, std::move( page ), 1, sampler, !m_Reduced } );
+	if ( m_Reduced )
+		return request;
 	// The gradient page is signed linear data, filtered as the page is.
 	request.textures.push_back( { 3, std::move( gradient ), 4, sampler } );
 	request.textures.push_back( { 5, std::move( indirect ), 6, sampler } );

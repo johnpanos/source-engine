@@ -16,9 +16,10 @@
 // sampler 0, modulated by the vertex color. Lighting, shader constants and
 // every other sampler are ignored: the image is the materials' base textures,
 // fullbright. Draws into render targets are skipped (only the back buffer is
-// drawn). Textures are encoded for the PICA (ETC1, ETC1A4, RGBA4) at most
-// pica_texture_size texels a side. pica_renderer owns the GPU; its
-// conventions are proven by tools/n3ds/pica_lab.
+// drawn). Textures are uploaded as ETC1, ETC1A4 or RGBA8 at most
+// pica_texture_size texels a side. pica_renderer draws through the render
+// core's PICA200 device (render.device.pica, RFC 0026), whose conventions
+// its own suite proves (render.device.v2.pica).
 //
 //===========================================================================//
 
@@ -41,6 +42,7 @@
 #include "bitmap/imageformat.h"
 #include "tier0/icommandline.h"
 #include "pica_renderer.h"
+#include <malloc.h>
 #include "pica_texture.h"
 
 
@@ -143,7 +145,7 @@ public:
 	void SetVertexSource( CEmptyMesh *source ) { m_pVertexSource = source != this ? source : NULL; }
 private:
 	void DrawRange( int firstIndex, int indexCount );
-	void DumpDraw( const float *clip, int textureWidth, int textureHeight, const pica::Vertex *vertices,
+	void DumpDraw( const float *clip, const pica::DrawState &state, const char *textureName, int textureWidth, int textureHeight, const pica::Vertex *vertices,
 		const unsigned short *indices, int count ) const;
 
 	bool m_bIsDynamic;
@@ -186,6 +188,18 @@ struct PicaSnapshot
 	VertexFormat_t format;
 };
 
+// Same recorded state (DrawState compared field by field: its padding is not
+// initialized) and vertex format.
+bool SameSnapshot( const PicaSnapshot &a, const pica::DrawState &s, VertexFormat_t format )
+{
+	const pica::DrawState &t = a.state;
+	return a.format == format && t.depthTest == s.depthTest && t.depthWrite == s.depthWrite &&
+		t.depthFunc == s.depthFunc && t.blend == s.blend && t.src == s.src && t.dst == s.dst &&
+		t.alphaTest == s.alphaTest && t.alphaFunc == s.alphaFunc && t.alphaRef == s.alphaRef &&
+		t.cull == s.cull && t.colorWrite == s.colorWrite && t.alphaWrite == s.alphaWrite &&
+		memcmp( t.tint, s.tint, sizeof( t.tint ) ) == 0;
+}
+
 // One texture handle: the GPU texture and what the material system uploaded.
 struct PicaTexture
 {
@@ -201,6 +215,7 @@ struct PicaTexture
 	CUtlVector< CUtlVector<unsigned char> > levels;
 	int baseWidth = 0;
 	int baseHeight = 0;
+	char name[48] = ""; // CreateTextures' debug name (-pica_dump_draws)
 	bool dirty = false;
 	pica::Texture gpu;
 };
@@ -380,11 +395,15 @@ void UploadTexture( PicaTexture &texture )
 		const int w = texture.baseWidth >> i, h = texture.baseHeight >> i;
 		alpha = pica::HasAlpha( texture.levels[i].Base(), w, h );
 	}
-	// Block-compressed when mipmapped (world and model textures); 16-bit
-	// RGBA4 for textures the material system updates in place (fonts, UI).
-	const pica::TexFormat format = !mipped ? pica::TexFormat::kRGBA4 :
-		( alpha ? pica::TexFormat::kETC1A4 : pica::TexFormat::kETC1 );
-	CUtlVector< std::vector<std::uint8_t> > encoded;
+	// Block-compressed when mipmapped (world and model textures); RGBA8 for
+	// textures the material system updates in place (fonts, UI).
+	// -pica_texture_rgba8 uploads everything as RGBA8 (isolates the ETC1 encoder).
+	static const bool s_ForceRGBA8 = CommandLine()->FindParm( "-pica_texture_rgba8" ) != 0;
+	const pica::UploadFormat format =
+	    ( !mipped || s_ForceRGBA8 )
+	        ? pica::UploadFormat::kRGBA8
+	        : ( alpha ? pica::UploadFormat::kETC1A4 : pica::UploadFormat::kETC1 );
+	CUtlVector<std::vector<std::uint8_t>> encoded;
 	const std::uint8_t *levels[16];
 	int count = 0;
 	for ( int i = 0; i < texture.levels.Count() && count < 16; ++i )
@@ -392,13 +411,16 @@ void UploadTexture( PicaTexture &texture )
 		const int w = texture.baseWidth >> i, h = texture.baseHeight >> i;
 		if ( w < 8 || h < 8 )
 			break;
+		if ( format == pica::UploadFormat::kRGBA8 )
+		{
+			levels[count++] = texture.levels[i].Base();
+			continue;
+		}
 		std::vector<std::uint8_t> &out = encoded[encoded.AddToTail()];
-		if ( !pica::EncodeLevel( format, texture.levels[i].Base(), w, h, out ) )
+		if ( !pica::EncodeEtc1Level( format == pica::UploadFormat::kETC1A4, texture.levels[i].Base(), w, h, out ) )
 			break;
-		++count;
+		levels[count++] = out.data();
 	}
-	for ( int i = 0; i < count; ++i )
-		levels[i] = encoded[i].data();
 	if ( count > 0 && texture.gpu.Upload( format, texture.baseWidth, texture.baseHeight, count, levels ) )
 	{
 		++g_TextureCounters.uploads;
@@ -616,10 +638,19 @@ public:
 		// spew, which stops reaching stdout once the console exists.
 		const pica::Stats &stats = pica::FrameStats();
 		if ( s_frame % 120 == 1 )
-			printf( "pica: frame %d draws %u triangles %u textures %u KB ring overflows %u | "
+		{
+			// The heap over time (out-of-memory diagnosis): arena = sbrk'd heap,
+			// used and free inside it.
+			const struct mallinfo heap = mallinfo();
+			printf( "pica: frame %d heap arena %u KB used %u KB free %u KB\n", s_frame,
+				(unsigned)( heap.arena / 1024 ), (unsigned)( heap.uordblks / 1024 ),
+				(unsigned)( heap.fordblks / 1024 ) );
+		}
+		if ( s_frame % 120 == 1 )
+			printf( "pica: frame %d draws %u triangles %u textures %u KB ring overflows %u blend refusals %u submits %u | "
 				"mesh draws %u primlist %u empty %u material %u passes %u target skips %u clears %u\n", s_frame,
 				(unsigned)stats.draws, (unsigned)stats.triangles, (unsigned)( stats.textureBytes / 1024 ),
-				(unsigned)stats.ringOverflows, g_Counters.meshDraws, g_Counters.primListDraws,
+				(unsigned)stats.ringOverflows, (unsigned)stats.blendRefusals, (unsigned)stats.submits, g_Counters.meshDraws, g_Counters.primListDraws,
 				g_Counters.primListEmpty, g_Counters.materialDraws,
 				g_Counters.renderPasses, g_Counters.targetSkips, g_Counters.clears );
 		if ( s_frame % 120 == 1 )
@@ -1747,6 +1778,11 @@ static bool CreatePicaShaderBackend( render::LegacyShaderServices *services )
 	return true;
 }
 
+extern "C" DLL_EXPORT void PicaShaderBackend_BindDevice( render::device::IRenderDevice2 *device )
+{
+	pica::BindDevice( device );
+}
+
 DLL_EXPORT const render::LegacyShaderProvider *PicaShaderBackend_Describe()
 {
 	static const render::LegacyShaderProvider provider = {
@@ -2039,6 +2075,7 @@ bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t& desc )
 		desc.m_nOffset = 0;
 		return nMaxIndexCount <= 0;
 	}
+	pica::PrepareWrite( m_pIndices );
 	m_nLockFirstIndex = first;
 	desc.m_pIndices = m_pIndices + first;
 	desc.m_nIndexSize = 1;
@@ -2098,6 +2135,8 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	const bool skinned = NumBoneWeights( m_Format ) > 0;
 	if ( nVertexCount <= 0 || !EnsureVertices( first + nVertexCount ) )
 		nVertexCount = 0;
+	if ( m_pVertices )
+		pica::PrepareWrite( m_pVertices );
 
 	desc.m_pPosition = s_Scratch;
 	desc.m_pNormal = s_Scratch;
@@ -2289,7 +2328,7 @@ bool CEmptyMesh::EnsureVertices( int count )
 	int capacity = m_nVertexCapacity ? m_nVertexCapacity : 64;
 	while ( capacity < count )
 		capacity *= 2;
-	pica::Vertex *vertices = static_cast<pica::Vertex *>( pica::AllocLinear( capacity * sizeof( pica::Vertex ) ) );
+	pica::Vertex *vertices = static_cast<pica::Vertex *>( pica::AllocLinear( pica::Memory::kVertices, capacity * sizeof( pica::Vertex ) ) );
 	if ( !vertices )
 		return false;
 	if ( m_pVertices )
@@ -2324,7 +2363,7 @@ bool CEmptyMesh::EnsureIndices( int count )
 	int capacity = m_nIndexCapacity ? m_nIndexCapacity : 192;
 	while ( capacity < count )
 		capacity *= 2;
-	unsigned short *indices = static_cast<unsigned short *>( pica::AllocLinear( capacity * sizeof( unsigned short ) ) );
+	unsigned short *indices = static_cast<unsigned short *>( pica::AllocLinear( pica::Memory::kIndices, capacity * sizeof( unsigned short ) ) );
 	if ( !indices )
 		return false;
 	if ( m_pIndices )
@@ -2391,7 +2430,7 @@ void CEmptyMesh::DrawRange( int firstIndex, int indexCount )
 		// Transient copy: the dynamic mesh is rewritten by the next draw, and
 		// skinning writes world-space positions.
 		pica::Vertex *copy = static_cast<pica::Vertex *>(
-			pica::AllocTransient( src.m_nVertices * sizeof( pica::Vertex ) ) );
+			pica::AllocTransient( pica::Memory::kVertices, src.m_nVertices * sizeof( pica::Vertex ) ) );
 		if ( !copy )
 			return;
 		memcpy( copy, src.m_pVertices, src.m_nVertices * sizeof( pica::Vertex ) );
@@ -2433,7 +2472,7 @@ void CEmptyMesh::DrawRange( int firstIndex, int indexCount )
 		if ( m_bIsDynamic )
 		{
 			unsigned short *copy = static_cast<unsigned short *>(
-				pica::AllocTransient( indexCount * sizeof( unsigned short ) ) );
+				pica::AllocTransient( pica::Memory::kIndices, indexCount * sizeof( unsigned short ) ) );
 			if ( !copy )
 				return;
 			memcpy( copy, m_pIndices + firstIndex, indexCount * sizeof( unsigned short ) );
@@ -2452,7 +2491,7 @@ void CEmptyMesh::DrawRange( int firstIndex, int indexCount )
 		if ( triangles <= 0 )
 			return;
 		unsigned short *generated = static_cast<unsigned short *>(
-			pica::AllocTransient( triangles * 3 * sizeof( unsigned short ) ) );
+			pica::AllocTransient( pica::Memory::kIndices, triangles * 3 * sizeof( unsigned short ) ) );
 		if ( !generated )
 			return;
 		int n = 0;
@@ -2476,13 +2515,13 @@ void CEmptyMesh::DrawRange( int firstIndex, int indexCount )
 		count = n;
 	}
 	if ( g_PicaFrame == g_PicaDumpFrame )
-		DumpDraw( clip, texture ? texture->width : 0, texture ? texture->height : 0, vertices, indices, count );
+		DumpDraw( clip, state, texture ? texture->name : "", texture ? texture->width : 0, texture ? texture->height : 0, vertices, indices, count );
 	pica::Draw( clip, state, texture ? &texture->gpu : NULL, vertices, src.m_nVertices, indices, count, primitive );
 }
 
 // One line per draw of the -pica_dump_draws frame: what it draws and where
 // its vertices land in normalized device coordinates (row-vector clip).
-void CEmptyMesh::DumpDraw( const float *clip, int textureWidth, int textureHeight, const pica::Vertex *vertices,
+void CEmptyMesh::DumpDraw( const float *clip, const pica::DrawState &state, const char *textureName, int textureWidth, int textureHeight, const pica::Vertex *vertices,
 	const unsigned short *indices, int count ) const
 {
 	const CEmptyMesh &src = m_pVertexSource ? *m_pVertexSource : *this;
@@ -2509,11 +2548,12 @@ void CEmptyMesh::DumpDraw( const float *clip, int textureWidth, int textureHeigh
 			hi[j] = Max( hi[j], c[j] / c[3] );
 		}
 	}
-	printf( "pica draw: %s prims %d tex %dx%d ndc x %.2f..%.2f y %.2f..%.2f behind %d color %02x%02x%02x%02x\n",
+	printf( "pica draw: %s prims %d tex %s %dx%d ndc x %.2f..%.2f y %.2f..%.2f behind %d color %02x%02x%02x%02x blend %d %d/%d atest %d/%d snap %d\n",
 		g_pBoundMaterial ? g_pBoundMaterial->GetName() : "(none)", indices ? count / 3 : src.m_nVertices,
-		textureWidth, textureHeight, lo[0], hi[0], lo[1], hi[1], behind,
+		textureName, textureWidth, textureHeight, lo[0], hi[0], lo[1], hi[1], behind,
 		src.m_nVertices ? vertices[0].color[0] : 0, src.m_nVertices ? vertices[0].color[1] : 0,
-		src.m_nVertices ? vertices[0].color[2] : 0, src.m_nVertices ? vertices[0].color[3] : 0 );
+		src.m_nVertices ? vertices[0].color[2] : 0, src.m_nVertices ? vertices[0].color[3] : 0,
+		state.blend, int( state.src ), int( state.dst ), state.alphaTest, state.alphaRef, g_CurrentSnapshot );
 }
 
 // Copy verts and/or indices to a mesh builder. This only works for temp meshes!
@@ -3114,10 +3154,21 @@ StateSnapshot_t	 CShaderAPIEmpty::TakeSnapshot( )
 	if (g_ShaderShadow.m_bIsDepthWriteEnabled)
 		id |= DEPTHWRITE;
 	// The recorded state's index above the flag bits.
-	PicaSnapshot snapshot;
-	snapshot.state = g_ShaderShadow.m_State;
-	snapshot.format = g_ShaderShadow.m_VertexFormat;
-	const int index = g_Snapshots.AddToTail( snapshot );
+	// StateSnapshot_t is a short: the index has 11 bits above the flags. Equal
+	// states share one record (materials record a handful of distinct states).
+	int index = -1;
+	for ( int i = 0; i < g_Snapshots.Count() && index < 0; ++i )
+		if ( SameSnapshot( g_Snapshots[i], g_ShaderShadow.m_State, g_ShaderShadow.m_VertexFormat ) )
+			index = i;
+	if ( index < 0 )
+	{
+		PicaSnapshot snapshot;
+		snapshot.state = g_ShaderShadow.m_State;
+		snapshot.format = g_ShaderShadow.m_VertexFormat;
+		index = g_Snapshots.AddToTail( snapshot );
+		if ( index > 0x7FF )
+			Warning( "pica: %d distinct state snapshots exceed StateSnapshot_t's 11 index bits\n", index + 1 );
+	}
 	return id | ( StateSnapshot_t( index ) << 4 );
 }
 
@@ -3725,6 +3776,22 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 		++g_TextureCounters.convertFailed;
 		return;
 	}
+	// -pica_dump_texture <debug name>: the converted RGBA of each level the
+	// backend receives, as sdmc:/source-engine/texdump_<level>.ppm.
+	static const char *s_DumpName = CommandLine()->ParmValue( "-pica_dump_texture", (const char *)NULL );
+	if ( s_DumpName && !V_stricmp( s_DumpName, texture->name ) )
+	{
+		char path[96];
+		V_snprintf( path, sizeof( path ), "sdmc:/source-engine/texdump_%d.ppm", level );
+		if ( FILE *f = fopen( path, "wb" ) )
+		{
+			fprintf( f, "P6\n%d %d\n255\n", width, height );
+			for ( int i = 0; i < width * height; ++i )
+				fwrite( &rgba[i * 4], 1, 3, f );
+			fclose( f );
+		}
+		printf( "pica: dumped %s level %d %dx%d src format %d\n", texture->name, level, width, height, (int)srcFormat );
+	}
 	if ( texture->levels.Count() == 0 || !mipped )
 	{
 		texture->levels.Purge();
@@ -3870,6 +3937,7 @@ void CShaderAPIEmpty::CreateTextures(
 		texture->mipLevels = numMipLevels > 0 ? numMipLevels : 1;
 		texture->renderTarget = ( flags & TEXTURE_CREATE_RENDERTARGET ) != 0;
 		texture->depth = ( flags & TEXTURE_CREATE_DEPTHBUFFER ) != 0;
+		V_strncpy( texture->name, pDebugName ? pDebugName : "", sizeof( texture->name ) );
 		pHandles[k] = ShaderAPITextureHandle_t( g_Textures.AddToTail( texture ) + 1 );
 	}
 }

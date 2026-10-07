@@ -7,7 +7,9 @@
 #include "render/composition/render_core.h"
 
 #include "jobsystem/pooled_executor.h"
+#if !defined( RENDER_CORE_NO_NULL )
 #include "render/device/null/provider.h"
+#endif
 #include "core_panels.h"
 #include "core_world.h"
 #include "render/legacy/core_backend.h"
@@ -28,6 +30,9 @@
 #endif
 #if defined( RENDER_CORE_D3D12 )
 #include "render/device/d3d12/provider.h"
+#endif
+#if defined( RENDER_CORE_PICA )
+#include "render/device/pica/provider.h"
 #endif
 
 #include <cstdio>
@@ -106,7 +111,9 @@ foundation::Expected<render::scene::DrawList, render::scene::CullStatus> BuildDr
 const render::device::DeviceProviderDescriptor *FindDevice( std::string_view name )
 {
 	const render::device::DeviceProviderDescriptor *linked[] = {
+#if !defined( RENDER_CORE_NO_NULL )
 	    &render::device::null::Describe(),
+#endif
 #if defined( RENDER_CORE_VULKAN )
 	    &render::device::vulkan::Describe(),
 #endif
@@ -119,6 +126,9 @@ const render::device::DeviceProviderDescriptor *FindDevice( std::string_view nam
 #endif
 #if defined( RENDER_CORE_D3D12 )
 	    &render::device::d3d12::Describe(), // RFC 0024
+#endif
+#if defined( RENDER_CORE_PICA )
+	    &render::device::pica::Describe(), // RFC 0026
 #endif
 	};
 	for ( const render::device::DeviceProviderDescriptor *descriptor : linked )
@@ -181,6 +191,7 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 		}
 		return set;
 	};
+#if !defined( RENDER_CORE_NO_NULL )
 	if ( descriptor.id == "null" )
 	{
 		render::device::null::NullOptions options;
@@ -188,6 +199,7 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 		options.recordCommands = false; // no product reads the command log
 		return render::device::null::Create( options );
 	}
+#endif
 #if defined( RENDER_CORE_GL )
 	if ( descriptor.id == "gl" || descriptor.id == "gles" )
 	{
@@ -215,6 +227,18 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 		options.validation = request.validation;
 		options.allowed = allow( options.allowed );
 		return render::device::d3d12::Create( options );
+	}
+#endif
+#if defined( RENDER_CORE_PICA )
+	if ( descriptor.id == "pica" )
+	{
+		// RFC 0026: no optional capability to mask.
+		if ( auto missing = render::device::FirstMissing( allow( {} ), request.required ) )
+			return foundation::MakeUnexpected(
+			    render::device::DeviceError{ render::device::DeviceStatus::kUnsupported,
+			        render::device::DeviceOperation::kCreateDevice,
+			        static_cast<std::int32_t>( *missing ) } );
+		return render::device::pica::Create( render::device::pica::PicaAdapterOptions{} );
 	}
 #endif
 	return foundation::MakeUnexpected(

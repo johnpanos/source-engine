@@ -80,7 +80,11 @@ font_t *CFontAmalgam::GetFontForChar(int ch)
 	for (int i = 0; i < m_Fonts.Count(); i++)
 	{
 #if defined(LINUX)
-        if ( ch >= m_Fonts[i].lowRange && ch <= m_Fonts[i].highRange && m_Fonts[i].font->HasChar(ch))
+        // A bitmap font has no FreeType face for HasChar to ask; its range
+        // (0-255, mapped through the font's translate table) is its glyphs.
+        if ( ch >= m_Fonts[i].lowRange && ch <= m_Fonts[i].highRange &&
+             ( ( m_Fonts[i].font->GetFlags() & vgui::ISurface::FONTFLAG_BITMAP ) ||
+               m_Fonts[i].font->HasChar( ch ) ) )
 #else
 		if (ch >= m_Fonts[i].lowRange && ch <= m_Fonts[i].highRange)
 #endif

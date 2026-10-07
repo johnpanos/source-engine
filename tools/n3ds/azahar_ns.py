@@ -67,7 +67,7 @@ def _set(lines, key, value):
     return out + ["%s=%s" % (key, value), "%s\\default=false" % key]
 
 
-def prepare(headless=False):
+def prepare(headless=False, opengl=False):
     """Creates the namespace's user directory and config (first use: from the shared config).
 
     A headless run (Qt offscreen: no window system, so no OpenGL or Vulkan
@@ -107,7 +107,10 @@ def prepare(headless=False):
     sections["Data%20Storage"] = data
     debug = _set(sections["Debugging"], "gdbstub_port", str(GDB_PORT))
     sections["Debugging"] = debug
-    if headless:
+    if opengl:
+        # Headless on a private compositor (azahar_harness.py): OpenGL.
+        sections["Renderer"] = _set(sections["Renderer"], "graphics_api", "1")
+    elif headless:
         sections["Renderer"] = _set(sections["Renderer"], "graphics_api", "0")
     elif config.exists() and SHARED_CONFIG.exists():
         shared = [l for l in SHARED_CONFIG.read_text().splitlines() if l.startswith("graphics_api")]
@@ -120,10 +123,10 @@ def prepare(headless=False):
     config.write_text("\n".join(body))
 
 
-def popen(command, headless=False, **kwargs):
+def popen(command, headless=False, opengl=False, **kwargs):
     """Starts `flatpak run ...` for this namespace (cwd = its home, so Azahar finds user/)."""
     stop()
-    prepare(headless)
+    prepare(headless, opengl)
     HOME.mkdir(parents=True, exist_ok=True)
     process = subprocess.Popen(command, cwd=str(HOME), start_new_session=True, **kwargs)
     PIDFILE.write_text(str(process.pid))

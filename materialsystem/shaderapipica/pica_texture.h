@@ -1,22 +1,12 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// PICA200 (Nintendo 3DS GPU) texture formats: the tiled layouts and the
-// encoders the 3DS shader API uses to turn the material system's RGBA8888
-// mips into textures the GPU samples. Portable: no 3DS SDK dependency, so a
-// host suite (unittests/rendertest/pica) checks it against an independent
-// decoder.
-//
-// Layout facts (3dbrew "GPU/Textures"):
-//  * images are stored in 8x8 tiles, tiles row-major; inside a tile texels are
-//    in Morton (Z) order, x in the low bit;
-//  * texel words are little-endian with the first component in the high bits
-//    (RGBA8 is the 32-bit word 0xRRGGBBAA);
-//  * ETC1 tiles hold four 4x4 blocks in Z order, each block's 64-bit word
-//    stored little-endian (the reverse of the Khronos byte order); ETC1A4
-//    prefixes each block with 64 bits of 4-bit alpha, column-major.
-// The GPU's t = 0 is the first stored row and t = 1 the last, with t = 1 at
-// the image's top for D3D coordinates (v = 0 at the top, v = 1 - t): the
-// encoders store the source's bottom row first (proven by tools/n3ds/pica_lab).
+// ETC1 for the 3DS shader API's textures: the encoder that turns the
+// material system's RGBA8888 mips into render.device.v2's kETC1Rgb and
+// kETC1A4 blocks (clause D40: 4x4 blocks in raster order, row 0 at the top;
+// kETC1Rgb words in the specification's byte order; kETC1A4 a little-endian
+// word of 4-bit alpha, texel (x, y) at bit 4(4x + y), then the ETC1 word
+// little-endian). The device tiles them for the GPU. Portable: a host suite
+// checks it against an independent decoder.
 //
 //=============================================================================//
 
@@ -30,49 +20,15 @@
 namespace pica
 {
 
-// The values are the GPU's GPU_TEXCOLOR codes.
-enum class TexFormat : std::uint8_t
-{
-	kRGBA8 = 0,
-	kRGB8 = 1,
-	kRGBA5551 = 2,
-	kRGB565 = 3,
-	kRGBA4 = 4,
-	kLA8 = 5,
-	kL8 = 7,
-	kETC1 = 12,
-	kETC1A4 = 13,
-};
+// Encodes one level as kETC1Rgb (alpha false) or kETC1A4 blocks. rgba is
+// width*height RGBA8 texels, row-major, row 0 at the top; width and height
+// are powers of two from 8 to 1024. Returns false (out untouched) otherwise.
+bool EncodeEtc1Level(
+    bool alpha, const std::uint8_t *rgba, int width, int height, std::vector<std::uint8_t> &out );
 
-// Bits per texel.
-int BitsPerTexel( TexFormat format );
-
-// Bytes of one level at width x height (both multiples of 8).
-std::size_t LevelBytes( TexFormat format, int width, int height );
-
-// Offset of texel (x, y) inside its 8x8 tile, in texels (Morton order).
-inline int MortonOffset( int x, int y )
-{
-	return ( x & 1 ) | ( ( y & 1 ) << 1 ) | ( ( x & 2 ) << 1 ) | ( ( y & 2 ) << 2 ) |
-	       ( ( x & 4 ) << 2 ) | ( ( y & 4 ) << 3 );
-}
-
-// Index of texel (x, y) in a tiled image of the given width, in texels.
-inline int TiledIndex( int x, int y, int width )
-{
-	return ( ( y >> 3 ) * ( width >> 3 ) + ( x >> 3 ) ) * 64 + MortonOffset( x & 7, y & 7 );
-}
-
-// Encodes one level. rgba is width*height RGBA8 texels, row-major, row 0 at
-// the top. width and height are powers of two, at least 8. Returns false
-// (out untouched) on invalid sizes.
-bool EncodeLevel( TexFormat format, const std::uint8_t *rgba, int width, int height,
-	std::vector<std::uint8_t> &out );
-
-// Decodes one level back to row-major RGBA8 (the independent oracle's
-// counterpart; also used for capture and debugging).
-bool DecodeLevel( TexFormat format, const std::uint8_t *data, int width, int height,
-	std::vector<std::uint8_t> &rgba );
+// Decodes one level back to row-major RGBA8 (the oracle's counterpart).
+bool DecodeEtc1Level(
+    bool alpha, const std::uint8_t *data, int width, int height, std::vector<std::uint8_t> &rgba );
 
 // True when any texel's alpha is below 255.
 bool HasAlpha( const std::uint8_t *rgba, int width, int height );

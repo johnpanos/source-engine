@@ -333,6 +333,10 @@ void GlDevice::QueryFacts()
 	// record's firstInstance in the shaders' instance index, so
 	// kIndirectFirstInstance is not claimed.
 	have.Add( Capability::kMultiDrawIndirect );
+	// D39: core GL renders to every float format; ES only with
+	// EXT_color_buffer_float (which covers half floats too).
+	if ( !IsEs() || HasExtension( gl, "GL_EXT_color_buffer_float" ) )
+		have.Add( Capability::kFloatTargets );
 	// D36: ARB_texture_cube_map_array is core since GL 4.0; ES has them from 3.2
 	// or the extensions.
 	if ( !IsEs() || Integer( gl, GL_MINOR_VERSION ) >= 2 || Integer( gl, GL_MAJOR_VERSION ) > 3 ||
@@ -678,8 +682,10 @@ DeviceResult<TextureId> GlDevice::CreateTexture( const TextureDesc &desc )
 	// Presentation belongs to a render.presentation.v1 bridge.
 	if ( desc.usages.Has( ResourceUsage::kPresent ) )
 		return Fail( DeviceStatus::kUnsupported, op );
-	if ( IsBlockCompressed( desc.format ) &&
-	     !m_Facts.capabilities.Has( Capability::kTextureCompressionBC ) )
+	// Compressed formats by their capability; float formats by
+	// EsFormatSupported's finer ES rules below (D39 claims float targets).
+	if ( auto needed = FormatCapability( desc.format );
+	    needed && *needed != Capability::kFloatTargets && !m_Facts.capabilities.Has( *needed ) )
 		return Fail( DeviceStatus::kUnsupported, op );
 	if ( desc.dimension == TextureDimension::kCube && desc.depthOrLayers > 6 &&
 	     !m_Facts.capabilities.Has( Capability::kCubeArrays ) )
