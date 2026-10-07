@@ -230,6 +230,7 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "vertexlit", "$selfillummask", "selfillummask", ValueKind::kTexture, "" },
     { "vertexlit", "$selfillum_envmapmask_alpha", "selfillum_envmapmask_alpha", ValueKind::kFloat,
         "0" },
+    { "vertexlit", "$flashlightnolambert", "flashlightnolambert", ValueKind::kBool, "0" },
     { "vertexlit", "$color2", "color2", ValueKind::kFloat3, "[1 1 1]" },
     { "vertexlit", "$halflambert", "halflambert", ValueKind::kBool, "0" },
     { "vertexlit", "$phong", "phong", ValueKind::kBool, "0" },

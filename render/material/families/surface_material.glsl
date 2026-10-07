@@ -43,4 +43,5 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 energy[14];       // the energy point's rows (SurfaceConstants::energy)
 	vec4 teeth[2];         // Teeth: $forward, $illumfactor; y row x: on
 	vec4 eyes[6];          // Eyes: origin (w on), up, iris U/V, glint U/V
+	vec4 projectorControls; // x: $flashlightnolambert
 } material;

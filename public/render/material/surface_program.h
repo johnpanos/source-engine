@@ -188,8 +188,12 @@ struct SurfaceConstants
 	// bound, 2 and 3 $irisu and $irisv, 4
 	// and 5 $glintu and $glintv (rows of world-to-texture projections).
 	float eyes[6][4] = {};
+	// VertexLitGeneric's $flashlightnolambert on the mesh point: x 1 when the
+	// projected lights' diffuse lobe takes no N.L (SetFlashLightColorFromState
+	// adds 2 before the saturate), back faces included.
+	float projectorControls[4] = {};
 };
-static_assert( sizeof( SurfaceConstants ) == 944 );
+static_assert( sizeof( SurfaceConstants ) == 960 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).

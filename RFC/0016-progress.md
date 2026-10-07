@@ -12694,3 +12694,22 @@ not one of the families the common keys reach); `$scaleamount` and `$scale`
 are keys no Refract source declares. `render.lab.posed-model` checks both
 claims. Portal 1 unsupported: 233 → 227 (Refract warps and the teleport
 eye effect); Portal 2: 126 → 124.
+
+### K12: VertexLitGeneric $flashlightnolambert on the projected lights (2026-10-07, user request)
+
+Source's flashlight adds 2 to N.L before the saturate under
+`$flashlightnolambert` (`SetFlashLightColorFromState`), so foliage takes the
+flashlight's diffuse on every face. The mesh point's projected-light loop
+now does the same for its diffuse lobe when
+`SurfaceConstants::projectorControls.x` is set; the specular lobe keeps N.L.
+`render.lab.selfillum` gains a projector fixture (a white cookie array
+through `map_media::CookieArray`): from behind the quad plain VertexLitGeneric
+is black and the no-Lambert surface lit; head on both agree. The
+`nolambert-ignored` seed is caught (9 of 9). Portal 1 unsupported: 227 →
+223; Portal 2: 124 → 121.
+
+Left refused, with reasons: `$seamless_scale` (Source projects in object
+space and the mesh handoff gives the core world-space vertices; carrying
+object-space positions is a vertex-layout change), and `$flat` with vertex
+color (18 editor/debug materials; flat interpolation needs a second
+vertex/fragment module pair).

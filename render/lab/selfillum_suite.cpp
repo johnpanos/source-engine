@@ -28,6 +28,8 @@
 #include "suites.h"
 
 #include "render/material/model_lighting.h"
+#include "render/map_media/projector_cookies.h"
+#include "render/projected_light.h"
 #include "render/material/program_resolver.h"
 #include "render/material/vmt_import.h"
 #include "render/pass/world/world_pass.h"
@@ -301,6 +303,20 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		return "the two-texel iris fixture could not be staged";
 	fixture.iris = iris.Value().texture;
 
+	// A white two-layer cookie array for the projected-light fixtures,
+	// uploaded in the first frame that draws a projector.
+	map_media::CookieArray cookies;
+	{
+		map_media::CookieImages white;
+		white.names = { "white", "white" };
+		white.bytes.assign( 8, std::byte{ 255 } );
+		if ( auto why = cookies.Create( *device, white ) )
+			return "the cookie array fixture: " + *why;
+	}
+	const TextureId cookieArray = cookies.Texture();
+	const TextureDesc cookieArrayDesc = cookies.Desc();
+	bool cookiesUploaded = false;
+
 	std::vector<std::unique_ptr<WorldPass>> passes;
 	std::uint64_t frame = 0;
 	// One frame of the fixture: the material's world, a distant eye at
@@ -311,7 +327,8 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 	auto render = [&]( const Variables &variables, float degrees, bool lit, CanvasImage &image,
 	                  bool dynamic = false, bool noNormal = false, int maskHandle = 0,
 	                  const char *shader = "VertexLitGeneric",
-	                  const material::ModelLighting *lighting = nullptr ) -> std::optional<std::string>
+	                  const material::ModelLighting *lighting = nullptr,
+	                  const projected_light::LightGpu *projector = nullptr ) -> std::optional<std::string>
 	{
 		auto pass = std::make_unique<WorldPass>();
 		pass->SetSurfaceFragmentModule( module );
@@ -359,6 +376,15 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 			lights->areas.push_back( area );
 			view.lights = std::move( lights );
 		}
+		if ( projector )
+		{
+			auto lights = std::make_shared<StageViewLights>();
+			lights->projectors.push_back( *projector );
+			lights->view.counts[0] = 1.0f; // the view's projected lights
+			lights->cookies = cookieArray;
+			lights->cookiesDesc = cookieArrayDesc;
+			view.lights = std::move( lights );
+		}
 		const std::uint32_t tag = pass->QueueView( std::move( view ) );
 		if ( !tag )
 			return "the fixture view queued nothing: " + pass->Stats().lastRefusal;
@@ -377,6 +403,11 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 			target.width = target.height = kSize;
 			target.textures = &fixture;
 			target.frame = thisFrame;
+			if ( projector && !cookiesUploaded )
+			{
+				cookies.RecordUpload( encoder );
+				cookiesUploaded = true;
+			}
 			target.eye[0] = 1.0e4f * std::sin( radians );
 			target.eye[2] = 0.5f + 1.0e4f * std::cos( radians );
 			pass->Record( tag, encoder, target );
@@ -687,6 +718,51 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		    "selfillum.envmapmask-alpha.refuses-with-selfillum-by-name" );
 	}
 
+	// $flashlightnolambert: the projected lights' diffuse takes no N.L. A
+	// projector behind the quad lights nothing of plain VertexLitGeneric but
+	// lights the no-Lambert surface; in front, head on (N.L 1), both agree.
+	{
+		auto projectorAt = []( float z, float direction )
+		{
+			projected_light::Light light;
+			light.origin[2] = z;
+			const float forward[3] = { 0, 0, direction }, right[3] = { 1, 0, 0 },
+			            up[3] = { 0, direction, 0 };
+			std::copy_n( forward, 3, light.forward );
+			std::copy_n( right, 3, light.right );
+			std::copy_n( up, 3, light.up );
+			light.horizontalFovDegrees = light.verticalFovDegrees = 120.0f;
+			light.nearZ = 1.0f;
+			light.farZ = 100.0f;
+			light.color[0] = light.color[1] = light.color[2] = 1.0f;
+			light.atten[0] = 1.0f;
+			light.atten[1] = 0.0f;
+			return projected_light::PackLightGpu( light, 0 );
+		};
+		const auto behind = projectorAt( -5.0f, 1.0f ), front = projectorAt( 6.0f, -1.0f );
+		const Variables noLambert = { { "$flashlightnolambert", "1" } };
+		CanvasImage plainBack, wrapBack, plainFront, wrapFront;
+		for ( auto [variables, image, light] :
+		    { std::tuple{ Variables{}, &plainBack, &behind },
+		        std::tuple{ noLambert, &wrapBack, &behind },
+		        std::tuple{ Variables{}, &plainFront, &front },
+		        std::tuple{ noLambert, &wrapFront, &front } } )
+		{
+			if ( auto why = render( variables, 0.0f, false, *image, false, false, 0,
+			         "VertexLitGeneric", nullptr, light ) )
+				return why;
+		}
+		const float *back = wrapBack.At( kEmitX, kRow );
+		results.That( Gray( plainBack.At( kEmitX, kRow ), 0.0f ) && back[0] > 0.05f,
+		    "selfillum.nolambert.back-faces-take-the-projector",
+		    Detail( "no-Lambert from behind", back, 0.0f ) );
+		const float *a = plainFront.At( kEmitX, kRow );
+		const float *b = wrapFront.At( kEmitX, kRow );
+		results.That( a[0] > 0.05f && Near( a[0], b[0] ) && Near( a[1], b[1] ) && Near( a[2], b[2] ),
+		    "selfillum.nolambert.head-on-matches-lambert",
+		    Detail( "head on", b, a[0] ) );
+	}
+
 	for ( auto &pass : passes )
 		pass->ReleaseDevice( *device );
 	(void)device->WaitIdle();
@@ -703,6 +779,8 @@ const Seeded kSeeded[] = {
     { "eyes-glint-ignored", spirv::kSurfaceEyesGlintIgnored, "selfillum.eyes.glint" },
     { "envmapmask-alpha-ignored", spirv::kSurfaceSelfIllumEnvmapMaskAlphaIgnored,
         "selfillum.envmapmask-alpha.weight" },
+    { "nolambert-ignored", spirv::kSurfaceFlashlightNoLambertIgnored,
+        "selfillum.nolambert.back-faces" },
 };
 
 } // namespace

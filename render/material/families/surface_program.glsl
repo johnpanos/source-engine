@@ -1524,7 +1524,13 @@ void PbrSurface( out float coverage )
 		const vec3 light = ( projector.origin.xyz - worldPosition ) / max( distance, 1e-4 );
 		const float normalDotLight = max( dot( normal, light ), 0.0 );
 		float scale = ProjectorAttenuation( projector, distance );
-		if ( normalDotLight <= 0.0 || scale <= 0.0 )
+		// $flashlightnolambert: the diffuse lobe takes no N.L, back faces too.
+#ifndef SEEDED_FLASHLIGHT_NO_LAMBERT_IGNORED
+		const bool noLambert = material.projectorControls.x > 0.5;
+#else
+		const bool noLambert = false; // negative control
+#endif
+		if ( ( normalDotLight <= 0.0 && !noLambert ) || scale <= 0.0 )
 			continue;
 		const int tile = int( projector.color.w );
 		if ( tile >= 0 && DebugTermOn( kDebugTermShadowVisibility ) )
@@ -1539,11 +1545,12 @@ void PbrSurface( out float coverage )
 		const vec3 incident = projector.color.rgb * cookie * scale;
 		if ( diffuseLobe )
 		{
-			const vec3 diffuse = diffuseColor * incident * MeshDiffuseFactor( normalDotLight );
+			const vec3 diffuse = diffuseColor * incident *
+			                     ( noLambert ? vec3( 1.0 ) : MeshDiffuseFactor( normalDotLight ) );
 			color += diffuse;
 			direct += diffuse;
 		}
-		if ( specularLobe && !unlitMesh )
+		if ( specularLobe && !unlitMesh && normalDotLight > 0.0 )
 		{
 			const vec3 specular = kPi * incident *
 			                      PbrSpecular( normal, view, light, f0, roughness ) * compensation *
