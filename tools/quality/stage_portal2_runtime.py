@@ -267,6 +267,22 @@ def namespaced(path, data, namespace, files):
     return path, data
 
 
+def drop_vmt_keys(path, data, drops):
+    """Remove the manifest's dead keys from one VMT: lines whose key (quoted or
+    not, any case) is listed for this path. Each must be present, so a pack
+    update that fixes or moves the key fails staging instead of passing."""
+    keys = [d["key"].lower() for d in drops if d["path"].lower() == path]
+    if not keys:
+        return data
+    text = data.decode("latin-1")
+    for key in keys:
+        pattern = re.compile(r'^[ \t]*"?' + re.escape(key) + r'"?[ \t][^\n]*\n', re.I | re.M)
+        text, count = pattern.subn("", text)
+        if not count:
+            raise ValueError("%s has no %s to drop" % (path, key))
+    return text.encode("latin-1")
+
+
 def stage_workshop(runtime, workshop_root, manifest_path=WORKSHOP_MANIFEST):
     """Extract the manifest's packs into <runtime>/workshop and return the ids
     mounted, highest precedence first. A pack whose archives are unchanged
@@ -302,7 +318,8 @@ def stage_workshop(runtime, workshop_root, manifest_path=WORKSHOP_MANIFEST):
         if pack_id not in chosen:
             continue
         source = workshop_root / pack_id
-        stamp = {"namespace": pack.get("namespace"), "archives": {p.name: [p.stat().st_size, p.stat().st_mtime_ns]
+        stamp = {"namespace": pack.get("namespace"), "drop_keys": pack.get("drop_keys"),
+                 "archives": {p.name: [p.stat().st_size, p.stat().st_mtime_ns]
                               for p in sorted(source.glob("pak01_*.vpk"))},
                  "files": sorted(chosen[pack_id])}
         target = base / pack_id
@@ -312,7 +329,8 @@ def stage_workshop(runtime, workshop_root, manifest_path=WORKSHOP_MANIFEST):
                 shutil.rmtree(target)
             namespace = pack.get("namespace")
             for path, name in chosen[pack_id].items():
-                data = archives[pack_id][name].read()
+                data = drop_vmt_keys(path, archives[pack_id][name].read(),
+                                     pack.get("drop_keys", ()))
                 if namespace:
                     path, data = namespaced(path, data, namespace, chosen[pack_id])
                 out = target / path

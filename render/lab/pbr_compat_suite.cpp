@@ -301,6 +301,20 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		    "pbr-compat.refuses.blend-tint-with-color2-by-name", why );
 	}
 
+	// Workshop model materials animate their base texture with an
+	// AnimatedTexture proxy (The Lab's GLaDOS cables and eye): the frame is
+	// chosen where the texture is imported, so the mesh point claims it.
+	{
+		auto mapped = material::MapVariables( "VertexLitGeneric",
+		    { { "$basetexture", "pbrcompat/base" }, { "$selfillum", "1" }, { "$frame", "5" } },
+		    {} );
+		auto claim = mapped ? material::ClaimForMesh( mapped.Value(), true )
+		                    : foundation::Expected<BlendMode, std::string>(
+		                          foundation::MakeUnexpected( std::string( "no map" ) ) );
+		results.That( bool( claim ), "pbr-compat.vertexlit.animated-texture-frame-is-claimed",
+		    claim ? std::string() : claim.Error() );
+	}
+
 	// Pixels: the scale is the multiplier the shader applies.
 	std::atomic<std::uint64_t> counter{ 0 };
 	std::unique_ptr<IRenderDevice2> device;

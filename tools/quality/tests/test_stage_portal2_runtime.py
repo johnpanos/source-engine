@@ -226,6 +226,16 @@ class WorkshopSelectionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             stage_portal2_runtime.namespaced("models/x.mdl", b"IDST", ns, files)
 
+    def test_drop_keys_removes_only_the_listed_dead_key(self):
+        vmt = b'"VertexlitGeneric"\n{\n\t"$selfillum" "1"\n                "$selfilumtint" "[5 0 0]"\n}\n'
+        drops = [{"path": "materials/x.vmt", "key": "$selfilumtint"}]
+        out = stage_portal2_runtime.drop_vmt_keys("materials/x.vmt", vmt, drops)
+        self.assertNotIn(b"selfilumtint", out)
+        self.assertIn(b'"$selfillum" "1"', out)
+        self.assertEqual(stage_portal2_runtime.drop_vmt_keys("materials/y.vmt", vmt, drops), vmt)
+        with self.assertRaises(ValueError):
+            stage_portal2_runtime.drop_vmt_keys("materials/x.vmt", out, drops)
+
     def test_checked_in_manifest_takes_no_maps_or_scripts(self):
         import json
         manifest = json.loads(stage_portal2_runtime.WORKSHOP_MANIFEST.read_text())

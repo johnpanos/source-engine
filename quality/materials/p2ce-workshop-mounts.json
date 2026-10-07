@@ -15,16 +15,14 @@
       "namespace": {
         "from": "models/npcs/glados/",
         "to": "models/npcs/glalab/"
-      }
-    },
-    {
-      "id": "3711444931",
-      "title": "Overly-Expressive P1 Cores (Portal 1 Eyes Variant)",
-      "include": [
-        "materials/",
-        "models/"
-      ],
-      "why": "Personality-core models and eye materials"
+      },
+      "drop_keys": [
+        {
+          "path": "materials/models/npcs/glados/glados_head_hires.vmt",
+          "key": "$selfilumtint",
+          "reason": "misspelled $selfillumtint: VertexLitGeneric declares no such parameter, so Source never reads it; the render core refuses unknown keys by name and would drop GLaDOS's head (2026-10-07)"
+        }
+      ]
     },
     {
       "id": "3592898497",
@@ -48,6 +46,11 @@
     {
       "id": "3523648265",
       "title": "November Doors Replacement (V1.00)",
+      "reason": "user decision 2026-10-07"
+    },
+    {
+      "id": "3711444931",
+      "title": "Overly-Expressive P1 Cores (Portal 1 Eyes Variant)",
       "reason": "user decision 2026-10-07"
     },
     {
