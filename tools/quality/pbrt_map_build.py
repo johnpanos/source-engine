@@ -67,6 +67,10 @@ whose light the radiosity transfer owns). Steps:
                  written into a copy of the stage; the bake uses them unchanged
     bake         shared lightmap UVs (from layout; Blender charting with "layout": "blender")
                  + Cycles diffuse irradiance atlas
+    prop-points  (a legacy-scene map; lightmap.prop_vertex_light, default on)
+                 prop_vertex_light.py points: a sample per static-prop vertex
+    prop-vertices the baker's prop-vertices operation: each sample's light in the atlas's
+                 unit; `pack` writes it as the props' sp_<n>.vhv colour meshes
     noise        (lightmap.noise_target) lightmap_noise.py: the bake's measured Monte Carlo
                  noise (every light page is the mean of two half-sample bakes) must be under
                  the target, or the step reports the sample count that would meet it; with
@@ -153,7 +157,7 @@ import remote_blender  # noqa: E402
 
 STEPS = ("legacy-scene", "scene", "environment", "stage", "probe-placement", "reference-gate",
          "collision", "compile",
-         "layout", "bake", "noise", "denoise", "directional", "directional-indirect", "seams",
+         "layout", "bake", "prop-points", "prop-vertices", "noise", "denoise", "directional", "directional-indirect", "seams",
          "light-masks", "probe", "rprb", "probe-volume", "radiosity", "sdf", "ktx2", "sky", "pack",
          "identity",
          "content", "boot", "camera-boot", "runtime-gate", "traversal-boot", "traversal", "audit")
@@ -888,7 +892,8 @@ class Pipeline:
         # The static props' per-vertex light samples (prop_vertex_light.py):
         # baked after the atlas, written as colour meshes when the map packs.
         self.prop_points_args = ["--bsp", self.bsp_input, "--runtime", runtime,
-                                 "--model-tool", model_tool] + game_args
+                                 "--model-tool", model_tool] + \
+            (["--game-dir", game] if game else [])
         self.prop_points_inputs = [self.bsp_input, model_tool] + content
         receipt = json.loads((p["legacy_scene"] / "scene-receipt.json").read_text())
         prop_materials = receipt["static_props"]["materials"]
