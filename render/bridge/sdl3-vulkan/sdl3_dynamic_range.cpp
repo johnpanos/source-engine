@@ -20,6 +20,9 @@
 namespace render_vulkan
 {
 
+// Android reads the display over JNI (sdl3_dynamic_range_android.cpp): SDL
+// sets no HDR window properties there.
+#if !defined( __ANDROID__ )
 bool Sdl3CanShowExtendedRange( SDL_Window *window )
 {
 	return window != nullptr;
@@ -48,6 +51,7 @@ Sdl3DisplayHeadroom Sdl3ReadHeadroom( SDL_Window *window )
 		headroom.sdrWhiteNits = white * 80.0f;
 	return headroom;
 }
+#endif // !__ANDROID__
 
 Sdl3LayerRange Sdl3ReadLayerRange( SDL_Window *window )
 {
