@@ -206,11 +206,25 @@ class CLightedMouthProxy : public CResultProxy
 public:
 	virtual bool Init( IMaterial *pMaterial, KeyValues *pKeyValues );
 	virtual void OnBind( void *pC_BaseEntity );
+
+private:
+	// Retail feeds $selfillumtint, where the mask region shows tint * albedo in
+	// place of its lighting, so 0.2 reads as a lit glow. A PBR replacement (the
+	// Workshop portal gun) feeds $emissionscale, which adds to the lit surface;
+	// there the value is divided by the idle level, so idle is the authored
+	// emission and speech keeps retail's 1:5 ratio.
+	float m_flResultScale;
 };
+
+static const float kPotatosIdleLight = 0.2f;
 
 bool CLightedMouthProxy::Init( IMaterial *pMaterial, KeyValues *pKeyValues )
 {
-	return CResultProxy::Init( pMaterial, pKeyValues );
+	if ( !CResultProxy::Init( pMaterial, pKeyValues ) )
+		return false;
+	m_flResultScale = ( m_pResult && !V_stricmp( m_pResult->GetName(), "$emissionscale" ) )
+		? 1.0f / kPotatosIdleLight : 1.0f;
+	return true;
 }
 
 // Speech level last seen from PotatOS's speaker, shared by every bind.
@@ -269,9 +283,9 @@ void CLightedMouthProxy::OnBind( void *pC_BaseEntity )
 
 	// The player's PotatOS light (TurnOnPotatos/TurnOffPotatos) sets the idle glow.
 	C_Portal_Player *pPlayer = C_Portal_Player::GetLocalPortalPlayer();
-	float flIdleLight = ( !pPlayer || pPlayer->IsPotatosOn() ) ? 0.2f : 0.0f;
+	float flIdleLight = ( !pPlayer || pPlayer->IsPotatosOn() ) ? kPotatosIdleLight : 0.0f;
 
-	SetFloatResult( PotatosMouthLight( flMouthOpen, flIdleLight ) );
+	SetFloatResult( m_flResultScale * PotatosMouthLight( flMouthOpen, flIdleLight ) );
 }
 
 EXPOSE_MATERIAL_PROXY( CLightedMouthProxy, LightedMouth );
