@@ -146,8 +146,9 @@ def static_prop_matrix(angles):
                      (-sp, sr * cp, cr * cp)), dtype=np.float64)
 
 
-def studio_mesh(materials, model_tool, name):
-    """Load the model's LOD 0 through mdl_mesh_export, the runtime's parser."""
+def studio_mesh(materials, model_tool, name, extra=()):
+    """Load the model's LOD 0 through mdl_mesh_export, the runtime's parser
+    (`extra`: further exporter arguments, such as --color-groups)."""
     stem = name[:-4] if name.lower().endswith(".mdl") else name
     inputs = []
     for suffixes in ((".mdl",), (".vvd",),
@@ -166,7 +167,8 @@ def studio_mesh(materials, model_tool, name):
             path = Path(temporary) / ("input%d" % i)
             path.write_bytes(data)
             paths.append(str(path))
-        run = subprocess.run([str(model_tool), *paths], capture_output=True, text=True)
+        run = subprocess.run([str(model_tool), *paths, *extra], capture_output=True,
+                             text=True)
         if run.returncode:
             raise ValueError("static model %s: %s" % (name, run.stderr.strip()))
         return json.loads(run.stdout)

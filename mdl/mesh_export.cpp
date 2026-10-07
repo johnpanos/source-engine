@@ -50,9 +50,13 @@ void Vec3( std::ostream &out, const mdl::Float3 &v )
 
 int main( int argc, char **argv )
 {
-	if ( argc != 4 )
+	// --color-groups: the strip groups a static prop's baked vertex lighting
+	// lists (mdl::VertexColorGroup), with the model's checksum.
+	const bool colorGroups = argc == 5 && std::string( argv[4] ) == "--color-groups";
+	if ( argc != 4 && !colorGroups )
 	{
-		std::fprintf( stderr, "usage: mdl_mesh_export model.mdl model.vvd model.vtx\n" );
+		std::fprintf(
+		    stderr, "usage: mdl_mesh_export model.mdl model.vvd model.vtx [--color-groups]\n" );
 		return 2;
 	}
 	std::string mdlBytes, vvdBytes, vtxBytes;
@@ -61,7 +65,9 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "mdl_mesh_export: a model input could not be read\n" );
 		return 1;
 	}
-	auto parsed = mdl::ParseModel( { mdlBytes, vvdBytes, vtxBytes, {} } );
+	auto parsed = colorGroups
+	                  ? mdl::ParseModelGeometryVariants( { mdlBytes, vvdBytes, vtxBytes, {} } )
+	                  : mdl::ParseModel( { mdlBytes, vvdBytes, vtxBytes, {} } );
 	if ( !parsed )
 	{
 		std::fprintf( stderr, "mdl_mesh_export: %s\n", mdl::Describe( parsed.Error() ).c_str() );
@@ -70,6 +76,30 @@ int main( int argc, char **argv )
 	const mdl::Model &model = parsed.Value();
 	std::ostringstream out;
 	out.precision( 9 );
+	if ( colorGroups )
+	{
+		out << "{\"checksum\":" << model.checksum << ",\"groups\":[";
+		for ( std::size_t i = 0; i < model.vertexColorGroups.size(); ++i )
+		{
+			const mdl::VertexColorGroup &group = model.vertexColorGroups[i];
+			out << ( i ? "," : "" ) << "{\"lod\":" << group.lod << ",\"p\":[";
+			for ( std::size_t j = 0; j < group.vertices.size(); ++j )
+			{
+				out << ( j ? "," : "" );
+				Vec3( out, group.vertices[j].position );
+			}
+			out << "],\"n\":[";
+			for ( std::size_t j = 0; j < group.vertices.size(); ++j )
+			{
+				out << ( j ? "," : "" );
+				Vec3( out, group.vertices[j].normal );
+			}
+			out << "]}";
+		}
+		out << "]}\n";
+		const std::string bytes = out.str();
+		return std::fwrite( bytes.data(), 1, bytes.size(), stdout ) == bytes.size() ? 0 : 1;
+	}
 	out << "{\"name\":";
 	String( out, model.name );
 	out << ",\"textures\":[";

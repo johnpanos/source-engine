@@ -467,7 +467,7 @@ Vertex ReadVertex( Reader &vvd, std::uint64_t record, const VvdVertices &vertice
 // Appends the triangles of one VTX strip group, as mesh-local vertex indices
 // (counter-clockwise), to 'indices'.
 bool ReadStripGroup( Reader &vtx, std::uint64_t group, bool v49, std::uint32_t meshVertices,
-    std::vector<std::uint32_t> &indices )
+    std::vector<std::uint32_t> &indices, std::vector<std::uint32_t> *groupVertices = nullptr )
 {
 	const std::uint32_t numVerts = vtx.Count( group );
 	const std::uint64_t verts = vtx.Relative( group, group + 4 );
@@ -493,6 +493,8 @@ bool ReadStripGroup( Reader &vtx, std::uint64_t group, bool v49, std::uint32_t m
 			return false;
 		}
 	}
+	if ( groupVertices )
+		*groupVertices = meshVertex;
 	const auto groupIndex = [&]( std::uint64_t i, std::uint32_t &out )
 	{
 		const std::uint64_t at = indexStart + i * 2;
@@ -1889,10 +1891,25 @@ static foundation::Expected<Model, ModelError> ParseModelImpl( const ModelBytes 
 					}
 					for ( std::uint32_t g = 0; g < numGroups; ++g )
 					{
+						std::vector<std::uint32_t> groupVertices;
 						if ( !ReadStripGroup( vtx, groups + std::uint64_t( g ) * groupStride, v49,
-						         meshVertices, out.indices ) )
+						         meshVertices, out.indices, allBodies ? &groupVertices : nullptr ) )
 						{
 							return MakeUnexpected( vtx.Error() );
+						}
+						if ( allBodies )
+						{
+							// Every strip group, in the order vrad and the engine's
+							// static-prop colour meshes walk them.
+							VertexColorGroup colorGroup;
+							colorGroup.bodyPart = out.bodyPart;
+							colorGroup.bodyModel = index;
+							colorGroup.lod = lod;
+							colorGroup.vertices.reserve( groupVertices.size() );
+							for ( std::uint32_t id : groupVertices )
+								colorGroup.vertices.push_back(
+								    ReadVertex( vvd, vertices.records[first + id], vertices ) );
+							model.vertexColorGroups.push_back( std::move( colorGroup ) );
 						}
 					}
 					if ( out.indices.empty() )

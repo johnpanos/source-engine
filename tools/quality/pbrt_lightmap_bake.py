@@ -751,6 +751,87 @@ def sideways_planar_normals(meshes):
     return found
 
 
+PROP_SAMPLE_OFFSET = 0.5  # Source units off the surface (prop_vertex_light.SAMPLE_OFFSET)
+# Half the sample quad's side, in metres: invisible to transport, so only
+# large enough that float32 corners keep the face on its normal (as
+# probe_volume_bake.QUAD_HALF_METERS).
+PROP_SAMPLE_HALF_METERS = 5e-3
+
+
+def bake_prop_vertices(points_path, out_path, render, meters_per_unit):
+    """Static props' per-vertex light (prop_vertex_light.py): one small quad
+    per sample, facing its normal just off the prop, unwrapped to its own
+    texel, DIFFUSE-baked as the atlas is (direct and indirect, albedo
+    divided out), so a sample holds the atlas's unit. The quads are seen by
+    no ray, so they change no light. The points are in Source units; the
+    imported scene is in metres (meters_per_unit). Writes (N, 3) float64 to
+    out_path."""
+    import numpy as np
+    with np.load(points_path) as data:
+        positions, normals = data["positions"], data["normals"]
+    count = len(positions)
+    if count == 0:
+        np.save(out_path, np.zeros((0, 3)))
+        return {"samples": 0}
+    side = int(math.ceil(math.sqrt(count)))
+    helper = np.where(np.abs(normals[:, 2:3]) < 0.9, [[0.0, 0.0, 1.0]], [[1.0, 0.0, 0.0]])
+    tangent = np.cross(helper, normals)
+    tangent /= np.linalg.norm(tangent, axis=1, keepdims=True)
+    bitangent = np.cross(normals, tangent)
+    centre = (positions + normals * PROP_SAMPLE_OFFSET) * meters_per_unit
+    t, b = tangent * PROP_SAMPLE_HALF_METERS, bitangent * PROP_SAMPLE_HALF_METERS
+    corners = np.stack([centre - t - b, centre + t - b, centre + t + b, centre - t + b], axis=1)
+    mesh = bpy.data.meshes.new("PropVertexSamples")
+    mesh.vertices.add(4 * count)
+    mesh.vertices.foreach_set("co", corners.reshape(-1).astype(np.float32))
+    mesh.loops.add(4 * count)
+    mesh.loops.foreach_set("vertex_index", np.arange(4 * count, dtype=np.int32))
+    mesh.polygons.add(count)
+    mesh.polygons.foreach_set("loop_start", np.arange(0, 4 * count, 4, dtype=np.int32))
+    mesh.polygons.foreach_set("loop_total", np.full(count, 4, dtype=np.int32))
+    index = np.arange(count)
+    x, y = (index % side).astype(np.float64), (index // side).astype(np.float64)
+    lo_u, hi_u = (x + 0.25) / side, (x + 0.75) / side
+    lo_v, hi_v = (y + 0.25) / side, (y + 0.75) / side
+    uv = np.stack([np.stack([lo_u, lo_v], 1), np.stack([hi_u, lo_v], 1),
+                   np.stack([hi_u, hi_v], 1), np.stack([lo_u, hi_v], 1)], axis=1)
+    layer = mesh.uv_layers.new(name="lightmap_st")
+    layer.data.foreach_set("uv", uv.reshape(-1).astype(np.float32))
+    mesh.update()
+    obj = bpy.data.objects.new("PropVertexSamples", mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    for attribute in ("visible_diffuse", "visible_glossy", "visible_shadow",
+                      "visible_transmission", "visible_volume_scatter"):
+        setattr(obj, attribute, False)
+    image = bpy.data.images.new("PropVertexLight", width=side, height=side, alpha=True,
+                                float_buffer=True)
+    material = bpy.data.materials.new("PropVertexWhite")
+    material.use_nodes = True
+    target = material.node_tree.nodes.new("ShaderNodeTexImage")
+    target.name = "BakeTarget"
+    target.image = image
+    material.node_tree.nodes.active = target
+    obj.data.materials.append(material)
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    margin = render.render.bake.margin
+    render.render.bake.margin = 0
+    try:
+        bake_light(image, {"DIRECT", "INDIRECT"}, "prop vertices", side, render)
+    finally:
+        render.render.bake.margin = margin
+    pixels = np.array(image.pixels[:], dtype=np.float64).reshape(side * side, 4)
+    light = pixels[:count, :3]
+    if not np.all(np.isfinite(light)):
+        raise ValueError("prop vertex bake produced non-finite light")
+    np.save(out_path, light)
+    bpy.data.objects.remove(obj)
+    return {"sample_count": count, "image_side": side, "offset_units": PROP_SAMPLE_OFFSET,
+            "quad_half_meters": PROP_SAMPLE_HALF_METERS, "meters_per_unit": meters_per_unit,
+            "mean": light.mean(axis=0).tolist()}
+
+
 def main():
     arguments = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     parser = argparse.ArgumentParser(description=__doc__)
@@ -797,6 +878,12 @@ def main():
                              "unchanged; blender: chart and pack in Blender")
     parser.add_argument("--margin-texels", type=int, default=2,
                         help="gap between packed charts; bake dilation uses half")
+    parser.add_argument("--prop-vertices", type=Path,
+                        help="static props' sample points (prop_vertex_light.py points)")
+    parser.add_argument("--prop-vertex-light", type=Path,
+                        help="output: the samples' baked light, (N, 3) .npy")
+    parser.add_argument("--prop-vertices-only", action="store_true",
+                        help="bake only the prop samples (the atlas outputs are untouched)")
     parser.add_argument("--medium",
                         help="a homogeneous participating medium as JSON (participating_medium: "
                              "scattering_per_m, absorption_per_m, anisotropy, bounds_m), the "
@@ -947,6 +1034,21 @@ def main():
     render.render.bake.use_pass_color = False
     render.render.bake.use_pass_direct = True
     render.render.bake.use_pass_indirect = True
+    if bool(args.prop_vertices) != bool(args.prop_vertex_light) or (
+            args.prop_vertices_only and not args.prop_vertices):
+        parser.error("--prop-vertices and --prop-vertex-light go together")
+    if args.prop_vertices_only:
+        result = bake_prop_vertices(args.prop_vertices, args.prop_vertex_light, render,
+                                    float(scene.get("meters_per_unit") or 0.0254))
+        result.update(status="pass", device=device, samples=args.samples,
+                      sampling=sampling, light_paths=light_paths,
+                      scene_sha256=scene["source_sha256"],
+                      points_sha256=sha256(args.prop_vertices),
+                      light_sha256=sha256(args.prop_vertex_light))
+        args.prop_vertex_light.with_name(args.prop_vertex_light.name + ".json").write_text(
+            json.dumps(result, indent=2, sort_keys=True) + "\n")
+        print("PBRT_PROP_VERTEX_BAKE " + json.dumps(result))
+        return
     atlas = bpy.data.images.new("PbrtLightmap", width=args.size, height=args.size,
                                 alpha=True, float_buffer=True)
     for obj in baked:

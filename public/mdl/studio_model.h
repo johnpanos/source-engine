@@ -259,6 +259,21 @@ constexpr std::uint32_t kStaticPropFlag = 0x10;     // Model::flags: compiled $s
 constexpr std::uint32_t kDeltaSequence = 0x04;      // Sequence::flags: adds to the reference
 constexpr std::uint32_t kOverrideSequence = 0x0800; // Sequence::flags: a forward declaration
 
+// One VTX strip group's vertices, as a static prop's baked vertex lighting
+// (an "sp_<n>.vhv" colour mesh) lists them: body part, submodel, LOD, mesh,
+// then strip group order, each group vertex by its mesh vertex (bind pose,
+// model space). ParseModelGeometryVariants fills it; ParseModel leaves it
+// empty.
+struct VertexColorGroup
+{
+	std::int32_t bodyPart = 0;
+	std::uint32_t bodyModel = 0;
+	std::uint32_t lod = 0;
+	std::vector<Vertex> vertices;
+
+	friend bool operator==( const VertexColorGroup &, const VertexColorGroup & ) = default;
+};
+
 struct Model
 {
 	std::int32_t version = 0;
@@ -274,6 +289,7 @@ struct Model
 	// replacements. Runtime selection policy remains the host's responsibility.
 	std::vector<std::vector<std::string>> lodTextures;
 	std::vector<Mesh> meshes;
+	std::vector<VertexColorGroup> vertexColorGroups; // see VertexColorGroup
 	std::vector<Bone> bones; // at least one
 	std::vector<Sequence> sequences;
 	std::vector<std::string> includeModels; // $includemodel paths, as stored (lower case)

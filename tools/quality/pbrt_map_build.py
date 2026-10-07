@@ -605,6 +605,10 @@ class Pipeline:
             "sdfv": self.out / "lighting" / "field.sdfv",
             "sdfv_work": self.out / "lighting" / "sdf",
             "bsp_ambient": self.out / (self.map + "_leaf_ambient.bsp"),
+            "prop_points": self.out / "lighting" / "prop_vertices.npz",
+            "prop_light": self.out / "lighting" / "prop_vertex_light.npy",
+            "prop_stage": self.out / "lighting" / "prop_vertices_stage.usda",
+            "prop_scratch_exr": self.out / "lighting" / "prop_vertices_unused.exr",
             "sky_texture": self.out / "sky.png",
             "render_stage": self.out / "lighting" / (self.map + "_render.usda"),
             "collision": self.out / "collision",
@@ -881,6 +885,11 @@ class Pipeline:
                       "--out", p["legacy_scene"], "--model-tool", model_tool] + game_args))
         # Static models take part in transport and probes but have no world
         # atlas or WMSH surface: the game already draws them as instances.
+        # The static props' per-vertex light samples (prop_vertex_light.py):
+        # baked after the atlas, written as colour meshes when the map packs.
+        self.prop_points_args = ["--bsp", self.bsp_input, "--runtime", runtime,
+                                 "--model-tool", model_tool] + game_args
+        self.prop_points_inputs = [self.bsp_input, model_tool] + content
         receipt = json.loads((p["legacy_scene"] / "scene-receipt.json").read_text())
         prop_materials = receipt["static_props"]["materials"]
         self.lightmap["exclude_materials"] += prop_materials
@@ -1092,6 +1101,38 @@ class Pipeline:
                   ([p["layers"]] if layers else []) +
                   ([p["noise_pair"]] if noise_target else []),
                   lambda: self.baker.bake("bake", bake_args))
+        if getattr(self, "prop_points_args", None) and self.lightmap.get("prop_vertex_light",
+                                                                          True):
+            # Static props' baked per-vertex light (Source 2's static-prop
+            # lighting; prop_vertex_light.py): the samples, then their light,
+            # baked in the atlas's scene and unit. Its own stage and atlas
+            # paths, so the lightmap bake's outputs are untouched.
+            self.step("prop-points", self.prop_points_inputs, {},
+                      ["prop_vertex_light.py", "legacy_bsp_scene.py", "legacy_bsp.py",
+                       "source_content.py"], [p["prop_points"]],
+                      lambda: self.run("prop-points", [
+                          sys.executable, HERE / "prop_vertex_light.py", "points"] +
+                          self.prop_points_args + ["--out", p["prop_points"]]))
+            prop_args = []
+            skip = {"--out-stage": p["prop_stage"], "--out-exr": p["prop_scratch_exr"]}
+            dropped = {"--noise-pair-dir", "--out-coverage-exr", "--directional-dir"}
+            arguments = iter(bake_args)
+            for item in arguments:
+                if item in dropped:
+                    next(arguments)
+                    continue
+                prop_args.append(item)
+                if item in skip:
+                    next(arguments)
+                    prop_args.append(skip[item])
+            prop_args += ["--prop-vertices", p["prop_points"], "--prop-vertex-light",
+                          p["prop_light"], "--prop-vertices-only"]
+            self.step("prop-vertices", [bake_stage, p["prop_points"]] + self.scene_sources() +
+                      ([environment] if environment else []),
+                      dict(bake_settings, prop_vertices=True),
+                      SCENE_SCRIPTS + self.baker.scripts("prop-vertices"),
+                      [p["prop_light"], p["prop_light"].with_name(p["prop_light"].name + ".json")],
+                      lambda: self.baker.bake("prop-vertices", prop_args))
         if noise_target:
             halves = [p["noise_pair"] / "total-a.exr", p["noise_pair"] / "total-b.exr"]
             mean_samples = 2 * max(1, (self.lightmap["samples"] + 1) // 2)
@@ -1388,6 +1429,15 @@ class Pipeline:
                                              p["bsp_ambient"], "--receipt", worldlights] +
                                     [item for control in controls
                                      for item in ("--style", str(control["style"]))])
+            if p["prop_light"].is_file():
+                # The props' baked per-vertex light replaces vrad's colour
+                # meshes in the pak (prop_vertex_light.py write).
+                seconds += self.run("pack", [sys.executable, HERE / "prop_vertex_light.py",
+                                             "write", "--bsp", pack_bsp, "--points",
+                                             p["prop_points"], "--light", p["prop_light"],
+                                             "--out", pack_bsp, "--receipt",
+                                             pack_bsp.with_name(pack_bsp.stem +
+                                                                "_prop_vertex_light.json")])
             return seconds + self.usd_python("pack", "usd_worldmesh_pack.py", pack_args)
         hidden = {shape["name"] for shape in self.scene["shapes"]
                   if shape["material"] in self.hidden_materials}
@@ -1417,7 +1467,8 @@ class Pipeline:
                   ([p["prbv"]] if volume else []) + ([p["rtrn"]] if radiosity else []) +
                   ([p["sdfv"]] if self.sdf_volume else []) +
                   ([p["rprb"]] if probe else []) +
-                  ([scene_receipt] if self.derived else []),
+                  ([scene_receipt] if self.derived else []) +
+                  ([p["prop_light"], p["prop_points"]] if p["prop_light"].is_file() else []),
                   dict({"prefix": self.map, **self.world_mesh},
                        **({"probe_volume": True} if volume else {}),
                        **({"radiosity_transfer": True} if radiosity else {}),
@@ -1427,7 +1478,8 @@ class Pipeline:
                        **({"derived_scene": True} if self.derived else {})),
                   ["usd_worldmesh_pack.py", "worldmesh_seam_weld.py", "worldstage_mesh_pack.py"] +
                   (["leaf_ambient_from_prbv.py", "probe_volume.py"] if volume else []) +
-                  (["bsp_worldlights.py"] if controls or volume else []),
+                  (["bsp_worldlights.py"] if controls or volume else []) +
+                  (["prop_vertex_light.py"] if p["prop_light"].is_file() else []),
                   [p["wmsh"], p["wmsh"].with_name(p["wmsh"].name + ".json"), p["bsp2"]] +
                   ([p["bsp_ambient"], p["bsp_ambient"].with_suffix(".json")] if volume else []),
                   pack)

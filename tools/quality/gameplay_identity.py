@@ -13,8 +13,10 @@ ambient samples (derived from the probe volume).
 """
 
 import argparse
+import io
 import json
 import sys
+import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -27,6 +29,24 @@ SCHEMA = "legacy-relight-identity/v1"
 RELIT_LUMPS = {15: "worldlights", 54: "worldlights_hdr", 51: "leaf_ambient_index_hdr",
                52: "leaf_ambient_index", 55: "leaf_ambient_lighting_hdr",
                56: "leaf_ambient_lighting"}
+
+
+# The pak lump may differ only in the static props' baked vertex light
+# (sp_<n>.vhv and sp_hdr_<n>.vhv, prop_vertex_light.py): every other entry
+# byte for byte.
+PAK_LUMP = 40
+
+
+def pak_differs_only_in_colour_meshes(original, carried):
+    def entries(blob):
+        with zipfile.ZipFile(io.BytesIO(bytes(blob))) as pak:
+            return {info.filename: pak.read(info.filename) for info in pak.infolist()
+                    if not (info.filename.lower().rsplit("/", 1)[-1].startswith("sp_") and
+                            info.filename.lower().endswith(".vhv"))}
+    try:
+        return entries(original) == entries(carried)
+    except zipfile.BadZipFile:
+        return False
 
 
 def gameplay_identity(source, bsp2):
@@ -42,6 +62,10 @@ def gameplay_identity(source, bsp2):
         carried_version = package.legacy["lumps"][index][2]
         if original == carried and version == carried_version:
             identical.append(index)
+        elif index == PAK_LUMP and version == carried_version and \
+                pak_differs_only_in_colour_meshes(original, carried):
+            relit.append({"lump": index, "name": "pakfile (static prop colour meshes)",
+                          "bytes": [len(original), len(carried)]})
         elif index in RELIT_LUMPS:
             relit.append({"lump": index, "name": RELIT_LUMPS[index],
                           "bytes": [len(original), len(carried)]})

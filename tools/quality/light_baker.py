@@ -8,6 +8,8 @@ the tree runs a map-lighting bake:
 
     bake          the lightmap atlas: direct and indirect layers, the
                   directional page, the noise halves (LMAP)
+    prop-vertices the static props' per-vertex light in the atlas's unit
+                  (prop_vertex_light.py; vrad's sp_<n>.vhv colour meshes)
     light-masks   the static lights' baked shadow masks (LSMK) from the
                   lighting stage
     probe         reflection-probe faces with depth and relight bands (RPRB)
@@ -28,6 +30,7 @@ below; the back end's steps and cache keys name operations, not scripts.
 # operation -> (Blender script, the scripts it reads besides the scene reader)
 OPERATIONS = {
     "bake": ("pbrt_lightmap_bake.py", ["pbrt_blender.py"]),
+    "prop-vertices": ("pbrt_lightmap_bake.py", ["pbrt_blender.py"]),
     "light-masks": ("light_mask_bake.py", ["pbrt_blender.py", "light_shadow_masks.py"]),
     "probe": ("pbrt_reflection_probe.py",
               ["reflection_probe_set.py", "reflection_probe.py", "pbrt_blender.py",
