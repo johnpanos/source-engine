@@ -682,14 +682,39 @@ vec3 RefractSceneColor( vec2 uv )
 	    texture( sampler2D( sceneColorTexture, sceneColorSampler ), pixel / extent ).rgb );
 }
 
+// Portal 2's $localrefract (refract_ps2x LOCALREFRACT): the base texture,
+// refracted in texture space by the tangent-space eye vector and the normal
+// map, instead of the scene behind the surface. The eye vector is computed per
+// pixel from the interpolated tangent frame, as retail recomputes it per pixel.
+// transmission.x holds $localrefractdepth. The result is linear radiance.
+vec3 LocalRefractColor( vec3 mapped, vec2 uv )
+{
+	const vec3 toEye = frame.eye.xyz - worldPosition;
+	const vec3 eyeTs = normalize( vec3( dot( toEye, normalize( tangentS ) ),
+	    dot( toEye, normalize( tangentT ) ), dot( toEye, normalize( worldNormal ) ) ) );
+	// rDotN is negative for a front face. Keep its sign but hold it away from
+	// zero at grazing angles; the lookup is clamped to the texture below.
+	const float rDotN = abs( eyeTs.z ) < 1e-3 ? -1e-3 : -eyeTs.z;
+	vec2 offset = eyeTs.xy / rDotN + mapped.xy + ( 1.0 - mapped.z ) * eyeTs.xy / rDotN;
+	const vec2 size = vec2( textureSize( sampler2D( baseTexture, baseSampler ), 0 ) );
+	offset *= vec2( size.y / size.x, 1.0 ) * material.transmission.x;
+	vec3 refracted =
+	    texture( sampler2D( baseTexture, baseSampler ), clamp( uv + offset, 0.0, 1.0 ) ).rgb;
+	const float mask = texture(
+	    sampler2D( baseTexture, baseSampler ), clamp( uv + mapped.xy * 0.1, 0.0, 1.0 ) ).a;
+	refracted = mix( refracted, vec3( mask ), 0.025 );
+	return refracted * pow( max( mapped.z, 0.0 ), 3.0 ) * material.tint.rgb;
+}
+
 void RefractSurface()
 {
 	const vec4 bump = texture( sampler2D( bumpTexture, bumpSampler ), baseUv );
 	const vec3 mapped = bump.rgb * 2.0 - 1.0;
+	const bool local = material.transmission.z > 1.5;
 	const vec2 unwarped = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
 	const vec2 warped = unwarped + mapped.xy * bump.a * material.transmission.x;
-	vec3 behind = RefractSceneColor( warped );
-	if ( material.transmission.y > 0.5 )
+	vec3 behind = local ? vec3( 0.0 ) : RefractSceneColor( warped );
+	if ( !local && material.transmission.y > 0.5 )
 	{
 		const vec2 halfBlur = vec2( 0.5 / 512.0 );
 		const vec2 fullBlur = vec2( 1.0 / 512.0 );
@@ -708,7 +733,11 @@ void RefractSurface()
 	vec3 refractTint = material.tint.rgb;
 	if ( material.meshModes.z > 0.5 )
 		refractTint *= 2.0 * texture( sampler2D( emissionTexture, emissionSampler ), baseUv ).rgb;
-	vec3 result = mix( RefractSceneColor( unwarped ), behind * refractTint, fade );
+	const vec4 baseSource = vec4( baseUv, 0.0, 1.0 );
+	const vec2 localUv = vec2(
+	    dot( baseSource, material.baseTransform[0] ), dot( baseSource, material.baseTransform[1] ) );
+	vec3 result = local ? LocalRefractColor( mapped, localUv )
+	                    : mix( RefractSceneColor( unwarped ), behind * refractTint, fade );
 	const float alpha = material.meshModes.y > 0.5 ? 1.0 : bump.a;
 	// Authored images contain material radiance. A scene snapshot is already
 	// exposed and fogged, so it must not receive those transforms a second time.

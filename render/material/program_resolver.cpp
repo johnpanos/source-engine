@@ -24,6 +24,7 @@
 #include <cstring>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 
 namespace render::material
@@ -112,12 +113,34 @@ std::vector<double> UnitScale( std::vector<double> numbers )
 	return numbers;
 }
 
+// A matrix parameter's declared default in the shader's text form ("center .5
+// .5 scale 1 1 rotate 0 translate 0 0", as Refract declares $bumptransform),
+// while the material system reports the live value as its 4x4 matrix. Only
+// the identity is converted: scale 1 1, rotate 0 and translate 0 0 make the
+// centre irrelevant. Any other text stays text.
+std::optional<std::vector<double>> IdentityTransformText( const std::string &declared )
+{
+	std::string text;
+	for ( const char c : declared )
+		text += char( std::tolower( static_cast<unsigned char>( c ) ) );
+	double cx, cy, sx, sy, rotate, tx, ty;
+	char trailing;
+	if ( std::sscanf( text.c_str(), " center %lf %lf scale %lf %lf rotate %lf translate %lf %lf %c",
+	         &cx, &cy, &sx, &sy, &rotate, &tx, &ty, &trailing ) != 7 )
+		return std::nullopt;
+	if ( sx != 1.0 || sy != 1.0 || rotate != 0.0 || tx != 0.0 || ty != 0.0 )
+		return std::nullopt;
+	return std::vector<double>{ 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+}
+
 // Whether a variable's value is its declared default: equal numbers, or equal
 // text ignoring case. An empty declared default is 0 for a number.
 bool AtDefault( const std::string &value, const std::string &declared )
 {
 	const std::optional<std::vector<double>> a = Numbers( value );
 	std::optional<std::vector<double>> b = Numbers( declared );
+	if ( !b )
+		b = IdentityTransformText( declared );
 	if ( a && b && b->empty() && a->size() == 1 )
 		b = std::vector<double>{ 0.0 };
 	if ( a && b && !a->empty() )
@@ -531,7 +554,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 		    ClaimRefract( *block, sceneColorAvailable, nativeEnvMap, nativeReflectionProbes );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
-		return claim.envmap ? device::BlendMode::kOpaque : device::BlendMode::kAlpha;
+		return claim.Blend();
 	}
 	if ( material.family == "unlit" )
 	{
@@ -793,7 +816,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			return foundation::MakeUnexpected( std::string( "a Refract pipeline was refused" ) );
 		out.name = "refract";
 		out.request = std::move( request ).Value();
-		out.blend = claim.envmap ? device::BlendMode::kOpaque : device::BlendMode::kAlpha;
+		out.blend = claim.Blend();
 		out.sceneColor = claim.sceneColor;
 		return out;
 	}

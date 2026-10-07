@@ -27,14 +27,25 @@ struct RefractClaim
 	// the texture at the normal map's coordinates (refract_ps2x.fxc), bound
 	// through the material's emission binding (sRGB, unused by Refract).
 	bool tintTexture = false;
+	// Portal 2's $localrefract: the base texture refracted in texture space
+	// (refract_ps2x LOCALREFRACT). No scene color; opaque unless $translucent.
+	bool local = false;
+	bool translucent = false;
 	SurfaceConstants constants;
+
+	device::BlendMode Blend() const
+	{
+		if ( local )
+			return translucent ? device::BlendMode::kAlpha : device::BlendMode::kOpaque;
+		return envmap ? device::BlendMode::kOpaque : device::BlendMode::kAlpha;
+	}
 
 	SurfaceVariant Variant() const
 	{
 		SurfaceVariant variant;
 		variant.layout = SurfaceVertexLayout::kModel;
 		variant.terms = kSurfacePbr | kSurfaceTransmission | kSurfaceBump;
-		variant.blend = envmap ? device::BlendMode::kOpaque : device::BlendMode::kAlpha;
+		variant.blend = Blend();
 		variant.alphaWrite = false;
 		return variant;
 	}

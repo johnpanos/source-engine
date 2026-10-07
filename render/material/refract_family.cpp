@@ -11,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <optional>
+#include <span>
 #include <string_view>
 
 namespace render::material
@@ -25,16 +26,35 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 		claim.reason = "the block is not Refract";
 		return claim;
 	}
+	// Portal 2's $localrefract refracts the base texture in texture space; its
+	// base coordinates take $basetexturetransform. The screen-space points
+	// (scene color, or a base texture read at the warped screen position) have
+	// no base coordinates for a transform to move.
+	const bool local = detail::ReadFlag( block, "localrefract" );
 	constexpr std::array<std::string_view, 13> kClaimed = { "model", "translucent", "basetexture",
 	    "normalmap", "refractamount", "refracttint", "bluramount", "fadeoutonsilhouette", "envmap",
 	    "envmaptint", "envmapcontrast", "envmapsaturation", "refracttinttexture" };
-	if ( const std::optional<std::string> unclaimed =
-	         detail::UnclaimedParameter( block, kClaimed ) )
+	constexpr std::array<std::string_view, 14> kLocalClaimed = { "model", "translucent",
+	    "basetexture", "normalmap", "refractamount", "refracttint", "bluramount", "envmap",
+	    "envmaptint", "envmapcontrast", "envmapsaturation", "basetexturetransform", "localrefract",
+	    "localrefractdepth" };
+	if ( const std::optional<std::string> unclaimed = detail::UnclaimedParameter(
+	         block, local ? std::span<const std::string_view>( kLocalClaimed )
+	                      : std::span<const std::string_view>( kClaimed ) ) )
 	{
-		claim.reason = "the Refract point does not draw " + *unclaimed;
+		claim.reason = ( local ? "the local Refract point does not draw "
+		                       : "the Refract point does not draw " ) +
+		               *unclaimed;
 		return claim;
 	}
+	claim.local = local;
+	claim.translucent = detail::ReadFlag( block, "translucent" );
 	claim.baseTexture = detail::TextureBound( block, "basetexture" );
+	if ( local && !claim.baseTexture )
+	{
+		claim.reason = "$localrefract needs $basetexture";
+		return claim;
+	}
 	claim.sceneColor = !claim.baseTexture;
 	if ( claim.sceneColor && !sceneColorAvailable )
 	{
@@ -68,6 +88,23 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 	// Refract_DX90 reads $bluramount as an integer and clamps it to 0 or 1.
 	claim.constants.transmission[1] = blur >= 1.0f ? 1.0f : 0.0f;
 	claim.constants.transmission[2] = 1.0f; // Refract point, not PBR thin glass
+	if ( local )
+	{
+		// LOCALREFRACT warps no screen coordinate and has no blur; the amount's
+		// slot carries $localrefractdepth (refract_ps2x c7.z).
+		const float depth = detail::ReadParameter( block, "localrefractdepth" );
+		if ( !std::isfinite( depth ) || depth < 0.0f || depth > 1.0f )
+		{
+			claim.reason = "invalid $localrefractdepth";
+			return claim;
+		}
+		claim.constants.transmission[0] = depth;
+		claim.constants.transmission[1] = 0.0f;
+		claim.constants.transmission[2] = 2.0f; // the local Refract point
+		for ( int i = 0; i < 8; ++i )
+			claim.constants.baseTransform[i] =
+			    detail::ReadParameter( block, "basetexturetransform", i );
+	}
 	claim.constants.transmission[3] =
 	    detail::ReadFlag( block, "fadeoutonsilhouette" ) ? 1.0f : 0.0f;
 	claim.constants.meshModes[0] = claim.baseTexture ? 1.0f : 0.0f;

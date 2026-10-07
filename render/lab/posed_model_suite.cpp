@@ -56,23 +56,25 @@ public:
 	TextureId cutoutFixture;
 	TextureId environmentFixture;
 	TextureId decalFixture;
+	TextureId localRefractBase; // 2x2: red left column, green right (nearest, clamped)
 	TextureId Import( int handle, bool ) override
 	{
-		return handle == 1   ? normalFixture
-		       : handle == 2 ? phongWarpFixture
-		       : handle == 3 ? refractNormalFixture
-		       : handle == 4 ? refractWarpFixture
-		       : handle == 5 ? twoTextureBase
-		       : handle == 6 ? twoTextureOverlay
-		       : handle == 7 ? cutoutFixture
-		       : handle == 9 ? decalFixture
-		       : handle == 8 ? environmentFixture
-		                     : TextureId{};
+		return handle == 1    ? normalFixture
+		       : handle == 2  ? phongWarpFixture
+		       : handle == 3  ? refractNormalFixture
+		       : handle == 4  ? refractWarpFixture
+		       : handle == 5  ? twoTextureBase
+		       : handle == 6  ? twoTextureOverlay
+		       : handle == 7  ? cutoutFixture
+		       : handle == 9  ? decalFixture
+		       : handle == 8  ? environmentFixture
+		       : handle == 10 ? localRefractBase
+		                      : TextureId{};
 	}
 	SamplerDesc Sampler( int handle ) override
 	{
 		SamplerDesc sampler;
-		if ( handle == 6 || handle == 7 )
+		if ( handle == 6 || handle == 7 || handle == 10 )
 		{
 			sampler.address = AddressMode::kClampToEdge;
 			sampler.minFilter = sampler.magFilter = Filter::kNearest;
@@ -482,6 +484,17 @@ std::optional<std::string> RunChecks(
 	if ( !refractWarp )
 		return "the model Refract warp fixture could not be staged";
 	empty.refractWarpFixture = refractWarp.Value().texture;
+	TextureDesc localBaseDesc = normalDesc;
+	localBaseDesc.format = Format::kRGBA8Srgb;
+	localBaseDesc.width = localBaseDesc.height = 2;
+	const std::array<std::byte, 16> localBasePixels = { std::byte{ 255 }, std::byte{ 0 },
+	    std::byte{ 0 }, std::byte{ 255 }, std::byte{ 0 }, std::byte{ 255 }, std::byte{ 0 },
+	    std::byte{ 255 }, std::byte{ 255 }, std::byte{ 0 }, std::byte{ 0 }, std::byte{ 255 },
+	    std::byte{ 0 }, std::byte{ 255 }, std::byte{ 0 }, std::byte{ 255 } };
+	auto localBase = textures.Stage( "local-refract-base", localBaseDesc, localBasePixels );
+	if ( !localBase )
+		return "the local Refract base fixture could not be staged";
+	empty.localRefractBase = localBase.Value().texture;
 	TextureDesc colorDesc = normalDesc;
 	colorDesc.format = Format::kRGBA8Srgb;
 	const std::array<std::byte, 4> basePixelFixture = {
@@ -1028,6 +1041,145 @@ std::optional<std::string> RunChecks(
 	    "posed-model.refract-displaces-authored-scene-edge",
 	    "no warp " + std::to_string( noWarp.At( 40, 32 )[0] ) + ", warp " +
 	        std::to_string( withWarp.At( 40, 32 )[0] ) );
+	// Portal 2's $localrefract (refract_ps2x LOCALREFRACT): the base texture
+	// refracted in texture space, never the scene behind the surface. The
+	// fixture's eye looks straight down the quad's axis at the centre pixel,
+	// so the eye term of the offset is zero there.
+	{
+		const auto localMaterial = []( const char *normal, const char *depth )
+		{
+			WorldData world = MeshWorld();
+			world.materials[0].shader = "Refract_DX90";
+			world.materials[0].variables = { { "$model", "1" }, { "$normalmap", normal },
+			    { "$basetexture", "local-base" }, { "$localrefract", "1" },
+			    { "$localrefractdepth", depth }, { "$refractamount", ".025" },
+			    { "$bluramount", "1" } };
+			return world;
+		};
+		const auto srgb = []( float v )
+		{
+			return v <= 0.04045f ? v / 12.92f : std::pow( ( v + 0.055f ) / 1.055f, 2.4f );
+		};
+		// Uniform base (two-texture-base, sRGB 128 192 255 alpha 64), flat
+		// normal: the base, 2.5 % towards its own alpha, times normal z cubed.
+		const float baseAlpha = 64.0f / 255.0f;
+		const float baseLinear[3] = {
+		    srgb( 128.0f / 255.0f ), srgb( 192.0f / 255.0f ), srgb( 255.0f / 255.0f ) };
+		struct Case
+		{
+			const char *name;
+			int normalHandle;
+			float zCubed;
+		};
+		const float tiltedZ = 170.0f / 255.0f * 2.0f - 1.0f;
+		for ( const Case &c : { Case{ "posed-model.local-refract-flat-normal-draws-base", 3, 1.0f },
+		          Case{ "posed-model.local-refract-normal-z-cubed-darkens", 1,
+		              tiltedZ * tiltedZ * tiltedZ } } )
+		{
+			WorldData world = localMaterial( "fixture-normal", "0.05" );
+			world.materials[0].textures = {
+			    { "$normalmap", c.normalHandle }, { "$basetexture", 5 } };
+			WorldPass local;
+			local.SetWorld( std::move( world ) );
+			CanvasImage image;
+			if ( auto why = render( local, 0, false, 24, background, image, false,
+			         RenderCoreDrawPhase::kAll, false ) )
+				return why;
+			bool exact = local.Failures() == 0 && local.Stats().posedDrawsDrawn == 1;
+			std::string detail;
+			for ( int ch = 0; ch < 3; ++ch )
+			{
+				const float expected = ( baseLinear[ch] * 0.975f + baseAlpha * 0.025f ) * c.zCubed;
+				exact &= std::abs( image.At( 32, 32 )[ch] - expected ) < 0.004f;
+				detail += std::to_string( image.At( 32, 32 )[ch] ) + "/" +
+				          std::to_string( expected ) + " ";
+			}
+			results.That( exact, c.name, detail + local.Stats().lastFailure );
+			local.ReleaseDevice( *device );
+		}
+		// The local point reads no scene color: it claims without a capture,
+		// draws opaque, and its pixel does not change with the background.
+		WorldData sceneFree = localMaterial( "fixture-normal", "0.05" );
+		sceneFree.materials[0].textures = { { "$normalmap", 3 }, { "$basetexture", 5 } };
+		const auto localDesc = material::MapVariables( "Refract_DX90",
+		    { { "$model", "1" }, { "$normalmap", "n" }, { "$basetexture", "b" },
+		        { "$localrefract", "1" }, { "$localrefractdepth", "0.05" } },
+		    {} );
+		const auto claimed = localDesc
+		                         ? material::ClaimForMesh( localDesc.Value(), false, false )
+		                         : foundation::Expected<BlendMode, std::string>(
+		                               foundation::MakeUnexpected( std::string( "unmapped" ) ) );
+		results.That( claimed && claimed.Value() == BlendMode::kOpaque,
+		    "posed-model.local-refract-claims-opaque-without-scene-color",
+		    claimed ? "" : claimed.Error() );
+		WorldPass sceneFreePass;
+		sceneFreePass.SetWorld( std::move( sceneFree ) );
+		CanvasImage overDark, overBright;
+		if ( auto why = render( sceneFreePass, 0, false, 25, black, overDark, false,
+		         RenderCoreDrawPhase::kAll, false ) )
+			return why;
+		if ( auto why = render( sceneFreePass, 0, false, 26, { 1, 1, 1, 1 }, overBright, false,
+		         RenderCoreDrawPhase::kAll, false ) )
+			return why;
+		bool same = sceneFreePass.Failures() == 0;
+		for ( int ch = 0; ch < 3; ++ch )
+			same &= std::abs( overDark.At( 32, 32 )[ch] - overBright.At( 32, 32 )[ch] ) < 1e-4f;
+		results.That( same, "posed-model.local-refract-ignores-scene-behind" );
+		sceneFreePass.ReleaseDevice( *device );
+		// $localrefractdepth scales the normal's texture-space offset: depth 0
+		// keeps the lookup at the red column, depth 0.8 with the +x warp normal
+		// moves it into the green column (2x2 fixture, aspect 1).
+		CanvasImage atDepth[2];
+		for ( int i = 0; i < 2; ++i )
+		{
+			WorldData world = localMaterial( "fixture-warp", i == 0 ? "0" : "0.8" );
+			world.materials[0].textures = { { "$normalmap", 4 }, { "$basetexture", 10 } };
+			WorldPass pass2;
+			pass2.SetWorld( std::move( world ) );
+			if ( auto why = render( pass2, 0, false, 27 + i, background, atDepth[i], false,
+			         RenderCoreDrawPhase::kAll, false ) )
+				return why;
+			pass2.ReleaseDevice( *device );
+		}
+		results.That( atDepth[0].At( 32, 32 )[0] > 0.9f && atDepth[0].At( 32, 32 )[1] < 0.05f &&
+		                  atDepth[1].At( 32, 32 )[1] > 0.9f && atDepth[1].At( 32, 32 )[0] < 0.05f,
+		    "posed-model.local-refract-depth-moves-base-lookup",
+		    "depth 0 rg " + std::to_string( atDepth[0].At( 32, 32 )[0] ) + " " +
+		        std::to_string( atDepth[0].At( 32, 32 )[1] ) + ", depth .8 rg " +
+		        std::to_string( atDepth[1].At( 32, 32 )[0] ) + " " +
+		        std::to_string( atDepth[1].At( 32, 32 )[1] ) );
+		// Named refusals: the local point has no silhouette fade or tint
+		// texture, and refracts nothing without a base texture.
+		const auto refused = [&]( const std::vector<material::VmtPair> &extra, bool withBase )
+		{
+			std::vector<material::VmtPair> vars = {
+			    { "$model", "1" }, { "$normalmap", "n" }, { "$localrefract", "1" } };
+			if ( withBase )
+				vars.push_back( { "$basetexture", "b" } );
+			for ( auto &e : extra )
+				vars.push_back( e );
+			const auto desc = material::MapVariables( "Refract_DX90", vars, {} );
+			return desc && !material::ClaimForMesh( desc.Value(), true, true );
+		};
+		const std::vector<material::VmtPair> fade = { { "$fadeoutonsilhouette", "1" } };
+		const std::vector<material::VmtPair> tintTexture = { { "$refracttinttexture", "t" } };
+		results.That( refused( fade, true ) && refused( tintTexture, true ) && refused( {}, false ),
+		    "posed-model.local-refract-refuses-unported-controls" );
+		// A base transform moves the local point's texture-space lookup; the
+		// screen-space point has no base coordinates and keeps refusing it.
+		const auto transformed = []( bool local )
+		{
+			std::vector<material::VmtPair> vars = { { "$model", "1" }, { "$normalmap", "n" },
+			    { "$basetexture", "b" },
+			    { "$basetexturetransform", "center .5 .5 scale 2 2 rotate 0 translate 0 0" } };
+			if ( local )
+				vars.push_back( { "$localrefract", "1" } );
+			const auto desc = material::MapVariables( "Refract_DX90", vars, {} );
+			return desc && bool( material::ClaimForMesh( desc.Value(), true, true ) );
+		};
+		results.That( transformed( true ) && !transformed( false ),
+		    "posed-model.refract-base-transform-only-on-local-point" );
+	}
 	// A smaller or offset viewport shares a full-size scene-color attachment
 	// in the game. It must sample the scene beneath that pixel, not clear
 	// pixels beyond the viewport (the core-only hatch in the game).

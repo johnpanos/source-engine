@@ -12115,3 +12115,39 @@ Source 2 stores a lighting value per vertex of each static prop ([Source 2 light
 - Oracles: on retail `sp_a1_intro4` all 498 props' layouts (checksum, LOD and strip-group counts) equal vrad's own files, and the codec round-trips vrad's bytes exactly; 11 unit tests (`tests/test_prop_vertex_light.py`); `content.studio-model` and `.pose` pass (corpus suite unavailable here: `STUDIO_MODEL_CORPUS_VPKS` unset).
 - intro4 (bake on the bazzite RTX 3070, OptiX, 2048 spp, 588,057 samples): per-prop light correlates with vrad's at 0.84 (log), at 0.41x its level, matching the Cycles atlas's ~0.5x of vrad's lightmaps; 25,474 samples (4%) were inside solid and filled. Published map `46fb4168…` (pre-change `5cc1d9b4…` kept on the box as `.pre-pvl.bsp`); gameplay identity passes with only L040 and LHDR changed. 4K game captures on 8 demo views: prop views change (up to 3.2% of pixels over ΔE 2.3, e.g. the elevator-hole ring and perforated panels), prop-free views are identical.
 - Open: a full pipeline rebuild through the new steps (intro4 was finished by hand to avoid a 2-hour atlas re-bake), visual review of prop/world seams, frame time (none expected: same shader variant).
+
+## K12 glass cohort, first slice: Portal 2 `$localrefract` light covers on the core (2026-10-06, user goal)
+
+Bounded slice of the glass cohort (RFC 0016 priority item 2; row R96). A runtime
+census on `sp_a2_laser_intro` (`cl_render_debug_claims`) showed glass as every
+refused model draw: `glass/glasswindow_refract01` (581 per 30 frames, the
+`glass_lightcover` props in nearly every Portal 2 map) and two `$envmap`
+materials that need native reflection probes on that unbaked map.
+
+- The Refract point gains Portal 2's `LOCALREFRACT` (`refract_ps2x`): the base
+  texture refracted in texture space by the tangent-space eye vector and the
+  normal map, darkened by the normal's z cubed, with `$localrefractdepth`. The
+  eye vector is computed per pixel from the interpolated tangent frame. The
+  shared Refract coating applies. No scene color is read; opaque unless
+  `$translucent`. `$basetexturetransform` is claimed by the local point only;
+  `$fadeoutonsilhouette` and `$refracttinttexture` with `$localrefract` are
+  refused by name, as is `$localrefract` without `$basetexture`.
+- `$localrefract`/`$localrefractdepth` moved from the no-effect table to the
+  Refract schema; `$time` is mapped at default 0 and refused when nonzero.
+- `AtDefault` compares a matrix default declared as identity text
+  (`center .5 .5 scale 1 1 rotate 0 translate 0 0`) with the live identity
+  matrix, which kept identity `$bumptransform` values out.
+- Lab: `posed-model` 117/0 with seven new checks (exact flat-normal value,
+  z-cubed darkening, depth moves the lookup, scene independence, opaque claim
+  without scene color, named refusals, transform only on the local point).
+  Four seeded shader defects (no depth, z squared, no mask mix, local branch
+  off) each fail their check. `map-terms` 38/0, `selfillum` 25/0.
+- Game: `sp_a2_laser_intro` refused model draws 1,002 → 415 per census (the
+  probe-dependent pair remain). `sp_a2_bridge_intro` wall and ceiling covers
+  drawn by the core beside `r_core_world 0`: same stripes and tints, the core's
+  tubes about 1.5x brighter in linear light with exposure pinned to 1 (sRGB
+  decode and linear tint against the frozen port's handling). Not a parity
+  target (user direction, 2026-10-06: the core should look better and be more
+  physically accurate, not match one for one).
+- Open in the cohort: `$envmap` glass on maps without RPRB, `$nocull` fracture
+  glass, `$additive` Refract, the elevator and pipe glass, frame time.

@@ -311,6 +311,14 @@ constexpr VmtKeyRow kRefractKeys[] = {
     { "refract", "$envmapcontrast", "envmapcontrast", ValueKind::kFloat, "0" },
     { "refract", "$envmapsaturation", "envmapsaturation", ValueKind::kFloat3, "[1 1 1]" },
     { "refract", "$refracttinttexture", "refracttinttexture", ValueKind::kTexture, "" },
+    { "refract", "$basetexturetransform", "basetexturetransform", ValueKind::kTransform, "" },
+    // Portal 2's refract_ps2x LOCALREFRACT: the base texture refracted in
+    // texture space (the native backend's RefractMaterialIsLocal).
+    { "refract", "$localrefract", "localrefract", ValueKind::kBool, "0" },
+    { "refract", "$localrefractdepth", "localrefractdepth", ValueKind::kFloat, "0.05" },
+    // Portal 2's Refract declares $time for its animated variants; neither
+    // point reads it, so a nonzero value stays unclaimed and is refused.
+    { "refract", "$time", "time", ValueKind::kFloat, "0" },
 };
 
 constexpr VmtMetadataRow kMetadata[] = {
@@ -404,8 +412,7 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$envmapsphere", "a DirectX 6 envmap mode no dx9 shader reads" },
     { "$basemapalphaenvmapmask", "misspelled; VertexLitGeneric declares $basealphaenvmapmask" },
     { "$translucency", "misspelled; no shader declares it (the flag is $translucent)" },
-    { "envmap",
-        "no '$': a shader parameter is looked up as $envmap, so this key sets nothing" },
+    { "envmap", "no '$': a shader parameter is looked up as $envmap, so this key sets nothing" },
     { "phong", "no '$': a shader parameter is looked up as $phong, so this key sets nothing" },
     { "$vertextcolor", "misspelled; no shader declares it (the flag is $vertexcolor)" },
     { "$decalfadetime", "the engine's decal fade (r_decal.cpp), not a shader parameter" },
@@ -423,8 +430,6 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$envampsaturation", "misspelled; VertexLitGeneric declares $envmapsaturation", "vertexlit" },
     { "$dudvmap", "Refract_DX90 samples $normalmap, not $dudvmap", "refract" },
     { "$scale", "Refract_DX90 has no $scale shader parameter", "refract" },
-    { "$localrefract", "Refract_DX90 has no $localrefract shader parameter", "refract" },
-    { "$localrefractdepth", "Refract_DX90 has no $localrefractdepth shader parameter", "refract" },
     { "$normalmapalphaenvmapmask", "Refract_DX90 always uses normal alpha for reflection",
         "refract" },
     { "$envmaplightscale", "Refract_DX90 has no $envmaplightscale shader parameter", "refract" },
@@ -459,9 +464,9 @@ constexpr VmtMetadataRow kMetadata[] = {
         "textures are read through their sRGB views" },
     { "$x360appchooser", "Xbox 360 application-chooser flag; no PC shader reads it" },
     { "$nolod", "texture level-of-detail selection (mat_picmip), not a shading parameter" },
-    { "$decalfadeduration", "the engine's studio decal fade (l_studio.cpp), not a shader parameter" },
-    { "$translucent",
-        "DecalModulate_DX9 always blends dst * src color; the flag changes no state",
+    { "$decalfadeduration",
+        "the engine's studio decal fade (l_studio.cpp), not a shader parameter" },
+    { "$translucent", "DecalModulate_DX9 always blends dst * src color; the flag changes no state",
         "decal-modulate" },
     { "$fogfadestart", "DecalModulate_DX9 declares no shader parameters", "decal-modulate" },
     { "$fogfadeend", "DecalModulate_DX9 declares no shader parameters", "decal-modulate" },
