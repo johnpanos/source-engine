@@ -12183,3 +12183,27 @@ Retail Source BSPs carry no RPRB, so every material reading `env_cubemap`
 - Open: LDR cubemaps (`mat_hdr_level` 0), GGX prefiltering of the cubes' mips
   (they are the bake's box-filtered mips), per-face brush cubemap assignment
   (per-pixel nearest here), frame time.
+
+## K12 glass cohort, third slice: shattered glass and scene color on plain maps (2026-10-06, user goal)
+
+- Refract claims `$nocull` (mapped in its schema); the resolver already draws
+  `$nocull` materials two-sided. `RefractSurface` turns its normal toward the
+  viewer (`faceforward`), so a pane seen from behind fades and coats as from
+  the front.
+- Scene color is the target's, not the stage's: the world and model
+  resolvers and the claim census take it on plain maps too (the
+  composition's capture always exists; a slot that cannot copy its color
+  still fails its view by name).
+- Lab `posed-model` 119/0 with two new checks: a pane seen from behind
+  (reversed winding, normal away) with `$nocull` matches the front, and
+  without `$nocull` it is culled (its tint would show if drawn). Seeded
+  defects caught: no normal flip, `$nocull` ignored by the resolver.
+  `map-terms` 39/0, `reflection-probes` 45/0, `selfillum` 26/0,
+  `clustered-lights` 26/0.
+- Game, retail `sp_a1_intro4`: refused glass draws 198 → 0 (fracture panes
+  and the observation window; 16 cubemaps as probes), 0 failed views. The
+  broken window draws from both sides beside legacy; its cracks glint far
+  less than legacy's, whose cubemap term adds the full reflection where the
+  core applies the dielectric Fresnel coating.
+- Open: the crack highlight strength (visual review), `$additive` Refract,
+  warp particles, frame time.

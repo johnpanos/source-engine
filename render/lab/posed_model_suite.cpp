@@ -516,6 +516,8 @@ std::optional<std::string> RunChecks(
 	if ( !cutoutTexture )
 		return "the model depth cutout fixture could not be staged";
 	empty.cutoutFixture = cutoutTexture.Value().texture;
+	// -1 poses the fixture's normals away from the eye (a pane seen from behind).
+	float poseNormalSign = 1.0f;
 	auto render = [&]( WorldPass &active, float offset, bool lit, std::uint64_t frame,
 	                  const ClearColor &clear, CanvasImage &image, bool twoLayers = false,
 	                  RenderCoreDrawPhase phase = RenderCoreDrawPhase::kAll, bool copySource = true,
@@ -537,7 +539,10 @@ std::optional<std::string> RunChecks(
 		pose.phase = phase;
 		pose.vertices = bindPose;
 		for ( auto &vertex : pose.vertices )
+		{
 			vertex.position[0] += offset;
+			vertex.normal[2] *= poseNormalSign;
+		}
 		if ( dynamicMaterial )
 		{
 			WorldView::DynamicDraw draw;
@@ -966,6 +971,69 @@ std::optional<std::string> RunChecks(
 	    "pixel " + std::to_string( refracted.At( 32, 32 )[0] ) + ", " +
 	        std::to_string( refracted.At( 32, 32 )[1] ) + ", " +
 	        std::to_string( refracted.At( 32, 32 )[2] ) );
+	// Shattered glass ($nocull): the reversed pane draws only when two-sided,
+	// and from behind it shades like the front (its normal faces the viewer,
+	// so the silhouette fade keeps the tint instead of dropping it).
+	{
+		const auto paneWorld = [&]( bool reversed, bool twoSided )
+		{
+			WorldData world = MeshWorld();
+			world.materials[0].shader = "Refract_DX90";
+			world.materials[0].variables = { { "$model", "1" },
+			    { "$normalmap", "refract-normal-fixture" }, { "$refractamount", "0" },
+			    { "$refracttint", "[1 .25 .5]" } };
+			// The fade makes the back face's normal matter; without it a drawn
+			// pane is tinted however it faces, so the culled pane shows culling.
+			if ( twoSided )
+				world.materials[0].variables.push_back( { "$fadeoutonsilhouette", "1" } );
+			if ( twoSided )
+				world.materials[0].variables.push_back( { "$nocull", "1" } );
+			world.materials[0].textures.push_back( { "$normalmap", 3 } );
+			if ( reversed )
+			{
+				WorldData::StaticMeshLod &level = world.staticMeshes[0].lods[0];
+				std::vector<std::uint32_t> flipped = *level.indices;
+				for ( unsigned i = 0; i < flipped.size(); i += 3 )
+					std::swap( flipped[i + 1], flipped[i + 2] );
+				level.indices =
+				    std::make_shared<const std::vector<std::uint32_t>>( std::move( flipped ) );
+			}
+			return world;
+		};
+		CanvasImage front, back, culled;
+		const struct
+		{
+			bool reversed, twoSided;
+			CanvasImage *image;
+		} panes[] = { { false, true, &front }, { true, true, &back }, { true, false, &culled } };
+		std::uint64_t frame = 30;
+		std::string paneNotes;
+		for ( const auto &pane : panes )
+		{
+			WorldPass glassPane;
+			glassPane.SetWorld( paneWorld( pane.reversed, pane.twoSided ) );
+			// Seen from behind: reversed winding and the normal facing away.
+			poseNormalSign = pane.reversed ? -1.0f : 1.0f;
+			auto why = render( glassPane, 0, false, frame++, background, *pane.image );
+			poseNormalSign = 1.0f;
+			if ( why )
+				return why;
+			paneNotes += std::to_string( glassPane.Stats().posedDrawsDrawn ) + "/" +
+			             std::to_string( glassPane.Failures() ) + " " +
+			             glassPane.Stats().lastFailure + "; ";
+			glassPane.ReleaseDevice( *device );
+		}
+		bool same = true, tinted = front.At( 32, 32 )[1] < background.g * 0.8f;
+		for ( int c = 0; c < 3; ++c )
+			same &= std::abs( front.At( 32, 32 )[c] - back.At( 32, 32 )[c] ) < 0.01f;
+		bool culledAway = true;
+		for ( int c = 0; c < 3; ++c )
+			culledAway &= std::abs( culled.At( 32, 32 )[c] - backgroundRgb[c] ) < 0.01f;
+		results.That( tinted && same, "posed-model.refract-nocull-back-face-shades-like-front",
+		    "front g " + std::to_string( front.At( 32, 32 )[1] ) + ", back g " +
+		        std::to_string( back.At( 32, 32 )[1] ) + "; drawn/failures " + paneNotes );
+		results.That( culledAway, "posed-model.refract-back-face-culled-without-nocull" );
+	}
 	CanvasImage missingCapture;
 	if ( std::optional<std::string> why = render( refract, 0.0f, false, 20, background,
 	         missingCapture, false, RenderCoreDrawPhase::kAll, false ) )

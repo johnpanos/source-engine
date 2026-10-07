@@ -319,6 +319,8 @@ constexpr VmtKeyRow kRefractKeys[] = {
     // Portal 2's Refract declares $time for its animated variants; neither
     // point reads it, so a nonzero value stays unclaimed and is refused.
     { "refract", "$time", "time", ValueKind::kFloat, "0" },
+    // Two-sided panes (shattered glass): the resolver draws both faces.
+    { "refract", "$nocull", "nocull", ValueKind::kBool, "0" },
 };
 
 constexpr VmtMetadataRow kMetadata[] = {

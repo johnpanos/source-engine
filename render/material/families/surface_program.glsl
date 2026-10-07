@@ -724,7 +724,9 @@ void RefractSurface()
 		behind += RefractSceneColor( warped + fullBlur ) * 0.1111111;
 	}
 	const vec3 eye = normalize( frame.eye.xyz - worldPosition );
-	const vec3 smoothNormal = normalize( worldNormal );
+	// A two-sided pane ($nocull, shattered glass) seen from behind shades
+	// with its normal turned toward the viewer, for its fade and coating.
+	const vec3 smoothNormal = faceforward( normalize( worldNormal ), -eye, normalize( worldNormal ) );
 	float fade = 1.0;
 	if ( material.transmission.w > 0.5 )
 		fade = pow( clamp( dot( eye, smoothNormal ), 0.0, 1.0 ), 3.0 );

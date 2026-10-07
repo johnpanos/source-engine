@@ -969,11 +969,11 @@ void WorldPass::SetWorld( WorldData data )
 			claimed = std::move( mapped ).Value();
 			// Static meshes use the same surface program with model vertices,
 			// probes and clustered direct light instead of a lightmap page.
-			auto blend = source.mesh
-			                 ? material::ClaimForMesh( claimed.desc, data.reflection.has_value(),
-			                       data.stage != nullptr )
-			                 : material::ClaimForDrawing( claimed.desc, data.stage != nullptr,
-			                       nullptr, data.reflection.has_value() );
+			auto blend =
+			    source.mesh
+			        ? material::ClaimForMesh( claimed.desc, data.reflection.has_value(), true )
+			        : material::ClaimForDrawing( claimed.desc, data.stage != nullptr, nullptr,
+			              data.reflection.has_value() );
 			if ( !blend )
 				gap = claimed.desc.family + ": " + blend.Error();
 			else if ( !source.mesh && blend.Value() != BlendMode::kOpaque )
@@ -1460,7 +1460,8 @@ std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
 	if ( entry->material )
 	{
 		const material::MaterialDesc &desc = entry->material.Value().desc;
-		auto claim = source.mesh ? material::ClaimForMesh( desc, reflection, stage )
+		// Scene color is the target's (the composition's capture), on any map.
+		auto claim = source.mesh ? material::ClaimForMesh( desc, reflection, true )
 		                         : material::ClaimForDrawing(
 		                               desc, stage, &entry->requiresDepthAlpha, reflection );
 		if ( !claim )
@@ -2247,7 +2248,7 @@ void WorldPass::RecordBatch(
 		// (ClaimForDrawing's worldPbr) asks for the stage itself.
 		r.resolver->SetWorldPbr(
 		    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
-		r.resolver->SetSceneColorAvailable( world->stage != nullptr );
+		r.resolver->SetSceneColorAvailable( true );
 		r.materials.resize( world->materials.size() );
 	}
 	if ( ( !view.staticInstances.empty() || !view.posedModels.empty() ) && !r.modelResolver )
@@ -2263,7 +2264,7 @@ void WorldPass::RecordBatch(
 		r.modelResolver = std::move( resolver ).Value();
 		r.modelResolver->SetWorldPbr(
 		    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
-		r.modelResolver->SetSceneColorAvailable( world->stage != nullptr );
+		r.modelResolver->SetSceneColorAvailable( true );
 		r.modelMaterials.resize( world->materials.size() );
 		prewarmResolver( *r.modelResolver, "model" );
 	}
@@ -5086,6 +5087,7 @@ void WorldPass::RecordBatch(
 				r.prepassResolver->SetWorldPbr(
 				    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
 				r.prepassMaterials.resize( world->materials.size() );
+				prewarmResolver( *r.prepassResolver, "prepass" );
 			}
 			else
 			{
@@ -5103,6 +5105,7 @@ void WorldPass::RecordBatch(
 				    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
 				r.prepassModelResolver->SetSceneColorAvailable( true );
 				r.prepassModelMaterials.resize( world->materials.size() );
+				prewarmResolver( *r.prepassModelResolver, "prepass-model" );
 			}
 			else
 				note( "the model prepass resolver: " + resolver.Error() );

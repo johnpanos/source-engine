@@ -31,13 +31,13 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 	// (scene color, or a base texture read at the warped screen position) have
 	// no base coordinates for a transform to move.
 	const bool local = detail::ReadFlag( block, "localrefract" );
-	constexpr std::array<std::string_view, 13> kClaimed = { "model", "translucent", "basetexture",
+	constexpr std::array<std::string_view, 14> kClaimed = { "model", "translucent", "basetexture",
 	    "normalmap", "refractamount", "refracttint", "bluramount", "fadeoutonsilhouette", "envmap",
-	    "envmaptint", "envmapcontrast", "envmapsaturation", "refracttinttexture" };
-	constexpr std::array<std::string_view, 14> kLocalClaimed = { "model", "translucent",
+	    "envmaptint", "envmapcontrast", "envmapsaturation", "refracttinttexture", "nocull" };
+	constexpr std::array<std::string_view, 15> kLocalClaimed = { "model", "translucent",
 	    "basetexture", "normalmap", "refractamount", "refracttint", "bluramount", "envmap",
 	    "envmaptint", "envmapcontrast", "envmapsaturation", "basetexturetransform", "localrefract",
-	    "localrefractdepth" };
+	    "localrefractdepth", "nocull" };
 	if ( const std::optional<std::string> unclaimed = detail::UnclaimedParameter(
 	         block, local ? std::span<const std::string_view>( kLocalClaimed )
 	                      : std::span<const std::string_view>( kClaimed ) ) )
