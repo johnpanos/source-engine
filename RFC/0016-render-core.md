@@ -854,12 +854,16 @@ measured for this RFC; measured numbers are quoted from their records.
 ## Non-goals
 
 - Changing any frozen interface, content format or gameplay behavior.
-- A native D3D9, D3D12, Metal or WebGPU adapter. The port admits them; each
-  needs its own decision and evidence.
-- Porting `shaderapidx9`, or retiring ToGL. ToGL stays for mod shader DLLs
-  on the legacy D3D9 profiles (user decision, 2026-09-26). The OpenGL
-  adapter runs the core, not D3D bytecode.
-- Running D3D bytecode from mod shader DLLs on the core
+- A native WebGPU adapter. The port admits it; it needs its own decision
+  and evidence. D3D12 ([RFC 0024](0024-direct3d12-device-adapter.md)),
+  Metal ([RFC 0025](0025-metal-device-adapter.md)) and D3D9
+  ([RFC 0028](0028-direct3d9-device-adapter.md), user direction 2026-10-07)
+  have theirs.
+- Retiring ToGL. ToGL stays for mod shader DLLs on the SDL2 legacy profiles
+  (user decision, 2026-09-26). The OpenGL adapter runs the core, not D3D
+  bytecode.
+- Running D3D bytecode from mod shader DLLs on adapters other than D3D9
+  (RFC 0028 runs it on the D3D9 adapter only)
   ([Mod shader DLLs](#mod-shader-dlls)).
 - Temporal antialiasing or upscaler implementation; the proposed
   [temporal upscaling contract](0019-temporal-upscaling-contract.md) defines a
