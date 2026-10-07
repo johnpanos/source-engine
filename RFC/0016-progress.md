@@ -12657,3 +12657,17 @@ Eyeball is a dead shader whose `SHADER_FALLBACK` is Wireframe (eyeball.cpp):
   UnlitGeneric's `$displacementmap` (undeclared) are metadata.
 
 Portal 1 unsupported: 300 → 248; Portal 2: 145 → 129.
+
+### K12: Teeth and Eyes reach the mesh point; broken glass classification (2026-10-07, user request)
+
+The native backend hands the core a captured draw as a mesh draw only for
+VertexLitGeneric, Refract and PBR (`CEmptyMesh::EmitToCoreQueue`'s
+`draw.mesh`); every other shader's draws arrive as world-vertex draws. Teeth
+and Eyes, which draw on VertexLitGeneric's mesh point with Source's model
+lighting, now join that list (`Frozen-path: core progress`); without it the
+resolver would refuse them in the game. `material_claim_inventory.py`
+follows the same rule (`MESH_SHADERS`, `mesh_only`): a VMT under
+`materials/models/` is held to the mesh claims only when its shader is a mesh
+shader, so func_breakable_surf's broken glass (UnlitGeneric with vertex
+color, drawn by game code) takes its world claims. Unit test added (14 pass).
+Portal 1 unsupported: 248 → 235; Portal 2: 129 → 127.

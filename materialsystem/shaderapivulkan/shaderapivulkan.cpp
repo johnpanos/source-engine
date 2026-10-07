@@ -5279,9 +5279,14 @@ bool CEmptyMesh::EmitToCoreQueue()
 	draw.viewport = { float( g_Viewport.m_nTopLeftX ), float( g_Viewport.m_nTopLeftY ),
 	    float( g_Viewport.m_nWidth ), float( g_Viewport.m_nHeight ), g_Viewport.m_flMinZ,
 	    g_Viewport.m_flMaxZ };
+	// Frozen-path: core progress (RFC 0016 K12) - Teeth and Eyes draw on
+	// VertexLitGeneric's mesh point too (vertexlit_family.h), with the model
+	// lighting below.
 	draw.mesh = !V_stricmp( draw.shader, "VertexLitGeneric" ) ||
 	            !V_stricmp( draw.shader, "Refract" ) || !V_stricmp( draw.shader, "Refract_DX90" ) ||
-	            !V_stricmp( draw.shader, "PBR" );
+	            !V_stricmp( draw.shader, "PBR" ) || !V_stricmp( draw.shader, "Teeth" ) ||
+	            !V_stricmp( draw.shader, "Teeth_DX9" ) || !V_stricmp( draw.shader, "Eyes" ) ||
+	            !V_stricmp( draw.shader, "Eyes_dx9" );
 	// Frozen-path: hand a mesh point Source's model lighting at the draw (the
 	// ambient cube and enabled lights studiorender set), as values.
 	if ( draw.mesh )

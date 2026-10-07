@@ -43,6 +43,21 @@ class ClaimInventoryTest(unittest.TestCase):
                                        "blend": "alpha",
                                        "scene_inputs": {"native_reflection_probes": True}}])
 
+    def test_model_folder_unlit_material_takes_world_claims(self):
+        # Game code draws func_breakable_surf's broken glass (UnlitGeneric under
+        # materials/models/) as world-vertex draws; only mesh shaders are held
+        # to the mesh claims.
+        mesh = [row(gap="model vertices have no color or alpha channel",
+                    native_reflection_probes=False, linear_scene_color=False)]
+        world = [row(claim="alpha", world_stage=False), row(claim="alpha", world_stage=True)]
+        status, _ = audit.classify("materials/models/brokenglass/glass.vmt",
+                                   {"proxies": [], "shader_raw": "UnlitGeneric"}, mesh, world)
+        self.assertEqual(status, "supported_with_requirements")
+        status, _ = audit.classify("materials/models/brokenglass/glass.vmt",
+                                   {"proxies": [], "shader_raw": "VertexLitGeneric"}, mesh,
+                                   world)
+        self.assertEqual(status, "unsupported")
+
     def test_proxy_is_dynamic_even_when_baseline_claims(self):
         mesh = [row(claim="opaque", native_reflection_probes=False,
                     linear_scene_color=False)]

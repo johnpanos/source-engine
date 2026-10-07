@@ -108,11 +108,25 @@ def result_rows(fields):
     return mesh, world
 
 
+# The shaders whose captured draws the native backend hands the core as mesh
+# draws (shaderapivulkan.cpp, CEmptyMesh::EmitToCoreQueue's draw.mesh); every
+# other shader's draws reach it as world-vertex draws wherever its VMT lives.
+MESH_SHADERS = {"vertexlitgeneric", "refract", "refract_dx90", "pbr", "teeth", "teeth_dx9",
+                "eyes", "eyes_dx9"}
+
+
+def mesh_only(path, shader):
+    """Whether only the mesh claims can draw the material (MESH_SHADERS)."""
+    return path.startswith("materials/models/") and shader.lower() in MESH_SHADERS
+
+
 def classify(path, material, mesh, world, family=""):
     # A VMT path suggests a possible geometry, not evidence of scene reachability.
-    # Model VMTs need the mesh path. Other VMTs can use a world surface or mesh.
+    # Model VMTs of a mesh shader need the mesh path. Other VMTs, including a
+    # model folder's unlit materials that game code draws (func_breakable_surf's
+    # broken glass), can use a world surface or mesh.
     relevant = [("model_mesh", row) for row in mesh]
-    if not path.startswith("materials/models/"):
+    if not mesh_only(path, material.get("shader_raw", "")):
         relevant += [("world_surface", row) for row in world]
     candidates = []
     for geometry, row in relevant:
@@ -198,7 +212,7 @@ def summarize_refusals(results):
         # One material is counted once per feature, even if six claim inputs
         # repeat the same gap. Distinct features may co-occur on one material.
         rows = list(item.get("mesh_claims", []))
-        if not path.startswith("materials/models/"):
+        if not mesh_only(path, item.get("shader", "")):
             rows += item.get("world_claims", [])
         reasons = {row["gap"] for row in rows if "gap" in row}
         reasons.add(item["gap"])  # Includes VMT parse failures.
@@ -276,7 +290,7 @@ def collect(game, render_lab, scope, profile_path=None):
         if fields[13]:
             item["unmapped_keys"] = fields[13].split(",")
         if item["status"] == "unsupported":
-            relevant = mesh if path.startswith("materials/models/") else world
+            relevant = mesh if mesh_only(path, material["shader_raw"]) else world
             item["gap"] = next((r["gap"] for r in relevant if "gap" in r),
                                "no product geometry claims this material")
     # Subrect is not a shader: CMaterialSubRect points into its $material page,
