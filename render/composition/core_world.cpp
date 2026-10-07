@@ -2565,9 +2565,8 @@ const char *CoreWorld::MaterialDefault( const char *shader, const char *key )
 		return nullptr;
 	std::lock_guard<std::mutex> guard( m_DefaultsLock );
 	const std::pair<const char *, const char *> address( shader, key );
-	if ( auto at = m_DefaultsByAddress.find( address ); at != m_DefaultsByAddress.end() &&
-	                                                    *at->second.shader == shader &&
-	                                                    *at->second.key == key )
+	if ( auto at = m_DefaultsByAddress.find( address );
+	    at != m_DefaultsByAddress.end() && *at->second.shader == shader && *at->second.key == key )
 		return at->second.value->c_str();
 	auto byShader = m_MaterialDefaults.find( std::string_view( shader ) );
 	const std::string *found = nullptr;

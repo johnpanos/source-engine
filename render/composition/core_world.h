@@ -633,7 +633,8 @@ private:
 	{
 		std::size_t operator()( const std::pair<const char *, const char *> &p ) const noexcept
 		{
-			return std::hash<const void *>{}( p.first ) * 31u ^ std::hash<const void *>{}( p.second );
+			return std::hash<const void *>{}( p.first ) * 31u ^
+			       std::hash<const void *>{}( p.second );
 		}
 	};
 	std::unordered_map<std::pair<const char *, const char *>, DefaultByAddress, AddressPairHash>
