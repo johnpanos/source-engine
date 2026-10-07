@@ -201,6 +201,7 @@ struct AdapterChoice
 	bool textureCompressionBC = false; // the kBC* formats (D19)
 	bool multiDrawIndirect = false;    // D30: drawCount above 1
 	bool imageCubeArray = false;       // D32: cube-array image views
+	bool fillModeNonSolid = false;     // D38: VK_POLYGON_MODE_LINE
 	bool drawIndirectCount = false;    // D31: Vulkan 1.2's drawIndirectCount
 	bool drawIndirectFirstInstance = false; // D30: nonzero firstInstance in records
 	bool memoryBudget = false; // VK_EXT_memory_budget was enabled for VMA

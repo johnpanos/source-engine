@@ -62,6 +62,7 @@ struct UnlitClaim
 	bool decalModulate = false;
 	bool cable = false; // expanded ribbon: normal UV0, color UV1, linear vertex lighting
 	bool energy = false; // SolidEnergy (energy_family.h)
+	bool wireframe = false; // Wireframe: triangle edges as lines (device clause D38)
 	bool ignoreDepth = false;
 	bool depthBlend = false; // requires the view's copied scene depth in alpha
 	bool baseSrgb = true;
@@ -79,6 +80,7 @@ struct UnlitClaim
 		SurfaceVariant variant{ blend, alphaWrite, kSurfaceUnlit, 0, layout, ignoreDepth };
 		variant.cable = cable;
 		variant.energy = energy;
+		variant.wireframe = wireframe;
 		variant.decalModulate = decalModulate;
 		return variant;
 	}
@@ -119,6 +121,13 @@ UnlitClaim ClaimUnlitMesh( const ParameterBlock &block );
 // encoding ($hdrcompressedtexture0) and a lone $hdrbasetexture, whose
 // conversion depends on the texture's format, are refused by name.
 UnlitClaim ClaimSky( const ParameterBlock &block, bool hdr );
+// The Black shader (black.cpp): an opaque surface of no parameters drawn
+// black and fogged to the fog color, the unlit point with a zero tint.
+UnlitClaim ClaimBlack( const ParameterBlock &block );
+// Wireframe (wireframe_dx9.cpp; Eyeball, a dead shader, falls back to it):
+// UnlitGeneric with fog off, drawn as its triangles' edges (the device's line
+// fill, Capability::kFillModeLines, which the resolver requires).
+UnlitClaim ClaimWireframe( const ParameterBlock &block );
 
 using UnlitStatus = SurfaceStatus;
 

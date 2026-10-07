@@ -12627,3 +12627,33 @@ caught (7 of 7). Portal 1 unsupported: 330 → 300.
 
 Eyeball (34 materials) is a dead shader whose fallback is Wireframe;
 Wireframe needs a device fill mode and stays refused.
+
+### K12: device line fill (D38) and Wireframe/Eyeball on the unlit point (2026-10-07, user request)
+
+Wireframe_DX9 draws UnlitGeneric (DrawVertexLitGeneric_DX9 without
+lighting) forced to `MATERIAL_VAR_NOFOG` and `MATERIAL_VAR_WIREFRAME`, and
+Eyeball is a dead shader whose `SHADER_FALLBACK` is Wireframe (eyeball.cpp):
+70 materials across Portal 1 and 2. The device port had no fill mode.
+
+- **render.device.v2 clause D38** (`Capability::kFillModeLines`,
+  `RasterState::fill`, `FillMode::kLines`): triangle edges as one-pixel
+  lines; without the capability a line-fill pipeline fails `kUnsupported`
+  (shared `ValidatePipeline`, so the Metal and D3D12 adapters refuse it until
+  they claim it). Vulkan claims it with `fillModeNonSolid`
+  (`VK_POLYGON_MODE_LINE`); desktop GL with `glPolygonMode` (an optional
+  entry point); ES has no line fill. The suite's `FillModeLines`: refusal
+  without the capability; with it the full-screen triangle drawn as lines
+  leaves the center at the clear color while the same pipeline filled covers
+  it. A mutant Vulkan adapter that ignores the fill fails D38 on all three
+  Vulkan configurations. `render.device.v2.null`, `.sensitivity`, `.vulkan`,
+  `.vulkan.sensitivity`, `.gl` and `.gles` pass.
+- **Wireframe on the core**: `ClaimWireframe` (unlit_family.h) is
+  ClaimUnlit with fog off and `SurfaceVariant::wireframe`, which sets the
+  pipeline's fill; the resolver refuses it by name on a device without the
+  capability and keeps it off the emissive mesh branch. `render.lab.posed-model`
+  draws the same quad as UnlitGeneric, Wireframe and Eyeball: 1,024 covered
+  pixels filled, 159 for both wireframes (the edges and the shared diagonal).
+- `$nodecal` (engine decal placement), `$polyoffset` (undeclared) and
+  UnlitGeneric's `$displacementmap` (undeclared) are metadata.
+
+Portal 1 unsupported: 300 → 248; Portal 2: 145 → 129.

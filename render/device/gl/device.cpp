@@ -341,6 +341,9 @@ void GlDevice::QueryFacts()
 		have.Add( Capability::kCubeArrays );
 	if ( !IsEs() && gl.MultiDrawElementsIndirectCount )
 		have.Add( Capability::kDrawIndirectCount );
+	// D38: glPolygonMode is desktop GL's; ES has no line fill.
+	if ( !IsEs() && gl.PolygonMode )
+		have.Add( Capability::kFillModeLines );
 	CapabilitySet claimed;
 	for ( std::uint32_t bit = 0; bit < static_cast<std::uint32_t>( Capability::kCount ); ++bit )
 	{

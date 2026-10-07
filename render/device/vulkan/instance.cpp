@@ -209,6 +209,7 @@ DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical )
 	choice.textureCompressionBC = features.features.textureCompressionBC == VK_TRUE;
 	choice.multiDrawIndirect = features.features.multiDrawIndirect == VK_TRUE;
 	choice.imageCubeArray = features.features.imageCubeArray == VK_TRUE;
+	choice.fillModeNonSolid = features.features.fillModeNonSolid == VK_TRUE;
 	choice.drawIndirectFirstInstance = features.features.drawIndirectFirstInstance == VK_TRUE;
 	choice.drawIndirectCount = choice.core12 && features12.drawIndirectCount == VK_TRUE;
 	if ( !choice.dynamicRendering && !choice.core13 )

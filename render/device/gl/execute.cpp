@@ -1010,6 +1010,9 @@ private:
 		// Facing is judged in clip space (Y up), where glClipControl's
 		// upper-left origin keeps GL's own winding.
 		m_Gl.FrontFace( p.raster.frontCounterClockwise ? GL_CCW : GL_CW );
+		if ( m_Gl.PolygonMode )
+			m_Gl.PolygonMode(
+			    GL_FRONT_AND_BACK, p.raster.fill == FillMode::kLines ? GL_LINE : GL_FILL );
 		if ( p.raster.alphaToCoverage )
 			m_Gl.Enable( GL_SAMPLE_ALPHA_TO_COVERAGE );
 		else

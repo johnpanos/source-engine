@@ -47,6 +47,12 @@ constexpr VmtShaderRow kShaders[] = {
         "the 2D sky box's faces (Sky, render.pass.sky): an unlit textured quad whose base is an "
         "HDR encoding ($hdrcompressedtexture RGBS times 8, sky_hdr_compressed_rgbs_ps2x)" },
     { "sky_dx9", "unlit", "the sky box's faces without HDR: $basetexture times $color" },
+    { "wireframe", "unlit",
+        "Wireframe: UnlitGeneric without fog, drawn as its triangles' edges (device line fill, "
+        "clause D38; unlit_family.h ClaimWireframe)" },
+    { "wireframe_dx9", "unlit", "Wireframe's DirectX 9 implementation" },
+    { "eyeball", "unlit",
+        "Eyeball: a dead shader whose SHADER_FALLBACK is Wireframe (eyeball.cpp)" },
     { "decalmodulate", "decal-modulate",
         "dimensionless surface factors with modulate-2x blending" },
     { "decalmodulate_dx9", "decal-modulate", "DecalModulate DirectX 9 implementation" },
@@ -569,6 +575,9 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$vertextcolor", "misspelled; no shader declares it (the flag is $vertexcolor)" },
     { "$decalfadetime", "the engine's decal fade (r_decal.cpp), not a shader parameter" },
     { "$clientshader", "a model hint (MouthShader) no shader declares" },
+    { "$nodecal", "a material flag the engine's decal placement reads; no shader reads it" },
+    { "$polyoffset", "no shader in this engine declares it" },
+    { "$displacementmap", "UnlitGeneric declares no displacement map", "unlit" },
     { "$debug", "a material flag for debugger breaks; no shader reads it" },
     { "$halflambert", "teeth_vs20 lights without half Lambert whatever the flag", "teeth" },
     { "$envmapmode", "a DirectX 6 material flag; no DirectX 9 shader reads it" },

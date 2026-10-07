@@ -621,6 +621,9 @@ struct SurfaceVariant
 	// Fragment specialization 11: SolidEnergy (energy_family.h), unlit flow
 	// fields, bridges and beams; its textures by SurfaceTextures' energy names.
 	bool energy = false;
+	// Triangles drawn as their edges (device RasterState::fill kLines, clause
+	// D38): Source's MATERIAL_VAR_WIREFRAME (the Wireframe shader).
+	bool wireframe = false;
 	// A single-sample shadow atlas: the same vertex deformation and alpha
 	// coverage as the visible point, with no color attachments or lighting.
 	bool shadowDepth = false;

@@ -171,6 +171,8 @@ struct GlApi
 	// Optional: GL 4.6's glMultiDrawElementsIndirectCount or
 	// ARB_indirect_parameters' (D31); null when the context has neither.
 	PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC MultiDrawElementsIndirectCount = nullptr;
+	// Optional: glPolygonMode (D38), which desktop GL has and ES does not.
+	PFNGLPOLYGONMODEPROC PolygonMode = nullptr;
 
 	// Loads every entry point through load(name); the name of the first one
 	// missing, or nullptr when all are present.
@@ -188,6 +190,7 @@ struct GlApi
 			MultiDrawElementsIndirectCount =
 			    reinterpret_cast<PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC>(
 			        load( "glMultiDrawElementsIndirectCountARB" ) );
+		PolygonMode = reinterpret_cast<PFNGLPOLYGONMODEPROC>( load( "glPolygonMode" ) );
 		return nullptr;
 	}
 };

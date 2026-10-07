@@ -2553,6 +2553,108 @@ inline void MultisampleClauses( Suite &s, IRenderDevice2 &device )
 	Raster( s, right, "multisample", "the back-facing quad is culled (CCW front, Y up)" );
 }
 
+// D38 line fill: without kFillModeLines a pipeline with RasterState::fill
+// kLines fails kUnsupported. With it, the suite's full-screen triangle (whose
+// edges lie on or past the target's border) drawn as lines leaves the
+// interior at the clear color, where the same pipeline filled covers it.
+inline void FillModeLines( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	BindGroupLayoutId layouts[kMaxBindGroups];
+	for ( std::uint32_t role = 0; role < kMaxBindGroups; ++role )
+	{
+		auto layout = device->CreateBindGroupLayout( { static_cast<BindGroupRole>( role ), {} } );
+		if ( !s.That( layout.HasValue(), "D38", "an empty layout is created" ) )
+			return;
+		layouts[role] = layout.Value();
+	}
+	const Format colors[] = { Format::kRGBA8Unorm };
+	const ShaderArtifactView stages[] = { { ShaderStage::kVertex, device->Facts().artifactFormat,
+	                                          s.Code( shaders::kFullScreenVertex ), "main", {} },
+	    { ShaderStage::kFragment, device->Facts().artifactFormat,
+	        s.Code( shaders::kConstantFragment ), "main", {}, 16 } };
+	PipelineDesc desc;
+	desc.stages = stages;
+	desc.layouts = layouts;
+	desc.colorFormats = colors;
+	desc.raster.cull = CullMode::kNone;
+	desc.drawConstantBytes = 16;
+	PipelineDesc lines = desc;
+	lines.raster.fill = FillMode::kLines;
+	if ( !device->Facts().capabilities.Has( Capability::kFillModeLines ) )
+	{
+		auto refused = device->CreatePipeline( lines );
+		s.That( !refused && refused.Error().status == DeviceStatus::kUnsupported, "D38",
+		    "without kFillModeLines a line-fill pipeline fails kUnsupported" );
+		return;
+	}
+	auto solid = device->CreatePipeline( desc );
+	auto wire = device->CreatePipeline( lines );
+	if ( !s.That( solid.HasValue() && wire.HasValue(), "D38",
+	         "filled and line-fill pipelines are created" ) )
+		return;
+	constexpr std::uint32_t kSize = 8;
+	TextureDesc target;
+	target.format = Format::kRGBA8Unorm;
+	target.width = kSize;
+	target.height = kSize;
+	target.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
+	const std::uint64_t outBytes = std::uint64_t( kSize ) * kSize * 4;
+	auto draw = [&]( PipelineId pipeline ) -> std::vector<std::byte>
+	{
+		auto color = device->CreateTexture( target );
+		if ( !color )
+			return {};
+		const BufferId out = s.Buffer(
+		    *device, outBytes, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+		auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+		if ( !encoder )
+			return {};
+		CommandEncoder &e = encoder.Value();
+		e.TransitionTexture(
+		    color.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+		const ColorAttachment attachments[] = {
+		    { color.Value(), LoadOp::kClear, StoreOp::kStore, { 0, 0, 1, 1 }, {} } };
+		RenderingDesc rendering;
+		rendering.colors = attachments;
+		rendering.width = kSize;
+		rendering.height = kSize;
+		e.BeginRendering( rendering );
+		e.SetViewport( { 0, 0, float( kSize ), float( kSize ), 0, 1 } );
+		e.SetPipeline( pipeline );
+		const float red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
+		e.SetDrawConstants( 0, std::as_bytes( std::span( red ) ) );
+		e.Draw( 3 );
+		e.EndRendering();
+		e.TransitionTexture(
+		    color.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
+		e.TransitionBuffer( out, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.CopyTextureToBuffer( color.Value(), out, { 0, 0, 0, kSize, kSize } );
+		e.TransitionBuffer( out, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+		const std::optional<CompletionToken> token = s.Run( *device, e );
+		if ( !token || !s.m_Driver.rasterizes || !s.Finish( *device, *token ) )
+			return {};
+		return s.ReadBack( *device, out, outBytes );
+	};
+	const std::vector<std::byte> filled = draw( solid.Value() );
+	const std::vector<std::byte> edges = draw( wire.Value() );
+	if ( !s.m_Driver.rasterizes )
+	{
+		std::printf( "SKIP %s.D38 pixels: the adapter does not rasterize\n", s.m_Driver.name.c_str() );
+		return;
+	}
+	// The center pixel (4, 4): red when filled, the blue clear as lines.
+	const std::size_t center = ( 4 * kSize + 4 ) * 4;
+	s.That( filled.size() == outBytes && filled[center] == std::byte{ 255 } &&
+	            filled[center + 2] == std::byte{ 0 },
+	    "D38", "the filled triangle covers the center" );
+	s.That( edges.size() == outBytes && edges[center] == std::byte{ 0 } &&
+	            edges[center + 2] == std::byte{ 255 },
+	    "D38", "the line-fill triangle leaves its interior at the clear color" );
+}
+
 // D36 cube arrays: without kCubeArrays a kCube texture of more than six layers
 // fails kUnsupported, and a cube whose layers are not a multiple of six fails
 // kInvalidDescription. With it, a two-cube array (12 faces of 4x4 RGBA8, two
@@ -2869,6 +2971,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::Timestamps( suite );
 	detail::IndirectDraws( suite );
 	detail::CubeArrays( suite );
+	detail::FillModeLines( suite );
 	detail::ComparisonSampling( suite );
 	detail::CapabilityHonesty( suite );
 }

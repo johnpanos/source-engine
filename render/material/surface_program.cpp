@@ -277,6 +277,11 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	// The energy point reads the tangent frame (flow coordinates, vortices,
 	// opacity terms) and casts no shadow.
+	if ( variant.wireframe && ( variant.shadowDepth || variant.temporal ) )
+	{
+		m_PipelineFailure = "a wireframe point casts no shadow and has no temporal variant";
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	}
 	if ( variant.energy && ( variant.layout == SurfaceVertexLayout::kFlat || variant.shadowDepth ) )
 	{
 		m_PipelineFailure = "the energy point needs a tangent frame and casts no shadow";
@@ -424,6 +429,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	desc.raster.cull = variant.drawState.cull;
 	desc.raster.depthBiasConstant = variant.drawState.depthBiasConstant;
 	desc.raster.depthBiasSlope = variant.drawState.depthBiasSlope;
+	desc.raster.fill = variant.wireframe ? FillMode::kLines : FillMode::kSolid;
 	const bool depth = m_DepthFormat != Format::kUnknown && !variant.ignoreDepth;
 	desc.depthStencil = { depth,
 	    depth && variant.blend == BlendMode::kOpaque &&
@@ -501,7 +507,7 @@ std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
 	char line[512];
 	std::snprintf( line, sizeof( line ),
 	    "%s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
-	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u %u %u",
+	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u %u %u %u",
 	    kVariantKeyTag, unsigned( m_ColorFormat ), unsigned( m_DepthFormat ), m_SampleCount,
 	    unsigned( v.blend ), unsigned( v.alphaWrite ), v.terms, v.detailMode, unsigned( v.layout ),
 	    unsigned( v.ignoreDepth ), unsigned( d.stencil.enabled ), unsigned( d.stencil.compare ),
@@ -514,7 +520,8 @@ std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
 	    unsigned( v.temporal ), v.materialFeatures, v.viewFeatures, v.treeSwayMode,
 	    unsigned( v.alphaToCoverage ), unsigned( v.decalModulate ), unsigned( v.cable ),
 	    unsigned( v.shadowDepth ), unsigned( v.instanced ), unsigned( v.staticVertexLight ),
-	    unsigned( v.energy ) );
+	    unsigned( v.energy ),
+	    unsigned( v.wireframe ) );
 	return line;
 }
 
@@ -524,14 +531,14 @@ std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
 	for ( const std::string &key : keys )
 	{
 		char tag[16] = {};
-		unsigned f[37] = {};
+		unsigned f[38] = {};
 		if ( std::sscanf( key.c_str(),
 		         "%15s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
-		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u %u %u",
+		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u %u %u %u",
 		         tag, &f[0], &f[1], &f[2], &f[3], &f[4], &f[5], &f[6], &f[7], &f[8], &f[9], &f[10],
 		         &f[11], &f[12], &f[13], &f[14], &f[15], &f[16], &f[17], &f[18], &f[19], &f[20],
 		         &f[21], &f[22], &f[23], &f[24], &f[25], &f[26], &f[27], &f[28], &f[29], &f[30],
-		         &f[31], &f[32], &f[33], &f[34], &f[35], &f[36] ) != 38 ||
+		         &f[31], &f[32], &f[33], &f[34], &f[35], &f[36], &f[37] ) != 39 ||
 		     std::strcmp( tag, kVariantKeyTag ) != 0 )
 			continue;
 		if ( f[0] != unsigned( m_ColorFormat ) || f[1] != unsigned( m_DepthFormat ) ||
@@ -573,6 +580,7 @@ std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
 		v.instanced = f[34] != 0;
 		v.staticVertexLight = f[35] != 0;
 		v.energy = f[36] != 0;
+		v.wireframe = f[37] != 0;
 		if ( Pipeline( v ) )
 			++created;
 	}

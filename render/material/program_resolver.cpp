@@ -70,6 +70,13 @@ bool IsSpriteCard( const MaterialDesc &material )
 	return material.legacyShader == "spritecard_dx8";
 }
 
+// Wireframe, and Eyeball, whose SHADER_FALLBACK is Wireframe (eyeball.cpp).
+bool IsWireframe( const MaterialDesc &material )
+{
+	return material.legacyShader == "wireframe" || material.legacyShader == "wireframe_dx9" ||
+	       material.legacyShader == "eyeball";
+}
+
 // The Sky shader's faces (render.pass.sky); HDR selects its encodings.
 bool IsSky( const MaterialDesc &material )
 {
@@ -526,6 +533,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
+		    : IsWireframe( material )             ? ClaimWireframe( *block )
 		    : IsSky( material ) ? ClaimSky( *block, material.legacyShader == "sky_hdr_dx9" )
 		                        : ClaimUnlit( *block );
 		if ( !claim.claimed )
@@ -739,6 +747,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
+		    : IsWireframe( material )             ? ClaimWireframe( *block )
 		    : IsSky( material ) ? ClaimSky( *block, material.legacyShader == "sky_hdr_dx9" )
 		    : s.mesh            ? ClaimUnlitMesh( *block )
 		                        : ClaimUnlit( *block );
@@ -752,6 +761,10 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			textures.base = TextureOf( material, "basetexture" );
 		if ( claim.cable )
 			textures.bump = TextureOf( material, "bumpmap" );
+		if ( claim.wireframe &&
+		     !s.device.Facts().capabilities.Has( device::Capability::kFillModeLines ) )
+			return foundation::MakeUnexpected(
+			    std::string( "Wireframe needs the device's line fill (kFillModeLines, D38)" ) );
 		if ( claim.energy )
 		{
 			if ( s.layout == SurfaceVertexLayout::kFlat )
@@ -767,7 +780,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		if ( claim.twoTexture )
 			textures.emission = TextureOf( material, "texture2" );
 		if ( s.mesh && s.worldPbr && !claim.twoTexture && !claim.cable && !claim.decalModulate &&
-		     !claim.energy )
+		     !claim.energy && !claim.wireframe )
 		{
 			if ( detail::ReadFlag( *block, "vertexcolor" ) ||
 			     detail::ReadFlag( *block, "vertexalpha" ) ||

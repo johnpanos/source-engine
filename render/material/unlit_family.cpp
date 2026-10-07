@@ -410,6 +410,44 @@ UnlitClaim ClaimModulate( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimWireframe( const ParameterBlock &block )
+{
+	// Wireframe_DX9 draws DrawVertexLitGeneric_DX9 unlit, the material forced
+	// to MATERIAL_VAR_NOFOG and MATERIAL_VAR_WIREFRAME.
+	UnlitClaim claim = ClaimUnlit( block );
+	if ( !claim.claimed )
+		return claim;
+	claim.wireframe = true;
+	claim.constants.surfaceControls[0] = 1.0f;
+	return claim;
+}
+
+UnlitClaim ClaimBlack( const ParameterBlock &block )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "unlit" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	// Black declares no parameters; the material system's own flags are the
+	// only ones it can carry.
+	constexpr std::string_view keys[] = { "model", "nocull" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "Black does not draw " + *unread;
+		return claim;
+	}
+	claim.blend = BlendMode::kOpaque;
+	claim.alphaWrite = true;
+	claim.constants.tint[3] = 1.0f; // tint rgb 0: the base is never seen
+	claim.constants.state[1] = 1.0f;
+	for ( std::size_t i = 0; i < 8; ++i )
+		claim.constants.baseTransform[i] = ( i == 0 || i == 5 ) ? 1.0f : 0.0f;
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimSky( const ParameterBlock &block, bool hdr )
 {
 	UnlitClaim claim;

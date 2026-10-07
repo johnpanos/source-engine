@@ -135,6 +135,14 @@ inline constexpr std::uint8_t kColorWriteBlue = 4;
 inline constexpr std::uint8_t kColorWriteAlpha = 8;
 inline constexpr std::uint8_t kColorWriteAll = 15;
 
+// How triangles rasterize (clause D38): filled, or their edges as lines
+// (Source's MATERIAL_VAR_WIREFRAME); kLines needs Capability::kFillModeLines.
+enum class FillMode : std::uint8_t
+{
+	kSolid,
+	kLines
+};
+
 struct RasterState
 {
 	CullMode cull = CullMode::kBack;
@@ -142,6 +150,7 @@ struct RasterState
 	bool alphaToCoverage = false; // fragment alpha controls multisample coverage
 	float depthBiasConstant = 0.0f; // depth-buffer units, as in Vulkan and glPolygonOffset
 	float depthBiasSlope = 0.0f;
+	FillMode fill = FillMode::kSolid; // D38
 };
 
 enum class StencilOp : std::uint8_t

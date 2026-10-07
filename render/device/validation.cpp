@@ -121,6 +121,10 @@ DeviceResult<void> ValidatePipeline(
 	if ( !std::isfinite( desc.raster.depthBiasConstant ) ||
 	     !std::isfinite( desc.raster.depthBiasSlope ) )
 		return Fail( DeviceStatus::kInvalidDescription, op );
+	// D38: line fill on a device that claims it.
+	if ( desc.raster.fill == FillMode::kLines &&
+	     !facts.capabilities.Has( Capability::kFillModeLines ) )
+		return Fail( DeviceStatus::kUnsupported, op );
 	if ( desc.depthStencil.stencil.enabled && desc.depthFormat != Format::kD24UnormS8 &&
 	     desc.depthFormat != Format::kD32FloatS8 )
 		return Fail( DeviceStatus::kInvalidDescription, op );

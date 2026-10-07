@@ -39,6 +39,7 @@ enum class Capability : std::uint8_t
 	kDrawIndirectCount,     // CommandEncoder::DrawIndexedIndirectCount (clause D31)
 	kIndirectFirstInstance, // indirect records may carry a nonzero firstInstance (D30)
 	kCubeArrays,            // kCube textures of more than six layers (clause D36)
+	kFillModeLines,         // RasterState::fill kLines, triangle edges as lines (clause D38)
 	kCount
 };
 

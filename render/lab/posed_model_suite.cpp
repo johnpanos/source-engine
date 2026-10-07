@@ -1598,6 +1598,54 @@ std::optional<std::string> RunChecks(
 		results.That( cloaked && !material::ClaimForDrawing( cloaked.Value() ),
 		    "posed-model.modulate-refuses-cloak-pass" );
 	}
+	// Wireframe (and Eyeball, which falls back to it) draws UnlitGeneric's
+	// quad as its triangles' edges: where UnlitGeneric fills the center the
+	// wireframe leaves the clear color (device line fill, clause D38).
+	if ( device->Facts().capabilities.Has( Capability::kFillModeLines ) )
+	{
+		WorldMaterial filled;
+		filled.name = "wireframe-fixture-filled";
+		filled.shader = "UnlitGeneric";
+		filled.variables = { { "$basetexture", "modulate-decal-data" } };
+		filled.textures = { { "$basetexture", 9 } };
+		WorldMaterial edges = filled;
+		edges.name = "wireframe-fixture";
+		edges.shader = "Wireframe";
+		WorldMaterial eyeball = edges;
+		eyeball.name = "eyeball-fixture";
+		eyeball.shader = "Eyeball";
+		CanvasImage solid, wire, dead;
+		if ( auto why = renderDecal( 0.25f, -1.0f, 1.0f, solid, &filled ) )
+			return why;
+		if ( auto why = renderDecal( 0.25f, -1.0f, 1.0f, wire, &edges ) )
+			return why;
+		if ( auto why = renderDecal( 0.25f, -1.0f, 1.0f, dead, &eyeball ) )
+			return why;
+		// The quad's two triangles share a diagonal, so the wireframe covers
+		// a thin cross of lines: some pixels, far fewer than the filled quad.
+		const float clear[] = { 0.8f, 0.6f, 0.4f };
+		auto covered = [&]( const CanvasImage &image )
+		{
+			int count = 0;
+			for ( std::uint32_t y = 0; y < kSize; ++y )
+				for ( std::uint32_t x = 0; x < kSize; ++x )
+				{
+					const float *pixel = image.At( x, y );
+					count += std::fabs( pixel[0] - clear[0] ) > 0.002f ||
+					         std::fabs( pixel[1] - clear[1] ) > 0.002f ||
+					         std::fabs( pixel[2] - clear[2] ) > 0.002f;
+				}
+			return count;
+		};
+		const int filledCount = covered( solid ), wireCount = covered( wire ),
+		          eyeballCount = covered( dead );
+		results.That( filledCount > 0 && wireCount > 0 && 4 * wireCount < filledCount &&
+		                  eyeballCount == wireCount && decalPass.Failures() == 0,
+		    "posed-model.wireframe-draws-edges-not-the-interior",
+		    "covered pixels: filled " + std::to_string( filledCount ) + ", wireframe " +
+		        std::to_string( wireCount ) + ", eyeball " + std::to_string( eyeballCount ) + " " +
+		        decalPass.Stats().lastFailure );
+	}
 	// UnlitGeneric's $color2 multiplies $color (ApplyColor2Factor); a negative
 	// product is refused by name.
 	{

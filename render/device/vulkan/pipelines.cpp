@@ -620,7 +620,8 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		// which also keeps the port's counter-clockwise front faces.
 		VkPipelineRasterizationStateCreateInfo raster{};
 		raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-		raster.polygonMode = VK_POLYGON_MODE_FILL;
+		raster.polygonMode =
+		    desc.raster.fill == FillMode::kLines ? VK_POLYGON_MODE_LINE : VK_POLYGON_MODE_FILL;
 		raster.cullMode = desc.raster.cull == CullMode::kNone   ? VK_CULL_MODE_NONE
 		                  : desc.raster.cull == CullMode::kBack ? VK_CULL_MODE_BACK_BIT
 		                                                        : VK_CULL_MODE_FRONT_BIT;

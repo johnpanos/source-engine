@@ -107,6 +107,8 @@ const char *CapabilityName( Capability capability )
 		return "indirect-first-instance";
 	case Capability::kCubeArrays:
 		return "cube-arrays";
+	case Capability::kFillModeLines:
+		return "fill-mode-lines";
 	case Capability::kCount:
 		break;
 	}
