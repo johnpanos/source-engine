@@ -439,10 +439,15 @@ the roadmap's hard prerequisites:
    direction, 2026-10-06), ahead of every other render-optimization slice.
    [RFC 0016's Source 2 lighting defaults](RFC/0016-render-core.md#source-2-lighting-defaults-user-direction-2026-10-06)
    own the decisions: static lights' shadows baked per texel (LSMK), LTC area
-   lights off by default, PCSS a user setting. In order: (a) close the two
-   Source 2 gaps on the core, baked per-vertex lighting for static props and
-   the core-rendered planar reflection view, each with lab proof, matched
-   game/lab captures and the old copy deleted; (b) High defaults with GTAO
+   lights off by default, PCSS and probe bounce off by default as compiled-out
+   profile options. In order: (a) close the Source 2 gaps of RFC 0016's
+   [sourced technique audit](RFC/0016-render-core.md#sourced-source-2-technique-audit-2026-10-06-user-request)
+   (user direction, 2026-10-06), each with lab proof, matched game/lab
+   captures and the old copy deleted: baked per-vertex lighting for static
+   props; RFC 0012's specular antialiasing and normal-variance roughness
+   mips (R65 A3, R66), promoted ahead of their table ranks; MSAA with alpha
+   to coverage (R65); tube light shapes; and the core-rendered planar
+   reflection view; (b) High defaults with GTAO
    and SSR off (LTC is already off and compiled out by default), compiled out
    by specialization constants, still selectable, their lab oracles kept
    passing; (c) measure VGPRs, spills and occupancy
@@ -485,8 +490,9 @@ an authored or reviewed source policy; `$selfillum` alone does not supply it.
    term may enter its R96 integration slice while R95 remains open.
 3. Finish K8–K9/R91's remaining core frame cohorts: decals, particles,
    sprites/beams, post, UI, sky, glass, water and portal/monitor views.
-4. Finish RFC 0012's 4x MSAA policy, alpha to coverage, specular AA and filtered
-   normal/coverage mips; judge fine detail through camera motion. RFC 0019
+4. Finish whatever of RFC 0012's 4x MSAA policy, alpha to coverage, specular
+   AA and filtered normal/coverage mips item 0(a) has not already delivered;
+   judge fine detail through camera motion. RFC 0019
    records FSR as the intended replacement in High after its correctness and
    image gates pass.
 5. Supply the modern model, texture, bake and dense-scene/LOD paths that let the

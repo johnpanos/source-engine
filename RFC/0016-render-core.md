@@ -2004,7 +2004,7 @@ Current standing (2026-10-06, from the source; no new measurement):
 | --- | --- |
 | LTC area lights | **Off by default** (`r_core_area_lights 0`, above). With no area lights the world pass clears `kSurfaceViewAreas`, so the LTC path is compiled out of the view's pipelines, not branched around |
 | Baked static-light shadows (LSMK) | **On** (above) |
-| PCSS | User setting, on in High (above) |
+| PCSS | User setting, **off by default** on High since 2026-10-06 (`r_core_shadow_pcss 0`, compiled out through `kSurfaceViewSoftShadows`); probe bounce likewise (`r_core_probe_bounce 0`, `kSurfaceViewProbeBounce`) |
 | SSR | **Off by default** (`r_core_ssr 0`; High and Low declare it off); `r_core_ssr 1` selects it, and its lab oracle stays
 | GTAO | **Off by default** (`r_core_ao_quality 0`, compiled out through `kSurfaceAmbientOcclusion`; High and Low and the menu presets declare it off); quality 1–4 selects it, and its lab oracle stays
 | Static-prop baked per-vertex lighting | **Not on the core**: those props draw through the legacy stream (R91 "baked-colour static props") |
@@ -2012,11 +2012,61 @@ Current standing (2026-10-06, from the source; no new measurement):
 | Register allocation | Last recorded 144 VGPRs on RADV with area lights compiled in (RCV-08/RCV-12, [evidence](0016-progress.md#rcv-12-retained-incremental-optimization-and-final-route-evidence)). No record exists for the area-off default (128 observed by the user, unrecorded) or for any NVIDIA GPU |
 | Frame time | Radeon 8060S, intro4 High 1080p 4x MSAA: arrival median 34.6 ms after the clip-test fix ([record](0016-progress.md#k12r90-the-clip-test-compiled-out-of-views-without-clip-planes-and-rendermap-media-2026-10-05)). RTX 3070, intro4 demo 1440p no MSAA: 17.2 fps, GPU-bound again ([record](0016-progress.md#render-thread-cpu-read-only-imports-leave-the-host-boundaries-plane-based-shadow-chunk-culling-2026-10-06-user-goal)). The High 120 FPS row fails on both; no sweep at the 2026-10-06 points exists |
 
+#### Sourced Source 2 technique audit (2026-10-06, user request)
+
+What Source 2 documents for its lighting, compared with the core. Only
+claims with a source are listed; an earlier unsourced list (probe-volume
+shadowing of dynamic objects, skin/eye/hair shading models, specular
+occlusion from baked data, Source 2 planar reflections) was dropped because
+no public Valve source was found for it.
+
+Sources:
+[S1] Valve Developer Community, [Source 2 lighting](https://developer.valvesoftware.com/wiki/Source_2/Docs/Level_Design/Lighting);
+[S2] [Half-Life: Alyx Workshop Tools lighting](https://developer.valvesoftware.com/wiki/Half-Life:_Alyx_Workshop_Tools/Level_Design/Lighting);
+[S3] [light_omni2](https://developer.valvesoftware.com/wiki/Light_omni2);
+[S4] [env_light_probe_volume](https://developer.valvesoftware.com/wiki/Env_light_probe_volume) and [env_combined_light_probe_volume](https://developer.valvesoftware.com/wiki/Env_combined_light_probe_volume);
+[S5] [env_cubemap_box](https://developer.valvesoftware.com/wiki/Env_cubemap_box);
+[S6] A. Vlachos, [Advanced VR Rendering](https://media.steampowered.com/apps/valve/2015/Alex_Vlachos_Advanced_VR_Rendering_GDC2015.pdf), GDC 2015 (Valve);
+[S7] Valve Developer Community, [Anti-aliasing](https://developer.valvesoftware.com/wiki/Anti-aliasing).
+
+Already matched on the core:
+
+| Source 2 technique | Source | Core |
+| --- | --- | --- |
+| Indirect light baked by path tracing to lightmaps (static surfaces) and light probe volumes (dynamic objects) | S1, S2, S4 | Cycles lightmaps, PRBV probe volume |
+| Stationary lights: per-pixel direct light and specular, static shadows baked, dynamic shadows from the shadow atlas for moving objects | S2, S3 | Runtime direct light, LSMK masks, shadow atlas tiles only where a mover can shadow |
+| Parallax-corrected box cubemaps with priority | S5 | RPRB v8 cube array, parallax, rank blending |
+| Forward renderer with MSAA | S6, S7 | Clustered Forward+, MSAA targets |
+
+Gaps, in priority order (each lands on the core, proven in `render_lab`,
+then in the game with matched captures):
+
+1. **Baked per-vertex lighting of static props.** Source 2 stores a
+   lighting value per vertex of each static prop, with the prop's mesh
+   casting lightmap shadows [S1]. The core draws such props without it (they
+   still use the legacy stream, R91). Owner: K12/R96 with the bake's
+   static-prop colour lump.
+2. **Specular antialiasing.** Valve raises roughness from the screen-space
+   derivatives of the interpolated geometric normal ("Geometric Specular
+   Aliasing", [S6]) and stores the normal map's lost variance as roughness in
+   each mip, isotropic or as a 2D anisotropic value [S6]. Owners: RFC 0012
+   A3 (runtime, R65) and A4 (offline mips, R66).
+3. **MSAA as the antialiasing baseline.** "4xMSAA Minimum Quality ...
+   We use 8xMSAA if perf allows" [S6]; Source 2 games expose 2x/4x/8x
+   [S7]. Owner: RFC 0012 A0–A2 (R65), with alpha to coverage for cutouts;
+   RFC 0019's FSR replacement in High is unchanged.
+4. **Light shapes.** `light_omni2` is a point, sphere, tube or capped tube
+   [S3]. The core's lights carry a source radius (sphere); tube shapes in
+   the runtime light and the bake are open. Owner: R90/K12; not started.
+5. **Planar reflection view on the core** (not a sourced Source 2 claim;
+   kept because the game's water already needs it, R91).
+
 Remaining work, in order:
 
-- close the two Source 2 gaps on the core: baked per-vertex lighting of
-  static props (the static-prop colour lump) and the planar reflection view
-  rendered by the core;
+- close the gaps above in that order: per-vertex static-prop lighting, then
+  RFC 0012's specular antialiasing and normal-variance mips, MSAA with
+  alpha to coverage, light shapes, and the core-rendered planar reflection
+  view;
 - register allocation, spills and occupancy of the world, static-model and
   posed-model PBR pipelines are measured on the Radeon 8060S and the RTX
   3070 before and after, then the
