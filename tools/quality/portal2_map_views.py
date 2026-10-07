@@ -104,7 +104,12 @@ def run(args):
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     runtime = args.runtime.resolve()
-    steps = [parse_step(s) for s in args.step]
+    lines = list(args.step)
+    if args.steps_file:
+        # One step per line; blank lines and # comments are skipped.
+        lines = [line.strip() for line in args.steps_file.read_text().splitlines()
+                 if line.strip() and not line.strip().startswith("#")] + lines
+    steps = [parse_step(s) for s in lines]
     # Checked before staging, which rewrites the runtime: never ./play_p2's.
     sandbox = launch_sandbox.Sandbox(out / "sandbox", write_paths=[runtime])
     mounted = stage(runtime, args.steam_root, args.build.resolve())
@@ -176,6 +181,8 @@ def main():
     parser.add_argument("--map", required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--step", action="append", default=[], help="view, do or wait step")
+    parser.add_argument("--steps-file", type=Path,
+                        help="a fixture's steps, one per line (before any --step)")
     parser.add_argument("--build", type=Path, default=ROOT / "build-p2")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-views",
                         help="private staged runtime (created on first use)")

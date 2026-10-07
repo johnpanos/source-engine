@@ -1,0 +1,30 @@
+# sp_a1_intro4_relit, first chamber, looking down into the cube dropper's pit
+# (user report 2026-10-07: stair-stepped, blocky static-light shadow edges).
+# Run:
+#   python3 tools/quality/portal2_map_views.py --map sp_a1_intro4_relit --out DIR \
+#     --steps-file quality/workloads/portal2-intro4-dropper-pit-v1/steps.txt \
+#     --engine-arg=+sv_cheats --engine-arg=1 --engine-arg=+r_core_world --engine-arg=1 \
+#     --engine-arg=+r_indirect_producer --engine-arg=baked --engine-arg=+mat_queue_mode --engine-arg=2
+# Views, all from the same camera:
+#   default       the product's lighting (runtime direct light, baked static shadow masks)
+#   cube          after the dropper releases the cube (a moving caster near the lights)
+#   movers_off    moving-caster shadow tiles off (masks alone)
+#   no_lightmap   the baked lightmap term off (direct light and its shadows alone)
+#   no_shadow     shadow visibility off (the edges' source: they vanish here)
+#   all_baked     r_core_runtime_direct 0 (the bake's total page, its shadows baked)
+view default -150 64 40 55 0
+do ent_fire box_dropper-cube_dropper_drop_relay Trigger
+wait 300
+view cube -150 64 40 55 0
+do r_core_shadow_movers 0
+wait 30
+view movers_off -150 64 40 55 0
+do r_core_shadow_movers 1; cl_render_debug_term baked
+wait 30
+view no_lightmap -150 64 40 55 0
+do cl_render_debug_term shadow_visibility
+wait 30
+view no_shadow -150 64 40 55 0
+do cl_render_debug_term ,; r_core_runtime_direct 0
+wait 60
+view all_baked -150 64 40 55 0
