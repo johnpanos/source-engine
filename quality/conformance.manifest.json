@@ -12503,6 +12503,80 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.shadow-mask",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 Source 2 lighting defaults, a static light's baked shadow mask (LSMK) and the moving casters in its reach on the world PBR point (render/lab/shadow_mask_suite.cpp, render_lab suite shadow-mask --validate): a lightmapped world quad under a point light whose tile's atlas is cleared to depth 0 and a mask page holding the light at visibility 1. The mask alone is lit; no mask reads the tile (dark); a mover in reach with every point reading the tile is dark; a mover sphere far from every pixel's path to the light equals the mask alone within 0.1 percent; a sphere on some paths darkens exactly the pixels whose path to the light passes within the sphere grown by the light's source radius (an analytic per-pixel oracle sharing no code with the shader, a 1-unit band at the boundary left out). 0 validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "shadow-mask",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 8,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/shadow_mask_suite.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/material/families/surface_program.glsl",
+        "render/material/families/surface.frag",
+        "render/shaders/common/shadow_sample.glsl",
+        "render/material/surface_program.cpp",
+        "render/composition/core_world.cpp",
+        "public/render/material/surface_program.h",
+        "tools/render/shader_toolchain.py",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.shadow-mask.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "RFC 0016 Source 2 lighting defaults, seeded program (shadow_mask_defects_spv.h, surface.frag with SEEDED_MOVERS_IGNORED): every point of a light with a mover in reach reads its tile, ignoring the view's mover spheres; it fails the far-mover check, and the control passes.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "shadow-mask",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 2,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/shadow_mask_suite.cpp",
+        "render/lab/lab_suite.cpp",
+        "render/material/families/surface_program.glsl",
+        "render/material/families/surface.frag",
+        "render/shaders/common/shadow_sample.glsl",
+        "render/material/surface_program.cpp",
+        "render/composition/core_world.cpp",
+        "public/render/material/surface_program.h",
+        "tools/render/shader_toolchain.py",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.bounce",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

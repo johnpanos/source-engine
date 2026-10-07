@@ -1579,6 +1579,20 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		( &work->projection.rows[0].x )[c] += w / viewport[2];
 		( &work->projection.rows[1].x )[c] -= w / viewport[3];
 	}
+	// The view's moving casters as spheres, grown by a margin for the soft
+	// filter's reach beyond the exact penumbra (its least width and the
+	// tile's texel size at the receiver).
+	for ( std::size_t m = 0; m < in.movers.size() && m < material::kSurfaceMaxViewMovers; ++m )
+	{
+		const light_set::RuntimeOccluder &mover = in.movers[m];
+		float reach = 0.0f;
+		for ( int a = 0; a < 3; ++a )
+			for ( int k = 0; k < 3; ++k )
+				reach += mover.box.axes[a][k] * mover.box.axes[a][k];
+		for ( int k = 0; k < 3; ++k )
+			out->view.movers[m][k] = mover.box.center[k];
+		out->view.movers[m][3] = std::sqrt( reach ) * 1.25f + 8.0f;
+	}
 	for ( std::size_t i = 0; i < frameLights.size(); ++i )
 	{
 		const light_set::RuntimeLight &light = frameLights[i];
@@ -1604,9 +1618,15 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 					maskId = int( record.id );
 					break;
 				}
+		// The moving casters in reach, as bits naming the view's mover
+		// spheres (the shader reads the tile only where a pixel's path to the
+		// light passes near one of them); a mover past the view's spheres
+		// makes every point read it.
+		std::uint32_t moverBits = 0;
 		if ( maskId > 0 && tile >= 0 )
-			for ( const light_set::RuntimeOccluder &mover : in.movers )
+			for ( std::size_t m = 0; m < in.movers.size(); ++m )
 			{
+				const light_set::RuntimeOccluder &mover = in.movers[m];
 				float reach = 0.0f, distance = 0.0f;
 				for ( int a = 0; a < 3; ++a )
 				{
@@ -1616,11 +1636,12 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 					distance += d * d;
 				}
 				const float limit = std::sqrt( reach ) + light.radius;
-				if ( light.radius <= 0.0f || distance < limit * limit )
-				{
-					moverInReach = true;
-					break;
-				}
+				if ( light.radius > 0.0f && distance >= limit * limit )
+					continue;
+				moverInReach = true;
+				moverBits |= m < material::kSurfaceMaxViewMovers
+				                 ? 1u << m
+				                 : material::kSurfaceMoversEverywhere;
 			}
 		( maskId <= 0      ? m_UnmaskedLights
 		    : moverInReach ? m_MaskedMoverLights
@@ -1629,7 +1650,7 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 		if ( maskId <= 0 && light.kind == light_set::LightKind::World )
 			m_UnmaskedWorldLights.fetch_add( 1, std::memory_order_relaxed );
 		out->lights.push_back( material::PackSurfaceLight(
-		    light, tile, layout, light.baked, maskId, moverInReach ) );
+		    light, tile, layout, light.baked, maskId, moverInReach, moverBits ) );
 	}
 	// The projected lights, with their cookie layers and tiles.
 	for ( std::size_t i = 0; i < in.projectors.size(); ++i )

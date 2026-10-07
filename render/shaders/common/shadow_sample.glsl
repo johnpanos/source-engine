@@ -165,17 +165,22 @@ float ShadowVisibilitySoft( texture2D atlas, sampler pointSampler, sampler compa
 	// direction, its length a multiplier: ShadowReceiverOffset) by one and a
 	// half of the tile's texels at its depth per unit (normal offset), so the
 	// compare needs only a small depth bias at any distance.
+	// The offset point's clip position by linearity, VP (w + k n) = VP w + k VP n:
+	// the matrix is read twice up front and is dead after, rather than live
+	// across the offset's arithmetic (it set the surface program's register
+	// peak). Equal to transforming the moved point up to rounding.
+	const vec4 h0 = tile.viewProjection * vec4( world, 1.0 );
+	const vec4 hNormal = tile.viewProjection * vec4( normal, 0.0 );
+	const float clipPerWorld = length(
+	    vec3( tile.viewProjection[0][0], tile.viewProjection[1][0], tile.viewProjection[2][0] ) );
+	vec4 h = h0;
+	if ( h0.w > 0.0 )
 	{
-		const vec4 h0 = tile.viewProjection * vec4( world, 1.0 );
-		if ( h0.w > 0.0 )
-		{
-			const float d0 = ShadowLinearDepth( tile, h0.z / h0.w );
-			const float texelWorld = 2.0 / ( tile.params.y * abs( tile.transform.x ) ) /
-			                         ShadowClipPerWorld( tile, d0 );
-			world += normal * 1.5 * texelWorld;
-		}
+		const float d0 = ShadowLinearDepth( tile, h0.z / h0.w );
+		const float texelWorld = 2.0 / ( tile.params.y * abs( tile.transform.x ) ) /
+		                         ( tile.params.z > 0.0 ? clipPerWorld / max( d0, 1e-4 ) : clipPerWorld );
+		h = h0 + hNormal * ( 1.5 * texelWorld );
 	}
-	const vec4 h = tile.viewProjection * vec4( world, 1.0 );
 	if ( !( h.w > 0.0 ) )
 		return 1.0;
 	const vec3 ndc = h.xyz / h.w;
@@ -201,11 +206,11 @@ float ShadowVisibilitySoft( texture2D atlas, sampler pointSampler, sampler compa
 	if ( perspective )
 	{
 		const float n = tile.params.z;
-		searchClip = ShadowClipPerWorld( tile, n ) * size * max( receiver - n, 0.0 ) / receiver;
+		searchClip = ( clipPerWorld / max( n, 1e-4 ) ) * size * max( receiver - n, 0.0 ) / receiver;
 	}
 	else
 	{
-		searchClip = ShadowClipPerWorld( tile, receiver ) * size * receiver;
+		searchClip = ( perspective ? clipPerWorld / max( receiver, 1e-4 ) : clipPerWorld ) * size * receiver;
 	}
 	searchClip = clamp( searchClip, 2.0 * texelClip, 0.25 );
 	float blockers = 0.0;
@@ -230,10 +235,10 @@ float ShadowVisibilitySoft( texture2D atlas, sampler pointSampler, sampler compa
 	// receiver's scale.
 	float penumbraClip;
 	if ( perspective )
-		penumbraClip = ShadowClipPerWorld( tile, receiver ) * size *
+		penumbraClip = ( perspective ? clipPerWorld / max( receiver, 1e-4 ) : clipPerWorld ) * size *
 		               max( receiver - blockerDepth, 0.0 ) / max( blockerDepth, 1e-3 );
 	else
-		penumbraClip = ShadowClipPerWorld( tile, receiver ) * size *
+		penumbraClip = ( perspective ? clipPerWorld / max( receiver, 1e-4 ) : clipPerWorld ) * size *
 		               max( receiver - blockerDepth, 0.0 );
 	penumbraClip = clamp( penumbraClip, 1.5 * texelClip, 0.25 );
 	float lit = 0.0;

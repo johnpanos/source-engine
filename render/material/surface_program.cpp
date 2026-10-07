@@ -109,7 +109,8 @@ PbrSplitSumTable LtcTable()
 }
 
 SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile,
-    RuntimeShadowLayout shadowLayout, bool diffuseInBake, int maskId, bool moverInReach )
+    RuntimeShadowLayout shadowLayout, bool diffuseInBake, int maskId, bool moverInReach,
+    std::uint32_t moverBits )
 {
 	SurfaceLightGpu packed;
 	const bool spot = light.shape == light_set::LightShape::Spot;
@@ -135,6 +136,8 @@ SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shad
 	packed.spot[2] = float( shadowLayout );
 	if ( maskId > 0 )
 		packed.spot[3] = float( moverInReach ? -maskId : maskId );
+	if ( maskId > 0 && moverInReach )
+		packed.attenuation[3] = std::bit_cast<float>( moverBits );
 	return packed;
 }
 

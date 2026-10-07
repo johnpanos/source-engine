@@ -386,6 +386,11 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DREFERENCE_MANUAL_SHADOW_COMPARE",)),
         ("kSurfaceShadowUnstableGather", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_SHADOW_UNSTABLE_GATHER",)))),
+    "shadow_mask_defects_spv.h": ("render::lab::spirv",
+        "render_lab's shadow-mask suite's seeded program (render.lab.shadow-mask sensitivity, "
+        "RFC 0016 Source 2 lighting defaults)", (
+        ("kSurfaceMoversIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_MOVERS_IGNORED",)),)),
     "area_light_defects_spv.h": ("render::lab::spirv",
         "render_lab's area-light suite's seeded programs (render.lab.area-lights sensitivity, "
         "RFC 0016 K11)", (

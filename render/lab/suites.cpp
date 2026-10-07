@@ -68,6 +68,10 @@ int RunSuite( int argc, char **argv )
 		return RunSpriteSuite( argc - 1, argv + 1 );
 	if ( name == "static-light" )
 		return RunStaticLightSuite( argc - 1, argv + 1 );
+	if ( name == "shader-stats" )
+		return RunShaderStatsSuite( argc - 1, argv + 1 );
+	if ( name == "shadow-mask" )
+		return RunShadowMaskSuite( argc - 1, argv + 1 );
 	if ( name == "softparticle" )
 		return RunSoftParticleSuite( argc - 1, argv + 1 );
 	if ( name == "selfillum" )

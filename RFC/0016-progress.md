@@ -11979,3 +11979,61 @@ an equal test after it); the 23 ms is about one shading of each pixel by a
 6,000-instruction, 128–168-register shader. Step 4 is therefore the
 register peak and instruction count of the clustered light loop and the
 lightmap/runtime-direct path, not overdraw. No gate closes.
+
+### Step 4: the register peak, then the real cost: shadow filters run for lights the mask covers (2026-10-06, user request)
+
+`render_lab suite shader-stats` (new, diagnostic) compiles one world
+surface variant from `SHADER_STATS_TERMS`/`_VIEW`/`_MATERIAL` so
+`SOURCE_VK_PIPELINE_STATS=1` reports it in seconds; it runs on the Bazzite
+box as well (the binary needs only the Vulkan loader). The intro4 hot
+variant (pbr, clustered, baked directional lightmap, probe volume and
+bounce, reflection probes, runtime direct, MRAO): 144 VGPRs, 5,023
+instructions, 10 waves per SIMD on the 8060S; 128 registers on the RTX 3070,
+168 with the clip-plane view feature.
+
+Ablations (diagnostic, reverted): without the clustered term 84 VGPRs and
+2,350 instructions; with the loop body reduced to one use 96; with every
+shadow path in the loop off 84 and 2,704. The shadow evaluation in the
+clustered loop is the register peak. Within it: transforming the receiver
+point twice through the tile's matrix held the matrix across the offset
+(120 without); the 2×2 mask texels held across the loop (96 without);
+unrolled 16-tap loops in the soft filter (3,768 instructions rolled, VGPRs
+unchanged). Changes tried and measured:
+
+| change | 8060S VGPRs / instructions | measured |
+| --- | --- | --- |
+| tap loops kept rolled (`[[dont_unroll]]`) | 144 / 3,768 | with the next, world shading slower on the 8060S (7.46 vs 7.18 ms, GPU p99 26 vs 23 ms); removed |
+| mask texels fetched per masked light | 108 | as above; removed |
+| receiver offset by linearity, `VP (w + k n) = VP w + k VP n` | 120 | neutral on the 8060S, kept (fewer instructions; rounding-level change, shadow suites pass) |
+| clip-plane discard removed (upper bound, measurement only) | — | RTX 3070 world shading 29.9/30.2 vs 30.7/30.8 ms: no gain; hardware clip distances not pursued |
+
+Registers are not this shader's limit on either GPU. An upper-bound build
+in which masked lights ignored moving casters took RTX 3070 world shading
+at 4K from 30.4/30.8 to 21.4/21.7 ms: a light with any mover in its reach
+ran the full soft filter for every pixel it lit. intro4 has four movers a
+frame (each under 40 units), and most of its dominant lights are unbounded,
+so every mover was in every such light's reach.
+
+Change: the view block carries up to 16 mover spheres (`SurfaceViewGpu::
+movers`, each grown by 25 % and 8 units for the soft filter's reach); a
+masked light's record carries a bit per mover in its reach
+(`attenuation.w`, bit 31 or 0 every point). A pixel reads the light's
+tile only where its path to the light passes within one of its movers'
+spheres grown by the light's source radius (the penumbra); elsewhere the
+mask alone, as for a light without movers. A first version merging the
+movers into one sphere per light covered the whole level (radius 2,296)
+and gained nothing.
+
+`render.lab.shadow-mask` (new, 8 checks with validation; LSMK had no lab
+coverage): mask alone lit, tile dark, mover everywhere dark, a far sphere
+equal to the mask alone, a near sphere darkening exactly the pixels whose
+path passes within it (analytic per-pixel oracle). Its seeded program
+(movers ignored) fails the far and near checks
+(`render.lab.shadow-mask.sensitivity`). The other lab suites,
+`render.shadows.pixels` and `render.device.v2.vulkan` pass.
+
+RTX 3070, 4K, per-pass timers averaged over each whole run, after a reboot
+cleared GNOME's VRAM (3 GB had made a 4K run fail allocating a world panel):
+world shading E (before) 30.48 / 31.08 ms, N (mover spheres) 26.28 / 26.71
+ms (−14 %); core world view 43.4 / 44.3 → 38.8 / 39.3 ms; frames over the
+demo 928 / 912 → 998 / 1,001. No gate closes.

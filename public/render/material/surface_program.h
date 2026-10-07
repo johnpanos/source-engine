@@ -191,6 +191,10 @@ SurfaceAreaLight PackAreaLight(
 // The view group's parameters (std140, binding 0): the cluster grid a
 // fragment's froxel is found in (render.pass.lights FroxelAt) and the view
 // distance of a world point.
+// The mover spheres a view holds (SurfaceViewGpu::movers).
+inline constexpr std::uint32_t kSurfaceMaxViewMovers = 16;
+inline constexpr std::uint32_t kSurfaceMoversEverywhere = 0x80000000u;
+
 struct SurfaceViewGpu
 {
 	std::uint32_t grid[4] = {}; // tilesX, tilesY, slices, tile size in pixels
@@ -205,8 +209,11 @@ struct SurfaceViewGpu
 	float counts[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
 	// Soft particles read the copied scene's alpha = clamp(clip Z / range).
 	float depthAlpha[4] = {}; // range, 1/source width, 1/source height, reserved
+	// The view's moving shadow casters as spheres (xyz centre, w radius with
+	// the soft filter's margin), named by the lights' mover bits.
+	float movers[kSurfaceMaxViewMovers][4] = {};
 };
-static_assert( sizeof( SurfaceViewGpu ) == 80 );
+static_assert( sizeof( SurfaceViewGpu ) == 80 + 16 * kSurfaceMaxViewMovers );
 
 // A runtime point or spot light as the view group holds it (std430,
 // binding 3), light_set::RuntimeLight packed.
@@ -229,14 +236,19 @@ struct SurfaceLightGpu
 	// moving caster is in the light's reach).
 	float spot[4] = {};
 	// xyz: vrad's constant, linear and quadratic terms (cone.y 2: an
-	// Attenuated world light, light_set::AttenuatedFalloff)
+	// Attenuated world light, light_set::AttenuatedFalloff); w, with spot.w < 0
+	// (a moving caster in reach), the bits of a uint: bit i names the view's
+	// mover sphere i (SurfaceViewGpu::movers) in the light's reach, and a
+	// pixel whose path to the light passes none of them takes its mask alone,
+	// as without a mover; 0 or bit 31: every point reads the tile.
 	float attenuation[4] = {};
 };
 static_assert( sizeof( SurfaceLightGpu ) == 96 );
 
 SurfaceLightGpu PackSurfaceLight( const light_set::RuntimeLight &light, int shadowTile = -1,
     RuntimeShadowLayout shadowLayout = RuntimeShadowLayout::kSingle, bool diffuseInBake = false,
-    int maskId = -1, bool moverInReach = false );
+    int maskId = -1, bool moverInReach = false,
+    std::uint32_t moverBits = kSurfaceMoversEverywhere );
 
 // A view's shadows as the view group binds them: the atlas the view's shadow
 // passes drew (render.pass.shadows; kSampled wherever the group is read, and

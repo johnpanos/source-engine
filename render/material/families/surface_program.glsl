@@ -154,8 +154,10 @@ struct RuntimeLightRecord
 	vec4 cone;      // innerCos, 1 for an inverse-square falloff, sourceRadius,
 	                // the shadow tile or -1
 	vec4 spot;      // cone ramp exponent, baked diffuse, RuntimeShadowLayout
-	vec4 attenuation; // vrad's c, l, q (cone.y 2)
+	vec4 attenuation; // vrad's c, l, q (cone.y 2); w: the mover bits (spot.w < 0)
 };
+const int kMaxViewMovers = 16;
+const uint kMoversEverywhere = 0x80000000u;
 layout( set = 1, binding = 0 ) uniform ClusterView
 {
 	uvec4 grid;         // tilesX, tilesY, slices, tile size in pixels
@@ -163,6 +165,7 @@ layout( set = 1, binding = 0 ) uniform ClusterView
 	vec4 viewDistance;  // a world point's view distance: dot( xyz, p ) + w
 	vec4 counts;        // x: projectors; y: screen scale; zw: viewport origin
 	vec4 depthAlpha;    // range, inverse source extent
+	vec4 movers[kMaxViewMovers]; // moving casters: centre, radius with margin
 } clusterView;
 layout( set = 1, binding = 1, std430 ) readonly buffer ClusterFroxels
 {
@@ -1168,7 +1171,33 @@ void PbrSurface( out float coverage )
 			const float baked = maskCode != 0
 			                        ? ShadowMaskVisibility( shadowMask, uint( abs( maskCode ) ) )
 			                        : -1.0;
-			if ( maskCode > 0 && baked >= 0.0 && DebugTermOn( kDebugTermShadowVisibility ) )
+			// A moving caster shadows a pixel only where the pixel's path to
+			// the light passes within the casters' sphere (grown by the light's
+			// source radius, its penumbra); elsewhere the mask alone, as
+			// without a mover.
+			bool moverNear = maskCode < 0;
+#ifdef SEEDED_MOVERS_IGNORED
+			uint movers = 0u;
+#else
+			uint movers = moverNear ? floatBitsToUint( runtime.attenuation.w ) : 0u;
+#endif
+			if ( movers != 0u && ( movers & kMoversEverywhere ) == 0u )
+			{
+				moverNear = false;
+				while ( movers != 0u && !moverNear )
+				{
+					const vec4 sphere = clusterView.movers[findLSB( movers )];
+					movers &= movers - 1u;
+					const vec3 toMover = sphere.xyz - worldPosition;
+					const float along =
+					    clamp( dot( toMover, toLight ) / max( distanceSquared, 1e-8 ), 0.0, 1.0 );
+					const vec3 off = toMover - toLight * along;
+					const float near = sphere.w + max( runtime.cone.z, 0.5 );
+					moverNear = dot( off, off ) < near * near;
+				}
+			}
+			if ( maskCode != 0 && !moverNear && baked >= 0.0 &&
+			     DebugTermOn( kDebugTermShadowVisibility ) )
 				visibility = baked;
 			else if ( tile >= 0 && tiles == 6 && DebugTermOn( kDebugTermShadowVisibility ) )
 				visibility = ShadowTerminatorFade( smoothNormal, light,
@@ -1181,7 +1210,7 @@ void PbrSurface( out float coverage )
 				    ShadowVisibilitySoft( shadowAtlas, shadowSampler, shadowComparisonSampler, shadowTiles[tile],
 				        worldPosition, ShadowReceiverOffset( geometricNormal, light ),
 				        max( runtime.cone.z, 0.5 ), rotation ) );
-			if ( maskCode < 0 && baked >= 0.0 && DebugTermOn( kDebugTermShadowVisibility ) )
+			if ( moverNear && baked >= 0.0 && DebugTermOn( kDebugTermShadowVisibility ) )
 				visibility = min( visibility, baked );
 #endif
 #endif
