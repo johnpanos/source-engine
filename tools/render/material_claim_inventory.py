@@ -279,6 +279,27 @@ def collect(game, render_lab, scope, profile_path=None):
             relevant = mesh if path.startswith("materials/models/") else world
             item["gap"] = next((r["gap"] for r in relevant if "gap" in r),
                                "no product geometry claims this material")
+    # Subrect is not a shader: CMaterialSubRect points into its $material page,
+    # and the engine draws the page with remapped UVs (r_decal.cpp
+    # GetMaterialPage, decal_clip.cpp GetMaterialOffset). A sheet's claim is
+    # its page's.
+    for path, material in records:
+        item = results[path]
+        if item["shader"] != "subrect":
+            continue
+        page_name = material["vars"].get("$material", "")
+        page = results.get("materials/" + page_name.lower().replace("\\", "/") + ".vmt")
+        if page is None or "status" not in page or "shader" not in page:
+            item["status"], item["candidates"] = "unsupported", []
+            item["gap"] = "Subrect page " + (page_name or "<none>") + " is missing"
+            continue
+        item.pop("gap", None)
+        item["drawn_as"] = page_name.lower()
+        item["family"] = page.get("family", "")
+        item["status"] = page["status"]
+        item["candidates"] = page.get("candidates", [])
+        if page["status"] == "unsupported":
+            item["gap"] = page["gap"]
     gaps = collections.Counter(
         item["gap"] for item in results.values() if item["status"] == "unsupported"
     )

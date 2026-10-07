@@ -296,8 +296,10 @@ UnlitClaim ClaimDecalModulate( const ParameterBlock &block )
 		return claim;
 	}
 	// The shader ignores modulation and vertex colors. Projection owns decalscale.
+	// $translucent is inert: DecalModulate_dx9.cpp always blends DST_COLOR,
+	// SRC_COLOR whatever the material flags say.
 	constexpr std::string_view keys[] = { "basetexture", "frame", "decal", "decalscale",
-	    "vertexcolor", "vertexalpha", "model", "nocull", "nofog" };
+	    "vertexcolor", "vertexalpha", "model", "nocull", "nofog", "translucent" };
 	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
 	{
 		claim.reason = "the decal point does not draw " + *unread;

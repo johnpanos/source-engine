@@ -12414,3 +12414,35 @@ SpriteCard 129 of 143 claimed, 14 unsupported (`$cropfactor` 3,
 - the native SpriteCard pixel math (`demo_dyn_tex.frag` textured mode 3)
   stays while `r_core_world 0` uses it (K9);
 - no frame-time measurement (user direction for this slice).
+
+### K12: unsupported-material sweep, first four gaps (2026-10-07, user request)
+
+The Portal 2 all-material claim inventory, ranked by refusal count, worked
+from the top:
+
+- **Subrect (57).** Not a shader: `CMaterialSubRect` points into its
+  `$material` page, and the engine draws the page with remapped UVs
+  (`r_decal.cpp` `GetMaterialPage`, `decal_clip.cpp` `GetMaterialOffset`).
+  `material_claim_inventory.py` now gives each sheet its page's claim
+  (`drawn_as`); a missing page is a named gap.
+- **DecalModulate `$translucent` (21 plus the `decals_mod2x` sheets).**
+  Inert: `DecalModulate_dx9.cpp` always blends DST_COLOR, SRC_COLOR. The
+  decal point claims it.
+- **VertexLitGeneric `$decal` on the mesh point (26 model decals).** Its
+  only effect is the legacy shadow state's polygon offset, which the mesh
+  handoff already carries in the draw state's depth bias.
+- **`$detailblendmode` 5 and 6 (17 `bridge_paint_*`).** Source's
+  `TextureCombinePostLighting`: added to the lit surface after
+  self-illumination, unlit. `PbrSurface` (the shared mesh point) applies it;
+  `render.lab.selfillum` gains three checks (mode 5 unlit on both halves,
+  mode 6's threshold band, mode 5 added after lighting), which failed before
+  the shader change; 30/30 and sensitivity 4/4 pass.
+
+Unsupported fell 347 → 200 of 3,738 with this checkout's `render_lab`
+(`build-rc-lab`); the checked-in inventory is not regenerated in this commit
+because the same file carries another session's uncommitted claim changes.
+Next by count: Wireframe 17, SolidEnergy 14, screenspace_general 13,
+Modulate 8, Portal 7, `$flat` 7. `render.lab.posed-model` (Cable's required
+normal) and `render.material.v2` (PBR schema) fail on uncommitted work in
+files this slice did not touch. Open: matched game/lab captures of the bridge
+paint and model decals, frame time.

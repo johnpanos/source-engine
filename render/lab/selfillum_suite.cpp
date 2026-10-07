@@ -120,6 +120,12 @@ WorldMaterial Material( const Variables &variables, int maskHandle = 0 )
 	material.variables = { { "$basetexture", "selfillum/two_texels" } };
 	material.variables.insert( material.variables.end(), variables.begin(), variables.end() );
 	material.textures = { { "$basetexture", kBaseHandle } };
+	// The detail fixtures reuse the base texture: rgb 1 on both texels.
+	for ( const auto &[key, value] : variables )
+	{
+		if ( key == "$detail" )
+			material.textures.push_back( { "$detail", kBaseHandle } );
+	}
 	if ( maskHandle != 0 )
 		material.textures.push_back( { "$selfillummask", maskHandle } );
 	return material;
@@ -507,6 +513,42 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		results.That( Near( pixel[0], 1.0f ) && Near( pixel[1], g ) && Near( pixel[2], b ),
 		    "selfillum.mask.texture-controls-the-emitting-region",
 		    Detail( "masked texel 1", pixel, 1.0f ) );
+	}
+
+	// Detail modes 5 and 6 (TextureCombinePostLighting, the bridge paint's
+	// glow): the detail is added after lighting, so a dark scene shows the
+	// term alone on both halves, and a lit one adds it to the plain surface.
+	// The detail texel is rgb 1: mode 5 adds the factor; mode 6 at factor f
+	// below 0.5 adds saturate( 4f d - 2f ).
+	results.That( refusal( { { "$detail", "paint/detail" }, { "$detailblendmode", "5" } } ).empty(),
+	    "selfillum.detail.post-lighting-modes-are-claimed",
+	    refusal( { { "$detail", "paint/detail" }, { "$detailblendmode", "5" } } ) );
+	CanvasImage additive, threshold, litAdditive;
+	const Variables mode5 = { { "$detail", "selfillum/two_texels" }, { "$detailblendmode", "5" },
+	    { "$detailblendfactor", "0.3" } };
+	const Variables mode6 = { { "$detail", "selfillum/two_texels" }, { "$detailblendmode", "6" },
+	    { "$detailblendfactor", "0.25" } };
+	if ( auto why = render( mode5, 0.0f, false, additive ) )
+		return why;
+	if ( auto why = render( mode6, 0.0f, false, threshold ) )
+		return why;
+	if ( auto why = render( mode5, 80.0f, true, litAdditive ) )
+		return why;
+	results.That( Gray( additive.At( kEmitX, kRow ), 0.3f ) &&
+	                  Gray( additive.At( kPlainX, kRow ), 0.3f ),
+	    "selfillum.detail.mode-5-adds-factor-times-detail-unlit",
+	    Detail( "mode 5", additive.At( kEmitX, kRow ), 0.3f ) );
+	results.That( Gray( threshold.At( kEmitX, kRow ), 0.5f ),
+	    "selfillum.detail.mode-6-remaps-the-threshold-band",
+	    Detail( "mode 6", threshold.At( kEmitX, kRow ), 0.5f ) );
+	{
+		const float *plain = litPlain.At( kEmitX, kRow );
+		const float *added = litAdditive.At( kEmitX, kRow );
+		bool ok = plain[0] > 0.02f;
+		for ( int c = 0; c < 3; ++c )
+			ok = ok && Near( added[c], plain[c] + 0.3f );
+		results.That( ok, "selfillum.detail.mode-5-adds-after-lighting",
+		    Detail( "lit mode 5", added, plain[0] + 0.3f ) );
 	}
 
 	for ( auto &pass : passes )

@@ -446,6 +446,17 @@ float FogFactor()
 
 // common_ps_fxc.h TextureCombine for the modes the family claims (mode 10,
 // TCOMBINE_SSBUMP_BUMP, leaves the albedo and scales the bump basis below).
+// The detail term of TextureCombinePostLighting's unlit additive modes:
+// 5 adds blendFactor times the detail; 6 remaps a widening band of it to [0, 1].
+vec3 PostLightingDetail( vec4 detailColor, float blendFactor )
+{
+	if ( kDetailMode == 5 )
+		return blendFactor * detailColor.rgb;
+	const float mult = blendFactor >= 0.5 ? 1.0 / blendFactor : 4.0 * blendFactor;
+	const float add = blendFactor >= 0.5 ? 1.0 - mult : -0.5 * mult;
+	return clamp( mult * detailColor.rgb + add, 0.0, 1.0 );
+}
+
 vec4 TextureCombine( vec4 baseColor, vec4 detailColor, float blendFactor )
 {
 	if ( kDetailMode == 0 )
@@ -857,11 +868,11 @@ void PbrSurface( out float coverage )
 	const bool emissive = Term( kEmissionTexture );
 	const vec2 uv = BaseTextureUv();
 	vec4 baseSample = texture( sampler2D( baseTexture, baseSampler ), uv );
+	vec4 detail = vec4( 0.0 );
 	if ( Term( kDetailTexture ) )
 	{
-		const vec4 detail = vec4( material.detailTint.rgb, 1.0 ) *
-		                    texture( sampler2D( detailTexture, detailSampler ),
-		                        uv * material.detailScale.xy );
+		detail = vec4( material.detailTint.rgb, 1.0 ) *
+		         texture( sampler2D( detailTexture, detailSampler ), uv * material.detailScale.xy );
 		baseSample = TextureCombine( baseSample, detail, material.detailTint.a );
 	}
 	coverage = 1.0;
@@ -1633,6 +1644,15 @@ void PbrSurface( out float coverage )
 		}
 		emission += selfLit * mask;
 		color = mix( color, selfLit, mask );
+	}
+	// TextureCombinePostLighting (common_ps_fxc.h): modes 5 and 6 add the
+	// detail to the lit surface after self-illumination, unlit.
+	if ( Term( kDetailTexture ) && ( kDetailMode == 5 || kDetailMode == 6 ) &&
+	     DebugTermOn( kDebugTermEmission ) && !furnace )
+	{
+		const vec3 added = PostLightingDetail( detail, material.detailTint.a );
+		emission += added;
+		color += added;
 	}
 	if ( unlitMesh && DebugTermOn( kDebugTermEmission ) && !furnace )
 	{
