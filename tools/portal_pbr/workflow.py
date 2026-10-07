@@ -25,6 +25,7 @@ SOURCES = [
     ROOT / "hammer/core/formats/vpk_archive.cpp",
     ROOT / "hammer/core/formats/vtf_image.cpp",
     ROOT / "texturecontainer/vtf/container.cpp",
+    ROOT / "texturecontainer/vtf_decompress.cpp",
     ROOT / "external/bcdec/bcdec.h",
     ROOT / "hammer/core/formats/material.cpp",
     ROOT / "kvtext/keyvalues.cpp",
@@ -54,7 +55,7 @@ def build_helper() -> None:
     ).split()
     command = [
         "c++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
-        "-I" + str(ROOT / "public"), "-I" + str(ROOT),
+        "-I" + str(ROOT / "public"), "-I" + str(ROOT), "-DVTF_DECOMPRESS_ZSTD",
         *(str(p) for p in SOURCES if p.suffix == ".cpp"), "-o", str(HELPER), *flags,
     ]
     subprocess.run(command, check=True)

@@ -85,6 +85,10 @@ enum ImageFormat
 	IMAGE_FORMAT_DXT1_RUNTIME,
 	IMAGE_FORMAT_DXT5_RUNTIME,
 
+	// BC7 (RGBA, 16-byte 4x4 blocks). VTF files store it as format 70, the
+	// Strata (P2:CE) numbering; the VTF reader maps that value to this one.
+	IMAGE_FORMAT_BC7,
+
 	NUM_IMAGE_FORMATS
 };
 

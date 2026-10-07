@@ -15,7 +15,10 @@ P2_FSR="${P2_FSR:-0}"
 # RFC 0023: release is the optimized, low-instrumentation flavor (./play_p2_release).
 # Unset accepts the configured tree's own flavor (harnesses pass P2_BUILD_DIR only).
 P2_FLAVOR="${P2_FLAVOR:-}"
-# Leading --release/--dev/--fsr/--no-fsr pick the flavor and FSR; unless
+# --workshop (or P2_WORKSHOP=1) mounts the opt-in P2:CE Workshop packs of
+# quality/materials/p2ce-workshop-mounts.json ahead of retail content.
+P2_WORKSHOP="${P2_WORKSHOP:-0}"
+# Leading --release/--dev/--fsr/--no-fsr (and --workshop/--no-workshop) pick the flavor and FSR; unless
 # P2_BUILD_DIR, P2_RUNTIME or P2_WAFLOCK is set, each combination gets its own
 # tree, runtime and lock (build-p2[-fsr][-release]), so swapping is one flag.
 while [[ $# -gt 0 ]]; do
@@ -24,6 +27,8 @@ while [[ $# -gt 0 ]]; do
         --dev) P2_FLAVOR=dev ;;
         --fsr) P2_FSR=1 ;;
         --no-fsr) P2_FSR=0 ;;
+        --workshop) P2_WORKSHOP=1 ;;
+        --no-workshop) P2_WORKSHOP=0 ;;
         *) break ;;
     esac
     shift
@@ -38,6 +43,8 @@ if [[ -n "$P2_FLAVOR" && "$P2_FLAVOR" != dev && "$P2_FLAVOR" != release ]]; then
     echo "play_p2: P2_FLAVOR must be dev, release or unset" >&2
     exit 1
 fi
+workshop_args=()
+[[ "$P2_WORKSHOP" == 1 ]] && workshop_args=(--workshop)
 if [[ "$P2_FSR" != 0 && "$P2_FSR" != 1 ]]; then
     echo "play_p2: P2_FSR must be 0 or 1" >&2
     exit 1
@@ -153,7 +160,8 @@ fi
 if [[ "$mode" == "--prepare" || "$mode" == "--configure-only" ]]; then
     transcode_movies
     python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \
-        --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME" --av1-media "$P2_AV1_MEDIA"
+        --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME" --av1-media "$P2_AV1_MEDIA" \
+        ${workshop_args[@]+"${workshop_args[@]}"}
     exit 0
 fi
 
@@ -171,7 +179,7 @@ if [[ "${P2_NO_BUILD:-}" != 1 ]]; then
     transcode_movies
     python3 "$ROOT/tools/quality/stage_portal2_runtime.py" \
         --steam-root "$P2_STEAM_ROOT" --runtime "$P2_RUNTIME" --build "$P2_BUILD_DIR" \
-        --mount-published --av1-media "$P2_AV1_MEDIA"
+        --mount-published --av1-media "$P2_AV1_MEDIA" ${workshop_args[@]+"${workshop_args[@]}"}
 elif [[ ! -x "$P2_RUNTIME/hl2_launcher" ]]; then
     echo "play_p2: P2_NO_BUILD=1 but $P2_RUNTIME has no staged launcher" >&2
     exit 1

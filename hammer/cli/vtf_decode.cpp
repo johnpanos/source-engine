@@ -1,37 +1,11 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 // Purpose: Headless material import through Hammer's shared VTF decoder.
 #include "hammer/formats/vtf_image.h"
+#include "texturecontainer/vtf_decompress.h"
 
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <zlib.h>
-#include <zstd.h>
-
-namespace
-{
-bool Decompress( hammer::formats::VtfCompressionMethod method, std::string_view input,
-    std::span<std::uint8_t> output, std::string &error )
-{
-	if ( method == hammer::formats::VtfCompressionMethod::Zstandard )
-	{
-		const auto size =
-		    ZSTD_decompress( output.data(), output.size(), input.data(), input.size() );
-		if ( !ZSTD_isError( size ) && size == output.size() )
-			return true;
-	}
-	else if ( method == hammer::formats::VtfCompressionMethod::Deflate )
-	{
-		uLongf size = output.size();
-		if ( uncompress( output.data(), &size, reinterpret_cast<const Bytef *>( input.data() ),
-		         input.size() ) == Z_OK &&
-		     size == output.size() )
-			return true;
-	}
-	error = "VTF decompression failed or returned an incomplete image";
-	return false;
-}
-} // namespace
 
 int main( int argc, char **argv )
 {
@@ -52,7 +26,7 @@ int main( int argc, char **argv )
 	if ( !input.read( encoded.data(), size ) )
 		return 1;
 	std::string error;
-	auto image = hammer::formats::DecodeVtf( encoded, error, Decompress );
+	auto image = hammer::formats::DecodeVtf( encoded, error, texturecontainer::vtf::Decompress );
 	if ( !image )
 	{
 		std::cerr << error << '\n';

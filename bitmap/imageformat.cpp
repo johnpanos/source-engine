@@ -75,6 +75,7 @@ static const ImageFormatInfo_t g_ImageFormatInfo[] =
 
 	{ "DXT1_RUNTIME",				0, 0, 0, 0, 0, true, },			// IMAGE_FORMAT_DXT1_RUNTIME
 	{ "DXT5_RUNTIME",				0, 0, 0, 0, 8, true, },			// IMAGE_FORMAT_DXT5_RUNTIME
+	{ "BC7",						0, 0, 0, 0, 8, true, },			// IMAGE_FORMAT_BC7
 };
 
 
@@ -144,6 +145,7 @@ int GetMemRequired( int width, int height, int depth, ImageFormat imageFormat, b
 			case IMAGE_FORMAT_DXT5:
 			case IMAGE_FORMAT_DXT5_RUNTIME:
 			case IMAGE_FORMAT_ATI2N:
+			case IMAGE_FORMAT_BC7:
 				return numBlocks * 16;
 			}
 
@@ -440,6 +442,10 @@ D3DFORMAT ImageFormatToD3DFormat( ImageFormat format )
 		return D3DFMT_DXT1;
 	case IMAGE_FORMAT_DXT5_RUNTIME:
 		return D3DFMT_DXT5;
+
+	// D3D9 has no BC7; the material system decodes it (CTexture::ComputeActualFormat).
+	case IMAGE_FORMAT_BC7:
+		return D3DFMT_UNKNOWN;
 	}
 
 	Assert( 0 );

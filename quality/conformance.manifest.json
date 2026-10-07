@@ -4400,6 +4400,32 @@
       "expect": "pass"
     },
     {
+      "id": "content.vtf.decompress",
+      "domain": "Q-CONTENT",
+      "rfc": "0008",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "migration": "VTF 7.6 (P2:CE) in the game",
+      "contract": "public/texturecontainer/vtf_decompress.h",
+      "description": "VTF 7.6 textures in the game's legacy texture path: the shared AXC decompressor (Deflate and Zstandard round trips; short, long, corrupt and unknown-method runs refused), CVTFTexture loading an 8x8 four-mip BC7 texture (Strata format 70) from Deflate and Zstandard runs byte-exactly with a corrupt run failing the load, the VTF 7.6 sRGB flag (0x80000) not read as staging memory, and the material system's BC7 decode for backends without BC7 (RGBA and BGRA texels at their blocks' positions, BC7 copy, undeclared targets refused). Seeded faults (no decompression, no BGRA swap) fail 5 checks.",
+      "command": [
+        "build-p2/unittests/texturecontainertest/vtf_decompress_conformance"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 26,
+      "timeout_seconds": 60,
+      "requires": [
+        "path:build-p2/unittests/texturecontainertest/vtf_decompress_conformance"
+      ],
+      "sources": [
+        "texturecontainer/vtf_decompress.cpp",
+        "vtf/vtf.cpp",
+        "bitmap/colorconversion.cpp",
+        "unittests/texturecontainertest/test_vtf_decompress.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "hammer.formats.vtf_image",
       "domain": "Q-EDITOR",
       "rfc": "0002",

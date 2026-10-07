@@ -28,6 +28,12 @@ typedef int32 *DWORD_PTR;
 #define STB_DXT_IMPLEMENTATION
 #include "stb_dxt.h"
 
+// BC7 decoding for backends and devices without BC7 (vendored external/bcdec,
+// file-local so it never collides with content.block-decode's copy).
+#define BCDEC_STATIC
+#define BCDEC_IMPLEMENTATION
+#include "bcdec.h"
+
 // Should be last include
 #include "tier0/memdbgon.h"
 
@@ -1277,17 +1283,51 @@ bool ConvertImageFormat( const uint8 *src, ImageFormat srcImageFormat,
 			return true;
 		}
 	}
-	
+
+	// BC7 (P2:CE VTFs) decodes to 8-bit RGBA; BC7 to BC7 is a copy below.
+	if ( srcImageFormat == IMAGE_FORMAT_BC7 && dstImageFormat != IMAGE_FORMAT_BC7 )
+	{
+		if ( srcStride != 0 || dstStride != 0 )
+			return false;
+		const bool bgra =
+		    dstImageFormat == IMAGE_FORMAT_BGRA8888 || dstImageFormat == IMAGE_FORMAT_BGRX8888;
+		if ( !bgra && dstImageFormat != IMAGE_FORMAT_RGBA8888 )
+			return false;
+		const int blocksX = ( width + 3 ) / 4, blocksY = ( height + 3 ) / 4;
+		uint8 texels[4 * 4 * 4];
+		for ( int by = 0; by < blocksY; ++by )
+		{
+			for ( int bx = 0; bx < blocksX; ++bx )
+			{
+				bcdec_bc7( src + ( by * blocksX + bx ) * 16, texels, 4 * 4 );
+				for ( int y = 0; y < 4 && by * 4 + y < height; ++y )
+				{
+					for ( int x = 0; x < 4 && bx * 4 + x < width; ++x )
+					{
+						const uint8 *in = texels + ( y * 4 + x ) * 4;
+						uint8 *out = dst + ( ( by * 4 + y ) * width + bx * 4 + x ) * 4;
+						out[0] = in[bgra ? 2 : 0];
+						out[1] = in[1];
+						out[2] = in[bgra ? 0 : 2];
+						out[3] = in[3];
+					}
+				}
+			}
+		}
+		return true;
+	}
+
 	// Fast path for just copying a compressed texture
 	if ( ( ( dstImageFormat == IMAGE_FORMAT_DXT1 || dstImageFormat == IMAGE_FORMAT_DXT1_RUNTIME ||
-		     dstImageFormat == IMAGE_FORMAT_DXT3 ||
-		     dstImageFormat == IMAGE_FORMAT_DXT5 || dstImageFormat == IMAGE_FORMAT_DXT5_RUNTIME ||
-		     dstImageFormat == IMAGE_FORMAT_ATI1N ||
-		     dstImageFormat == IMAGE_FORMAT_ATI2N ) && ( srcImageFormat == dstImageFormat ) ) ||
-		 ( dstImageFormat == IMAGE_FORMAT_DXT5 && srcImageFormat == IMAGE_FORMAT_DXT5_RUNTIME ) ||
-		 ( dstImageFormat == IMAGE_FORMAT_DXT1 && srcImageFormat == IMAGE_FORMAT_DXT1_RUNTIME ) ||
-		 ( dstImageFormat == IMAGE_FORMAT_DXT5_RUNTIME && srcImageFormat == IMAGE_FORMAT_DXT5 ) ||
-		 ( dstImageFormat == IMAGE_FORMAT_DXT1_RUNTIME && srcImageFormat == IMAGE_FORMAT_DXT1 ) )
+	           dstImageFormat == IMAGE_FORMAT_DXT3 || dstImageFormat == IMAGE_FORMAT_DXT5 ||
+	           dstImageFormat == IMAGE_FORMAT_DXT5_RUNTIME ||
+	           dstImageFormat == IMAGE_FORMAT_ATI1N || dstImageFormat == IMAGE_FORMAT_ATI2N ||
+	           dstImageFormat == IMAGE_FORMAT_BC7 ) &&
+	         ( srcImageFormat == dstImageFormat ) ) ||
+	     ( dstImageFormat == IMAGE_FORMAT_DXT5 && srcImageFormat == IMAGE_FORMAT_DXT5_RUNTIME ) ||
+	     ( dstImageFormat == IMAGE_FORMAT_DXT1 && srcImageFormat == IMAGE_FORMAT_DXT1_RUNTIME ) ||
+	     ( dstImageFormat == IMAGE_FORMAT_DXT5_RUNTIME && srcImageFormat == IMAGE_FORMAT_DXT5 ) ||
+	     ( dstImageFormat == IMAGE_FORMAT_DXT1_RUNTIME && srcImageFormat == IMAGE_FORMAT_DXT1 ) )
 	{
 		// Fast path for compressed textures . . stride doesn't make as much sense.
 //		Assert( srcStride == 0 && dstStride == 0 );

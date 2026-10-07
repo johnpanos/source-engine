@@ -75,8 +75,8 @@ bool BlockFormat( Format format )
 
 } // namespace
 
-foundation::Expected<CookieImages, std::string> DecodeCookies(
-    const mdl::IModelFiles &files, const std::vector<std::string> &names )
+foundation::Expected<CookieImages, std::string> DecodeCookies( const mdl::IModelFiles &files,
+    const std::vector<std::string> &names, texturecontainer::vtf::Decompressor decompressor )
 {
 	using foundation::MakeUnexpected;
 	std::vector<texturecontainer::TextureImage> images;
@@ -87,7 +87,7 @@ foundation::Expected<CookieImages, std::string> DecodeCookies(
 		if ( !files.Read( "materials/" + name + ".vtf", bytes ) )
 			return MakeUnexpected( "cookie " + name + " is missing" );
 		auto image = texturecontainer::ReadVtfImage(
-		    std::as_bytes( std::span( bytes.data(), bytes.size() ) ) );
+		    std::as_bytes( std::span( bytes.data(), bytes.size() ) ), decompressor );
 		if ( !image || image.Value().levels.empty() )
 			return MakeUnexpected( "cookie " + name + " does not decode" );
 		const std::optional<CookieFormat> mine = CookieFormatOf( image.Value().format );
@@ -160,10 +160,11 @@ void CookieArray::Release( CompletionToken token )
 	m_Device = nullptr;
 }
 
-std::optional<std::string> CookieArray::Create(
-    IRenderDevice2 &device, const mdl::IModelFiles &files, const std::vector<std::string> &names )
+std::optional<std::string> CookieArray::Create( IRenderDevice2 &device,
+    const mdl::IModelFiles &files, const std::vector<std::string> &names,
+    texturecontainer::vtf::Decompressor decompressor )
 {
-	auto images = DecodeCookies( files, names );
+	auto images = DecodeCookies( files, names, decompressor );
 	if ( !images )
 		return images.Error();
 	return Create( device, images.Value() );

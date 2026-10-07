@@ -2078,6 +2078,14 @@ ImageFormat CTexture::ComputeActualFormat( ImageFormat srcFormat )
 {
 	ImageFormat dstFormat;
 	bool bIsCompressed = ImageLoader::IsCompressed( srcFormat );
+	// BC7 is sampled only where the shader API keeps it; elsewhere (D3D9, a
+	// device without BC) it decodes to 8-bit RGBA like an uncompressed source.
+	if ( srcFormat == IMAGE_FORMAT_BC7 &&
+	     ( !g_config.bCompressedTextures || !HardwareConfig()->SupportsCompressedTextures() ||
+	         g_pShaderAPI->GetNearestSupportedFormat( srcFormat ) != IMAGE_FORMAT_BC7 ) )
+	{
+		return g_pShaderAPI->GetNearestSupportedFormat( IMAGE_FORMAT_BGRA8888 );
+	}
 	if ( g_config.bCompressedTextures && HardwareConfig()->SupportsCompressedTextures() && bIsCompressed )
 	{
 		// for the runtime compressed formats the srcFormat won't equal the dstFormat, and we need to return srcFormat here

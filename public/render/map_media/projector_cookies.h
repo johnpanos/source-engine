@@ -27,6 +27,7 @@
 #include "foundation/expected.h"
 #include "mdl/studio_model.h"
 #include "render/device/device.h"
+#include "texturecontainer/vtf_container.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -48,9 +49,12 @@ struct CookieImages
 	std::vector<std::byte> bytes; // layers x layerBytes
 };
 
-// The cookies' texels, or the reason one is refused.
-foundation::Expected<CookieImages, std::string> DecodeCookies(
-    const mdl::IModelFiles &files, const std::vector<std::string> &names );
+// The cookies' texels, or the reason one is refused. `decompressor` reads VTF
+// 7.6 (P2:CE) compressed runs; the composition root passes it, and without
+// one a compressed cookie is refused.
+foundation::Expected<CookieImages, std::string> DecodeCookies( const mdl::IModelFiles &files,
+    const std::vector<std::string> &names,
+    texturecontainer::vtf::Decompressor decompressor = nullptr );
 
 class CookieArray
 {
@@ -66,7 +70,8 @@ public:
 	std::optional<std::string> Create( device::IRenderDevice2 &device, const CookieImages &images );
 	// DecodeCookies, then Create.
 	std::optional<std::string> Create( device::IRenderDevice2 &device,
-	    const mdl::IModelFiles &files, const std::vector<std::string> &names );
+	    const mdl::IModelFiles &files, const std::vector<std::string> &names,
+	    texturecontainer::vtf::Decompressor decompressor = nullptr );
 	// Copies the texels into the array, which ends in kSampled.
 	void RecordUpload( device::CommandEncoder &encoder );
 	// Releases the array and its staging behind `token`.

@@ -1,0 +1,75 @@
+{
+  "format": "p2ce-workshop-mounts/v1",
+  "description": "Opt-in read-only P2:CE Workshop content mounted ahead of retail Portal 2 by tools/quality/stage_portal2_runtime.py --workshop (./play_p2 --workshop). Earlier packs win. Only paths under 'include' are taken; maps, scripts and VScripts the packs also ship are never mounted. A model is taken whole (mdl/vvd/vtx/phy) from the first pack that ships any of its files. Nothing here is redistributed; the bytes stay in the user's Steam installation. The stager refuses a selected collision model that is not VPHY version 0x0100.",
+  "steam_app": 440000,
+  "decision": "User direction 2026-10-07: enable the Tier 1 packs of the workshop review except November Doors.",
+  "packs": [
+    {
+      "id": "3152562144",
+      "title": "GLaDOS - The Lab (Model Port) - V2",
+      "include": [
+        "materials/",
+        "models/"
+      ],
+      "why": "The Lab's GLaDOS as glados_animation.mdl with high-resolution VertexLitGeneric materials. Its materials reuse retail names (glados_head, glados_chest, glados_hips, glados_cables, glados_selfillum) that 13 retail models share with other UV layouts, so they move to models/npcs/glalab/ and only this model uses them.",
+      "namespace": {
+        "from": "models/npcs/glados/",
+        "to": "models/npcs/glalab/"
+      }
+    },
+    {
+      "id": "3711444931",
+      "title": "Overly-Expressive P1 Cores (Portal 1 Eyes Variant)",
+      "include": [
+        "materials/",
+        "models/"
+      ],
+      "why": "Personality-core models and eye materials"
+    },
+    {
+      "id": "3405845056",
+      "title": "Higher Resolution Indicator Lights",
+      "include": [
+        "materials/"
+      ],
+      "why": "High-resolution indicator decals under new names; they replace no retail material until a mapping selects them"
+    }
+  ],
+  "not_mounted": [
+    {
+      "id": "3523648265",
+      "title": "November Doors Replacement (V1.00)",
+      "reason": "user decision 2026-10-07"
+    },
+    {
+      "id": "3713290260",
+      "title": "Aperture Desk Job Weighted Storage Cubes",
+      "reason": "every model's collision is VPHY 0x0101 (P2:CE), which neither vphysics provider reads; its materials serve only those models"
+    },
+    {
+      "id": "3519554320",
+      "title": "Bonnie's PBR Portal Gun",
+      "reason": "conflicts with 3592898497"
+    },
+    {
+      "id": "3577892542",
+      "title": "Ending: Enhanced (V1.00)",
+      "reason": "its PBR materials need textures from ApertureVR (3506356222, pbr/aperturevr/black_wall_metal) and P2:CE base content, which this mount does not supply"
+    },
+    {
+      "id": "3683114202",
+      "title": "Core Transfer: Re-Enhanced (V1.00)",
+      "reason": "its PBR materials need textures from ApertureVR (pbr/aperturevr/plastic_wall) and P2:CE base content (pbr/metal/black_tiles_128)"
+    },
+    {
+      "id": "3592898497",
+      "title": "Retextured PBR Portal Gun",
+      "reason": "its VTF 7.6 BC7 textures load (texturecontainer vtf_decompress, IMAGE_FORMAT_BC7, the 7.6 sRGB flag), but its materials use P2:CE's PBR shader, which the render core does not map to its pbr family (only PBRMetalRough), so the core drops the gun; $envmaptint, $mraoscale and $blendtintbymraoalpha need a lab-proven interpretation first (2026-10-07)"
+    },
+    {
+      "id": "3699530917",
+      "title": "Glowing Vacuum Tubes",
+      "reason": "its vacum_pipe.vmt replaces retail's with an animated, self-illuminated VertexLitGeneric material that the render core drops, so retail vacuum pipes vanish (158 draws dropped in sp_a2_laser_intro, 2026-10-07)"
+    }
+  ]
+}

@@ -2,6 +2,8 @@
 """Stage licensed Portal 2 content and an independently built game target."""
 
 import argparse
+import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -48,6 +50,16 @@ AV1_MEDIA_LINK = "media_av1"
 # The default transcode root (./play_p2's P2_AV1_MEDIA). AV1 is the launcher's
 # default video provider, so every staging mounts it when it exists.
 DEFAULT_AV1_MEDIA = Path(__file__).resolve().parents[2] / "run/media-av1"
+# The opt-in P2:CE Workshop packs (--workshop): which packs, in which order, and
+# which of their paths. Each pack's selected files are extracted from the
+# user's Steam installation into <runtime>/workshop/<id> and mounted ahead of
+# retail content; the manifest's order is their precedence.
+WORKSHOP_MANIFEST = Path(__file__).resolve().parents[2] / "quality/materials/p2ce-workshop-mounts.json"
+DEFAULT_WORKSHOP_ROOT = Path.home() / ".local/share/Steam/steamapps/workshop/content/440000"
+WORKSHOP_DIR = "workshop"
+# The files of one compiled model. A model is taken whole from one pack: a
+# .mdl beside another pack's .vvd would not match its checksum.
+MODEL_SUFFIXES = (".dx90.vtx", ".dx80.vtx", ".sw.vtx", ".vtx", ".mdl", ".vvd", ".phy", ".ani")
 
 
 def private_retail_write_dir(steam_root, mirror):
@@ -103,13 +115,16 @@ def private_retail_write_dir(steam_root, mirror):
     return target
 
 
-def retail_search_paths(contents, mount_custom=False, av1_media=()):
-    """av1_media: the game directories with an AV1 media tree under AV1_MEDIA_LINK."""
+def retail_search_paths(contents, mount_custom=False, av1_media=(), workshop=()):
+    """av1_media: the game directories with an AV1 media tree under AV1_MEDIA_LINK.
+    workshop: the staged Workshop pack ids, highest precedence first."""
     lines = ["\t\tSearchPaths", "\t\t{"]
     if mount_custom:
         # Ahead of retail content, as in the Portal gameinfo: the Android app
         # installs its touch-control icons into <game>/custom/android_touch.
         lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|custom/*")
+    for pack in workshop:
+        lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|../%s/%s" % (WORKSHOP_DIR, pack))
     for name in RETAIL_OVERLAY_DIRS:
         if name in av1_media:
             lines.append("\t\t\tgame+mod\t\t\t|gameinfo_path|../%s/%s" % (AV1_MEDIA_LINK, name))
@@ -164,9 +179,165 @@ def default_av1_media():
     return None
 
 
-def stage_content(steam_root, runtime, mount_custom=False, av1_media="default"):
+def model_unit(path):
+    """The model a models/ file belongs to (its path without the model suffix), else None."""
+    if not path.startswith("models/"):
+        return None
+    for suffix in MODEL_SUFFIXES:
+        if path.endswith(suffix):
+            return path[:-len(suffix)]
+    return None
+
+
+def select_workshop_files(packs, listings):
+    """Choose each pack's files. packs: the manifest's pack records in
+    precedence order; listings: pack id -> its archive paths, or None when the
+    pack is not installed. Returns (pack id -> {lowercase path: archive path},
+    pack id -> reason for each pack not mounted)."""
+    chosen, missing, owner = {}, {}, {}
+    for pack in packs:
+        names = listings.get(pack["id"])
+        if names is None:
+            missing[pack["id"]] = "not installed"
+            continue
+        include, exclude = tuple(pack["include"]), tuple(pack.get("exclude", ()))
+        files = {}
+        for name in names:
+            path = name.lower().replace("\\", "/")
+            if not path.startswith(include) or path.startswith(exclude) or path in exclude:
+                continue
+            unit = model_unit(path)
+            if unit is not None and owner.setdefault(unit, pack["id"]) != pack["id"]:
+                continue
+            files[path] = name
+        chosen[pack["id"]] = files
+    return chosen, missing
+
+
+# The only collision layout either vphysics provider reads. P2:CE (Strata)
+# writes 0x0101, a different compact-surface layout.
+VPHYSICS_COLLISION_VERSION = 0x0100
+
+
+def collision_versions(data):
+    """The VPHY version of each solid in a .phy file (None for a headerless solid)."""
+    import struct
+    if len(data) < 16:
+        raise ValueError("truncated collision header")
+    header_size, _, solids = struct.unpack_from("<iii", data, 0)
+    position, versions = header_size, []
+    for _ in range(solids):
+        if position + 12 > len(data):
+            raise ValueError("truncated collision solid")
+        size, ident, version = struct.unpack_from("<i4sh", data, position)
+        versions.append(version if ident == b"VPHY" else None)
+        position += 4 + size
+    return versions
+
+
+def namespaced(path, data, namespace, files):
+    """Move a pack's materials from namespace["from"] to namespace["to"] (both
+    under materials/), so a model that shares retail material names stops
+    replacing them for every retail model that uses them. A VMT's references to
+    textures the pack ships follow the move; a model's $cdmaterials directory
+    is rewritten in place, so the two names must be the same length."""
+    source, target = namespace["from"], namespace["to"]
+    if len(source) != len(target):
+        raise ValueError("namespace %s -> %s changes the name length" % (source, target))
+    if path.startswith("materials/" + source):
+        path = "materials/" + target + path[len("materials/" + source):]
+        if path.endswith(".vmt"):
+            text = data.decode("latin-1")
+            for ref in sorted({f[len("materials/"):-len(".vtf")] for f in files
+                               if f.startswith("materials/" + source) and f.endswith(".vtf")},
+                              key=len, reverse=True):
+                moved = target + ref[len(source):]
+                for spelling in (ref, ref.replace("/", "\\")):
+                    pattern = re.compile(re.escape(spelling) + r'(?=["\s])', re.IGNORECASE)
+                    text = pattern.sub(lambda _, moved=moved: moved, text)
+            data = text.encode("latin-1")
+    elif path.endswith(".mdl"):
+        replaced = 0
+        for old, new in ((source, target), (source.replace("/", "\\"), target.replace("/", "\\"))):
+            pattern = re.compile(re.escape(old.encode()), re.IGNORECASE)
+            data, count = pattern.subn(lambda _, new=new.encode(): new, data)
+            replaced += count
+        if not replaced:
+            raise ValueError("%s has no $cdmaterials %s to move" % (path, source))
+    return path, data
+
+
+def stage_workshop(runtime, workshop_root, manifest_path=WORKSHOP_MANIFEST):
+    """Extract the manifest's packs into <runtime>/workshop and return the ids
+    mounted, highest precedence first. A pack whose archives are unchanged
+    since its last extraction is reused. Writes workshop/mounts.json, the
+    record of what each pack supplies."""
+    import vpk
+
+    manifest = json.loads(Path(manifest_path).read_text())
+    if manifest.get("format") != "p2ce-workshop-mounts/v1":
+        raise ValueError("%s is not a p2ce-workshop-mounts/v1 manifest" % manifest_path)
+    workshop_root, base = Path(workshop_root), Path(runtime) / WORKSHOP_DIR
+    archives, listings = {}, {}
+    for pack in manifest["packs"]:
+        directory = workshop_root / pack["id"]
+        if (directory / "pak01_dir.vpk").is_file():
+            archives[pack["id"]] = vpk.open(str(directory / "pak01_dir.vpk"))
+            listings[pack["id"]] = list(archives[pack["id"]])
+    chosen, missing = select_workshop_files(manifest["packs"], listings)
+    for pack_id, files in chosen.items():
+        for path, name in files.items():
+            if path.endswith(".phy"):
+                bad = [v for v in collision_versions(archives[pack_id][name].read())
+                       if v not in (None, VPHYSICS_COLLISION_VERSION)]
+                if bad:
+                    raise ValueError("workshop %s %s: collision version 0x%04x is not loadable; "
+                                     "exclude the model in %s" % (pack_id, path, bad[0],
+                                                                  Path(manifest_path).name))
+    base.mkdir(parents=True, exist_ok=True)
+    report = {"format": "p2ce-workshop-mount-record/v1", "manifest": str(manifest_path),
+              "packs": [], "unavailable": missing}
+    for pack in manifest["packs"]:
+        pack_id = pack["id"]
+        if pack_id not in chosen:
+            continue
+        source = workshop_root / pack_id
+        stamp = {"namespace": pack.get("namespace"), "archives": {p.name: [p.stat().st_size, p.stat().st_mtime_ns]
+                              for p in sorted(source.glob("pak01_*.vpk"))},
+                 "files": sorted(chosen[pack_id])}
+        target = base / pack_id
+        stamp_file = target / ".workshop-source.json"
+        if not stamp_file.is_file() or json.loads(stamp_file.read_text()) != stamp:
+            if target.exists():
+                shutil.rmtree(target)
+            namespace = pack.get("namespace")
+            for path, name in chosen[pack_id].items():
+                data = archives[pack_id][name].read()
+                if namespace:
+                    path, data = namespaced(path, data, namespace, chosen[pack_id])
+                out = target / path
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_bytes(data)
+            target.mkdir(parents=True, exist_ok=True)
+            stamp_file.write_text(json.dumps(stamp, indent=1) + "\n")
+        report["packs"].append({
+            "id": pack_id, "title": pack["title"], "source": str(source / "pak01_dir.vpk"),
+            "files": len(chosen[pack_id]),
+            "materials": sum(p.endswith(".vmt") for p in chosen[pack_id]),
+            "models": sum(p.endswith(".mdl") for p in chosen[pack_id])})
+    mounted = [p["id"] for p in report["packs"]]
+    for stale in base.iterdir():
+        if stale.is_dir() and stale.name not in mounted:
+            shutil.rmtree(stale)
+    (base / "mounts.json").write_text(json.dumps(report, indent=1) + "\n")
+    return mounted, report
+
+
+def stage_content(steam_root, runtime, mount_custom=False, av1_media="default",
+                  workshop_root=None):
     """av1_media: an AV1 transcode root, "default" for DEFAULT_AV1_MEDIA when
-    present, or None to mount none."""
+    present, or None to mount none. workshop_root: the P2:CE Workshop content
+    directory whose manifest packs are mounted, or None for none."""
     if av1_media == "default":
         av1_media = default_av1_media()
     steam_root, runtime = Path(steam_root).resolve(), Path(runtime).resolve()
@@ -191,9 +362,17 @@ def stage_content(steam_root, runtime, mount_custom=False, av1_media="default"):
             raise ValueError("staged %s is not a link to the selected Steam installation" % link.name)
         link.symlink_to(source, target_is_directory=True)
     av1_dirs = stage_av1_media(runtime, av1_media)
+    workshop = ()
+    if workshop_root is not None:
+        workshop, report = stage_workshop(runtime, workshop_root)
+        for pack in report["packs"]:
+            print("play_p2: workshop %s %s: %d materials, %d models"
+                  % (pack["id"], pack["title"], pack["materials"], pack["models"]))
+        for pack_id, reason in report["unavailable"].items():
+            print("play_p2: workshop %s not mounted: %s" % (pack_id, reason))
     gameinfo = runtime / "portal2/gameinfo.txt"
     contents = gameinfo.read_text()
-    staged = retail_search_paths(contents, mount_custom, av1_dirs)
+    staged = retail_search_paths(contents, mount_custom, av1_dirs, workshop)
     if staged != contents:  # keep the modification time a device sync compares
         gameinfo.write_text(staged)
 
@@ -246,13 +425,17 @@ def main(argv=None):
                         help="the AV1 transcode root (tools/video/transcode_av1.py) mounted "
                              "ahead of each game directory (default: run/media-av1 when it "
                              "has transcodes)")
+    parser.add_argument("--workshop", nargs="?", type=Path, const=DEFAULT_WORKSHOP_ROOT,
+                        help="mount the P2:CE Workshop packs of %s from this content "
+                             "directory (default: %s)" % (WORKSHOP_MANIFEST.name, DEFAULT_WORKSHOP_ROOT))
     parser.add_argument("--no-av1-media", action="store_true",
                         help="mount no AV1 movies (for -video-provider bink)")
     args = parser.parse_args(argv)
     try:
         vpk = stage_content(args.steam_root, args.runtime,
                             args.mount_custom or args.mount_published,
-                            None if args.no_av1_media else args.av1_media or "default")
+                            None if args.no_av1_media else args.av1_media or "default",
+                            args.workshop)
         print("Portal 2 content: " + str(vpk.resolve()))
         if args.mount_published:
             import playable_maps

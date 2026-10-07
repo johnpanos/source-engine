@@ -8,6 +8,20 @@ def configure(conf):
 	pass
 
 def build(bld):
+	# VTF 7.6 (P2:CE) in the game's legacy texture path: no KTX needed.
+	bld.program(
+		features='c cxx',
+		source=['test_vtf_decompress.cpp'],
+		target='vtf_decompress_conformance',
+		name='vtf_decompress_conformance',
+		arch_module='content.ktx2-native-tests',
+		defines=['VTF_DECOMPRESS_ZSTD'] if bld.env.VTF_DECOMPRESS_ZSTD else [],
+		includes=['../../public', '../../public/tier0', '../../public/tier1', '../../external/bcdec'],
+		use=['vtf_decompress', 'vtf', 'bitmap', 'mathlib', 'tier0', 'tier1', 'tier2', 'ZLIB'] +
+			( ['ZSTD'] if bld.env.VTF_DECOMPRESS_ZSTD else [] ),
+		# Runs from the build tree (the conformance manifest): tier0 is shared.
+		rpath=[bld.bldnode.find_or_declare('tier0').abspath()],
+		install_path=None)
 	if not bld.env.KTX_READ_ENABLED:
 		return
 	bld.program(

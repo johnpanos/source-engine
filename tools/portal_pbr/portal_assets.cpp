@@ -11,10 +11,9 @@
 #include "hammer/formats/vpk_archive.h"
 #include "hammer/formats/vtf_image.h"
 #include "render/pbr_material_schema.h"
+#include "texturecontainer/vtf_decompress.h"
 
 #include <png.h>
-#include <zlib.h>
-#include <zstd.h>
 
 #include <algorithm>
 #include <cctype>
@@ -32,43 +31,6 @@
 
 namespace
 {
-
-bool DecompressVtfMip( hammer::formats::VtfCompressionMethod method, std::string_view encoded,
-    std::span<std::uint8_t> decoded, std::string &error )
-{
-	if ( method == hammer::formats::VtfCompressionMethod::Deflate )
-	{
-		if ( encoded.size() > std::numeric_limits<uLong>::max() ||
-		     decoded.size() > std::numeric_limits<uLongf>::max() )
-		{
-			error = "vtf: Deflate mip exceeds zlib size limits";
-			return false;
-		}
-		uLongf decodedBytes = static_cast<uLongf>( decoded.size() );
-		const int result = uncompress( decoded.data(), &decodedBytes,
-		    reinterpret_cast<const Bytef *>( encoded.data() ),
-		    static_cast<uLong>( encoded.size() ) );
-		if ( result != Z_OK || decodedBytes != decoded.size() )
-		{
-			error = "vtf: Deflate mip decompression failed";
-			return false;
-		}
-		return true;
-	}
-	if ( method == hammer::formats::VtfCompressionMethod::Zstandard )
-	{
-		const std::size_t decodedBytes =
-		    ZSTD_decompress( decoded.data(), decoded.size(), encoded.data(), encoded.size() );
-		if ( ZSTD_isError( decodedBytes ) || decodedBytes != decoded.size() )
-		{
-			error = "vtf: Zstandard mip decompression failed";
-			return false;
-		}
-		return true;
-	}
-	error = "vtf: unsupported CPU compression method";
-	return false;
-}
 
 std::string JsonQuote( const std::string &value )
 {
@@ -326,7 +288,8 @@ int Decode( const hammer::formats::VpkArchive &archive, const std::string &path,
 		std::cerr << "volume VTF requires review\n";
 		return 2;
 	}
-	const auto image = hammer::formats::DecodeVtf( bytes, error, &DecompressVtfMip );
+	const auto image =
+	    hammer::formats::DecodeVtf( bytes, error, &texturecontainer::vtf::Decompress );
 	if ( !image )
 	{
 		std::cerr << error << '\n';

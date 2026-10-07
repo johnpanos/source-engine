@@ -641,6 +641,17 @@ def check_deps(conf):
 		for framework in frameworks:
 			conf.env['FRAMEWORK_' + framework.upper()] = framework
 
+	# VTF 7.6 (P2:CE / Strata) stores mip runs Deflate- or Zstandard-compressed
+	# (texturecontainer vtf_decompress). Deflate is zlib; Zstandard needs
+	# libzstd, found where the host package exists (the Linux desktop today).
+	# Without it a Zstandard texture is refused by name.
+	if conf.env.DEST_OS == 'linux':
+		if conf.check_cfg(package='libzstd', uselib_store='ZSTD', args=['--cflags', '--libs'],
+				mandatory=False):
+			conf.env.VTF_DECOMPRESS_ZSTD = True
+		if not conf.env.LIB_ZLIB:
+			conf.check_cfg(package='zlib', uselib_store='ZLIB', args=['--cflags', '--libs'])
+
 	if conf.options.TESTS:
 		return
 
@@ -1140,9 +1151,9 @@ def configure(conf):
 			projects['game'] += ['materialsystem/shaderapivulkan']
 			if not conf.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/shaderapivulkantest']
-			if conf.env.KTX_READ_ENABLED:
-				if not conf.env.ANDROID_SDL3:
-					projects['game'] += ['unittests/texturecontainertest']
+			# Its KTX2 suites are gated inside; the VTF 7.6 suite needs no KTX.
+			if not conf.env.ANDROID_SDL3:
+				projects['game'] += ['unittests/texturecontainertest']
 		if not conf.env.ANDROID_SDL3:
 			projects['game'] += ['unittests/physicstest']
 		if conf.env.VIDEO_FFMPEG:
@@ -1265,9 +1276,9 @@ def build(bld):
 			projects['game'] += ['materialsystem/shaderapivulkan']
 			if not bld.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/shaderapivulkantest']
-			if bld.env.KTX_READ_ENABLED:
-				if not bld.env.ANDROID_SDL3:
-					projects['game'] += ['unittests/texturecontainertest']
+			# Its KTX2 suites are gated inside; the VTF 7.6 suite needs no KTX.
+			if not bld.env.ANDROID_SDL3:
+				projects['game'] += ['unittests/texturecontainertest']
 		if not bld.env.ANDROID_SDL3:
 			projects['game'] += ['unittests/physicstest']
 		if bld.env.TOGLES:

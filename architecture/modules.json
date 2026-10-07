@@ -194,6 +194,19 @@
         "allowedEdges": ["foundation"]
       },
       {
+        "id": "content.vtf-decompress",
+        "paths": ["public/texturecontainer/vtf_decompress.h"],
+        "allowedEdges": ["content.vtf-container", "foundation"]
+      },
+      {
+        "id": "content.vtf-decompress-zlib",
+        "kind": "backend",
+        "paths": ["texturecontainer/vtf_decompress.cpp"],
+        "allowedEdges": ["content.vtf-decompress", "content.vtf-container"],
+        "externalHeaders": ["limits", "zlib.h", "zstd.h"],
+        "uselib": ["ZLIB", "ZSTD"]
+      },
+      {
         "id": "content.vtf-reader",
         "paths": [
           "texturecontainer/vtf_reader.cpp"
@@ -229,15 +242,22 @@
           "content.texture-contract",
           "content.ktx2-reader",
           "content.vtf-reader",
+          "content.vtf-decompress",
+          "content.vtf-decompress-zlib",
           "testing.contracts"
         ],
         "externalHeaders": [
           "fstream",
-          "iterator"
+          "iterator",
+          "random",
+          "zlib.h",
+          "zstd.h",
+          "bcdec.h"
         ],
         "legacyIncludes": [
           "tier1/utlbuffer.h",
-          "vtf/vtf.h"
+          "vtf/vtf.h",
+          "bitmap/imageformat.h"
         ]
       },
       {
@@ -972,6 +992,8 @@
           "content.studio-model",
           "content.texture-contract",
           "content.vtf-reader",
+          "content.vtf-decompress",
+          "content.vtf-decompress-zlib",
           "render.shader-library",
           "render.frame",
           "render.graph",
@@ -1143,6 +1165,7 @@
           "render.pass.lights",
           "render.pass.volumetric",
           "content.vtf-reader",
+          "content.vtf-container",
           "content.texture-contract",
           "content.studio-model"
         ]
@@ -1269,6 +1292,8 @@
           "render/composition/"
         ],
         "allowedEdges": [
+          "content.vtf-decompress",
+          "content.vtf-decompress-zlib",
           "render.pass.temporal",
           "content.studio-model",
           "jobs.graph",
@@ -1983,7 +2008,7 @@
           "render_shaderlib"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_temporal", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels", "render_map_media", "render_pass_output", "asset_resolver", "asset_index", "asset_identity", "content_hash"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf_decompress", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_temporal", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels", "render_map_media", "render_pass_output", "asset_resolver", "asset_index", "asset_identity", "content_hash"]},
       "render_pass_debug": {
         "allowedUse": [
           "render_device",
@@ -2021,6 +2046,7 @@
       },
       "render_composition": {
         "allowedUse": [
+          "vtf_decompress",
           "render_pass_temporal",
           "mdl",
           "render_renderer",
@@ -2427,6 +2453,9 @@
           "content.texture-contract",
           "content.ktx2-reader",
           "content.vtf-reader",
+          "content.vtf-container",
+          "content.vtf-decompress",
+          "content.vtf-decompress-zlib",
           "world.map-container",
           "content.studio-model",
           "content.studio-model-fixtures"
@@ -3062,6 +3091,7 @@
           "content.keyvalues-text",
           "content.vmf",
           "content.vtf-reader",
+          "content.vtf-decompress",
           "content.hammer-ktx2-preview",
           "platform.posix"
         ]

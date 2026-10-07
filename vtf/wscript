@@ -36,7 +36,7 @@ def build(bld):
 
 	defines = []
 
-	libs = ['vtf_container']
+	libs = ['vtf_container', 'vtf_decompress']
 
 	bld.stlib(
 		source   = source,

@@ -20,6 +20,7 @@
 #include "render/pass/lights/clusters.h"
 #include "render/pass/shadows/atlas.h"
 #include "mdl/studio_model.h"
+#include "texturecontainer/vtf_decompress.h"
 
 #include <algorithm>
 #include <limits>
@@ -1386,7 +1387,8 @@ void CoreWorld::RefreshCookies()
 		m_CookieRefusal = "no file source for projector cookies";
 	else
 	{
-		auto images = DecodeCookies( HostFiles( m_Files ), names );
+		auto images =
+		    DecodeCookies( HostFiles( m_Files ), names, texturecontainer::vtf::Decompress );
 		if ( images )
 			m_CookieImages = std::make_shared<const CookieImages>( std::move( images ).Value() );
 		else

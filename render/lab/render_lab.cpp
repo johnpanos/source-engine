@@ -97,6 +97,7 @@
 #include "render/pass/volumetric/volumetric.h"
 #include "render/resources/texture_cache.h"
 #include "texturecontainer/texture_image.h"
+#include "texturecontainer/vtf_decompress.h"
 #include "texturecontainer/vtf_image_reader.h"
 
 #include <algorithm>
@@ -1004,7 +1005,7 @@ int Run( const Options &options )
 		if ( hasCookies )
 		{
 			if ( std::optional<std::string> why =
-			         cookies.Create( *device, files, lights.cookieNames ) )
+			         cookies.Create( *device, files, lights.cookieNames, texturecontainer::vtf::Decompress ) )
 				return Fail( *why );
 		}
 		TextureDesc screenDesc;
@@ -1239,7 +1240,7 @@ int Run( const Options &options )
 				return Fail( "the volumetric pass was refused" );
 			fog = std::move( created ).Value();
 			if ( std::optional<std::string> why =
-			         fogCookies.Create( *device, files, media.cookieNames ) )
+			         fogCookies.Create( *device, files, media.cookieNames, texturecontainer::vtf::Decompress ) )
 				return Fail( *why );
 			std::printf(
 			    "render_lab: volumetric fog: %zu volumes, %zu lights (%u unsupported), %zu "

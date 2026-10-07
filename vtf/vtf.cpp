@@ -17,11 +17,37 @@
 #include "utlvector.h"
 #include "vprof_telemetry.h"
 #include "texturecontainer/vtf_container.h"
+#include "texturecontainer/vtf_decompress.h"
 #include <algorithm>
 #include <span>
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
+
+// VTF files number BC7 70 (Strata, P2:CE's VTF 7.6); ImageFormat keeps its own
+// dense numbering, so the file value is translated at the file boundary.
+static const int kVtfFileFormatBC7 = 70;
+
+static ImageFormat ImageFormatFromFile( int format )
+{
+	return format == kVtfFileFormatBC7 ? IMAGE_FORMAT_BC7 : ImageFormat( format );
+}
+
+static int ImageFormatToFile( ImageFormat format )
+{
+	return format == IMAGE_FORMAT_BC7 ? kVtfFileFormatBC7 : int( format );
+}
+
+// VTF 7.6 (Strata) reuses 0x00080000 to mark a color texture sRGB; here that
+// bit is TEXTUREFLAGS_STAGING_MEMORY, which would keep the texture out of
+// sampling. Source shaders already read base textures as sRGB, so the hint
+// is dropped at the file boundary.
+static const unsigned int kVtf76SrgbFlag = 0x00080000;
+
+static unsigned int TextureFlagsFromFile( unsigned int minor, unsigned int flags )
+{
+	return minor >= 6 ? ( flags & ~kVtf76SrgbFlag ) : flags;
+}
 
 // byteswap data descriptions
 BEGIN_BYTESWAP_DATADESC( VTFFileBaseHeader_t )
@@ -684,10 +710,18 @@ bool CVTFTexture::LoadImageData(
 	const auto encoded =
 	    std::span( static_cast<const std::byte *>( buf.Base() ), std::size_t( buf.TellMaxPut() ) );
 	auto layout = texturecontainer::vtf::ReadLayout( encoded, header, nSkipMipLevels );
-	if ( !layout || layout.Value().compression )
+	if ( !layout )
 	{
-		Warning( "VTF image layout: %s\n",
-		    !layout ? layout.Error() : "legacy texture storage has no CPU decompressor" );
+		Warning( "VTF image layout: %s\n", layout.Error() );
+		return false;
+	}
+	// VTF 7.6 (P2:CE) stores mip runs Deflate- or Zstandard-compressed.
+	const auto compression = layout.Value().compression;
+	if ( compression && !texturecontainer::vtf::SupportsDecompression( *compression ) )
+	{
+		Warning( "VTF image layout: %s compression is not supported by this build\n",
+		    *compression == texturecontainer::vtf::CompressionMethod::Zstandard ? "Zstandard"
+		                                                                        : "Deflate" );
 		return false;
 	}
 	if ( nSkipMipLevels > 0 )
@@ -708,6 +742,18 @@ bool CVTFTexture::LoadImageData(
 		const int mip = int( run.mip ) - nSkipMipLevels;
 		if ( run.decodedBytes != std::size_t( ComputeMipSize( mip ) ) )
 			return false;
+		if ( compression )
+		{
+			// The run's stored range was bounded by ReadLayout.
+			if ( const char *failure = texturecontainer::vtf::DecompressInto( *compression,
+			         encoded.data() + run.stored.offset, run.stored.size,
+			         ImageData( run.frame, run.face, mip ), run.decodedBytes ) )
+			{
+				Warning( "VTF image data: %s\n", failure );
+				return false;
+			}
+			continue;
+		}
 		memcpy( ImageData( run.frame, run.face, mip ), encoded.data() + run.stored.offset,
 		    run.decodedBytes );
 	}
@@ -865,12 +911,12 @@ bool CVTFTexture::UnserializeEx( CUtlBuffer &buf, bool bHeaderOnly, int nForceFl
 	header.width = container.width;
 	header.height = container.height;
 	header.depth = container.depth;
-	header.flags = container.flags;
+	header.flags = TextureFlagsFromFile( container.minor, container.flags );
 	header.numFrames = container.frames;
 	header.startFrame = container.startFrame;
 	header.numMipLevels = container.mips;
-	header.imageFormat = ImageFormat( container.format );
-	header.lowResImageFormat = ImageFormat( container.thumbnailFormat );
+	header.imageFormat = ImageFormatFromFile( container.format );
+	header.lowResImageFormat = ImageFormatFromFile( container.thumbnailFormat );
 	header.lowResImageWidth = container.thumbnailWidth;
 	header.lowResImageHeight = container.thumbnailHeight;
 	header.bumpScale = container.bumpScale;
@@ -1214,7 +1260,7 @@ bool CVTFTexture::Serialize( CUtlBuffer &buf )
 	header.flags = m_nFlags;
 	header.numFrames = m_nFrameCount;
 	header.numMipLevels = m_nMipCount;
-	header.imageFormat = m_Format;
+	header.imageFormat = ImageFormat( ImageFormatToFile( m_Format ) );
 	VectorCopy( m_vecReflectivity, header.reflectivity );
 	header.bumpScale = m_flBumpScale;
 

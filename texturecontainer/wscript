@@ -13,6 +13,20 @@ def configure(conf):
 
 def build(bld):
 	bld.add_subproject('vtf')
+	# The one CPU decompressor for VTF 7.6 AXC runs: the game's texture loader,
+	# render_lab, the core's projector cookies and the host import tools.
+	bld.stlib(
+		features='c cxx',
+		env=bld.strict_cpp20_env(),
+		source=['vtf_decompress.cpp'],
+		target='vtf_decompress',
+		name='vtf_decompress',
+		arch_module='content.vtf-decompress-zlib',
+		includes=['../public'],
+		defines=['VTF_DECOMPRESS_ZSTD'] if bld.env.VTF_DECOMPRESS_ZSTD else [],
+		# Upper-case names in use reach every final link that uses this library.
+		use=['vtf_container', 'ZLIB'] + (['ZSTD'] if bld.env.VTF_DECOMPRESS_ZSTD else []),
+		install_path=None)
 	# The VTF reader needs no KTX: the render core's cookies and the lab read
 	# VTFs in every client build.
 	bld.stlib(

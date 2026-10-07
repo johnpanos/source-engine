@@ -11112,6 +11112,10 @@ void CShaderAPIVulkan::SetLinearToGammaConversionTextures(
 ImageFormat CShaderAPIVulkan::GetNearestSupportedFormat(
     ImageFormat fmt, bool bFilteringRequired /* = true */ ) const
 {
+	// BC7 is kept as blocks only where the device samples BC; otherwise the
+	// material system decodes it to 8-bit (CTexture::ComputeActualFormat).
+	if ( fmt == IMAGE_FORMAT_BC7 && !g_VulkanContext.SupportsBlockCompression() )
+		return IMAGE_FORMAT_BGRA8888;
 	return fmt;
 }
 
@@ -11232,9 +11236,10 @@ static bool UploadTextureSurface( int handle, int width, int height, ImageFormat
 	const uint8_t *src = static_cast<const uint8_t *>( imageData );
 	const size_t pixels = static_cast<size_t>( width ) * height;
 	if ( srcFormat == IMAGE_FORMAT_DXT1 || srcFormat == IMAGE_FORMAT_DXT1_ONEBITALPHA ||
-	     srcFormat == IMAGE_FORMAT_DXT3 || srcFormat == IMAGE_FORMAT_DXT5 )
+	     srcFormat == IMAGE_FORMAT_DXT3 || srcFormat == IMAGE_FORMAT_DXT5 ||
+	     srcFormat == IMAGE_FORMAT_BC7 )
 	{
-		// 4x4 block compression: DXT1 = 8 bytes/block, DXT3/DXT5 = 16 bytes/block.
+		// 4x4 block compression: DXT1 = 8 bytes/block, DXT3/DXT5/BC7 = 16 bytes/block.
 		const size_t blocksX = ( static_cast<size_t>( width ) + 3 ) / 4;
 		const size_t blocksY = ( static_cast<size_t>( height ) + 3 ) / 4;
 		const size_t blockBytes =
@@ -11720,6 +11725,10 @@ ShaderAPITextureHandle_t CShaderAPIVulkan::CreateTexture( int width, int height,
 		break;
 	case IMAGE_FORMAT_DXT5:
 		vkFormat = VK_FORMAT_BC3_UNORM_BLOCK;
+		break;
+	case IMAGE_FORMAT_BC7:
+		// P2:CE VTF 7.6 textures; only on a device with BC (GetNearestSupportedFormat).
+		vkFormat = VK_FORMAT_BC7_UNORM_BLOCK;
 		break;
 	case IMAGE_FORMAT_RGBA16161616:
 		// Integer-HDR lightmap pages; the same memory order as D3DFMT_A16B16G16R16.
