@@ -123,7 +123,15 @@ ConVar v_viewmodel_fov( "viewmodel_fov", "54", FCVAR_ARCHIVE );
 #else
 ConVar v_viewmodel_fov( "viewmodel_fov", "54", FCVAR_CHEAT );
 #endif
-ConVar mat_viewportscale( "mat_viewportscale", "1.0", FCVAR_ARCHIVE, "Scale down the main viewport (to reduce GPU impact on CPU profiling)", true, (1.0f / 640.0f), true, 1.0f );
+// Android renders the 3D view at half the display's resolution by default
+// and the UI at native (user direction, 2026-10-06); the video options'
+// resolution sets it in windowed fullscreen (engine/sys_getmodes.cpp).
+#if defined( __ANDROID__ )
+#define MAT_VIEWPORTSCALE_DEFAULT "0.5"
+#else
+#define MAT_VIEWPORTSCALE_DEFAULT "1.0"
+#endif
+ConVar mat_viewportscale( "mat_viewportscale", MAT_VIEWPORTSCALE_DEFAULT, FCVAR_ARCHIVE, "Scale down the main viewport (to reduce GPU impact on CPU profiling)", true, (1.0f / 640.0f), true, 1.0f );
 ConVar mat_viewportupscale( "mat_viewportupscale", "1", FCVAR_ARCHIVE, "Scale the viewport back up" );
 ConVar cl_leveloverview( "cl_leveloverview", "0", FCVAR_CHEAT );
 

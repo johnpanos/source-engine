@@ -2483,8 +2483,19 @@ void CVideoMode_MaterialSystem::Shutdown()
 //-----------------------------------------------------------------------------
 // Sets the video mode
 //-----------------------------------------------------------------------------
+#if defined( USE_SDL3 )
+static void SetViewportScaleFromMode( int nWidth, bool bWindowed );
+#endif
+
 bool CVideoMode_MaterialSystem::SetMode( int nWidth, int nHeight, bool bWindowed )
 {
+#if defined( USE_SDL3 )
+	// In windowed fullscreen the back buffer (and the UI) stays at the
+	// display's native size; a mode chosen after startup is the 3D view's
+	// render resolution (mat_viewportscale, upscaled by the client).
+	if ( m_bSetModeOnce )
+		SetViewportScaleFromMode( nWidth, bWindowed );
+#endif
     // Necessary for mode selection to work
     int nFoundMode = FindVideoMode( nWidth, nHeight, bWindowed );
     vmode_t *pMode = GetMode( nFoundMode );
@@ -2542,6 +2553,18 @@ static ConVar mat_borderless(
 static ConVar mat_windowed_fullscreen( "mat_windowed_fullscreen", "0", FCVAR_ARCHIVE,
 	"Fullscreen renders at the display's native size and follows it when the display changes" );
 #endif
+
+static void SetViewportScaleFromMode( int nWidth, bool bWindowed )
+{
+	if ( bWindowed || !mat_windowed_fullscreen.GetBool() || !g_pLauncherMgr || nWidth <= 0 )
+		return;
+	uint drawableWidth = 0, drawableHeight = 0;
+	g_pLauncherMgr->DisplayedSize( drawableWidth, drawableHeight );
+	static ConVarRef mat_viewportscale( "mat_viewportscale" );
+	if ( !drawableWidth || !mat_viewportscale.IsValid() )
+		return;
+	mat_viewportscale.SetValue( clamp( float( nWidth ) / float( drawableWidth ), 0.25f, 1.0f ) );
+}
 
 // SDL publishes the newest drawable extent on the main thread. With a queued
 // render worker, the compositor scales complete frames from the current

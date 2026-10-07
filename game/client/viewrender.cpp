@@ -857,7 +857,6 @@ CLIENTEFFECT_REGISTER_BEGIN( PrecachePostProcessingEffects )
 	CLIENTEFFECT_MATERIAL( "dev/copyfullframefb" )
 	CLIENTEFFECT_MATERIAL( "dev/engine_post" )
 	CLIENTEFFECT_MATERIAL( "dev/motion_blur" )
-	CLIENTEFFECT_MATERIAL( "dev/upscale" )
 
 #ifdef TF_CLIENT_DLL
 	CLIENTEFFECT_MATERIAL( "dev/pyro_blur_filter_y" )
@@ -2318,13 +2317,41 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 
 	}
 
-	if ( !( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() ) &&
-	     mat_viewportupscale.GetBool() && mat_viewportscale.GetFloat() < 1.0f )
+	const bool bViewportUpscale = !( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() ) &&
+	                              mat_viewportupscale.GetBool() && mat_viewportscale.GetFloat() < 1.0f;
+	bool bHudStageMarked = false;
+	if ( bViewportUpscale )
 	{
+		// The upscale belongs to the display-space stage: with the render core
+		// drawing the scene, legacy work before the HUD stage is replaced.
+		if ( whatToDraw & RENDERVIEW_DRAWHUD )
+		{
+			ClientRender_MarkStage( RENDER_STAGE_HUD );
+			bHudStageMarked = true;
+		}
 		CMatRenderContextPtr pRenderContext( materials );
 
-		ITexture	*pFullFrameFB1 = materials->FindTexture( "_rt_FullFrameFB1", TEXTURE_GROUP_RENDER_TARGET );
-		IMaterial	*pCopyMaterial = materials->FindMaterial( "dev/upscale", TEXTURE_GROUP_OTHER );
+		// The frame copy (_rt_FullFrameFB1 aliases _rt_FullScreen, which Portal 2
+		// does not create); post-processing has finished with it here.
+		ITexture	*pFullFrameFB1 = materials->FindTexture( "_rt_FullFrameFB", TEXTURE_GROUP_RENDER_TARGET );
+		IMaterial	*pCopyMaterial = materials->FindMaterial( "dev/upscale", TEXTURE_GROUP_OTHER, false );
+		// Portal 2's content ships no dev/upscale: the error material would
+		// cover the frame. The same copy, made once here (the 3D view at
+		// mat_viewportscale, the UI at native; Android's default).
+		if ( !pCopyMaterial || pCopyMaterial->IsErrorMaterial() )
+		{
+			static IMaterial *s_pUpscale = NULL;
+			if ( !s_pUpscale )
+			{
+				KeyValues *pKeys = new KeyValues( "UnlitGeneric" );
+				pKeys->SetString( "$basetexture", "_rt_FullFrameFB" );
+				pKeys->SetInt( "$ignorez", 1 );
+				pKeys->SetInt( "$nofog", 1 );
+				s_pUpscale = materials->CreateMaterial( "__viewport_upscale", pKeys );
+				s_pUpscale->IncrementReferenceCount();
+			}
+			pCopyMaterial = s_pUpscale;
+		}
 		pCopyMaterial->IncrementReferenceCount();
 
 		Rect_t	DownscaleRect, UpscaleRect;
@@ -2355,7 +2382,7 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 
 	// Draw the 2D graphics
 	CViewSetup view2D = view;
-	if ( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() )
+	if ( ( g_pRenderTemporalViews && g_pRenderTemporalViews->Enabled() ) || bViewportUpscale )
 	{
 		// Display-space effects and GUI use the reconstructed output's pixel grid.
 		view2D.x = view.m_nUnscaledX;
@@ -2369,7 +2396,8 @@ void CViewRender::RenderView( const CViewSetup &view, int nClearFlags, int whatT
 
 	if ( whatToDraw & RENDERVIEW_DRAWHUD )
 	{
-		ClientRender_MarkStage( RENDER_STAGE_HUD );
+		if ( !bHudStageMarked )
+			ClientRender_MarkStage( RENDER_STAGE_HUD );
 		VPROF_BUDGET( "VGui_DrawHud", VPROF_BUDGETGROUP_OTHER_VGUI );
 		int viewWidth = view.m_nUnscaledWidth;
 		int viewHeight = view.m_nUnscaledHeight;

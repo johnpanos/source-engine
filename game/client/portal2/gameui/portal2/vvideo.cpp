@@ -296,6 +296,18 @@ void Video::SetupState( bool bUseRecommendedSettings )
 		const MaterialSystem_Config_t &config = materials->GetCurrentConfigForVideoCard();
 		m_iResolutionWidth = config.m_VideoMode.m_Width;
 		m_iResolutionHeight = config.m_VideoMode.m_Height;
+		// Windowed fullscreen keeps the back buffer (and the UI) at the
+		// display's size; the resolution shown is the 3D view's
+		// (mat_viewportscale), which choosing one sets (engine/sys_getmodes.cpp).
+		static ConVarRef mat_windowed_fullscreen( "mat_windowed_fullscreen" );
+		static ConVarRef mat_viewportscale( "mat_viewportscale" );
+		if ( !config.Windowed() && mat_windowed_fullscreen.IsValid() &&
+		     mat_windowed_fullscreen.GetBool() && mat_viewportscale.IsValid() )
+		{
+			const float scale = clamp( mat_viewportscale.GetFloat(), 0.25f, 1.0f );
+			m_iResolutionWidth = int( m_iResolutionWidth * scale + 0.5f );
+			m_iResolutionHeight = int( m_iResolutionHeight * scale + 0.5f );
+		}
 		m_iAspectRatio = GetScreenAspectMode( m_iResolutionWidth, m_iResolutionHeight );
 		m_bWindowed = config.Windowed();
 #if defined( USE_SDL3 )
