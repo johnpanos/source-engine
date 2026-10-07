@@ -5507,9 +5507,12 @@ void CVulkanContext::FailUnsubmittedQueries()
 
 bool CVulkanContext::RetainsQueryInput() const
 {
-	// Luminance queries also need their framebuffer-copy producer. That cohort
-	// is not retained here; counting its stale texture would change exposure.
-	return m_queuedOcclusionQuery >= 0 && !( m_dynColorFlags & kFragmentLuminanceCompare ) &&
+	// Frozen-path: core progress - auto-exposure's luminance histogram queries
+	// are kept too. They read the frame copy (_rt_FullFrameFB), which core-only
+	// frames still record after the core's passes, so the game's tone-map scale
+	// measures the core's image instead of staying at 1 (sp_a2_core's dark
+	// rooms drew at half the brightness legacy adapts to).
+	return m_queuedOcclusionQuery >= 0 &&
 	       !m_dynRaster.colorWrite && !m_dynRaster.alphaWrite && !m_dynRaster.depthWrite &&
 	       ( !m_dynRaster.stencilEnable || m_dynStencilWriteMask == 0 ||
 	           ( m_dynRaster.stencilFail == VK_STENCIL_OP_KEEP &&
