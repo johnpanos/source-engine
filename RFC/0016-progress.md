@@ -12544,3 +12544,27 @@ name. `render.material.v2`'s F1 family list now names `modulate` and
 `energy` (it had failed since the SolidEnergy commit); F2 still fails on
 another session's uncommitted PBR work. Inventory unsupported: 179 → 148
 (this checkout's `render_lab`).
+
+### K12: Portal 1 sweep, first pass (2026-10-07, user request)
+
+The Portal 1 all-material inventory (`material_claim_inventory.py --game
+portal --scope all`, 6,000 VMTs with the mounted HL2 content) refused 452.
+The same check as Portal 2's (each unread key against this tree's shader
+declarations and material flags) gives:
+
+- **UnlitGeneric `$gammacolorread 1`**: the base is read without sRGB
+  decoding (`vertexlitgeneric_dx9_helper.cpp`), through the unlit claim's
+  existing `baseSrgb`.
+- **Inert**: `$parallaxmap` and `$parallaxmapscale` (38 LightmappedGeneric
+  materials; no combo reads them here, only a SKIP comment names
+  PARALLAXMAP); the DirectX 6-8-only flags `$envmapmode`,
+  `$envmapcameraspace` and `$multipass` (LightmappedGeneric); `$halflambert`
+  on the unlit point; Cable's `$vertexcolor` (its format always carries
+  color); Modulate's `$additive` (its blend is fixed); Sprite's
+  `$overbrightfactor`; SpriteCard rows on UnlitGeneric; and misspellings and
+  other shaders' keys, each a family-scoped metadata row with its reason.
+
+Portal 1 unsupported: 452 → 362; Portal 2: 148 → 145. What remains in
+Portal 1 is mostly real features: Eyeball, eyes and Teeth (81 HL2 character
+materials), screen-space and debug shaders, `$linearwrite` (16),
+`$envmap` without native probes, and model vertex colors.

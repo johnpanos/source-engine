@@ -18,9 +18,10 @@ UnlitClaim ClaimCable( const ParameterBlock &block )
 		return claim;
 	}
 	// Cable_DX9 declares MINLIGHT/MAXLIGHT but neither shader reads them.
-	// Illumination is already in the captured vertex colors.
-	constexpr std::array<std::string_view, 9> keys = { "basetexture", "bumpmap", "translucent",
-	    "alphatest", "model", "nofog", "nocull", "minlight", "maxlight" };
+	// Illumination is already in the captured vertex colors, which its vertex
+	// format always carries: $vertexcolor changes nothing (cable_dx9.cpp).
+	constexpr std::array<std::string_view, 10> keys = { "basetexture", "bumpmap", "translucent",
+	    "alphatest", "model", "nofog", "nocull", "minlight", "maxlight", "vertexcolor" };
 	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
 	{
 		claim.reason = "the cable point does not draw " + *unread;

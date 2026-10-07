@@ -34,7 +34,10 @@ using detail::SourceGammaToLinear;
 // The SpriteCard and Sprite rows of the family's schema: UnlitGeneric
 // declares none of them, so an UnlitGeneric material that carries one draws
 // as if it did not.
-constexpr std::array<std::string_view, 39> kClaimed = { "orientation", "overbrightfactor",
+constexpr std::array<std::string_view, 53> kClaimed = { "gammacolorread", "addbasetexture2",
+    "addoverblend", "mod2x", "dualsequence", "sequence_blend_mode", "maxlumframeblend1",
+    "maxlumframeblend2", "ramptexture", "zoomanimateseq2", "extractgreenalpha", "useinstancing",
+    "nosrgb", "orientation", "overbrightfactor",
     "addself", "minsize", "startfadesize", "endfadesize", "maxdistance", "farfadeinterval",
     "spriteorientation", "spriterendermode", "blendframes", "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "additive",
@@ -74,6 +77,9 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 	claim.alphaWrite = !alphaBlended && !ReadFlag( block, "alphatest" );
 	claim.ignoreDepth = ReadFlag( block, "ignorez" );
 	claim.depthBlend = ReadFlag( block, "depthblend" );
+	// $gammacolorread 1 reads the base without sRGB decoding
+	// (vertexlitgeneric_dx9_helper.cpp's EnableSRGBRead).
+	claim.baseSrgb = int( ReadParameter( block, "gammacolorread" ) ) != 1;
 	const float depthScale = ReadParameter( block, "depthblendscale" );
 	if ( claim.depthBlend && ( !std::isfinite( depthScale ) || depthScale <= 0.0f ) )
 	{
@@ -134,7 +140,7 @@ UnlitClaim ClaimSprite( const ParameterBlock &block )
 	constexpr std::string_view keys[] = { "basetexture", "frame", "color", "alpha", "model",
 	    "nocull", "nofog", "vertexcolor", "vertexalpha", "translucent", "additive", "spriteorigin",
 	    "spriteorientation", "spriterendermode", "ignorevertexcolors", "nosrgb", "hdrcolorscale",
-	    "ignorez" };
+	    "ignorez", "overbrightfactor" }; // Sprite declares no $overbrightfactor (SpriteCard does)
 	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
 	{
 		claim.reason = "the sprite point does not draw " + *unread;
@@ -342,11 +348,12 @@ UnlitClaim ClaimModulate( const ParameterBlock &block )
 		return claim;
 	}
 	// $translucent only selects destination-alpha writes
-	// (EvaluateBlendRequirements); the blend is fixed. The cloak pass's
-	// factor, tint and refraction are read only with $cloakpassenabled.
+	// (EvaluateBlendRequirements) and $additive nothing: the blend is fixed.
+	// The cloak pass's factor, tint and refraction are read only with
+	// $cloakpassenabled.
 	constexpr std::string_view keys[] = { "basetexture", "frame", "basetexturetransform", "color",
-	    "alpha", "vertexcolor", "vertexalpha", "translucent", "model", "nocull", "nofog", "writez",
-	    "mod2x", "cloakfactor", "cloakcolortint", "refractamount" };
+	    "alpha", "vertexcolor", "vertexalpha", "translucent", "additive", "model", "nocull", "nofog",
+	    "writez", "mod2x", "cloakfactor", "cloakcolortint", "refractamount" };
 	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
 	{
 		claim.reason = "the modulate point does not draw " + *unread;
