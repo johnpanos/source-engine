@@ -254,6 +254,7 @@ struct Resources
 	std::map<std::string, TextureId> stageTextures;
 	std::map<std::string, TextureDesc> stageDescs;
 	bool stageMade = false;
+	bool reflectionMade = false; // the map's reflection probes (WorldData::reflection)
 	std::uint64_t stageLightmapRevision = 0;
 	std::uint64_t stageProbeRevision = 0;
 	std::uint64_t stageChangeRevision = 0;
@@ -277,7 +278,8 @@ constexpr std::uint32_t kStageOccluderRows = 16;
 
 // Adapt the product's stage to the surface program's shared scene policy.
 // The view's occlusion is one where no screen pass recorded it.
-std::uint32_t StageTerms( const WorldStage &stage, bool runtimeDirect, bool ambientOcclusion )
+std::uint32_t StageTerms(
+    const WorldStage &stage, bool reflection, bool runtimeDirect, bool ambientOcclusion )
 {
 	material::SceneTermInputs inputs;
 	inputs.runtimeDirect = runtimeDirect;
@@ -286,10 +288,20 @@ std::uint32_t StageTerms( const WorldStage &stage, bool runtimeDirect, bool ambi
 	inputs.indirectDirectionalLightmap = stage.indirect.Directional();
 	inputs.probeVolume = stage.probes.has_value();
 	inputs.probeBounce = stage.probes.has_value(); // the change atlas is always supplied
-	inputs.reflectionProbes = stage.reflection.has_value();
+	inputs.reflectionProbes = reflection;
 	// Off: compiled out of the programs (the neutral view still binds one).
 	inputs.ambientOcclusion = ambientOcclusion;
 	return material::SceneTerms( inputs );
+}
+
+// The scene terms a world's points draw with: its stage's, or, on a plain
+// map, only the reflection probes its cubemaps supply.
+std::uint32_t WorldTerms( const WorldData &world, bool runtimeDirect, bool ambientOcclusion )
+{
+	if ( world.stage )
+		return StageTerms(
+		    *world.stage, world.reflection.has_value(), runtimeDirect, ambientOcclusion );
+	return world.reflection ? material::kSurfaceReflectionProbes : 0u;
 }
 
 std::string Lower( std::string text )
@@ -957,12 +969,11 @@ void WorldPass::SetWorld( WorldData data )
 			claimed = std::move( mapped ).Value();
 			// Static meshes use the same surface program with model vertices,
 			// probes and clustered direct light instead of a lightmap page.
-			auto blend =
-			    source.mesh
-			        ? material::ClaimForMesh( claimed.desc,
-			              data.stage && data.stage->reflection.has_value(), data.stage != nullptr )
-			        : material::ClaimForDrawing( claimed.desc, data.stage != nullptr, nullptr,
-			              data.stage && data.stage->reflection.has_value() );
+			auto blend = source.mesh
+			                 ? material::ClaimForMesh( claimed.desc, data.reflection.has_value(),
+			                       data.stage != nullptr )
+			                 : material::ClaimForDrawing( claimed.desc, data.stage != nullptr,
+			                       nullptr, data.reflection.has_value() );
 			if ( !blend )
 				gap = claimed.desc.family + ": " + blend.Error();
 			else if ( !source.mesh && blend.Value() != BlendMode::kOpaque )
@@ -1348,7 +1359,7 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 		dynamic->mapped.reserve( view.dynamicDraws.size() );
 	}
 	const bool stage = s.world->stage != nullptr;
-	const bool reflection = stage && s.world->stage->reflection.has_value();
+	const bool reflection = s.world->reflection.has_value();
 	for ( const WorldView::DynamicDraw &draw : view.dynamicDraws )
 	{
 		std::string key;
@@ -2235,7 +2246,7 @@ void WorldPass::RecordBatch(
 		// points too. World pbr surfaces stay a stage's alone; their claim
 		// (ClaimForDrawing's worldPbr) asks for the stage itself.
 		r.resolver->SetWorldPbr(
-		    true, world->stage ? StageTerms( *world->stage, target.runtimeDirect, target.ambientOcclusionTerm ) : 0 );
+		    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
 		r.resolver->SetSceneColorAvailable( world->stage != nullptr );
 		r.materials.resize( world->materials.size() );
 	}
@@ -2251,7 +2262,7 @@ void WorldPass::RecordBatch(
 		}
 		r.modelResolver = std::move( resolver ).Value();
 		r.modelResolver->SetWorldPbr(
-		    true, world->stage ? StageTerms( *world->stage, target.runtimeDirect, target.ambientOcclusionTerm ) : 0 );
+		    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
 		r.modelResolver->SetSceneColorAvailable( world->stage != nullptr );
 		r.modelMaterials.resize( world->materials.size() );
 		prewarmResolver( *r.modelResolver, "model" );
@@ -2491,8 +2502,6 @@ void WorldPass::RecordBatch(
 			       stageMake( kStageProbeGrids, Format::kRGBA32Float, probes.tableTexels,
 			           probes.rows + kStageOccluderRows, std::as_bytes( std::span( table ) ) );
 		}
-		if ( made && stage.reflection )
-			made = stageMakeReflection( *stage.reflection );
 		for ( const auto &[name, table] : { std::pair{ kStageSplitSum, material::SplitSumTable() },
 		          std::pair{ kStageLtc, material::LtcTable() } } )
 		{
@@ -2506,6 +2515,25 @@ void WorldPass::RecordBatch(
 			return;
 		}
 		r.stageMade = true;
+	}
+	// The map's reflection probes: a stage's RPRB, or a plain map's cubemaps.
+	// A plain map has no stage tables, so it makes the split-sum table the
+	// probes' specular reads.
+	if ( world->reflection && !r.reflectionMade )
+	{
+		bool made = stageMakeReflection( *world->reflection );
+		if ( made && !world->stage )
+		{
+			const material::PbrSplitSumTable table = material::SplitSumTable();
+			made = stageMake( kStageSplitSum, table.format, table.width, table.height,
+			    std::as_bytes( std::span( table.texels ) ) );
+		}
+		if ( !made )
+		{
+			s.Fail( "the map's reflection probes were refused" );
+			return;
+		}
+		r.reflectionMade = true;
 	}
 	if ( world->stage )
 	{
@@ -3091,11 +3119,7 @@ void WorldPass::RecordBatch(
 			terms.map.probeBounce = r.stageTextures[kStageChange];
 			terms.map.probeBounceDesc = r.stageDescs[kStageChange];
 		}
-		if ( world->stage->reflection )
-		{
-			terms.map.reflectionProbes = kStageReflection;
-			terms.map.reflectionBuffer = r.reflectionBuffer;
-		}
+
 		// The view's sun.
 		if ( view.lights )
 		{
@@ -3104,6 +3128,12 @@ void WorldPass::RecordBatch(
 			std::copy( view.lights->sunColor, view.lights->sunColor + 4, terms.sunColor );
 			std::copy( view.lights->sunShadow, view.lights->sunShadow + 4, terms.sunShadow );
 		}
+	}
+	if ( world->reflection )
+	{
+		terms.map.reflectionProbes = kStageReflection;
+		terms.map.reflectionBuffer = r.reflectionBuffer;
+		terms.splitSumTable = kStageSplitSum;
 	}
 	// Presence comes from this slot's actual frame/view inputs, never a quality
 	// setting. Uniform light data and all shadow filters remain unchanged.
@@ -5054,7 +5084,7 @@ void WorldPass::RecordBatch(
 			{
 				r.prepassResolver = std::move( resolver ).Value();
 				r.prepassResolver->SetWorldPbr(
-				    true, StageTerms( *world->stage, target.runtimeDirect, target.ambientOcclusionTerm ) );
+				    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
 				r.prepassMaterials.resize( world->materials.size() );
 			}
 			else
@@ -5070,7 +5100,7 @@ void WorldPass::RecordBatch(
 			{
 				r.prepassModelResolver = std::move( resolver ).Value();
 				r.prepassModelResolver->SetWorldPbr(
-				    true, StageTerms( *world->stage, target.runtimeDirect, target.ambientOcclusionTerm ) );
+				    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
 				r.prepassModelResolver->SetSceneColorAvailable( true );
 				r.prepassModelMaterials.resize( world->materials.size() );
 			}

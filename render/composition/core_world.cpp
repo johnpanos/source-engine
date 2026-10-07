@@ -212,6 +212,11 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 		data.surfaces.push_back( surface );
 	}
 	data.materials = WorldMaterials( materials, materialCount );
+	// A plain map's cubemaps, sent through StageUpload() before this call.
+	data.reflection = m_Capture.reflection;
+	if ( data.reflection )
+		std::fprintf( stderr, "Render core: plain map: %u reflection probes from its cubemaps\n",
+		    data.reflection->count );
 	m_QueuedLighting.clear();
 	m_StageSet = false;
 	m_WorldCasters.reset();
@@ -485,21 +490,21 @@ void CoreWorld::SetStage()
 	    m_RuntimeDirect.load( std::memory_order_relaxed ) && !stage->indirect.flat.empty(),
 	    std::memory_order_relaxed );
 	stage->probes = m_Capture.probes;
-	stage->reflection = m_Capture.reflection;
 	std::fprintf( stderr,
 	    "Render core: world stage: %zu meshlets, lightmap %ux%u%s%s%s, probes %s, reflection "
 	    "probes %s\n",
 	    data.surfaces.size(), stage->lightmap.width, stage->lightmap.height,
-	    stage->lightmap.Directional() ? stage->lightmap.Blocks() ? " directional (BC6H/BC7)"
-	                                                             : " directional"
-	                                  : "",
-	    stage->indirect.flat.empty()       ? ", no indirect layer"
+	    stage->lightmap.Directional()
+	        ? stage->lightmap.Blocks() ? " directional (BC6H/BC7)" : " directional"
+	        : "",
+	    stage->indirect.flat.empty()     ? ", no indirect layer"
 	    : !stage->indirect.Directional() ? ", indirect layer (flat)"
-	                                       : ", indirect layer (directional)",
+	                                     : ", indirect layer (directional)",
 	    m_StageRuntimeDirect.load( std::memory_order_relaxed ) ? ", runtime direct light"
 	                                                           : ", baked direct light",
-	    stage->probes ? "yes" : "no", stage->reflection ? "yes" : "no" );
+	    stage->probes ? "yes" : "no", m_Capture.reflection ? "yes" : "no" );
 	data.stage = std::move( stage );
+	data.reflection = m_Capture.reflection;
 	const std::uint32_t materialBase = std::uint32_t( data.materials.size() );
 	for ( pass::world::WorldMaterial &material : m_StaticMaterials )
 		data.materials.push_back( material );
@@ -1299,13 +1304,15 @@ bool CoreWorld::StageCapture::UploadReflectionProbes(
 	probes.relight = request.relight;
 	probes.baseMip = std::min( request.baseMip, request.mipCount - 1 );
 	probes.buffer.assign( request.buffer, request.buffer + request.bufferWords );
-	// Only the mips from the base on are kept: the lump stores them mip-major.
+	// A plain map's cubemaps arrive as RGBA16F texels, not BC6H blocks.
+	if ( request.radianceHalf )
+		probes.format = device::Format::kRGBA16Float;
+	// Only the mips from the base on are kept: the data is stored mip-major.
 	std::uint64_t skipped = 0;
 	for ( std::uint32_t mip = 0; mip < probes.baseMip; ++mip )
-	{
-		const std::uint64_t blocks = ( ( request.faceSize >> mip ) + 3 ) / 4;
-		skipped += std::uint64_t( request.probeCount ) * 6 * blocks * blocks * 16;
-	}
+		skipped +=
+		    std::uint64_t( request.probeCount ) * 6 *
+		    device::RegionBytes( probes.format, request.faceSize >> mip, request.faceSize >> mip );
 	if ( skipped > request.radianceBytes )
 		return false;
 	const std::byte *data = static_cast<const std::byte *>( request.data );

@@ -194,11 +194,15 @@ struct WorldStage
 	// lightmap's size in `flat` (empty without), sampled at the page's UVs.
 	LightmapPages shadowMask;
 	std::optional<StageProbeVolume> probes;
-	std::optional<StageReflectionProbes> reflection; // the map's RPRB (v8); absent without
 };
 
 struct WorldData
 {
+	// The map's reflection probes, with or without a world stage: a BSP2
+	// map's RPRB (v8), or the cubemaps a Source BSP was built with
+	// (`env_cubemap` samples, selected nearest as Source 1 does). Absent
+	// without either; materials that read env_cubemap are then refused.
+	std::optional<StageReflectionProbes> reflection;
 	std::vector<WorldVertex> vertices;
 	std::vector<std::uint32_t> indices; // triangle lists, into vertices
 	std::vector<WorldSurface> surfaces;

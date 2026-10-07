@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <memory>
 
 namespace mapcontainer
 {
@@ -529,6 +530,40 @@ void ReflectionProbeMipRange( const ReflectionProbesLayout &layout, ReflectionPr
 uint32_t ReflectionProbeBaseMip( uint32_t mips, uint32_t drop ) noexcept
 {
 	return mips > 4 ? std::min( drop, mips - 4 ) : 0;
+}
+
+bool WriteCubemapProbeBuffer( const float ( *pOrigins )[3], uint32_t count, uint32_t mips,
+    uint32_t faceSize, uint32_t baseMip, std::vector<uint32_t> *pOut )
+{
+	if ( !pOrigins || !pOut || count == 0 || count > kReflectionProbesMaxProbes )
+		return false;
+	auto layout = std::make_unique<ReflectionProbesLayout>();
+	*layout = ReflectionProbesLayout{};
+	layout->count = count;
+	layout->mipCount = mips;
+	layout->faceSize = faceSize;
+	layout->candidateWords = 0;
+	const float far = kReflectionProbesMaxCoordinate;
+	for ( uint32_t i = 0; i < count; ++i )
+	{
+		ReflectionProbeRecord &probe = layout->probes[i];
+		probe = ReflectionProbeRecord{};
+		for ( int axis = 0; axis < 3; ++axis )
+		{
+			probe.capture[axis] = pOrigins[i][axis];
+			probe.boxMin[axis] = probe.influenceMin[axis] = -far;
+			probe.boxMax[axis] = probe.influenceMax[axis] = far;
+		}
+		probe.fade = 1.0f;
+		probe.rank = i;
+		probe.layer = i;
+	}
+	pOut->assign( ReflectionProbeBufferWords( *layout ), 0u );
+	// No candidate section: the writer reads no mask bytes.
+	static const unsigned char kNoCandidates[kReflectionProbeCandidateHeaderBytes] = {};
+	WriteReflectionProbeBuffer(
+	    kNoCandidates, *layout, ReflectionProbeMode::Nearest, pOut->data(), false, baseMip );
+	return true;
 }
 
 uint32_t ReflectionProbeBufferWords( const ReflectionProbesLayout &layout ) noexcept

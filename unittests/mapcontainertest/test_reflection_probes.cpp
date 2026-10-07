@@ -672,6 +672,41 @@ void CheckFuzz( const std::vector<char> &valid )
 	Check( finite, "accepted mutants shade to finite, non-negative radiance" );
 }
 
+// A Source BSP's cubemaps as the probe buffer (WriteCubemapProbeBuffer): the
+// header the shaders read, nearest-capture mode, one record per sample in
+// sample order with its own layer, a box that removes the parallax term, no
+// candidate masks; a count of zero or above the maximum is refused.
+void CheckCubemapBuffer()
+{
+	const float origins[3][3] = { { -480, -32, 256 }, { 590, -698, 69.5f }, { 0, 0, 0 } };
+	std::vector<uint32_t> buffer;
+	Check( WriteCubemapProbeBuffer( origins, 3, 4, 32, 1, &buffer ),
+	    "cubemaps: three samples make a buffer" );
+	Check( buffer.size() == kReflectionProbeBufferMasksWord, "cubemaps: no candidate masks" );
+	Check( buffer.size() > 15 && buffer[0] == 3 && buffer[1] == 4 && buffer[2] == 32 &&
+	           buffer[3] == 0 && buffer[4] == uint32_t( ReflectionProbeMode::Nearest ) &&
+	           buffer[5] == 0 && buffer[7] == 1,
+	    "cubemaps: header (count, mips, face, no candidates, nearest, no relight, base mip)" );
+	bool records = buffer.size() >= kReflectionProbeBufferProbesWord + 3 * 20;
+	for ( uint32_t i = 0; records && i < 3; ++i )
+	{
+		float record[20];
+		std::memcpy(
+		    record, buffer.data() + kReflectionProbeBufferProbesWord + 20 * i, sizeof( record ) );
+		for ( int axis = 0; axis < 3; ++axis )
+			records &= record[axis] == origins[i][axis] &&
+			           record[4 + axis] == -kReflectionProbesMaxCoordinate &&
+			           record[8 + axis] == kReflectionProbesMaxCoordinate;
+		records &= record[3] == 1.0f && record[7] == float( i ) && record[11] == 0.0f;
+	}
+	Check( records, "cubemaps: each sample's capture, layer and parallax-free box" );
+	std::vector<float> many( 3 * ( kReflectionProbesMaxProbes + 1 ), 0.0f );
+	Check( !WriteCubemapProbeBuffer( origins, 0, 4, 32, 0, &buffer ) &&
+	           !WriteCubemapProbeBuffer( reinterpret_cast<const float ( * )[3]>( many.data() ),
+	               kReflectionProbesMaxProbes + 1, 4, 32, 0, &buffer ),
+	    "cubemaps: no samples, or more than the maximum, are refused" );
+}
+
 } // namespace
 
 int main()
@@ -686,6 +721,7 @@ int main()
 		CheckDecode( valid, layout );
 		CheckGpuBuffer( valid, layout );
 		CheckCandidates();
+		CheckCubemapBuffer();
 		ReflectionProbesLayout decodedLayout = {};
 		const std::vector<std::byte> decoded = Decoded( valid, &decodedLayout );
 		const ReflectionProbesView view( decoded.data(), decodedLayout );

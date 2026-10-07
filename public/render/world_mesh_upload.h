@@ -167,6 +167,11 @@ struct ReflectionProbesUploadRequest
 	const void *data = nullptr;
 	uint64_t dataBytes = 0;
 	uint64_t radianceBytes = 0; // the BC6H part of `data`
+	// The radiance is RGBA16F texels in the same order instead of BC6H blocks:
+	// a Source BSP's cubemaps (no relight arrays), sent to the render core's
+	// StageUpload() for a map without RPRB. The renderer's world mesh path
+	// never receives it.
+	bool radianceHalf = false;
 };
 
 class IWorldMeshUpload

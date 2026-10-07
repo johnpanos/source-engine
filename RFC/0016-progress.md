@@ -12151,3 +12151,35 @@ materials that need native reflection probes on that unbaked map.
   physically accurate, not match one for one).
 - Open in the cohort: `$envmap` glass on maps without RPRB, `$nocull` fracture
   glass, `$additive` Refract, the elevator and pipe glass, frame time.
+
+## K12 glass cohort, second slice: env_cubemap on maps without a bake (2026-10-06, user goal)
+
+Retail Source BSPs carry no RPRB, so every material reading `env_cubemap`
+(the elevator and pipe glass, observation windows) was refused on them
+("$envmap needs the stage's native reflection probes").
+
+- Reflection probes are a map property: `WorldData::reflection` (moved from
+  `WorldStage`). A stage map's RPRB fills it as before; a plain map's fills it
+  from the cubemaps its BSP was built with.
+- The engine (`UploadCubemapProbes`, `engine/render_core_world_draw.cpp`)
+  reads each `env_cubemap` sample's HDR cube (RGBA16F VTF) and sends the faces
+  through `StageUpload()->UploadReflectionProbes` before the plain world, with
+  the new `radianceHalf` flag. Mixed sizes share the largest face: a smaller
+  cube's missing top levels repeat its own texels. The chain stops at 4
+  texels. Non-HDR or unreadable cubemaps leave the map without probes, named.
+- `mapcontainer::WriteCubemapProbeBuffer` (one owner of the buffer format)
+  writes the probes in nearest-capture mode (Source 1's selection) with a
+  box of `kReflectionProbesMaxCoordinate` (no parallax, as Source's cubemaps
+  are at infinity) and no candidate masks.
+- The pass creates and binds probes (and the split-sum table) without a
+  stage; plain-map resolvers take only `kSurfaceReflectionProbes`, and models
+  keep Source's model lighting (`StageScene`).
+- Evidence: `world.reflection-probes` 157 checks (new cubemap-buffer cases);
+  lab `posed-model` 117/0, `map-terms` 39/0, `reflection-probes` 45/0,
+  `selfillum` 26/0, `clustered-lights` 26/0. `sp_a2_laser_intro` (12 cubemaps,
+  64-texel faces, 5 mips): refused dynamic draws 412 → 0. `sp_a1_intro4_relit`
+  keeps its RPRB (119 probes). Elevator glass drawn by the core beside legacy
+  without artifacts.
+- Open: LDR cubemaps (`mat_hdr_level` 0), GGX prefiltering of the cubes' mips
+  (they are the bake's box-filtered mips), per-face brush cubemap assignment
+  (per-pixel nearest here), frame time.

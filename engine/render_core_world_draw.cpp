@@ -36,9 +36,11 @@
 #include "tier1/utldict.h"
 #include "tier2/tier2.h"
 #include "vtf/vtf.h"
+#include "mapcontainer/reflection_probes.h"
 #include "tier1/utlvector.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -571,6 +573,134 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 // world stage, its meshlets the surfaces and its batches' materials read as
 // the BSP faces' are; the stage's lighting reached the core with the world
 // mesh uploads (RenderCoreHost_WorldMeshUpload).
+// A plain Source BSP's cubemaps as the core's reflection probes (RFC 0016 K12,
+// maps without RPRB): each env_cubemap sample's HDR cube, its RGBA16F faces in
+// the core's order (mip-major, then probe, then face), selected per pixel by
+// nearest capture as Source 1 selects them. Every call replaces the previous
+// map's probes; a map whose cubemaps cannot be used gets none, and the
+// materials that read env_cubemap stay refused by name.
+static void UploadCubemapProbes( IRenderCoreWorld *pWorld, const worldbrushdata_t *pBrush )
+{
+	world_mesh_gpu::IWorldMeshUpload *pUpload = pWorld->StageUpload();
+	if ( !pUpload )
+		return;
+	pUpload->UploadReflectionProbes( world_mesh_gpu::ReflectionProbesUploadRequest() );
+	const int count = pBrush->m_nCubemapSamples;
+	if ( count <= 0 )
+		return;
+	if ( count > int( mapcontainer::kReflectionProbesMaxProbes ) )
+	{
+		Warning( "r_core_world: %d cubemaps exceed the core's %u reflection probes; env_cubemap "
+		         "materials stay legacy's\n",
+		    count, mapcontainer::kReflectionProbesMaxProbes );
+		return;
+	}
+	// Each cube's faces and mips, kept until the request is made.
+	struct Cube
+	{
+		IVTFTexture *vtf = nullptr;
+		~Cube()
+		{
+			if ( vtf )
+				DestroyVTFTexture( vtf );
+		}
+	};
+	std::vector<Cube> cubes( count );
+	std::vector<float> origins( std::size_t( count ) * 3 );
+	int face = 0, mips = 0;
+	for ( int i = 0; i < count; ++i )
+	{
+		const mcubemapsample_t &sample = pBrush->m_pCubemapSamples[i];
+		const char *name = sample.pTexture ? sample.pTexture->GetName() : "";
+		CUtlBuffer bytes;
+		cubes[i].vtf = CreateVTFTexture();
+		const bool read =
+		    g_pFileSystem->ReadFile( CFmtStr( "materials/%s.vtf", name ), "GAME", bytes ) &&
+		    cubes[i].vtf->Unserialize( bytes );
+		IVTFTexture *vtf = cubes[i].vtf;
+		const char *why = !read ? "does not read"
+		                  : vtf->Format() != IMAGE_FORMAT_RGBA16161616F
+		                      ? "is not an RGBA16F (HDR) cube"
+		                  : !( vtf->Flags() & TEXTUREFLAGS_ENVMAP ) || vtf->FaceCount() < 6 ||
+		                          vtf->Width() != vtf->Height()
+		                      ? "is not a cube"
+		                  : ( vtf->Width() & ( vtf->Width() - 1 ) ) || vtf->Width() < 4
+		                      ? "has no power-of-two face of 4 texels or more"
+		                      : nullptr;
+		if ( why )
+		{
+			Warning(
+			    "r_core_world: cubemap %s %s; env_cubemap materials stay legacy's\n", name, why );
+			return;
+		}
+		face = std::max( face, vtf->Width() );
+		for ( int axis = 0; axis < 3; ++axis )
+			origins[std::size_t( i ) * 3 + axis] = sample.origin[axis];
+	}
+	// One face size for the array: the largest cube's. A smaller cube's levels
+	// above its own top mip repeat its texels (no detail is invented); below,
+	// its own mips. The chain stops at 4 texels, the array's smallest, or
+	// where a cube has no mip of that size.
+	mips = 0;
+	for ( bool complete = true; complete && ( face >> mips ) >= 4; )
+	{
+		for ( const Cube &cube : cubes )
+		{
+			const int level = mips - ( face / cube.vtf->Width() == 1
+			                                 ? 0
+			                                 : int( std::log2( face / cube.vtf->Width() ) ) );
+			complete &= level < cube.vtf->MipCount();
+		}
+		if ( complete )
+			++mips;
+	}
+	if ( mips == 0 )
+		return;
+	std::vector<std::byte> radiance;
+	for ( int mip = 0; mip < mips; ++mip )
+	{
+		const int size = face >> mip;
+		for ( int i = 0; i < count; ++i )
+		{
+			IVTFTexture *vtf = cubes[i].vtf;
+			const int scale = face / vtf->Width(); // a power of two
+			const int level = mip - ( scale == 1 ? 0 : int( std::log2( scale ) ) );
+			const int own = level >= 0 ? level : 0;
+			const int ownSize = vtf->Width() >> own;
+			const int repeat = size / ownSize; // 1 at the cube's own levels
+			for ( int f = 0; f < 6; ++f )
+			{
+				const std::byte *texels =
+				    reinterpret_cast<const std::byte *>( vtf->ImageData( 0, f, own ) );
+				for ( int y = 0; y < size; ++y )
+					for ( int x = 0; x < size; ++x )
+					{
+						const std::byte *texel =
+						    texels + ( std::size_t( y / repeat ) * ownSize + x / repeat ) * 8;
+						radiance.insert( radiance.end(), texel, texel + 8 );
+					}
+			}
+		}
+	}
+	std::vector<uint32_t> buffer;
+	if ( !mapcontainer::WriteCubemapProbeBuffer(
+	         reinterpret_cast<const float ( * )[3]>( origins.data() ), uint32_t( count ),
+	         uint32_t( mips ), uint32_t( face ), 0, &buffer ) )
+		return;
+	world_mesh_gpu::ReflectionProbesUploadRequest request;
+	request.probeCount = uint32_t( count );
+	request.mipCount = uint32_t( mips );
+	request.faceSize = uint32_t( face );
+	request.buffer = buffer.data();
+	request.bufferWords = uint32_t( buffer.size() );
+	request.data = radiance.data();
+	request.dataBytes = request.radianceBytes = radiance.size();
+	request.radianceHalf = true;
+	if ( pUpload->UploadReflectionProbes( request ) )
+		Msg( "r_core_world: %d cubemap%s as reflection probes (%d-texel faces, %d mips)\n", count,
+		    count == 1 ? "" : "s", face, mips );
+}
+
 static void LevelInitStage( IRenderCoreWorld *pWorld, worldbrushdata_t *pBrush )
 {
 	CoreWorldState &state = State();
@@ -838,6 +968,7 @@ static void LevelInitWorld()
 	}
 	// The core's pipeline prewarm list lives with the game's files.
 	pWorld->SetPipelineStore( com_gamedir );
+	UploadCubemapProbes( pWorld, pBrush );
 	pWorld->SetWorld( vertices.Base(), vertices.Count(), indices.Base(), indices.Count(),
 	    surfaces.Base(), surfaces.Count(), materialDescs.Base(), materialDescs.Count() );
 

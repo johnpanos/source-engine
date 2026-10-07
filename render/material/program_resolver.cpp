@@ -375,6 +375,14 @@ std::string TextureOf( const MaterialDesc &material, std::string_view parameter 
 
 } // namespace
 
+// Whether scene terms are a world stage's. A plain map's cubemaps supply
+// reflection probes alone; its models keep Source's model lighting at the
+// draw (its ambient cube and lights) rather than the stage's direct light.
+static bool StageScene( std::uint32_t sceneTerms )
+{
+	return ( sceneTerms & ~kSurfaceReflectionProbes ) != 0;
+}
+
 struct ProgramResolver::State
 {
 	explicit State( device::IRenderDevice2 &device ) : device( device ) {}
@@ -719,7 +727,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			return foundation::MakeUnexpected(
 			    std::string( "the pbr world point needs the world vertex" ) );
 		variant.terms |= s.mesh ? ( ( s.sceneTerms & ~kSurfaceLightmapTerms ) |
-		                              ( s.sceneTerms ? kSurfaceMeshDirect : 0u ) )
+		                              ( StageScene( s.sceneTerms ) ? kSurfaceMeshDirect : 0u ) )
 		                        : ( kSurfaceBakedLightmap | s.sceneTerms );
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );
@@ -758,8 +766,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		variant.layout = s.layout;
 		// Without a stage's terms (a plain map) the point takes Source's model
 		// lighting at the draw: its ambient cube and lights.
-		variant.terms |=
-		    ( s.sceneTerms & ~kSurfaceLightmapTerms ) | ( s.sceneTerms ? kSurfaceMeshDirect : 0u );
+		variant.terms |= ( s.sceneTerms & ~kSurfaceLightmapTerms ) |
+		                 ( StageScene( s.sceneTerms ) ? kSurfaceMeshDirect : 0u );
 		out.foliage = variant.treeSwayMode != 0;
 		SurfaceTextures textures;
 		textures.base = TextureOf( material, "basetexture" );

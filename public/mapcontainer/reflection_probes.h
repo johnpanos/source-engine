@@ -219,6 +219,16 @@ uint32_t ReflectionProbeBufferWords( const ReflectionProbesLayout &layout ) noex
 // Writes ReflectionProbeBufferWords() words from validated bytes.
 void WriteReflectionProbeBuffer( const void *pData, const ReflectionProbesLayout &layout,
     ReflectionProbeMode mode, uint32_t *pOut, bool relight = true, uint32_t baseMip = 0 ) noexcept;
+// The probe buffer for a Source BSP's cubemaps (its env_cubemap samples) in
+// place of RPRB: one probe per sample in sample order (layer = index), each
+// selected by nearest capture (ReflectionProbeMode::Nearest, Source 1's rule)
+// and looked up by direction alone (a box of kReflectionProbesMaxCoordinate
+// makes the parallax term vanish, as Source's cubemaps are at infinity). No
+// candidate masks, no relight. `pOut` holds ReflectionProbeBufferWords() of
+// the returned layout's words. False for a count of 0 or above the maximum.
+bool WriteCubemapProbeBuffer( const float ( *pOrigins )[3], uint32_t count, uint32_t mips,
+    uint32_t faceSize, uint32_t baseMip, std::vector<uint32_t> *pOut );
+
 // The base mip a texture setting asks of a lump with `mips` levels: `drop`
 // levels dropped, but at least four mips (and a face of 8) remain.
 uint32_t ReflectionProbeBaseMip( uint32_t mips, uint32_t drop ) noexcept;
