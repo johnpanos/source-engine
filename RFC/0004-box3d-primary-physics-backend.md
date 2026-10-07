@@ -53,7 +53,11 @@ Box3D will initially be opt-in. IVP remains available for reference testing and
 rollback. Box3D becomes the default only for application/platform combinations
 that pass defined compatibility, gameplay, and performance gates. Removing the
 IVP runtime and removing all legacy collision-format dependencies are separate
-milestones.
+milestones. User direction (2026-10-07): IVP stays a supported fallback
+provider, linked and selectable with `-physics vphysics`, while Box3D is
+extended past it; [RFC 0026](0026-box3d-beyond-ivp.md) owns that guarantee
+and the program. Removing the IVP runtime from any profile needs a new user
+decision.
 
 The first delivery is a bounded vertical slice: load an existing map and model
 collision assets, simulate dynamic props and one ragdoll, exercise traces and
@@ -807,7 +811,7 @@ distinct tests. A one-worker correctness baseline precedes speedup claims.
 | C: Core compatibility | Full required traces/filters, persistence, materials, object lifecycle, constraint/ragdoll support, shadow/player/motion controllers | Core gameplay corpus passes in client and dedicated builds |
 | D: Gameplay completion | Fluids, vehicles, pulley/group semantics, selected game variants and Portal support, tool workflows | Declared feature profile has no unsupported required behavior |
 | E: Performance and rollout | Parallel execution, platform CI, profiling, diagnostics, soak testing, packaging | Per-profile default-promotion checklist passes |
-| F: Retirement | Native cooking where useful, independent legacy decoder, dependency removal | Box3D runtime no longer needs IVP simulation; later removal of remaining IVP code is separately verified |
+| F: Retirement | Native cooking where useful, independent legacy decoder, dependency removal | Box3D runtime no longer needs IVP simulation, while IVP stays selectable as the fallback (RFC 0026); removing IVP code needs a new user decision |
 
 Every phase uses current profile-specific RFC 0005 evidence. A/B establish the
 compatibility oracle before broad gameplay migration; C/D expand method, asset,
@@ -847,7 +851,8 @@ Promotion is per application/platform profile. It requires:
 5. reproducible dependency and packaging configuration;
 6. an IVP rollback package and documented save/content limitations.
 
-Keep the IVP configuration in CI during the transition. Rollback selects a
+Keep the IVP configuration in CI. It is the permanent fallback (RFC 0026
+F1–F7), not only a transition aid. Rollback selects a
 different provider at process startup and uses compatible content/saves; it
 never moves a running world between solvers.
 

@@ -37,6 +37,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0023](RFC/0023-release-play-builds.md) | Release builds of `play`, `play_p2` and `play_p2_fsr`: separate trees with measured fastest code generation (O3/ISA/LTO/PGO candidates) and per-frame logging, counters, tracing and verifiers compiled out, with image and gameplay unchanged (proposed, user direction 2026-10-06; no ranked row) |
 | [0024](RFC/0024-direct3d12-device-adapter.md) | Direct3D 12 adapter for `render.device.v2`: fences as completion tokens, bind groups as root-signature tables, HLSL artifacts compiled by the pinned DXC, SDL3–D3D12 bridge; Linux lane and X5 under MinGW + Wine/vkd3d-proton (proposed, user direction 2026-10-07; X0–X5 implemented: device suite 1,563/0, pixel families against Vulkan, render graph, SDL3–D3D12 presentation 64/0, resolution sweep on bazzite; no ranked row) |
 | [0025](RFC/0025-metal-device-adapter.md) | Metal device adapter for the render core: `render.device.metal` (Objective-C++), `kMsl` MSL 3.0 artifacts from the pinned SPIRV-Cross, bind groups as argument buffers, Metal 3 floor (proposed, user direction 2026-10-07; M0 partial, no device run) |
+| [0026](RFC/0026-box3d-beyond-ivp.md) | Box3D beyond IVP with IVP as the fallback: the IVP fallback guarantee (F1–F7), a measured "surpasses IVP" scoreboard, Box3D-only capabilities in order (B1 continuous collision, B2 capsules, B3 rolling resistance and surface velocity, B4 contact events, then joint drive, sensors, explosions, recording, runtime collision) through RFC 0013's mechanism, per-phase done checklist, six ratchets, published scenario maps (proposed, user direction 2026-10-07; scenario maps installed, no phase gate passed; row R98) |
 | [0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md) | One product pipeline in C++, libraries first: standalone public libraries (codecs, IRs, readers/writers, lowerings, graph, resolver, profiles, `kiln.api`) that tools, Hammer, bakers and Python (`sepipe`) use directly, with `kiln` as a thin CLI and an exported SDK; a breaking workflow change (`./kiln play <profile>` replaces `./play*`, `run.sh`, `run.conf` and the platform and CI scripts with no wrappers; trees move to `out/<profile>/<flavor>`); shared concerns lifted to one owner each; canonical texture encoders/decoders; texture, material and model IRs lowered per target as RFC 0015 compilers; streamable package units; extension by substitution (providers selected by name, shared suites with bad providers, a fixture platform through an unchanged core) (proposed, user direction 2026-10-07; nothing implemented, rows R98–R101 unranked) |
 | [0028](RFC/0028-direct3d9-device-adapter.md) | Direct3D 9 adapter for `render.device.v2`: D3D9Ex/SM3 floor, `kD3d9Bytecode` artifacts via SPIRV-Cross SM30 and the pinned FXC, graphics-only capability set with named refusals, mod `ShaderDLL004` bytecode on the core through the legacy frontend, `shaderapidx9` deleted once matched; DXVK Native and Wine lanes (proposed, user direction 2026-10-07, lifting RFC 0016's exclusion; nothing implemented, no ranked row) |
 
@@ -674,18 +675,19 @@ marks no implementation gate done.
 | 70 / R35 | New audited compute seams; 0003 F | R30 | Animation/render-list/AI/streaming cohorts have stable inputs, correct cross-system edges and ordered commit; individual equivalence/budget gates pass | planned |
 | 71 / R36 | Vulkan parity and four-platform release readiness; 0001 rank 17 | R29, R32 | Per-platform materials/images, loss/recovery, cache, hardware budgets and normal package/store-compatibility checks pass; default selection is a separate product decision | planned |
 | 72 / R37 | Physics parallel rollout and default gate; 0004 E | R20, R34 | Worker-count determinism, nested-work/callback/shutdown bridge, platform packaging, budgets and supported client/server combinations pass; IVP rollback tested | planned |
-| 73 / R67 | Opt-in Box3D capabilities; 0013 P0–P7 (phase prerequisites in the RFC) | R19 | Each capability has its own interface, contract with bad providers and required gate in `physics-v1.json`; parallel step passes on declared profiles; game opt-in only after its filter-threading policy and gameplay corpus pass | active ([0013 progress](RFC/0013-progress.md); P0–P3 on Linux desktop; pool step scheduler measured on Linux and the iPhone 16 Pro, 2026-09-26) |
-| 74 / R38 | Stateful scheduling migrations; 0003 G | R30, R35, R37 | Snapshot-send ownership and selected entity/physics cohorts preserve legacy observations/order or record intentional change; network/latency/lifetime gates pass | planned |
-| 75 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | active ([Phase D](RFC/0001-phase-b-progress.md#later-work-not-claimed-here)) |
-| 76 / R40 | Tool executable/process cleanup; 0001 rank 19 / retirement E | R11, R12, R22 | Launchable-DLL wrappers retired by cohort; structured argv/process protocol, outputs/cancellation and required compiler workflows pass; integrations tool-only | active ([Phase E](RFC/0001-phase-e-progress.md)) |
-| 77 / R41 | Extension hosts and public-loader removal; 0001 rank 20 / retirement F–G | R07, R11, R39, R40 | Family-owned versioned ABI/trust/lifetime fixtures pass; Waf enumerates boundaries; only approved hosts load; Tier1/filesystem general loader APIs retired | planned |
-| 78 / R42 | Scheduler consolidation; 0003 H | R35, R38 | Redundant queues/waits have zero consumers; process worker budget controlled; supported host modes retain correctness/latency and rollback evidence | planned |
-| 79 / R43 | Hammer legacy retirement; 0002 H7 | R33, R60 | Declared product parity/recovery gate met; old consumer counts zero; superseded shell/glue/build references and stale exceptions removed | planned |
-| 80 / R44 | IVP simulation retirement; 0004 F first gate | R37 | Declared profiles no longer depend on IVP simulation; gameplay/save/package gates pass and rollback/support decision recorded; decoder dependency remains explicit | planned |
-| 81 / R45 | Independent collision decoding/cooking; 0004 F second gate | R40, R44 | Legacy/native format corpus and tool compatibility pass without IVP code; dependency audit clean; schema and old-content policy explicit | planned |
-| 82 / R46 | Tier-global/domain retirement; 0001 rank 21 | R39, R41, R42, R43, R45 | All declared domain cohorts use explicit ownership; old globals have zero consumers; cohesive targets pass architecture/product gates; tiers removed only when empty | planned |
-| 83 / R93 | LAN discovery and Portal 2 co-op pairing; 0017 G0–G6 | R06, R10 (Apple/Android gates also R29) | `platform.lan-discovery.v1` suite catches its bad providers; Linux mDNS provider passes its fuzz corpus and coexists with Avahi; two `play_p2` processes pair through the real PC co-op menus (required UI-driven test) and reach a shared map, with wrong-code and lobby-full negative controls; Apple providers pass on device or stay unverified (optional runner); Android passes on the Fold7, or the row stays `partial` | planned ([RFC 0017](RFC/0017-lan-discovery-and-coop-pairing.md); rank is an agent placement, 2026-09-28, movable by the user) |
-| 84 / R94 | Frame-wide scheduling; 0003 I (goals J1–J5; J6–J7 ratchets) | R20, R21 | One continuous ready-driven executor on the engine pool in products (no wave barriers); declared regions overlap across host nodes; thread census shows no first-party compute threads outside declared owners; scheduling at most 5 % of pooled critical-path work; 1- and 2-worker configurations hold their budgets on desktop, the Fold7 and the iPhone; J6/J7 shrink-only ratchets installed | planned ([RFC 0003 goals](RFC/0003-dependency-aware-job-system.md#frame-wide-scheduling-goals-amended-2026-09-28); rank is an agent placement, 2026-09-28, movable by the user) |
+| 73 / R67 | Opt-in Box3D capabilities; 0013 P0–P7 (phase prerequisites in the RFC) | R19 | Each capability has its own interface, contract with bad providers and required gate in `physics-v1.json`; parallel step passes on declared profiles; game opt-in only after its filter-threading policy and gameplay corpus pass | active ([0013 progress](RFC/0013-progress.md); P0–P3 on Linux desktop; pool step scheduler measured on Linux and the iPhone 16 Pro, 2026-09-26; from P4 on, order, done checklist and ratchets are RFC 0026's, row R98) |
+| 74 / R98 | Box3D beyond IVP, IVP kept as the fallback; 0026 B0–B9 (B9 with R59/R61/R45) | R19, R67 | B0: `physics.conformance` passes on the pinned Box3D and the six physics ratchets are installed with seeded violations; each capability B1–B8 has its versioned interface, contract with bad providers, required gate, a scoreboard metric where Box3D beats IVP on the same inputs, an IVP fallback clause, a real consumer and a published scenario map with a headless readout; the "surpasses IVP" claim holds on the Linux desktop and the Fold7; IVP stays linked, selectable and boots every scenario map ([done checklist](RFC/0026-box3d-beyond-ivp.md#what-done-looks-like-instructions-for-agents)) | active ([0026 progress](RFC/0026-progress.md); 2026-10-07: RFC and five published scenario maps on both providers; B0 and B1 next) |
+| 75 / R38 | Stateful scheduling migrations; 0003 G | R30, R35, R37 | Snapshot-send ownership and selected entity/physics cohorts preserve legacy observations/order or record intentional change; network/latency/lifetime gates pass | planned |
+| 76 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | active ([Phase D](RFC/0001-phase-b-progress.md#later-work-not-claimed-here)) |
+| 77 / R40 | Tool executable/process cleanup; 0001 rank 19 / retirement E | R11, R12, R22 | Launchable-DLL wrappers retired by cohort; structured argv/process protocol, outputs/cancellation and required compiler workflows pass; integrations tool-only | active ([Phase E](RFC/0001-phase-e-progress.md)) |
+| 78 / R41 | Extension hosts and public-loader removal; 0001 rank 20 / retirement F–G | R07, R11, R39, R40 | Family-owned versioned ABI/trust/lifetime fixtures pass; Waf enumerates boundaries; only approved hosts load; Tier1/filesystem general loader APIs retired | planned |
+| 79 / R42 | Scheduler consolidation; 0003 H | R35, R38 | Redundant queues/waits have zero consumers; process worker budget controlled; supported host modes retain correctness/latency and rollback evidence | planned |
+| 80 / R43 | Hammer legacy retirement; 0002 H7 | R33, R60 | Declared product parity/recovery gate met; old consumer counts zero; superseded shell/glue/build references and stale exceptions removed | planned |
+| 81 / R44 | IVP simulation retirement; 0004 F first gate | R37 | Declared profiles no longer depend on IVP simulation, while IVP stays built and selectable as the fallback provider (user direction 2026-10-07, [RFC 0026](RFC/0026-box3d-beyond-ivp.md#the-ivp-fallback-guarantee)); gameplay/save/package gates pass and rollback/support decision recorded; decoder dependency remains explicit; removing the IVP runtime from any profile needs a new user decision | planned |
+| 82 / R45 | Independent collision decoding/cooking; 0004 F second gate | R40, R44 | Legacy/native format corpus and tool compatibility pass without IVP code; dependency audit clean; schema and old-content policy explicit | planned |
+| 83 / R46 | Tier-global/domain retirement; 0001 rank 21 | R39, R41, R42, R43, R45 | All declared domain cohorts use explicit ownership; old globals have zero consumers; cohesive targets pass architecture/product gates; tiers removed only when empty | planned |
+| 84 / R93 | LAN discovery and Portal 2 co-op pairing; 0017 G0–G6 | R06, R10 (Apple/Android gates also R29) | `platform.lan-discovery.v1` suite catches its bad providers; Linux mDNS provider passes its fuzz corpus and coexists with Avahi; two `play_p2` processes pair through the real PC co-op menus (required UI-driven test) and reach a shared map, with wrong-code and lobby-full negative controls; Apple providers pass on device or stay unverified (optional runner); Android passes on the Fold7, or the row stays `partial` | planned ([RFC 0017](RFC/0017-lan-discovery-and-coop-pairing.md); rank is an agent placement, 2026-09-28, movable by the user) |
+| 85 / R94 | Frame-wide scheduling; 0003 I (goals J1–J5; J6–J7 ratchets) | R20, R21 | One continuous ready-driven executor on the engine pool in products (no wave barriers); declared regions overlap across host nodes; thread census shows no first-party compute threads outside declared owners; scheduling at most 5 % of pooled critical-path work; 1- and 2-worker configurations hold their budgets on desktop, the Fold7 and the iPhone; J6/J7 shrink-only ratchets installed | planned ([RFC 0003 goals](RFC/0003-dependency-aware-job-system.md#frame-wide-scheduling-goals-amended-2026-09-28); rank is an agent placement, 2026-09-28, movable by the user) |
 
 R39–R46 describe completion gates, not a reason to retain dead code until late.
 Delete each unused adapter/global/queue when its bounded cohort has passed its
@@ -792,6 +794,46 @@ Keep the table concise and link details below or from the domain progress file.
 
     This closes no R37 criterion. See the
     [RFC 0013 progress record](RFC/0013-progress.md).
+
+- R98 (RFC 0026): added 2026-10-07 at the user's direction, `active`.
+  "Solidify and extend Box3D without dropping support for IVP ... surpass
+  IVP in quality while still allowing us to fall back there."
+  - IVP stays a supported fallback provider: linked, selectable with
+    `-physics vphysics`, untouched by every capability, and the reference of
+    `physics.conformance` ([fallback guarantee F1–F7](RFC/0026-box3d-beyond-ivp.md#the-ivp-fallback-guarantee)).
+    R44 is narrowed to match; removing the IVP runtime needs a new user
+    decision.
+  - "Surpasses IVP" is a measured claim per profile: the parity verdict
+    passes with capabilities off, no scoreboard metric is worse than IVP's,
+    and the headline metrics are better
+    ([scoreboard](RFC/0026-box3d-beyond-ivp.md#surpasses-ivp-the-scoreboard)).
+    It fails today: the parity verdict fails, Box3D lets 56 of 64 projectiles
+    through thin dynamic panes (IVP 24), and the shape-inertia gyroscope sinks
+    faster than IVP's.
+  - Order (agent placement, movable by the user): B0 parity verdict and
+    ratchets; B1 `vphysics.continuous.v1`; B2 capsule shapes; B3 rolling
+    resistance and surface velocity; B4 contact events; B5 joint drive; B6
+    sensors; B7 explosions; B8 recording; B9 runtime collision with
+    R59/R61/R45. Box3D has no cloth; cloth, the character mover, double
+    precision and rollback networking are out of scope.
+  - Agents: before starting or closing an R98 slice, read the
+    [done checklist](RFC/0026-box3d-beyond-ivp.md#what-done-looks-like-instructions-for-agents)
+    and [the ratchets](RFC/0026-box3d-beyond-ivp.md#the-ratchets). A phase
+    is not done without the same measurement on IVP, an IVP fallback clause,
+    a real consumer and its scenario map. Never loosen a parity tolerance, an
+    IVP oracle or a recorded ratchet value to get green. The ratchet checker
+    (`physics_ratchet.py`) and the map runner (`physics_lab.py`) are
+    proposed until B0 installs them.
+  - Installed 2026-10-07: `tools/quality/physics_lab_maps.py` publishes five
+    scenario maps (`phys_tunnel`, `phys_stack`, `phys_joints`,
+    `phys_impacts`, `phys_rolling`; `./play <map>`, `PHYSICS=vphysics
+    ./play <map>` for IVP), each scene labelled in game, restartable from a
+    button, and counting results to the console as `physlab` lines. All five
+    boot headless on both providers. `phys_tunnel` reproduces the benchmark
+    in game: 8 of 8 cubes through the hanging panes on Box3D, 4 of 8 on IVP.
+    Pass `--build <tree>` to `portal_boot.py`; `run/runtime`'s own binaries
+    are stale ([progress](RFC/0026-progress.md)).
+  - Rank 74, directly after R67; ranks from R38 down moved by one.
 
 - R47–R58 (RFC 0007/0008): added 2026-09-22 as `planned` at the user's direction,
   ranked after R32 so legacy-content fidelity on native Vulkan stays ahead. The user

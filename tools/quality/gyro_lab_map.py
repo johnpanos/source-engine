@@ -238,7 +238,7 @@ def vec(v):
     return " ".join("%g" % c for c in v)
 
 
-def room(vmf, bounds, spawn, lights):
+def room(vmf, bounds, spawn, lights, spawn_angles=(0, 0, 0)):
     x0, y0, z0, x1, y1, z1 = bounds
     cx, cy, cz = (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2
     hx, hy, hz = (x1 - x0) / 2 + THICK, (y1 - y0) / 2 + THICK, (z1 - z0) / 2 + THICK
@@ -251,7 +251,7 @@ def room(vmf, bounds, spawn, lights):
         vmf.box((cx, y0 - t, cz), (hx - THICK, t, hz), WALL),
         vmf.box((cx, y1 + t, cz), (hx - THICK, t, hz), WALL),
     ]
-    vmf.entity("info_player_start", {"origin": vec(spawn), "angles": "0 0 0"})
+    vmf.entity("info_player_start", {"origin": vec(spawn), "angles": vec(spawn_angles)})
     for origin in lights:
         vmf.entity("light", {"origin": vec(origin), "_light": "255 250 240 350",
                              "_quadratic_attn": "0", "_linear_attn": "1", "_constant_attn": "0"})

@@ -28,6 +28,12 @@ Current state (2026-09-25, read from the tree; nothing rerun):
   `./play`, `./play_p2` and `run.sh` select Box3D. The Android launcher
   (`launcher_main/android_main.cpp`) passes no `-physics`, so the APKs, which
   package both providers, run IVP unless `commandline.txt` selects Box3D.
+  - Superseded 2026-09-26 (user decision; checked in the tree 2026-10-07):
+    Box3D is the default wherever it is linked. The launcher's physics
+    catalog lists Box3D first and IVP always (`launcher/launcher.cpp`), and
+    the Linux dedicated server defaults to `vphysics_box3d`
+    (`dedicated/sys_linux.cpp`). `-physics vphysics` selects IVP, which
+    stays the supported fallback ([RFC 0026](0026-box3d-beyond-ivp.md)).
 - `vphysics_box3d` links no IVP library and includes no IVP header. Its
   `.phy`/BSP decoder is `legacy_collision.cpp`; it shares only the keyvalue
   parser `vphysics/vcollide_parse.cpp`. `vbsp` and `studiomdl` still load
@@ -300,5 +306,5 @@ Those are the three failures earlier noted as pre-existing on main's build.
 ### Phase F: Retirement (R44, R45)
 * **F1. Native Cooking Pipeline:** Define a new versioned collision format. Support pre-cooking Box3D native geometry to avoid runtime legacy conversion overhead.
 * **F2. Independent Legacy Decoder:** Decouple the legacy `.phy` parser completely from the old IVP implementation.
-* **F3. IVP Simulation Removal:** Remove the IVP runtime simulation once all profiles have successfully promoted Box3D as the default.
+* **F3. IVP Simulation Removal:** Remove the IVP runtime simulation once all profiles have successfully promoted Box3D as the default. Paused by user direction (2026-10-07): IVP stays a supported fallback provider ([RFC 0026](0026-box3d-beyond-ivp.md#the-ivp-fallback-guarantee)); removal needs a new user decision.
 

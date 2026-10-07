@@ -21,6 +21,11 @@
 - Synchronization: [RFC 0006](0006-modern-cpp-ownership-and-synchronization.md)
 - Verification: [RFC 0005](0005-quality-and-correctness-harnesses.md) (Q-PHYSICS)
 - Progress: [RFC 0013 progress](0013-progress.md)
+- Program (2026-10-07, user direction): [RFC 0026](0026-box3d-beyond-ivp.md)
+  owns the order of the capabilities still to come (its phases B0–B9), what
+  "better than IVP" means and how it is measured, the IVP fallback guarantee,
+  the done checklist and the ratchets. This RFC keeps the mechanism, the
+  catalog below and the benchmark gate rules.
 
 ## Render performance obligations (user decision, 2026-10-01)
 
@@ -161,15 +166,20 @@ recorded in the [progress record](0013-progress.md).
 | --- | --- | --- | --- | --- | --- |
 | `vphysics.parallel-step.v1` | `IPhysicsParallelStep` ([header](../public/vphysics/parallel_step.h)) | An environment stepped on N workers of the caller's thread pool, fixed at creation | world `workerCount`, `enqueueTask`/`finishTask` | Implemented (P1–P3); server default when the provider offers it, `-physics_workers N` or `1` | `parallel-step` (required) |
 | `vphysics.step-profile.v1` | `IPhysicsStepProfile` ([header](../public/vphysics/step_profile.h)) | Solver against adapter time per `Simulate`, body/awake/contact counts, game-solver calls on and off the calling thread | `b3World_GetCounters`, provider timers | Implemented (P2); `physics_step_profile` server command | contract clauses in `parallel-step` |
-| `vphysics.continuous.v1` | planned | Per-object bullet flag: continuous collision against dynamic bodies | `b3Body_SetBullet` | planned (P4) | `ccd-bullets` (planned; fails today) |
-| `vphysics.recording.v1` | planned | Record a session; validate a replay | `b3World_StartRecording`, `b3ValidateReplay` | planned (P5) | replay equals digest |
-| `vphysics.sensors.v1` | planned | Shape sensors with begin/end overlap events | sensor shapes and events | planned (P6) | event-order and overlap suite |
-| `vphysics.joint-drive.v1` | planned | Joint springs, motors, limits; constraint force readback | joint defs, `b3Joint_GetConstraintForce` | planned (P6) | analytic drive cases |
-| `vphysics.explosion.v1` | planned | Radial impulses with falloff | `b3World_Explode` | planned (P6) | impulse/falloff cases |
-| `vphysics.runtime-collision.v1` | planned | Collision built at runtime: meshes, baked compounds, height fields | `b3CreateMeshShape`, `b3CreateBakedCompoundShape`, `b3CreateHeightFieldShape` | planned (P7, with R59/R61/R45) | corpus and query suite |
+| `vphysics.continuous.v1` | planned | Per-object bullet flag: continuous collision against dynamic bodies | `b3Body_SetBullet` | planned (P4; RFC 0026 B1) | `ccd-bullets` (planned; fails today) |
+| `vphysics.capsule-shapes.v1` | planned | Capsule collision (segment and radius) usable by every object-creation path, with exact mass and queries | `b3CreateCapsuleShape` | planned (RFC 0026 B2) | `capsule-shapes` (to be declared) |
+| `vphysics.surface-motion.v1` | planned | Rolling resistance for round bodies; surface tangent velocity (conveyors) | `b3SurfaceMaterial.rollingResistance`, `.tangentVelocity` | planned (RFC 0026 B3) | `surface-motion` (to be declared) |
+| `vphysics.contact-events.v1` | planned | Hit events with approach speed, point, normal and threshold; contact begin/end with manifolds; joint events | hit, contact and joint events | planned (RFC 0026 B4) | `contact-events` (to be declared) |
+| `vphysics.joint-drive.v1` | planned | Joint springs, motors, limits; constraint force readback | joint defs, `b3Joint_GetConstraintForce` | planned (P6; RFC 0026 B5) | analytic drive cases |
+| `vphysics.sensors.v1` | planned | Shape sensors with begin/end overlap events | sensor shapes and events | planned (P6; RFC 0026 B6) | event-order and overlap suite |
+| `vphysics.explosion.v1` | planned | Radial impulses with falloff | `b3World_Explode` | planned (P6; RFC 0026 B7) | impulse/falloff cases |
+| `vphysics.recording.v1` | planned | Record a session; validate a replay | `b3World_StartRecording`, `b3ValidateReplay` | planned (P5; RFC 0026 B8) | replay equals digest |
+| `vphysics.runtime-collision.v1` | planned | Collision built at runtime: meshes, baked compounds, height fields | `b3CreateMeshShape`, `b3CreateBakedCompoundShape`, `b3CreateHeightFieldShape` | planned (P7, with R59/R61/R45; RFC 0026 B9) | corpus and query suite |
 
 Each planned capability gets its own interface, contract clauses and gate
-before any consumer uses it. A capability can be split or narrowed when a
+before any consumer uses it. RFC 0026 adds what each needs beyond that: an
+IVP fallback clause, a scoreboard metric measured on both providers, a real
+consumer and a published scenario map. A capability can be split or narrowed when a
 provider cannot meet all of it (see the LSP rules in AGENTS.md). IVP never
 claims one.
 
@@ -407,10 +417,15 @@ for the conformance suite and the benchmark, and no new `dlopen` site.
 | P6 | Sensors, joint drive, explosion | Each capability's own suite with bad providers |
 | P7 | Runtime collision (with R59/R61/R45) | Corpus, query and cooking gates |
 
+From P4 on, RFC 0026's phases set the order (B1 continuous, B2 capsules, B3
+surface motion, B4 contact events, B5 joint drive, B6 sensors, B7 explosion,
+B8 recording, B9 runtime collision) and the definition of done; the P numbers
+remain as cross-references.
+
 ## Roadmap
 
-R67 in [AGENTS.md](../AGENTS.md) tracks this RFC. It depends on R19 (the
-Box3D slice). P2 depends on R20, P3 on R31 and R12, and P7 on R59 and R45.
+R67 in [AGENTS.md](../AGENTS.md) tracks this RFC, and R98 tracks the RFC 0026
+program built on it. It depends on R19 (the Box3D slice). P2 depends on R20, P3 on R31 and R12, and P7 on R59 and R45.
 Enabling any capability by default in a profile is a separate product
 decision after that profile's gates pass. The 2026-09-25 parallel-step
 default was a user decision made before that: the Fold7 and Apple profiles
