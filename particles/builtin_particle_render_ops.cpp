@@ -1784,6 +1784,18 @@ void C_OP_RenderSpritesTrail::Render( IMatRenderContext *pRenderContext, CPartic
 	}
 
 	bool bSpriteCard = pMaterial->IsSpriteCard();
+	if ( bSpriteCard )
+	{
+		// The spline layout below is read only by splinecard_vs20, which
+		// SpriteCard selects for $splinetype materials. Portal's sprite-trail
+		// materials have none: spritecard_vs20 would expand the control
+		// points as sprite sizes (screen-filling fans), so they are not drawn,
+		// as before the spline port.
+		bool bFound = false;
+		IMaterialVar *pSplineType = pMaterial->FindVar( "$splinetype", &bFound, false );
+		if ( !bFound || !pSplineType || pSplineType->GetIntValue() == 0 )
+			return;
+	}
 
 	// Store matrices off so we can restore them in RenderEnd().
 	pRenderContext->Bind( pMaterial );
