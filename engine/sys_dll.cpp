@@ -77,7 +77,14 @@
 #define ONE_HUNDRED_TWENTY_EIGHT_MB	(128 * 1024 * 1024)
 
 ConVar mem_min_heapsize( "mem_min_heapsize", "48", FCVAR_INTERNAL_USE, "Minimum amount of memory to dedicate to engine hunk and datacache (in mb)" );
+#ifdef PLATFORM_64BITS
+// The 64-bit hunk reserves 128 MB (zone.cpp) instead of 48 MB, and the datacache gets what the
+// hunk leaves of this budget. At 256 the cache fell to ~128 MB: Portal 2's 28 MB streamed music
+// (sp_a2_core_b9) could not stay resident, evicted every other streaming sound and stalled the mix.
+ConVar mem_max_heapsize( "mem_max_heapsize", "384", FCVAR_INTERNAL_USE, "Maximum amount of memory to dedicate to engine hunk and datacache (in mb)" );
+#else
 ConVar mem_max_heapsize( "mem_max_heapsize", "256", FCVAR_INTERNAL_USE, "Maximum amount of memory to dedicate to engine hunk and datacache (in mb)" );
+#endif
 ConVar mem_max_heapsize_dedicated( "mem_max_heapsize_dedicated", "64", FCVAR_INTERNAL_USE, "Maximum amount of memory to dedicate to engine hunk and datacache, for dedicated server (in mb)" );
 
 #define MINIMUM_WIN_MEMORY			(unsigned)(mem_min_heapsize.GetInt()*1024*1024)

@@ -891,7 +891,22 @@ public:
 #if defined( CLIENT_DLL )
 		enginesound->EmitAmbientSound( params.soundname, params.volume, params.pitch, iFlags, soundtime );
 #else
-		engine->EmitAmbientSound(entindex, origin, params.soundname, params.volume, params.soundlevel, iFlags, params.pitch, soundtime );
+		// Version 2 entries (ambient_generic music, for one) start as sound entries, as CS:GO's
+		// EmitAmbientSoundAsEntry does, so the channel carries its script hash: their operator
+		// stacks run, and a later entry's sys_stop_entries ("match_entry music") can find them.
+		// Stops and changes keep the wave path; it matches the same entity, channel and wave.
+		HSOUNDSCRIPTHASH hSoundEntry = SoundEntryHashForEmit( soundname, iFlags );
+		if ( hSoundEntry != SOUNDEMITTER_INVALID_HASH && !( iFlags & ( SND_CHANGE_VOL | SND_CHANGE_PITCH ) ) )
+		{
+			CReliableBroadcastRecipientFilter filter;
+			enginesoundentry->EmitSoundEntry( filter, entindex, CHAN_STATIC, hSoundEntry,
+			    params.soundname, params.volume, (soundlevel_t)params.soundlevel, iFlags,
+			    params.pitch, 0, &origin, NULL, NULL, true, soundtime, -1 );
+		}
+		else
+		{
+			engine->EmitAmbientSound(entindex, origin, params.soundname, params.volume, params.soundlevel, iFlags, params.pitch, soundtime );
+		}
 #endif
 
 		bool needsCC = !( iFlags & ( SND_STOP | SND_CHANGE_VOL | SND_CHANGE_PITCH ) );
