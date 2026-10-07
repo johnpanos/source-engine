@@ -4,7 +4,8 @@
 #   python3 tools/quality/portal2_map_views.py --map sp_a1_intro4_relit --out DIR \
 #     --steps-file quality/workloads/portal2-intro4-dropper-pit-v1/steps.txt \
 #     --engine-arg=+sv_cheats --engine-arg=1 --engine-arg=+r_core_world --engine-arg=1 \
-#     --engine-arg=+r_indirect_producer --engine-arg=baked --engine-arg=+mat_queue_mode --engine-arg=2
+#     --engine-arg=+r_indirect_producer --engine-arg=baked --engine-arg=+mat_queue_mode --engine-arg=2 \
+#     --engine-arg=+ai_norebuildgraph --engine-arg=1
 # Views, all from the same camera:
 #   default       the product's lighting (runtime direct light, baked static shadow masks)
 #   cube          after the dropper releases the cube (a moving caster near the lights)

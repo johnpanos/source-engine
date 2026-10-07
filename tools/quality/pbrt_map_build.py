@@ -534,7 +534,12 @@ class Pipeline:
                          "noise_gate": lightmap.get("noise_gate", "enforce"),
                          # Stitched seam gate {"p99", "max"} (relative) in place
                          # of lightmap_ktx2.py's defaults, or None for those.
-                         "seam_gate": lightmap.get("seam_gate")}
+                         "seam_gate": lightmap.get("seam_gate"),
+                         # Lights reaching at least this far are Source 2
+                         # stationary lights: no baked shadow mask, their
+                         # runtime shadow maps (None: every light masked).
+                         "stationary_min_reach_units":
+                             lightmap.get("stationary_min_reach_units")}
         if self.lightmap["noise_gate"] not in ("enforce", "record"):
             raise SystemExit("lightmap.noise_gate must be \"enforce\" or \"record\"")
         seam_gate = self.lightmap["seam_gate"]
