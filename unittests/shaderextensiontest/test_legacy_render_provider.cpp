@@ -17,6 +17,9 @@
 #include "materialsystem/imaterialsystem.h"
 #include "render/legacy_shader_provider.h"
 #include "legacy_render_backend_provider.h"
+#include "shader_device_facade.h"
+#include "materialsystem/imaterialsystemhardwareconfig.h"
+#include "tier1/KeyValues.h"
 #include "conformance/render_backend_conformance.h"
 
 #include <cstdio>
@@ -126,6 +129,18 @@ int RunSharedSuite( render::IRenderBackendProvider &provider, const char *label,
 	return (int)report.checks.size();
 }
 
+// The material system's composition (CMaterialSystem::BindShaderProvider):
+// the backend's services with its manager behind the one device facade.
+bool Compose( const render::LegacyShaderProvider *provider, render::LegacyShaderServices *services,
+    CShaderDeviceFacade *facade )
+{
+	if ( !provider->create( services ) )
+		return false;
+	facade->Bind( *services );
+	services->manager = facade;
+	return true;
+}
+
 // A real linked legacy module through the provider contract.
 void CheckRealProvider(
     const render::LegacyShaderProvider *provider, const char *driverApi, bool isSoftware )
@@ -134,7 +149,8 @@ void CheckRealProvider(
 	if ( !provider || !provider->create )
 		return;
 	render::LegacyShaderServices services;
-	CHECK( provider->create( &services ) );
+	CShaderDeviceFacade facade;
+	CHECK( Compose( provider, &services, &facade ) );
 	CHECK( services.describeAdapter != NULL );
 
 	render::LegacyRenderBackendProvider backend( *provider, services );
@@ -170,7 +186,8 @@ void CheckNullProvider()
 	const render::LegacyShaderProvider *provider = NullShaderBackend_Describe();
 	CheckRealProvider( provider, "none", true );
 	render::LegacyShaderServices services;
-	provider->create( &services );
+	CShaderDeviceFacade facade;
+	CHECK( Compose( provider, &services, &facade ) );
 	render::LegacyRenderBackendProvider backend( *provider, services );
 	render::RenderAdapterInfo info;
 	CHECK( backend.GetAdapterInfo( 0, &info ) );
@@ -341,6 +358,213 @@ void CheckQuirkTable()
 	CHECK( strlen( description ) < 8 );
 }
 
+// ---------------------------------------------------------------------------
+// The device facade (RFC 0016 legacy device facade, F1)
+// ---------------------------------------------------------------------------
+
+// A backend manager: counts what the facade forwards, answers nothing else.
+class CForwardingMgr : public IShaderDeviceMgr
+{
+public:
+	bool Connect( CreateInterfaceFn ) override { return ++m_nConnects > 0; }
+	void Disconnect() override { ++m_nDisconnects; }
+	void *QueryInterface( const char *pName ) override
+	{
+		return !strcmp( pName, "Backend001" ) ? this : NULL;
+	}
+	InitReturnVal_t Init() override { return INIT_OK; }
+	void Shutdown() override { ++m_nShutdowns; }
+	int GetAdapterCount() const override { return 7; } // must never be reported
+	void GetAdapterInfo( int, MaterialAdapterInfo_t &info ) const override
+	{
+		memset( &info, 0, sizeof( info ) );
+		strcpy( info.m_pDriverName, "backend manager" );
+	}
+	bool GetRecommendedConfigurationInfo( int, int, KeyValues * ) override { return false; }
+	int GetModeCount( int ) const override { return 99; }
+	void GetModeInfo( ShaderDisplayMode_t *, int, int ) const override {}
+	void GetCurrentModeInfo( ShaderDisplayMode_t *, int ) const override {}
+	bool SetAdapter( int nAdapter, int ) override { return nAdapter == 0; }
+	CreateInterfaceFn SetMode( void *, int, const ShaderDeviceInfo_t & ) override
+	{
+		++m_nSetModes;
+		return ForwardedFactory;
+	}
+	void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t ) override { ++m_nCallbacks; }
+	void RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t ) override { --m_nCallbacks; }
+	static void *ForwardedFactory( const char *, int * ) { return NULL; }
+
+	int m_nConnects = 0, m_nDisconnects = 0, m_nShutdowns = 0, m_nSetModes = 0, m_nCallbacks = 0;
+};
+
+bool g_bBackendSoftware = false;
+bool g_bBackendDescribes = true;
+
+bool DescribeBackend( int adapter, render::RenderAdapterInfo *info )
+{
+	if ( !g_bBackendDescribes || adapter != 0 )
+		return false;
+	*info = render::RenderAdapterInfo();
+	strcpy( info->name, "Backend GPU" );
+	info->vendorId = 0x1234;
+	info->deviceId = 0x5678;
+	info->driverVersion = 0x0000000200000000ull;
+	info->deviceMemoryBytes = 1u << 20;
+	strcpy( info->driverApi, "vulkan" );
+	info->isSoftware = g_bBackendSoftware;
+	info->supportedFeatures.Add( render::RenderFeature::kComputeShaders );
+	return true;
+}
+
+int g_nCoreAdapters = 1;
+
+bool DescribeCore( void *context, int adapter, render::RenderAdapterInfo *info )
+{
+	if ( context != &g_nCoreAdapters || adapter < 0 || adapter >= g_nCoreAdapters )
+		return false;
+	*info = render::RenderAdapterInfo();
+	strcpy( info->name, "Core GPU" );
+	info->vendorId = 0x10DE;
+	info->deviceId = 0x2484;
+	info->driverVersion = 0x0000000300000001ull;
+	info->deviceMemoryBytes = 8ull << 30;
+	strcpy( info->driverApi, "ignored" );
+	info->isSoftware = true; // semantic facts stay the backend's
+	return true;
+}
+
+render::DisplayModeFacts g_Desktop;
+
+bool FakeDesktop( void *, render::DisplayModeFacts *desktop )
+{
+	*desktop = g_Desktop;
+	return desktop->width > 0;
+}
+
+void CheckDeviceFacade()
+{
+	// The null backend's hardware config and API stand in for the backend's.
+	render::LegacyShaderServices services;
+	CHECK( NullShaderBackend_Describe()->create( &services ) );
+	CForwardingMgr backend;
+	services.manager = &backend;
+	services.describeAdapter = DescribeBackend;
+	g_bBackendSoftware = false;
+	g_bBackendDescribes = true;
+	g_nCoreAdapters = 1;
+	g_Desktop = render::DisplayModeFacts();
+
+	CShaderDeviceFacade facade;
+	CHECK( facade.GetAdapterCount() == 0 ); // unbound
+	CHECK( facade.Init() == INIT_FAILED );
+	CHECK( facade.SetMode( NULL, 0, ShaderDeviceInfo_t() ) == NULL );
+	facade.Bind( services );
+
+	// Without the core, identity and facts are the backend's describe hook's;
+	// the backend manager's own answers are never reported.
+	CHECK( facade.GetAdapterCount() == 1 );
+	MaterialAdapterInfo_t info;
+	facade.GetAdapterInfo( 0, info );
+	CHECK( strcmp( info.m_pDriverName, "Backend GPU" ) == 0 );
+	CHECK( info.m_VendorID == 0x1234 && info.m_DeviceID == 0x5678 );
+	CHECK( info.m_nDriverVersionHigh == 2 && info.m_nDriverVersionLow == 0 );
+	CHECK( info.m_nDXSupportLevel == services.hardware->GetMaxDXSupportLevel() );
+	CHECK( info.m_nMaxDXSupportLevel == services.hardware->GetMaxDXSupportLevel() );
+	facade.GetAdapterInfo( 1, info );
+	CHECK( info.m_pDriverName[0] == '\0' && info.m_VendorID == 0 );
+
+	// With the core's source, identity is the core's; the backend keeps the
+	// semantic facts (driverApi, software, features).
+	render::LegacyShaderServices withCore = services;
+	withCore.coreAdapter.context = &g_nCoreAdapters;
+	withCore.coreAdapter.describe = DescribeCore;
+	facade.Bind( withCore );
+	CHECK( facade.GetAdapterCount() == 1 );
+	facade.GetAdapterInfo( 0, info );
+	CHECK( strcmp( info.m_pDriverName, "Core GPU" ) == 0 );
+	CHECK( info.m_VendorID == 0x10DE && info.m_DeviceID == 0x2484 );
+	CHECK( info.m_nDriverVersionHigh == 3 && info.m_nDriverVersionLow == 1 );
+	render::LegacyShaderServices composed = withCore;
+	composed.manager = &facade;
+	render::LegacyRenderBackendProvider provider( g_FakeProvider, composed );
+	render::RenderAdapterInfo described;
+	CHECK( provider.IsValid() && provider.GetAdapterInfo( 0, &described ) );
+	CHECK( strcmp( described.name, "Core GPU" ) == 0 );
+	CHECK( strcmp( described.driverApi, "vulkan" ) == 0 );
+	CHECK( !described.isSoftware );
+	CHECK( described.supportedFeatures.Has( render::RenderFeature::kComputeShaders ) );
+
+	// Bad sources: an adapter either side cannot describe is not enumerated.
+	g_nCoreAdapters = 0;
+	CHECK( facade.GetAdapterCount() == 0 );
+	g_nCoreAdapters = 1;
+	withCore.coreAdapter.context = NULL; // the source refuses a foreign context
+	facade.Bind( withCore );
+	CHECK( facade.GetAdapterCount() == 0 );
+	facade.Bind( services );
+	g_bBackendDescribes = false;
+	CHECK( facade.GetAdapterCount() == 0 );
+	g_bBackendDescribes = true;
+	render::LegacyShaderServices noDescribe = services;
+	noDescribe.describeAdapter = NULL;
+	facade.Bind( noDescribe );
+	CHECK( facade.GetAdapterCount() == 0 );
+	facade.Bind( services );
+
+	// Video modes come from the desktop display alone.
+	CHECK( facade.GetModeCount( 0 ) == 0 );
+	ShaderDisplayMode_t mode;
+	facade.GetCurrentModeInfo( &mode, 0 );
+	CHECK( mode.m_nWidth == 0 && mode.m_nRefreshRateDenominator == 0 );
+	g_Desktop.width = 1920;
+	g_Desktop.height = 1080;
+	g_Desktop.refreshNumerator = 60;
+	facade.SetDesktopSource( FakeDesktop, NULL );
+	const int modes = facade.GetModeCount( 0 );
+	CHECK( modes == (int)render::BuildBackBufferModeList( g_Desktop ).size() && modes > 0 );
+	bool fit = true;
+	for ( int i = 0; i < modes; ++i )
+	{
+		facade.GetModeInfo( &mode, 0, i );
+		fit = fit && mode.m_nWidth <= 1920 && mode.m_nHeight <= 1080 && mode.m_nWidth > 0 &&
+		      mode.m_nRefreshRateNumerator == 60;
+	}
+	CHECK( fit );
+	facade.GetModeInfo( &mode, 0, modes );
+	CHECK( mode.m_nWidth == 0 && mode.m_nRefreshRateDenominator == 0 );
+	facade.GetCurrentModeInfo( &mode, 0 );
+	CHECK( mode.m_nWidth == 1920 && mode.m_nHeight == 1080 && mode.m_nRefreshRateNumerator == 60 );
+
+	// A software adapter has no recommended configuration to apply.
+	g_bBackendSoftware = true;
+	KeyValues *config = new KeyValues( "config" );
+	CHECK( facade.GetRecommendedConfigurationInfo( 0, 0, config ) );
+	CHECK( config->GetFirstSubKey() == NULL );
+	CHECK( !facade.GetRecommendedConfigurationInfo( 1, 0, config ) );
+	config->deleteThis();
+	g_bBackendSoftware = false;
+
+	// The device bring-up and lifecycle still belong to the backend.
+	CHECK( facade.Connect( CForwardingMgr::ForwardedFactory ) && backend.m_nConnects == 1 );
+	CHECK( facade.Init() == INIT_OK );
+	CHECK( facade.SetAdapter( 0, 0 ) && !facade.SetAdapter( 1, 0 ) );
+	CHECK( facade.SetMode( NULL, 0, ShaderDeviceInfo_t() ) == CForwardingMgr::ForwardedFactory );
+	CHECK( backend.m_nSetModes == 1 );
+	facade.AddModeChangeCallback( NULL );
+	CHECK( backend.m_nCallbacks == 1 );
+	facade.RemoveModeChangeCallback( NULL );
+	CHECK( backend.m_nCallbacks == 0 );
+	CHECK( facade.QueryInterface( SHADER_DEVICE_MGR_INTERFACE_VERSION ) == &facade );
+	CHECK( facade.QueryInterface( "Backend001" ) == &backend );
+	facade.Shutdown();
+	facade.Disconnect();
+	CHECK( backend.m_nShutdowns == 1 && backend.m_nDisconnects == 1 );
+
+	// Unbinding forgets the backend.
+	facade.Unbind();
+	CHECK( !facade.IsBound() && facade.GetAdapterCount() == 0 );
+}
+
 } // namespace
 
 int main()
@@ -353,6 +577,7 @@ int main()
 	CheckTranslation();
 	CheckBadProviders();
 	CheckQuirkTable();
+	CheckDeviceFacade();
 	std::printf( "CONFORMANCE %d %d\n", g_Checks, g_Failures );
 	return g_Checks > 0 && g_Failures == 0 ? 0 : 1;
 }

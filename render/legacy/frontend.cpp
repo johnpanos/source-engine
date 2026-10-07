@@ -239,6 +239,10 @@ public:
 		m_CorePasses.SetForwarded( recorder );
 	}
 	ICorePassSlots *CorePassSlots() override { return m_Capabilities.CorePassSlots(); }
+	void SetCoreAdapterSource( const LegacyShaderServices::CoreAdapterSource &source ) override
+	{
+		m_CoreAdapter = source;
+	}
 	std::uint32_t ProviderCreates() const override { return m_Creates; }
 	ILegacyCapabilities *Capabilities() override { return &m_Capabilities; }
 	void BindRenderCallQueue( const RenderCallQueueHost *host ) override
@@ -255,7 +259,10 @@ private:
 		                                        : backend->create && backend->create( services );
 		self->m_Creates += created ? 1u : 0u;
 		if ( created )
+		{
+			services->coreAdapter = self->m_CoreAdapter;
 			self->m_Capabilities.Adopt( *services );
+		}
 		return created;
 	}
 
@@ -266,6 +273,7 @@ private:
 	QueuedCapabilities m_Capabilities;
 	CorePassRecorder m_CorePasses;
 	CoreSlotHook m_SlotHook{ m_CorePasses, m_Capabilities };
+	LegacyShaderServices::CoreAdapterSource m_CoreAdapter;
 	std::uint32_t m_Creates = 0;
 };
 

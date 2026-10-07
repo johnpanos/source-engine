@@ -25,9 +25,7 @@
 #include "materialsystem/deformations.h"
 #include "render/legacy_shader_provider.h"
 #include "render/pbr_material_schema.h"
-#include "render/render_display_modes.h"
 #include "render/render_sample_count.h"
-#include "dxsupport_keyvalues.h"
 #include "filesystem.h"
 #include "tier1/KeyValues.h"
 #include "vulkan_device.h"
@@ -1944,14 +1942,24 @@ public:
 	virtual void Shutdown();
 
 public:
-	// Methods of IShaderDeviceMgr
-	virtual int GetAdapterCount() const;
-	virtual void GetAdapterInfo( int adapter, MaterialAdapterInfo_t &info ) const;
+	// Methods of IShaderDeviceMgr. The material system reaches this manager
+	// only through its CShaderDeviceFacade (RFC 0016 legacy device facade,
+	// F1), which answers adapters, the recommended configuration and video
+	// modes itself; these report nothing so no second answer exists.
+	virtual int GetAdapterCount() const { return 0; }
+	virtual void GetAdapterInfo( int adapter, MaterialAdapterInfo_t &info ) const
+	{
+		memset( &info, 0, sizeof( info ) );
+	}
 	virtual bool GetRecommendedConfigurationInfo(
-	    int nAdapter, int nDXLevel, KeyValues *pKeyValues );
-	virtual int GetModeCount( int adapter ) const;
-	virtual void GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int mode ) const;
-	virtual void GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const;
+	    int nAdapter, int nDXLevel, KeyValues *pKeyValues )
+	{
+		return false;
+	}
+	virtual int GetModeCount( int adapter ) const { return 0; }
+	virtual void GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int mode ) const {}
+	virtual void GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const {}
+	// The device bring-up this backend still owns until F2-F3.
 	virtual bool SetAdapter( int nAdapter, int nFlags );
 	virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode );
 	virtual void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func );
@@ -1959,25 +1967,7 @@ public:
 	void InvokeModeChangeCallbacks();
 
 private:
-	void ClampToCapabilities( KeyValues *pKeyValues ) const;
-
 	CUtlVector<ShaderModeChangeCallbackFunc_t> m_ModeChangeCallbacks;
-	IFileSystem *m_pFileSystem = NULL;
-	KeyValues *m_pDXSupport = NULL;
-	bool m_bDXSupportRead = false;
-	// The desktop of the display the launcher selected (sdl_displayindex). The
-	// launcher owns display selection; false when there is none (tools, tests).
-	bool QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const;
-	void RefreshModeList() const;
-	static void ToShaderDisplayMode(
-	    const render::DisplayModeFacts &mode, ShaderDisplayMode_t *pInfo );
-
-#if defined( USE_SDL )
-	ILauncherMgr *m_pLauncherMgr = NULL;
-#endif
-	// Rebuilt by GetModeCount, which the engine calls before GetModeInfo.
-	mutable std::vector<render::DisplayModeFacts> m_Modes;
-	mutable bool m_bWarnedNoDisplay = false;
 };
 
 static CShaderDeviceMgrVulkan s_ShaderDeviceMgrEmpty;
@@ -3122,6 +3112,14 @@ static bool DescribeNativeVulkanAdapter( int adapter, render::RenderAdapterInfo 
 		return false;
 	*info = render::RenderAdapterInfo();
 	Q_strncpy( info->driverApi, "vulkan", sizeof( info->driverApi ) );
+	// Identity for a root without the render core (-norendercore); with it,
+	// the material system's device facade takes identity from the core.
+	const render_vulkan::VulkanAdapterCaps &caps = CurrentAdapterCaps();
+	Q_strncpy( info->name, caps.valid ? caps.name.c_str() : "Native Vulkan", sizeof( info->name ) );
+	info->vendorId = caps.vendorId;
+	info->deviceId = caps.deviceId;
+	info->driverVersion = static_cast<uint64_t>( caps.driverVersion ) << 32;
+	info->deviceMemoryBytes = caps.largestDeviceLocalHeapBytes;
 	// RFC 0011 G5: compute, storage images and ray query, exactly as the
 	// created device enabled them (none before the device exists).
 	if ( g_VulkanContext.IsValid() )
@@ -3589,28 +3587,12 @@ bool CShaderDeviceMgrVulkan::Connect( CreateInterfaceFn factory )
 
 	// So others can access it
 	g_pShaderUtil = (IShaderUtil *)factory( SHADER_UTIL_INTERFACE_VERSION, NULL );
-
-#if defined( USE_SDL )
-	// Optional: application roots without a launcher (tools, tests) get no modes.
-	m_pLauncherMgr = (ILauncherMgr *)factory( SDLMGR_INTERFACE_VERSION, NULL );
-#endif
-	// Optional: without a file system there is no dxsupport.cfg to recommend from.
-	m_pFileSystem = (IFileSystem *)factory( FILESYSTEM_INTERFACE_VERSION, NULL );
 	return true;
 }
 
 void CShaderDeviceMgrVulkan::Disconnect()
 {
 	g_pShaderUtil = NULL;
-#if defined( USE_SDL )
-	m_pLauncherMgr = NULL;
-#endif
-	m_Modes.clear();
-	m_pFileSystem = NULL;
-	if ( m_pDXSupport )
-		m_pDXSupport->deleteThis();
-	m_pDXSupport = NULL;
-	m_bDXSupportRead = false;
 	ConVar_Unregister();
 	DisconnectTier1Libraries();
 }
@@ -3701,91 +3683,6 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
 	return ShaderInterfaceFactory;
 }
 
-// Gets the number of adapters...
-int CShaderDeviceMgrVulkan::GetAdapterCount() const
-{
-	// Advertise the native Vulkan adapter so the material system can select it
-	// and drive rendering through this backend. (Integration attempt: the
-	// material path is partially implemented; this is honest enumeration of a
-	// real device, not a claim of full rendering.)
-	return 1;
-}
-
-// dxsupport.cfg (the file the D3D9 device reads) through the shared
-// render.dxsupport-policy.v1 owner, for this adapter's identity, then held to
-// what this backend supports: a recommendation never names a mode the Video
-// options could not apply.
-bool CShaderDeviceMgrVulkan::GetRecommendedConfigurationInfo(
-    int nAdapter, int nDXLevel, KeyValues *pKeyValues )
-{
-	const int nLevel = render::ClosestActualDxLevel(
-	    nDXLevel != 0 ? nDXLevel : NativeCapsDxLevel(), false, ABSOLUTE_MINIMUM_DXLEVEL );
-	if ( nLevel > NativeCapsDxLevel() )
-		return false;
-
-	if ( !m_pDXSupport && !m_bDXSupportRead )
-	{
-		m_bDXSupportRead = true;
-		m_pDXSupport =
-		    dxsupport::ReadConfig( m_pFileSystem, "dxsupport.cfg", "dxsupport_override.cfg" );
-	}
-	if ( !m_pDXSupport )
-		return true;
-
-	const render_vulkan::VulkanAdapterCaps &caps = CurrentAdapterCaps();
-	render::DxSupportQuery query;
-	query.dxLevel = nLevel;
-	query.maxDxLevel = NativeCapsDxLevel();
-	query.vendorId = static_cast<int>( caps.vendorId );
-	query.deviceId = static_cast<int>( caps.deviceId );
-	query.videoMemoryBytes = g_ShaderAPIEmpty.TextureMemorySize();
-	dxsupport::FillHostFacts( &query );
-	dxsupport::ApplyRecommendedConfig( m_pDXSupport, query, pKeyValues );
-	ClampToCapabilities( pKeyValues );
-	return true;
-}
-
-void CShaderDeviceMgrVulkan::ClampToCapabilities( KeyValues *pKeyValues ) const
-{
-	uint32_t sampleMask = 1;
-	for ( int samples = 2; samples <= render::kMaxSampleCount; samples *= 2 )
-	{
-		if ( g_ShaderAPIEmpty.SupportsMSAAMode( samples ) )
-			sampleMask |= static_cast<uint32_t>( samples );
-	}
-	if ( KeyValues *pAA = pKeyValues->FindKey( "ConVar.mat_antialias" ) )
-	{
-		const int samples = render::ClampSampleCount( pAA->GetInt(), sampleMask );
-		if ( samples != pAA->GetInt() && pAA->GetInt() > 1 )
-		{
-			pKeyValues->SetInt( "ConVar.mat_antialias", samples );
-			pKeyValues->SetInt( "ConVar.mat_aaquality", 0 );
-		}
-	}
-	if ( !g_ShaderAPIEmpty.SupportsShadowDepthTextures() )
-		pKeyValues->SetInt( "ConVar.r_flashlightdepthtexture", 0 );
-	if ( KeyValues *pHDR = pKeyValues->FindKey( "ConVar.mat_hdr_level" ) )
-	{
-		if ( pHDR->GetInt() > 2 )
-			pKeyValues->SetInt( "ConVar.mat_hdr_level", 2 );
-	}
-}
-
-// Returns info about each adapter
-void CShaderDeviceMgrVulkan::GetAdapterInfo( int adapter, MaterialAdapterInfo_t &info ) const
-{
-	memset( &info, 0, sizeof( info ) );
-	const render_vulkan::VulkanAdapterCaps &caps = CurrentAdapterCaps();
-	Q_strncpy( info.m_pDriverName, caps.valid ? caps.name.c_str() : "Native Vulkan",
-	    sizeof( info.m_pDriverName ) );
-	info.m_VendorID = caps.vendorId;
-	info.m_DeviceID = caps.deviceId;
-	info.m_nDXSupportLevel = NativeCapsDxLevel();
-	info.m_nMaxDXSupportLevel = NativeCapsDxLevel();
-	info.m_nDriverVersionHigh = caps.driverVersion;
-	info.m_nDriverVersionLow = 0;
-}
-
 void CShaderDeviceMgrVulkan::AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func )
 {
 	Assert( func && m_ModeChangeCallbacks.Find( func ) < 0 );
@@ -3809,97 +3706,6 @@ static void InvokePendingModeChangeCallbacks()
 		return;
 	g_bPendingModeChangeCallbacks = false;
 	s_ShaderDeviceMgrEmpty.InvokeModeChangeCallbacks();
-}
-
-bool CShaderDeviceMgrVulkan::QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const
-{
-	*pDesktop = render::DisplayModeFacts();
-#if defined( USE_SDL )
-	if ( m_pLauncherMgr )
-	{
-		uint width = 0, height = 0, refreshHz = 0;
-		m_pLauncherMgr->GetNativeDisplayInfo( -1, width, height, refreshHz );
-		pDesktop->width = static_cast<int>( width );
-		pDesktop->height = static_cast<int>( height );
-		pDesktop->refreshNumerator = static_cast<int>( refreshHz );
-		pDesktop->refreshDenominator = 1;
-	}
-#endif
-	if ( pDesktop->width > 0 && pDesktop->height > 0 )
-		return true;
-	if ( !m_bWarnedNoDisplay )
-	{
-		Warning( "[NativeVulkan] no desktop display to enumerate video modes from\n" );
-		m_bWarnedNoDisplay = true;
-	}
-	return false;
-}
-
-// SDL3 fullscreen covers the desktop and presentation scales the back buffer
-// to it, so the modes are back-buffer sizes that fit the desktop
-// (render.display-modes.v1), all at the desktop refresh rate.
-void CShaderDeviceMgrVulkan::RefreshModeList() const
-{
-	render::DisplayModeFacts desktop;
-	std::vector<render::DisplayModeFacts> modes = QueryDesktopDisplay( &desktop )
-	                                                  ? render::BuildBackBufferModeList( desktop )
-	                                                  : std::vector<render::DisplayModeFacts>();
-	if ( !modes.empty() &&
-	     ( modes.size() != m_Modes.size() || modes.back().width != m_Modes.back().width ||
-	         modes.back().height != m_Modes.back().height ) )
-		Msg( "[NativeVulkan] %d video modes for desktop %dx%d@%d (%dx%d .. %dx%d)\n",
-		    static_cast<int>( modes.size() ), desktop.width, desktop.height,
-		    desktop.refreshNumerator, modes.front().width, modes.front().height, modes.back().width,
-		    modes.back().height );
-	m_Modes = std::move( modes );
-}
-
-void CShaderDeviceMgrVulkan::ToShaderDisplayMode(
-    const render::DisplayModeFacts &mode, ShaderDisplayMode_t *pInfo )
-{
-	pInfo->m_nWidth = mode.width;
-	pInfo->m_nHeight = mode.height;
-	pInfo->m_Format = IMAGE_FORMAT_BGRA8888;
-	pInfo->m_nRefreshRateNumerator = mode.refreshNumerator;
-	pInfo->m_nRefreshRateDenominator = mode.refreshDenominator;
-}
-
-// Returns the number of modes
-int CShaderDeviceMgrVulkan::GetModeCount( int nAdapter ) const
-{
-	RefreshModeList();
-	return static_cast<int>( m_Modes.size() );
-}
-
-// Returns mode information..
-void CShaderDeviceMgrVulkan::GetModeInfo(
-    ShaderDisplayMode_t *pInfo, int nAdapter, int nMode ) const
-{
-	if ( !pInfo )
-		return;
-	if ( m_Modes.empty() )
-		RefreshModeList();
-	if ( nMode < 0 || nMode >= static_cast<int>( m_Modes.size() ) )
-	{
-		Warning( "[NativeVulkan] GetModeInfo: mode %d of %d requested\n", nMode,
-		    static_cast<int>( m_Modes.size() ) );
-		ToShaderDisplayMode( render::DisplayModeFacts(), pInfo );
-		pInfo->m_nRefreshRateDenominator = 0;
-		return;
-	}
-	ToShaderDisplayMode( m_Modes[nMode], pInfo );
-}
-
-// The display's current mode is the desktop's: fullscreen never changes it.
-void CShaderDeviceMgrVulkan::GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const
-{
-	if ( !pInfo )
-		return;
-	render::DisplayModeFacts desktop;
-	QueryDesktopDisplay( &desktop );
-	ToShaderDisplayMode( desktop, pInfo );
-	if ( desktop.width <= 0 )
-		pInfo->m_nRefreshRateDenominator = 0;
 }
 
 //-----------------------------------------------------------------------------

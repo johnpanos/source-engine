@@ -45,7 +45,6 @@ def build(bld):
 		'vulkan_device.cpp',
 		'vulkan_mesh_layout.cpp',
 		'vulkan_adapter.cpp',
-		'../dxsupport_keyvalues.cpp',
 		'vulkan_world_pbr.cpp',
 		'vulkan_descriptor_groups.cpp',
 		'vulkan_scene_capture.cpp',

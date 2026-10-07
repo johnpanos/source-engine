@@ -13,6 +13,8 @@
 #ifndef RENDER_DEVICE_VULKAN_HOST_BINDING_H
 #define RENDER_DEVICE_VULKAN_HOST_BINDING_H
 
+#include <cstdint>
+
 namespace render::device::vulkan
 {
 
@@ -20,6 +22,26 @@ class IHostDeviceFactory;
 
 // The adapter's factory of host devices; lives as long as the process.
 const IHostDeviceFactory &HostDeviceFactory( bool fsr411 = false );
+
+// The identity of a physical device, as the root's legacy device facade
+// reports it (RFC 0016 legacy device facade, F1).
+struct HostAdapterIdentity
+{
+	char name[256] = {};
+	std::uint32_t vendorId = 0;
+	std::uint32_t deviceId = 0;
+	std::uint32_t driverVersion = 0;
+	std::uint64_t deviceLocalBytes = 0; // the largest device-local heap
+};
+
+// The adapter `factory` creates host devices on: the adapter of the last
+// device it created or, before any, the adapter its selection ranks first
+// without a surface (a later device differs only when that adapter cannot
+// present to the window). Adapter 0 is the only one. False, with *out
+// cleared, for another index or without a Vulkan adapter; the probe runs
+// once per factory.
+bool DescribeHostAdapter(
+    const IHostDeviceFactory &factory, int adapter, HostAdapterIdentity *out );
 
 } // namespace render::device::vulkan
 

@@ -10,6 +10,7 @@
 #include "tier1/delegates.h"
 #include "render/legacy_shader_provider.h"
 #include "render/builtin_shader_provider.h"
+#include "shader_device_facade.h"
 
 #include "materialsystem_global.h"
 #include "materialsystem/imaterialsystem.h"
@@ -660,6 +661,9 @@ private:
 	render::LegacyShaderProvider m_SelectedShaderProvider;
 	bool m_bShaderProviderSelected;
 	render::LegacyShaderServices m_ShaderServices;
+	// The one IShaderDeviceMgr the material system and its clients see
+	// (RFC 0016 legacy device facade); m_ShaderServices.manager points at it.
+	CShaderDeviceFacade m_DeviceFacade;
 	// The composition root's feature request (kept across Disconnect like the
 	// provider) and the profile Init selected from it; valid until Shutdown.
 	render::RenderProfileRequest m_RenderProfileRequest;

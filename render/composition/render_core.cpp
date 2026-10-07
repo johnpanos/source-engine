@@ -395,6 +395,14 @@ extern "C" unsigned int RenderCore_GetLegacyProviderCreates( const RenderCore *c
 	return core ? core->frontend->ProviderCreates() : 0u;
 }
 
+extern "C" void RenderCore_SetLegacyAdapterSource(
+    RenderCore *core, const render::LegacyShaderServices::CoreAdapterSource *source )
+{
+	if ( core && core->frontend )
+		core->frontend->SetCoreAdapterSource(
+		    source ? *source : render::LegacyShaderServices::CoreAdapterSource() );
+}
+
 extern "C" void RenderCore_BindRenderCallQueue(
     RenderCore *core, const render::legacy::RenderCallQueueHost *host )
 {

@@ -664,6 +664,8 @@ bool CMaterialSystem::BindShaderProvider( const render::LegacyShaderProvider &pr
 	delete[] m_pShaderDLL;
 	m_pShaderDLL = description;
 	m_ShaderServices = services;
+	m_DeviceFacade.Bind( services );
+	m_ShaderServices.manager = &m_DeviceFacade;
 	m_SelectedShaderProvider = provider;
 	m_bShaderProviderSelected = true;
 	m_ShaderAPIFactory = LegacyShaderInterface;
@@ -781,6 +783,7 @@ void CMaterialSystem::DestroyShaderAPI()
 	g_pHWConfig = NULL;
 	g_pShaderShadow = NULL;
 	m_ShaderServices = render::LegacyShaderServices();
+	m_DeviceFacade.Unbind();
 	m_ShaderAPIFactory = NULL;
 }
 

@@ -69,6 +69,19 @@ struct LegacyShaderServices
 	// semantic features. See LegacyRenderBackendProvider.
 	bool ( *describeAdapter )( int adapter, RenderAdapterInfo *info ) = nullptr;
 
+	// Optional (RFC 0016 legacy device facade, F1): the render core's
+	// identity (name, vendor, device, driver, device memory) of the adapters
+	// its device adapter creates the device on, set by the composition root
+	// through the legacy frontend. When set, the material system's device
+	// manager (CShaderDeviceFacade) takes identity from it and only the
+	// semantic facts from describeAdapter; false for an index the core does
+	// not enumerate.
+	struct CoreAdapterSource
+	{
+		void *context = nullptr;
+		bool ( *describe )( void *context, int adapter, RenderAdapterInfo *info ) = nullptr;
+	} coreAdapter;
+
 	bool IsComplete() const
 	{
 		return manager && api && device && shadow && hardware;

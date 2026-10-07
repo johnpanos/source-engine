@@ -97,6 +97,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #include "render/composition/render_device_setting.h"
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 #include "render/device/vulkan/host_binding.h"
+#include "render/render_backend.h"
 #include "render/legacy/core_passes.h"
 #include "render/legacy/frame_source.h"
 #endif
@@ -713,6 +714,27 @@ static bool BindAudioProviders( IEngineAPI *engine )
 //-----------------------------------------------------------------------------
 // Instantiate all main libraries
 //-----------------------------------------------------------------------------
+#if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
+// The core Vulkan adapter's identity of its host device's adapter, as the
+// material system's device facade reports it (RFC 0016 legacy device facade).
+static bool DescribeCoreVulkanAdapter( void *context, int adapter, render::RenderAdapterInfo *info )
+{
+	render::device::vulkan::HostAdapterIdentity identity;
+	if ( !render::device::vulkan::DescribeHostAdapter(
+	         *static_cast<const render::device::vulkan::IHostDeviceFactory *>( context ), adapter,
+	         &identity ) )
+		return false;
+	*info = render::RenderAdapterInfo();
+	Q_strncpy( info->name, identity.name, sizeof( info->name ) );
+	info->vendorId = identity.vendorId;
+	info->deviceId = identity.deviceId;
+	// MaterialAdapterInfo_t's high word, as the D3D9 and Vulkan managers reported it.
+	info->driverVersion = static_cast<uint64>( identity.driverVersion ) << 32;
+	info->deviceMemoryBytes = identity.deviceLocalBytes;
+	return true;
+}
+#endif
+
 bool CSourceAppSystemGroup::Create()
 {
 	IFileSystem *pFileSystem = (IFileSystem*)FindSystem( FILESYSTEM_INTERFACE_VERSION );
@@ -992,6 +1014,19 @@ bool CSourceAppSystemGroup::Create()
 		// The legacy backend's capabilities order their calls on the material
 		// system's render call queue (render/legacy/capabilities.h).
 		RenderCore_BindRenderCallQueue( m_pRenderCore, MaterialSystem_RenderCallQueueHost() );
+#if defined( LINKED_NATIVE_VULKAN_BACKEND )
+		// RFC 0016 legacy device facade (F1): the material system reports the
+		// adapter the core's Vulkan adapter creates the backend's device on.
+		if ( !Q_stricmp( selected->id, "native-vulkan" ) )
+		{
+			render::LegacyShaderServices::CoreAdapterSource source;
+			source.context = const_cast<render::device::vulkan::IHostDeviceFactory *>(
+			    &render::device::vulkan::HostDeviceFactory(
+			        CommandLine()->FindParm( "-fsr" ) != 0 ) );
+			source.describe = DescribeCoreVulkanAdapter;
+			RenderCore_SetLegacyAdapterSource( m_pRenderCore, &source );
+		}
+#endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 		// RFC 0016 K5: core passes at slots of the backend's stream.
 		NativeVulkanShaderBackend_BindCorePassRecorder( binding->corePasses );

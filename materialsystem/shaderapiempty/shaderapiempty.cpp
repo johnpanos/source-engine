@@ -342,13 +342,23 @@ public:
 	virtual void Shutdown();
 
 public:
-	// Methods of IShaderDeviceMgr
-	virtual int	 GetAdapterCount() const;
-	virtual void GetAdapterInfo( int adapter, MaterialAdapterInfo_t& info ) const;
-	virtual bool GetRecommendedConfigurationInfo( int nAdapter, int nDXLevel, KeyValues *pKeyValues );
-	virtual int	 GetModeCount( int adapter ) const;
-	virtual void GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int mode ) const;
-	virtual void GetCurrentModeInfo( ShaderDisplayMode_t* pInfo, int nAdapter ) const;
+	// Methods of IShaderDeviceMgr. The material system reaches this manager
+	// only through its CShaderDeviceFacade (RFC 0016 legacy device facade,
+	// F1), which answers adapters, the recommended configuration and video
+	// modes from DescribeNullAdapter; these report nothing.
+	virtual int GetAdapterCount() const { return 0; }
+	virtual void GetAdapterInfo( int adapter, MaterialAdapterInfo_t &info ) const
+	{
+		memset( &info, 0, sizeof( info ) );
+	}
+	virtual bool GetRecommendedConfigurationInfo(
+	    int nAdapter, int nDXLevel, KeyValues *pKeyValues )
+	{
+		return false;
+	}
+	virtual int GetModeCount( int adapter ) const { return 0; }
+	virtual void GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int mode ) const {}
+	virtual void GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const {}
 	virtual bool SetAdapter( int nAdapter, int nFlags );
 	virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode );
 	virtual void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func ) {}
@@ -1257,6 +1267,7 @@ static bool DescribeNullAdapter( int adapter, render::RenderAdapterInfo *info )
 	if ( adapter != 0 || !info )
 		return false;
 	*info = render::RenderAdapterInfo();
+	Q_strncpy( info->name, "Null (no GPU)", sizeof( info->name ) );
 	Q_strncpy( info->driverApi, "none", sizeof( info->driverApi ) );
 	info->isSoftware = true;
 	return true;
@@ -1375,43 +1386,6 @@ CreateInterfaceFn CShaderDeviceMgrEmpty::SetMode( void *hWnd, int nAdapter, cons
 {
 	return ShaderInterfaceFactory;
 }
-
-// Gets the number of adapters...
-// The null backend advertises one software adapter so the render.contracts
-// provider around this manager can describe it and select a profile for it.
-int	 CShaderDeviceMgrEmpty::GetAdapterCount() const
-{
-	return 1;
-}
-
-bool CShaderDeviceMgrEmpty::GetRecommendedConfigurationInfo( int nAdapter, int nDXLevel, KeyValues *pKeyValues ) 
-{
-	return true;
-}
-
-// Returns info about each adapter
-void CShaderDeviceMgrEmpty::GetAdapterInfo( int adapter, MaterialAdapterInfo_t& info ) const
-{
-	memset( &info, 0, sizeof( info ) );
-	Q_strncpy( info.m_pDriverName, "Null (no GPU)", sizeof( info.m_pDriverName ) );
-	info.m_nDXSupportLevel = 90;
-}
-
-// Returns the number of modes
-int	 CShaderDeviceMgrEmpty::GetModeCount( int nAdapter ) const
-{
-	return 0;
-}
-
-// Returns mode information..
-void CShaderDeviceMgrEmpty::GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int nMode ) const
-{
-}
-
-void CShaderDeviceMgrEmpty::GetCurrentModeInfo( ShaderDisplayMode_t* pInfo, int nAdapter ) const
-{
-}
-
 
 //-----------------------------------------------------------------------------
 //

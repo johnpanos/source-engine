@@ -302,6 +302,8 @@ public:
 	// An instance with request's instance extensions, validation and messenger.
 	virtual std::unique_ptr<IHostInstance> CreateInstance(
 	    const HostDeviceRequest &request, char *error, std::size_t errorSize ) const = 0;
+	// See DescribeHostAdapter (host_binding.h).
+	virtual bool DescribeAdapter( HostAdapterIdentity *out ) const = 0;
 
 protected:
 	~IHostDeviceFactory() = default;
