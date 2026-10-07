@@ -59,7 +59,7 @@ constexpr DebugViewInfo kCatalog[] = { { DebugView::kOff, "off", 0, false, true 
 
 constexpr std::string_view kTermNames[] = { "clustered", "sun", "area", "projected", "baked",
     "probes", "ibl", "ssr", "ao", "specular_occlusion", "emission", "volumetric",
-    "shadow_visibility" };
+    "shadow_visibility", "directional", "normal_map", "bounce", "soft_shadows" };
 static_assert( std::size( kTermNames ) == std::size_t( std::bit_width( kDebugTermAll ) ) );
 
 std::uint32_t Bits( float value )

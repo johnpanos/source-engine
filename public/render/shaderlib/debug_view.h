@@ -123,9 +123,18 @@ enum DebugTerm : std::uint32_t
 	kDebugTermSpecularOcclusion = 1u << 9,
 	kDebugTermEmission = 1u << 10,
 	kDebugTermVolumetric = 1u << 11,
-	kDebugTermShadowVisibility = 1u << 12
+	kDebugTermShadowVisibility = 1u << 12,
+	// The cost/quality sweep's finer controls (tools/render/term_sweep.py):
+	// the directional lightmap's normal response (a flat page instead), the
+	// normal map (the interpolated normal instead), the probe volume's
+	// projected-light bounce, and soft shadows (every shadow takes the hard
+	// filter, compiled out).
+	kDebugTermDirectional = 1u << 13,
+	kDebugTermNormalMap = 1u << 14,
+	kDebugTermBounce = 1u << 15,
+	kDebugTermSoftShadows = 1u << 16
 };
-inline constexpr std::uint32_t kDebugTermAll = ( 1u << 13 ) - 1;
+inline constexpr std::uint32_t kDebugTermAll = ( 1u << 17 ) - 1;
 
 // The term bit for a name ("clustered", ...); 0 when unknown.
 std::uint32_t DebugTermBit( std::string_view name );

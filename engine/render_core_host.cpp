@@ -89,7 +89,8 @@ ConVar cl_render_debug_furnace( "cl_render_debug_furnace", "0", FCVAR_CHEAT,
     "Albedo 1 in a uniform environment of radiance 1; direct lights off." );
 ConVar cl_render_debug_term( "cl_render_debug_term", "", FCVAR_CHEAT,
     "Comma-separated lighting-model terms to turn off: clustered, sun, area, projected, baked, "
-    "probes, ibl, ssr, ao, specular_occlusion, emission, volumetric." );
+    "probes, ibl, ssr, ao, specular_occlusion, emission, volumetric, shadow_visibility, "
+    "directional, normal_map, bounce, soft_shadows." );
 ConVar cl_render_debug_force_roughness( "cl_render_debug_force_roughness", "-1", FCVAR_CHEAT,
     "-1 off; otherwise the roughness every material takes." );
 ConVar cl_render_debug_force_metalness( "cl_render_debug_force_metalness", "-1", FCVAR_CHEAT,

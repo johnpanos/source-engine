@@ -55,6 +55,10 @@ const int kDebugTermSpecularOcclusion = 1 << 9;
 const int kDebugTermEmission = 1 << 10;
 const int kDebugTermVolumetric = 1 << 11;
 const int kDebugTermShadowVisibility = 1 << 12;
+const int kDebugTermDirectional = 1 << 13;
+const int kDebugTermNormalMap = 1 << 14;
+const int kDebugTermBounce = 1 << 15;
+const int kDebugTermSoftShadows = 1 << 16;
 
 // shaderlib::DebugBrdf
 const int kDebugBrdfFull = 0;

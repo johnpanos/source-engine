@@ -12037,3 +12037,44 @@ cleared GNOME's VRAM (3 GB had made a 4K run fail allocating a world panel):
 world shading E (before) 30.48 / 31.08 ms, N (mover spheres) 26.28 / 26.71
 ms (−14 %); core world view 43.4 / 44.3 → 38.8 / 39.3 ms; frames over the
 demo 928 / 912 → 998 / 1,001. No gate closes.
+
+### Term sweep: what each lighting term costs and adds, at run time (2026-10-06, user request)
+
+`tools/render/term_sweep.py` (new): `run` boots ./play_p2 on the map, stands
+at viewpoints sampled from the intro4 demo's own camera path (its packets'
+view records), pauses, hides the HUD, and for each view switches each
+lighting term off at run time (`cl_render_debug_term`, a specialization
+constant: the driver compiles the variant, the engine is not rebuilt),
+reads the per-pass GPU timers over a marked window and takes a lossless
+screenshot; `script` writes that console script for another machine;
+`analyze` ranks the terms by GPU time saved (`core world view`, `world /
+pbr`) and by CIELAB difference from the view's baseline (mean and 95th
+percentile delta E, the share of pixels over 2.3, the mean luminance
+change), with difference images. Four finer switches were added for it
+(`directional`, `normal_map`, `bounce`, `soft_shadows`; kDebugTermAll is
+now 17 bits). Markers are one dot-joined token: `echo` prints each token
+separately and other threads' output interleaved with multi-token lines.
+
+RTX 3070, fullscreen 3840×2160, intro4 (LSMK map), 4 demo viewpoints, 90
+frames to compile and settle, 150 measured; baseline drift +0.37, -0.72,
++0.84, -0.11 ms:
+
+| term off | core view saved (ms) | world shading saved (ms) | mean ΔE | p95 ΔE | pixels > 2.3 | luminance |
+| --- | --- | --- | --- | --- | --- | --- |
+| clustered (all runtime lights) | 20.91 | 16.44 | 4.00 | 15.3 | 37.9 % | −49.3 % |
+| shadow_visibility (all shadows) | 20.48 | 15.06 | 11.92 | 39.9 | 69.2 % | +155.3 % |
+| soft_shadows (hard filter instead of PCSS) | 15.90 | 12.13 | 0.92 | 4.5 | 11.7 % | −10.7 % |
+| ibl (reflection probes) | 10.97 | 8.78 | 0.69 | 2.0 | 4.4 % | −3.5 % |
+| projected | 7.50 | 5.94 | 1.67 | 9.2 | 20.5 % | −26.8 % |
+| bounce (probe volume's projected bounce) | 4.89 | 3.85 | 0.00 | 0.0 | 0.0 % | 0.0 % |
+| baked | 3.29 | 3.43 | 1.77 | 4.2 | 37.3 % | −10.6 % |
+| probes | 0.89 | −0.21 | 0.30 | 1.5 | 3.2 % | −2.5 % |
+| normal_map | 0.58 | 0.63 | 0.87 | 3.5 | 9.1 % | +3.1 % |
+| directional | −0.26 | −0.21 | 0.12 | 0.7 | 0.0 % | +0.2 % |
+| emission | −0.36 | −0.30 | 0.10 | 0.0 | 0.5 % | −1.9 % |
+| ao, sun, area, volumetric, specular_occlusion, ssr | within drift | | 0.00 | | | |
+
+Reading: the shadow filter is most of the runtime lights' cost (the soft
+filter alone 15.9 of 20.9 ms); the reflection probes cost 11 ms for a small
+visible contribution; the projected bounce costs 4.9 ms and changes no
+pixel on this map. No gate closes.

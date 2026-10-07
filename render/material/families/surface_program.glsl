@@ -793,7 +793,7 @@ void TestCutoutAlpha( float alpha, bool enabled )
 void PbrSurface( out float coverage )
 {
 	const bool furnace = DebugFurnace();
-	const bool normalMap = Term( kBumpmap | kSsbump );
+	const bool normalMap = Term( kBumpmap | kSsbump ) && DebugTermOn( kDebugTermNormalMap );
 	const bool ssbump = Term( kSsbump );
 	const bool emissive = Term( kEmissionTexture );
 	const vec2 uv = BaseTextureUv();
@@ -967,7 +967,7 @@ void PbrSurface( out float coverage )
 		baked = runtimeDirect
 		            ? LightmapPageSample( lightmapIndirect, lightmapIndirectSampler, lightmapUv )
 		            : LightmapPageSample( lightmap, lightmapSampler, lightmapUv );
-		if ( Term( kDirectionalLightmap ) )
+		if ( Term( kDirectionalLightmap ) && DebugTermOn( kDebugTermDirectional ) )
 			baked = LightmapDirectional( baked,
 			    LightmapGradientSample( lightmapGradient, lightmapGradientSampler, lightmapUv ), normal,
 			    smoothNormal );
@@ -998,7 +998,7 @@ void PbrSurface( out float coverage )
 		{
 			vec3 indirect =
 			    LightmapPageSample( lightmapIndirect, lightmapIndirectSampler, lightmapUv );
-			if ( Term( kDirectionalLightmap ) )
+			if ( Term( kDirectionalLightmap ) && DebugTermOn( kDebugTermDirectional ) )
 				indirect = LightmapDirectional( indirect,
 				    LightmapGradientSample( lightmapGradient, lightmapGradientSampler, lightmapUv ),
 				    normal, smoothNormal );
@@ -1031,6 +1031,7 @@ void PbrSurface( out float coverage )
 	}
 	// The projected lights' bounce, on every surface the volume covers.
 	if ( diffuseLobe && Term( kProbeBounce ) && Term( kProbeVolume ) && !furnace &&
+	     DebugTermOn( kDebugTermBounce ) &&
 	     DebugTermOn( kDebugTermProjected ) )
 	{
 		vec3 unused;
@@ -1088,6 +1089,10 @@ void PbrSurface( out float coverage )
 	// Soft shadows (PCSS) off: the view's every shadow takes the hard filter.
 	if ( Term( kClustered ) )
 		gShadowHardOnly = clusterView.slices.w > 0.5;
+	// cl_render_debug_term soft_shadows: the hard filter everywhere, the soft
+	// one compiled out.
+	if ( !DebugTermOn( kDebugTermSoftShadows ) )
+		gShadowHardOnly = true;
 	if ( Term( kClustered ) && DebugTermOn( kDebugTermClustered ) && !furnace )
 	{
 		// The baked shadow masks, read once (a draw without them binds a
