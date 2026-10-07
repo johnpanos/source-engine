@@ -117,6 +117,8 @@ $Project
 			$File	"$SRCDIR\game\shared\portal2\portal_gamestats_shared.h"		
 			$File	"portal\portal_hud_crosshair.cpp"
 			$File	"portal\portal_hud_crosshair.h"
+			$File	"portal\portal_hud_shapes.cpp"
+			$File	"portal\portal_hud_shapes.h"
 			$File	"$SRCDIR\game\shared\portal2\portal_placement.cpp"
 			$File	"$SRCDIR\game\shared\portal2\portal_placement.h"
 			$File	"$SRCDIR\game\shared\portal2\portal_player_shared.cpp"

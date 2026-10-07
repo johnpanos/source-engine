@@ -17,6 +17,7 @@
 #include "c_portal_player.h"
 #include "c_weapon_portalgun.h"
 #include "IGameUIFuncs.h"
+#include "portal_hud_shapes.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -58,6 +59,13 @@ public:
 private:
 	
 	void	DrawWarning( int x, int y, CHudTexture *icon, float &time );
+	// Draws a portal bracket where its icon would be drawn: the full shape
+	// (outline and fill) when its portal can be placed, else the outline.
+	void DrawBracket( bool bValid, bool bRight, int x, int y, const Color &clr );
+
+	// The brackets and last-placed markers, drawn as shapes rasterized at the
+	// screen's pixel size; the icons still give their layout.
+	CPortalHudShapes m_Shapes;
 	void	UpdateEventTime( void );
 	bool	EventTimeElapsed( void );
 
@@ -111,6 +119,7 @@ void CHUDQuickInfo::Init( void )
 void CHUDQuickInfo::VidInit( void )
 {
 	Init();
+	m_Shapes.Invalidate();
 
 	m_icon_c = gHUD.GetIcon( "crosshair" );
 
@@ -221,6 +230,9 @@ void CHUDQuickInfo::Paint()
 		return;
 	}
 
+	// One unit of the 44x64 bracket cell, in UI units, as the icons are drawn.
+	m_Shapes.Update( m_icon_lb->Width() / 44.0f );
+
 	const unsigned char iAlphaStart = 150;	   
 
 	Color portal1Color = UTIL_Portal_Color( 1 );
@@ -320,46 +332,64 @@ void CHUDQuickInfo::Paint()
 	if ( !hud_quickinfo_swap.GetBool() )
 	{
 		if ( bPortalPlacability[0] )
-			m_icon_lb->DrawSelf( xCenter - ( m_icon_lb->Width() * 0.64f ),
+			DrawBracket( true, false, xCenter - ( m_icon_lb->Width() * 0.64f ),
 			    yCenter - ( m_icon_rb->Height() * 0.17f ), portal1Color );
 		else
-			m_icon_lbn->DrawSelf( xCenter - ( m_icon_lbn->Width() * 0.64f ),
+			DrawBracket( false, false, xCenter - ( m_icon_lbn->Width() * 0.64f ),
 			    yCenter - ( m_icon_rb->Height() * 0.17f ), portal1Color );
 
 		if ( bPortalPlacability[1] )
-			m_icon_rb->DrawSelf( xCenter + ( m_icon_rb->Width() * -0.35f ),
+			DrawBracket( true, true, xCenter + ( m_icon_rb->Width() * -0.35f ),
 			    yCenter + ( m_icon_rb->Height() * 0.17f ), portal2Color );
 		else
-			m_icon_rbn->DrawSelf( xCenter + ( m_icon_rbn->Width() * -0.35f ),
+			DrawBracket( false, true, xCenter + ( m_icon_rbn->Width() * -0.35f ),
 			    yCenter + ( m_icon_rb->Height() * 0.17f ), portal2Color );
 
 		//last placed portal indicator
-		m_icon_lbe->DrawSelf(
-		    xCenter - ( m_icon_lbe->Width() * 1.85f ), yCenter, lastPlaced1Color );
-		m_icon_rbe->DrawSelf(
-		    xCenter + ( m_icon_rbe->Width() * 0.75f ), yCenter, lastPlaced2Color );
+		m_Shapes.DrawCell( CPortalHudShapes::LAST_PLACED, false,
+		    (int)( xCenter - ( m_icon_lbe->Width() * 1.85f ) ), yCenter, lastPlaced1Color );
+		m_Shapes.DrawCell( CPortalHudShapes::LAST_PLACED, false,
+		    (int)( xCenter + ( m_icon_rbe->Width() * 0.75f ) ), yCenter, lastPlaced2Color );
 	}
 	else
 	{
 		if ( bPortalPlacability[1] )
-			m_icon_lb->DrawSelf( xCenter - ( m_icon_lb->Width() * 0.64f ),
+			DrawBracket( true, false, xCenter - ( m_icon_lb->Width() * 0.64f ),
 			    yCenter - ( m_icon_rb->Height() * 0.17f ), portal2Color );
 		else
-			m_icon_lbn->DrawSelf( xCenter - ( m_icon_lbn->Width() * 0.64f ),
+			DrawBracket( false, false, xCenter - ( m_icon_lbn->Width() * 0.64f ),
 			    yCenter - ( m_icon_rb->Height() * 0.17f ), portal2Color );
 
 		if ( bPortalPlacability[0] )
-			m_icon_rb->DrawSelf( xCenter + ( m_icon_rb->Width() * -0.35f ),
+			DrawBracket( true, true, xCenter + ( m_icon_rb->Width() * -0.35f ),
 			    yCenter + ( m_icon_rb->Height() * 0.17f ), portal1Color );
 		else
-			m_icon_rbn->DrawSelf( xCenter + ( m_icon_rbn->Width() * -0.35f ),
+			DrawBracket( false, true, xCenter + ( m_icon_rbn->Width() * -0.35f ),
 			    yCenter + ( m_icon_rb->Height() * 0.17f ), portal1Color );
 
 		//last placed portal indicator
-		m_icon_lbe->DrawSelf(
-		    xCenter - ( m_icon_lbe->Width() * 1.85f ), yCenter, lastPlaced2Color );
-		m_icon_rbe->DrawSelf(
-		    xCenter + ( m_icon_rbe->Width() * 0.75f ), yCenter, lastPlaced1Color );
+		m_Shapes.DrawCell( CPortalHudShapes::LAST_PLACED, false,
+		    (int)( xCenter - ( m_icon_lbe->Width() * 1.85f ) ), yCenter, lastPlaced2Color );
+		m_Shapes.DrawCell( CPortalHudShapes::LAST_PLACED, false,
+		    (int)( xCenter + ( m_icon_rbe->Width() * 0.75f ) ), yCenter, lastPlaced1Color );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Draws a bracket with its cell's top-left at ( x, y ), as DrawSelf
+// draws the bracket icons. Portal's empty bitmap sits one unit to the right of
+// the full one in its cell.
+//-----------------------------------------------------------------------------
+void CHUDQuickInfo::DrawBracket( bool bValid, bool bRight, int x, int y, const Color &clr )
+{
+	if ( bValid )
+	{
+		m_Shapes.DrawCell( CPortalHudShapes::BRACKET_OUTLINE, bRight, x, y, clr );
+		m_Shapes.DrawCell( CPortalHudShapes::BRACKET_FILL, bRight, x, y, clr );
+	}
+	else
+	{
+		m_Shapes.DrawCell( CPortalHudShapes::BRACKET_OUTLINE, bRight, x, y, clr, 1.0f );
 	}
 }
 
