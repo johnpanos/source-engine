@@ -137,6 +137,23 @@ struct VertexLitMeshClaim
 };
 VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block );
 
+// Teeth (teeth.cpp, teeth_vs20/ps2x without a bump map): the base texture
+// under Source's model lighting, darkened by $illumfactor x saturate( N .
+// $forward ), which studiorender sets per draw from the mouth's flex and
+// bone (R_MouthSetupVertexShader); unset, the shader system leaves both at
+// zero. It draws on VertexLitGeneric's mesh point with that factor
+// (SurfaceConstants::teeth); $color and $alpha are not read. $intro (the
+// episode intro warp) and an authored $bumpmap (teeth_bump's Phong) are
+// refused by name.
+struct TeethClaim
+{
+	bool claimed = false;
+	std::string reason;
+	float forward[3] = {};
+	float illum = 0.0f;
+};
+TeethClaim ClaimTeeth( const ParameterBlock &block );
+
 using VertexLitStatus = SurfaceStatus;
 
 class VertexLitFamily : public SurfaceFamily

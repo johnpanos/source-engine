@@ -111,11 +111,12 @@ std::vector<material::SurfaceModelVertex> QuadVertices()
 
 using Variables = std::vector<std::pair<std::string, std::string>>;
 
-WorldMaterial Material( const Variables &variables, int maskHandle = 0 )
+WorldMaterial Material(
+    const Variables &variables, int maskHandle = 0, const char *shader = "VertexLitGeneric" )
 {
 	WorldMaterial material;
 	material.name = "selfillum-fixture";
-	material.shader = "VertexLitGeneric";
+	material.shader = shader;
 	material.mesh = true;
 	material.variables = { { "$basetexture", "selfillum/two_texels" } };
 	material.variables.insert( material.variables.end(), variables.begin(), variables.end() );
@@ -131,14 +132,15 @@ WorldMaterial Material( const Variables &variables, int maskHandle = 0 )
 	return material;
 }
 
-WorldData World( const Variables &variables, int maskHandle = 0 )
+WorldData World(
+    const Variables &variables, int maskHandle = 0, const char *shader = "VertexLitGeneric" )
 {
 	WorldData world;
 	auto stage = std::make_shared<WorldStage>();
 	stage->lightmap.width = stage->lightmap.height = 1;
 	stage->lightmap.flat.resize( 8 );
 	world.stage = std::move( stage );
-	world.materials.push_back( Material( variables, maskHandle ) );
+	world.materials.push_back( Material( variables, maskHandle, shader ) );
 	WorldData::StaticMesh mesh;
 	mesh.AddLevel( WorldData::StaticMeshLod::MakeLevel( QuadVertices(), { 0, 1, 2, 0, 2, 3 } ),
 	    { { 0, 0, 0, 6 } } );
@@ -285,12 +287,12 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 	// stream capture) instead of a posed model; `noNormal` gives that mesh no
 	// vertex normal.
 	auto render = [&]( const Variables &variables, float degrees, bool lit, CanvasImage &image,
-	                  bool dynamic = false, bool noNormal = false,
-	                  int maskHandle = 0 ) -> std::optional<std::string>
+	                  bool dynamic = false, bool noNormal = false, int maskHandle = 0,
+	                  const char *shader = "VertexLitGeneric" ) -> std::optional<std::string>
 	{
 		auto pass = std::make_unique<WorldPass>();
 		pass->SetSurfaceFragmentModule( module );
-		pass->SetWorld( World( variables, maskHandle ) );
+		pass->SetWorld( World( variables, maskHandle, shader ) );
 		WorldView view;
 		for ( int i = 0; i < 4; ++i )
 			view.toClip[i * 5] = 1.0f;
@@ -299,7 +301,7 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		if ( dynamic )
 		{
 			WorldView::DynamicDraw draw;
-			draw.material = Material( variables, maskHandle );
+			draw.material = Material( variables, maskHandle, shader );
 			for ( const material::SurfaceModelVertex &vertex : QuadVertices() )
 			{
 				WorldVertex out;
@@ -551,6 +553,33 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		    Detail( "lit mode 5", added, plain[0] + 0.3f ) );
 	}
 
+	// Teeth (teeth_vs20) on the same point: the lit surface times
+	// $illumfactor x saturate( N . $forward ). Against the plain surface
+	// under the same light: half with the factor 0.5 along the normal, black
+	// with $forward across it, and black unset (the shader system's zeros).
+	{
+		CanvasImage halfLit, across, unset;
+		if ( auto why = render( { { "$illumfactor", "0.5" }, { "$forward", "[0 0 1]" } }, 80.0f,
+		         true, halfLit, false, false, 0, "Teeth" ) )
+			return why;
+		if ( auto why = render( { { "$illumfactor", "1" }, { "$forward", "[1 0 0]" } }, 80.0f,
+		         true, across, false, false, 0, "Teeth" ) )
+			return why;
+		if ( auto why = render( {}, 80.0f, true, unset, false, false, 0, "Teeth" ) )
+			return why;
+		const float *plain = litPlain.At( kEmitX, kRow );
+		const float *half = halfLit.At( kEmitX, kRow );
+		bool halved = plain[0] > 0.02f;
+		for ( int c = 0; c < 3; ++c )
+			halved = halved && Near( half[c], 0.5f * plain[c] );
+		results.That( halved, "selfillum.teeth.factor-scales-the-lit-surface",
+		    Detail( "teeth 0.5", half, 0.5f * plain[0] ) );
+		results.That( Gray( across.At( kEmitX, kRow ), 0.0f ) &&
+		                  Gray( unset.At( kEmitX, kRow ), 0.0f ),
+		    "selfillum.teeth.across-and-unset-are-black",
+		    Detail( "teeth across", across.At( kEmitX, kRow ), 0.0f ) );
+	}
+
 	for ( auto &pass : passes )
 		pass->ReleaseDevice( *device );
 	(void)device->WaitIdle();
@@ -562,6 +591,7 @@ const Seeded kSeeded[] = {
     { "fresnel-ignored", spirv::kSurfaceSelfIllumFresnelIgnored, "selfillum.fresnel" },
     { "brightness-ignored", spirv::kSurfaceSelfIllumBrightnessIgnored, "selfillum.fresnel" },
     { "mask-ignored", spirv::kSurfaceSelfIllumMaskIgnored, "selfillum.mask" },
+    { "teeth-ignored", spirv::kSurfaceTeethIgnored, "selfillum.teeth" },
 };
 
 } // namespace

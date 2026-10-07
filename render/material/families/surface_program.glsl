@@ -1596,6 +1596,15 @@ void PbrSurface( out float coverage )
 			color += rim;
 		}
 	}
+	// Teeth (teeth_vs20): the lit surface darkened by $illumfactor x
+	// saturate( N . $forward ), the vertex normal against the mouth's forward.
+#ifndef SEEDED_TEETH_IGNORED
+	if ( material.teeth[1].x > 0.5 )
+#else
+	if ( false ) // negative control: the teeth factor is dropped
+#endif
+		color *= material.teeth[0].w *
+		         clamp( dot( normalize( worldNormal ), material.teeth[0].xyz ), 0.0, 1.0 );
 	WriteSsrTargets( normal, roughness, iblRadiance, iblWeight,
 	    emissive && material.emission.z > 0.5 );
 	vec3 emission = vec3( 0.0 );

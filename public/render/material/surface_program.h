@@ -178,8 +178,11 @@ struct SurfaceConstants
 	// as flags (EnergyFlag), $detail1blendmode, $detail2blendmode, and 1 when
 	// ACTIVE; 10 and 11 the detail 1 UV rows; 12 and 13 detail 2's.
 	float energy[14][4] = {};
+	// Teeth on VertexLitGeneric's mesh point (vertexlit_family.h ClaimTeeth):
+	// row 0 $forward and $illumfactor, row 1 x 1 when the factor applies.
+	float teeth[2][4] = {};
 };
-static_assert( sizeof( SurfaceConstants ) == 816 );
+static_assert( sizeof( SurfaceConstants ) == 848 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).

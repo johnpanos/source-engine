@@ -12579,3 +12579,23 @@ chapter-select images now claim. Modulation between the raw read and the raw
 write (vertex color, `$color`, `$color2`), or `$linearwrite` after a decoded
 read, is refused by name (`console/rt_background`). `render.lab.posed-model`
 checks both. Portal 1 unsupported: 362 → 347.
+
+### K12: Teeth on VertexLitGeneric's mesh point (2026-10-07, user request)
+
+Teeth (18 HL2 character mouth materials in Portal 1's content path) draws
+`teeth_vs20`/`teeth_ps2x`: the base under Source's model lighting times
+`$illumfactor` x saturate(N . `$forward`), which studiorender sets per draw
+from the mouth's flex and bone (`R_MouthSetupVertexShader`); unset, the
+shader system leaves both at zero (`InitShaderParameters` never applies a
+`SHADER_PARAM` default). `ClaimTeeth` (vertexlit_family.h) claims it and
+the resolver draws it as a VertexLitGeneric description carrying only the
+shared parameters, with the factor in `SurfaceConstants::teeth`, applied to
+the lit surface in `PbrSurface`. Refused by name: an authored `$bumpmap`
+(teeth_bump's Phong; Alyx's mouth) and `$intro`. `$clientshader` is a
+model hint no shader declares; `$halflambert` is inert (teeth_vs20 lights
+without it).
+
+`render.lab.selfillum` gains `selfillum.teeth.*`: under the suite's area
+light, Teeth with factor 0.5 along the normal is exactly half the plain
+surface; across the normal and unset it is black. The sensitivity run's new
+`teeth-ignored` seed is caught (5 of 5). Portal 1 unsupported: 347 → 330.

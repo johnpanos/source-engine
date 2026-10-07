@@ -412,6 +412,8 @@ struct ProgramResolver::State
 	bool worldPbr = false;
 	std::uint32_t sceneTerms = 0;
 	bool mesh = false; // ResolveMesh's call of Resolve
+	// Teeth's factor while Resolve draws Teeth as VertexLitGeneric.
+	std::optional<TeethClaim> teeth;
 	bool sceneColorAvailable = false;
 };
 
@@ -468,6 +470,23 @@ foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResol
 		return foundation::MakeUnexpected( std::string( "the surface program was refused" ) );
 	state->lightmapped = std::move( lightmapped ).Value();
 	return std::unique_ptr<ProgramResolver>( new ProgramResolver( std::move( state ) ) );
+}
+
+// Teeth as the VertexLitGeneric description its point draws: the base and
+// the parameters both shaders read the same way.
+MaterialDesc TeethAsVertexLit( const MaterialDesc &teeth )
+{
+	MaterialDesc out = teeth;
+	out.family = "vertexlit";
+	out.shader = "VertexLitGeneric";
+	out.legacyShader = "vertexlitgeneric";
+	out.values.clear();
+	for ( const MaterialValue &value : teeth.values )
+		if ( value.parameter == "basetexture" || value.parameter == "frame" ||
+		     value.parameter == "basetexturetransform" || value.parameter == "translucent" ||
+		     value.parameter == "nocull" || value.parameter == "model" || value.parameter == "nofog" )
+			out.values.push_back( value );
+	return out;
 }
 
 foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const MaterialDesc &material,
@@ -595,6 +614,14 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 		     detail::ReadFlag( *block, "vertexalpha" ) )
 			return foundation::MakeUnexpected( "model vertices have no color or alpha channel" );
 		return claim.blend;
+	}
+	if ( material.family == "teeth" )
+	{
+		const TeethClaim teeth = ClaimTeeth( *block );
+		if ( !teeth.claimed )
+			return foundation::MakeUnexpected( teeth.reason );
+		return ClaimForMesh( TeethAsVertexLit( material ), nativeReflectionProbes,
+		    sceneColorAvailable );
 	}
 	if ( material.family == "modulate" )
 	{
@@ -810,6 +837,16 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			    "lightmap-indirect", "lightmap-shadow-mask" };
 		return out;
 	}
+	if ( material.family == "teeth" )
+	{
+		const TeethClaim teeth = ClaimTeeth( *block );
+		if ( !teeth.claimed )
+			return foundation::MakeUnexpected( teeth.reason );
+		s.teeth = teeth;
+		auto resolved = Resolve( TeethAsVertexLit( material ) );
+		s.teeth.reset();
+		return resolved;
+	}
 	if ( material.family == "vertexlit" )
 	{
 		if ( !s.mesh || !s.worldPbr )
@@ -844,7 +881,14 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			textures.mrao = TextureOf( material, "lightwarptexture" );
 		else if ( claim.phongWarp )
 			textures.mrao = TextureOf( material, "phongwarptexture" );
-		auto request = s.lightmapped->Program().Request( variant, claim.constants, textures );
+		SurfaceConstants constants = claim.constants;
+		if ( s.teeth )
+		{
+			std::copy_n( s.teeth->forward, 3, constants.teeth[0] );
+			constants.teeth[0][3] = s.teeth->illum;
+			constants.teeth[1][0] = 1.0f;
+		}
+		auto request = s.lightmapped->Program().Request( variant, constants, textures );
 		if ( !request )
 			return foundation::MakeUnexpected(
 			    std::string( "the modern mesh pipeline was refused" ) );

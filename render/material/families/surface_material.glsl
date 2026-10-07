@@ -41,4 +41,5 @@ layout( set = 2, binding = 0 ) uniform Material
 	vec4 baseDecode; // x: 1 RGBS (rgb * a, premultiplied bilinear); the scale is surfaceControls.y
 	vec4 mraoScale;        // rgb: the pbr point's MRAO sample scale (P2:CE's $mraoscale)
 	vec4 energy[14];       // the energy point's rows (SurfaceConstants::energy)
+	vec4 teeth[2];         // Teeth: $forward, $illumfactor; y row x: on
 } material;

@@ -428,4 +428,50 @@ VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block )
 	return claim;
 }
 
+TeethClaim ClaimTeeth( const ParameterBlock &block )
+{
+	TeethClaim claim;
+	if ( block.Family().desc.name != "teeth" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	// $phongexponent is read only by teeth_bump; $entityorigin and
+	// $warpparam only by the intro warp. $color and $alpha are not read.
+	constexpr std::string_view keys[] = { "basetexture", "frame", "basetexturetransform", "color",
+	    "alpha", "model", "nocull", "nofog", "translucent", "illumfactor", "forward",
+	    "phongexponent", "entityorigin", "warpparam" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the teeth point does not draw " + *unread;
+		return claim;
+	}
+	if ( detail::TextureBound( block, "bumpmap" ) )
+	{
+		claim.reason = "the teeth point does not draw $bumpmap (teeth_bump's Phong)";
+		return claim;
+	}
+	if ( ReadFlag( block, "intro" ) )
+	{
+		claim.reason = "the teeth point does not draw $intro (the episode intro warp)";
+		return claim;
+	}
+	if ( !detail::TextureBound( block, "basetexture" ) )
+	{
+		claim.reason = "Teeth needs its base texture";
+		return claim;
+	}
+	for ( int c = 0; c < 3; ++c )
+		claim.forward[c] = ReadParameter( block, "forward", c );
+	claim.illum = ReadParameter( block, "illumfactor" );
+	for ( float value : { claim.forward[0], claim.forward[1], claim.forward[2], claim.illum } )
+		if ( !std::isfinite( value ) )
+		{
+			claim.reason = "$forward and $illumfactor must be finite";
+			return claim;
+		}
+	claim.claimed = true;
+	return claim;
+}
+
 } // namespace render::material
