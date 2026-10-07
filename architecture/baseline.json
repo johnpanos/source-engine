@@ -2026,104 +2026,6 @@
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory ) { return true; }"
     },
     {
-      "fingerprint": "657f2e5c9d326095c26a",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicebase.cpp",
-      "line": 107,
-      "excerpt": "static CreateInterfaceFn s_TempFactory;"
-    },
-    {
-      "fingerprint": "1b2d7ebc37236000c8a4",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicebase.cpp",
-      "line": 133,
-      "excerpt": "bool CShaderDeviceMgrBase::Connect( CreateInterfaceFn factory )"
-    },
-    {
-      "fingerprint": "1942ed1d9e40b1b32971",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicebase.cpp",
-      "line": 142,
-      "excerpt": "CreateInterfaceFn actualFactory = ShaderDeviceFactory;"
-    },
-    {
-      "fingerprint": "438df4a5936bf5256128",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicebase.h",
-      "line": 58,
-      "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
-    },
-    {
-      "fingerprint": "230555998a600b96f485",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicedx10.cpp",
-      "line": 62,
-      "excerpt": "bool CShaderDeviceMgrDx10::Connect( CreateInterfaceFn factory )"
-    },
-    {
-      "fingerprint": "f202cc886db95937e255",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicedx10.cpp",
-      "line": 433,
-      "excerpt": "CreateInterfaceFn CShaderDeviceMgrDx10::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode )"
-    },
-    {
-      "fingerprint": "d8e9006b8ba726be0ab3",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicedx10.h",
-      "line": 52,
-      "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
-    },
-    {
-      "fingerprint": "962b3739136a4566326b",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicedx10.h",
-      "line": 64,
-      "excerpt": "virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode );"
-    },
-    {
-      "fingerprint": "3d6d0e9e9be83e95d2f2",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
-      "line": 134,
-      "excerpt": "bool CShaderDeviceMgrDx8::Connect( CreateInterfaceFn factory )"
-    },
-    {
-      "fingerprint": "73331dc3d44f4282d644",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
-      "line": 1363,
-      "excerpt": "CreateInterfaceFn CShaderDeviceMgrDx8::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode )"
-    },
-    {
-      "fingerprint": "06bc14858a36b5a13c2c",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicedx8.h",
-      "line": 62,
-      "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
-    },
-    {
-      "fingerprint": "70cb03684afc5906e117",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapidx9/shaderdevicedx8.h",
-      "line": 74,
-      "excerpt": "virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode );"
-    },
-    {
-      "fingerprint": "6396589dda77ad52fc78",
-      "rule": "ARCH101",
-      "path": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
-      "line": 908,
-      "excerpt": "m_pShaderCompiler30 = Sys_LoadModule( \"d3dx9d_33.dll\" );"
-    },
-    {
-      "fingerprint": "c53f22f558727dd21ba2",
-      "rule": "ARCH101",
-      "path": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
-      "line": 912,
-      "excerpt": "m_pShaderCompiler30 = Sys_LoadModule( \"d3dx9_33.dll\" );"
-    },
-    {
       "fingerprint": "dc04b804159388a59ddb",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapiempty/shaderapiempty.cpp",
@@ -2775,34 +2677,6 @@
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory )"
     },
     {
-      "fingerprint": "b0cb418be32389e39aa9",
-      "rule": "ARCH105",
-      "path": "public/togl/linuxwin/glentrypoints.h",
-      "line": 339,
-      "excerpt": "DLL_EXPORT COpenGLEntryPoints *ToGLConnectLibraries( CreateInterfaceFn factory );"
-    },
-    {
-      "fingerprint": "e02396e42cb03a6ab134",
-      "rule": "ARCH105",
-      "path": "public/togl/linuxwin/glentrypoints.h",
-      "line": 344,
-      "excerpt": "DLL_IMPORT COpenGLEntryPoints *ToGLConnectLibraries( CreateInterfaceFn factory );"
-    },
-    {
-      "fingerprint": "0394c866dba3c5fb4a62",
-      "rule": "ARCH105",
-      "path": "public/togles/linuxwin/glentrypoints.h",
-      "line": 349,
-      "excerpt": "DLL_EXPORT COpenGLEntryPoints *ToGLConnectLibraries( CreateInterfaceFn factory );"
-    },
-    {
-      "fingerprint": "1d8bf93e2b5eec60f85d",
-      "rule": "ARCH105",
-      "path": "public/togles/linuxwin/glentrypoints.h",
-      "line": 354,
-      "excerpt": "DLL_IMPORT COpenGLEntryPoints *ToGLConnectLibraries( CreateInterfaceFn factory );"
-    },
-    {
       "fingerprint": "2f5dede8d49542acfef5",
       "rule": "ARCH105",
       "path": "public/toolframework/ienginetool.h",
@@ -3298,20 +3172,6 @@
       "path": "tier3/tier3.cpp",
       "line": 57,
       "excerpt": "void ConnectTier3Libraries( CreateInterfaceFn *pFactoryList, int nFactoryCount )"
-    },
-    {
-      "fingerprint": "92f81f5adfc1feac9c1b",
-      "rule": "ARCH105",
-      "path": "togl/linuxwin/glentrypoints.cpp",
-      "line": 176,
-      "excerpt": "COpenGLEntryPoints *ToGLConnectLibraries( CreateInterfaceFn factory )"
-    },
-    {
-      "fingerprint": "08949792249ef39d2c52",
-      "rule": "ARCH105",
-      "path": "togles/linuxwin/glentrypoints.cpp",
-      "line": 176,
-      "excerpt": "COpenGLEntryPoints *ToGLConnectLibraries( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "e677d43fe3326d31b87c",

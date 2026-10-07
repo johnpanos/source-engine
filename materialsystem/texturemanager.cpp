@@ -276,39 +276,6 @@ public:
 				{
 					float u = x * flInvWidth - 1.0f;
 					float oow = 1.0f / sqrt( 1.0f + u*u + v*v );
-#ifdef DX_TO_GL_ABSTRACTION
-					float flX = (255.0f * 0.5 * (u*oow + 1.0f) + 0.5f);
-					float flY = (255.0f * 0.5 * (v*oow + 1.0f) + 0.5f);
-					float flZ = (255.0f * 0.5 * (oow + 1.0f) + 0.5f);
-
-					flX /= 256.0f;
-					flY /= 256.0f;
-					flZ /= 256.0f;
-
-					switch (iFace)
-					{
-					case CUBEMAP_FACE_RIGHT:
-						pixelWriter.WritePixelF( flZ, 1.f - flY, 1.f - flX, 1.f );
-						break;
-					case CUBEMAP_FACE_LEFT:
-						pixelWriter.WritePixelF( 1.f - flZ, 1.f - flY, flX, 1.f );
-						break;
-					case CUBEMAP_FACE_BACK:
-						pixelWriter.WritePixelF( flX, flZ, flY, 1.f );
-						break;
-					case CUBEMAP_FACE_FRONT:
-						pixelWriter.WritePixelF( flX, 1.f - flZ, 1.f - flY, 1.f );
-						break;
-					case CUBEMAP_FACE_UP:
-						pixelWriter.WritePixelF( flX, 1.f - flY, flZ, 1.f );
-						break;
-					case CUBEMAP_FACE_DOWN:
-						pixelWriter.WritePixelF( 1.f - flX, 1.f - flY, 1.f - flZ, 1.f );
-						break;
-					default:
-						break;
-					}
-#else
 					int ix = (int)(255.0f * 0.5f * (u*oow + 1.0f) + 0.5f);
 					ix = clamp( ix, 0, 255 );
 					int iy = (int)(255.0f * 0.5f * (v*oow + 1.0f) + 0.5f);
@@ -339,7 +306,6 @@ public:
 					default:
 						break;
 					}
-#endif
 				}
 			}
 		}
@@ -384,71 +350,6 @@ public:
 					float u = x * flInvWidth - 1.0f;
 					float oow = 1.0f / sqrt( 1.0f + u*u + v*v );
 
-#ifdef DX_TO_GL_ABSTRACTION
-					float flX = (255.0f * 0.5 * (u*oow + 1.0f) + 0.5f);
-					float flY = (255.0f * 0.5 * (v*oow + 1.0f) + 0.5f);
-					float flZ = (255.0f * 0.5 * (oow + 1.0f) + 0.5f);
-
-					switch (iFace)
-					{
-						case CUBEMAP_FACE_RIGHT:
-							flX = 255.0f - flX;
-							flY = 255.0f - flY;
-							break;
-						case CUBEMAP_FACE_LEFT:
-							flY = 255.0f - flY;
-							flZ = 255.0f - flZ;
-							break;
-						case CUBEMAP_FACE_BACK:	
-							break;
-						case CUBEMAP_FACE_FRONT:
-							flY = 255.0f - flY;
-							flZ = 255.0f - flZ;
-							break;
-						case CUBEMAP_FACE_UP:
-							flY = 255.0f - flY;
-							break;
-						case CUBEMAP_FACE_DOWN:
-							flX = 255.0f - flX;
-							flY = 255.0f - flY;
-							flZ = 255.0f - flZ;
-							break;
-						default:
-							break;
-					}
-
-					flX -= 128.0f;
-					flY -= 128.0f;
-					flZ -= 128.0f;
-
-					flX /= 128.0f;
-					flY /= 128.0f;
-					flZ /= 128.0f;
-
-					switch ( iFace )
-					{
-						case CUBEMAP_FACE_RIGHT:
-							pixelWriter.WritePixelF( flZ, flY, flX, 0.0f );
-							break;
-						case CUBEMAP_FACE_LEFT:
-							pixelWriter.WritePixelF( flZ, flY, flX, 0.0f );
-							break;
-						case CUBEMAP_FACE_BACK:	
-							pixelWriter.WritePixelF( flX,  flZ,  flY, 0.0f );
-							break;
-						case CUBEMAP_FACE_FRONT:
-							pixelWriter.WritePixelF( flX,  flZ,  flY, 0.0f );
-							break;
-						case CUBEMAP_FACE_UP:
-							pixelWriter.WritePixelF( flX, flY,  flZ, 0.0f );
-							break;
-						case CUBEMAP_FACE_DOWN:
-							pixelWriter.WritePixelF( flX, flY, flZ, 0.0f );
-							break;
-						default:
-							break;
-					}
-#else
 					int ix = (int)(255 * 0.5 * (u*oow + 1.0f) + 0.5f);
 					ix = clamp( ix, 0, 255 );
 					int iy = (int)(255 * 0.5 * (v*oow + 1.0f) + 0.5f);
@@ -528,7 +429,6 @@ public:
 					default:
 						break;
 					}
-#endif
 				} // x
 			} // y
 		} // iFace

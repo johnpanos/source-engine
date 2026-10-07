@@ -69,9 +69,6 @@ public:
 	// Copy from a render target to a staging texture, in order with other async commands.
 	virtual void AsyncCopyRenderTargetToStagingTexture( ITexture* pDst, ITexture* pSrc, IAsyncTextureOperationReceiver* pRecipient, void* pExtraArgs ) = 0;
 
-#ifdef DX_TO_GL_ABSTRACTION
-	virtual void DoStartupShaderPreloading( void ) = 0;
-#endif
 
 	virtual void TextureManagerUpdate() = 0;
 };

@@ -6,7 +6,7 @@
 # (RFC 0013 shape inertia); PHYSICS_ARGS= ./play_p2 rolls back.
 # Render switches come first, as in ./play (./play_p2 --render-help): --native,
 # --null, --core-world (the default), --no-core-world, --no-core,
-# --core-probe=MODE, --no-legacy-ports, --validate. The Portal 2 tree builds native Vulkan only, so --dxvk is refused.
+# --core-probe=MODE, --no-legacy-ports, --validate.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -90,9 +90,6 @@ render_args=(${RENDER_GAME_ARGS[@]+"${RENDER_GAME_ARGS[@]}"})
 case "$RENDER_BACKEND" in
     native) ;;
     null) render_args+=(-renderer null) ;;
-    dxvk)
-        echo "play_p2: the Portal 2 tree builds native Vulkan only; --dxvk is ./play's" >&2
-        exit 1 ;;
 esac
 
 if [[ "${1:-}" == "--retail" ]]; then

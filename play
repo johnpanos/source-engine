@@ -2,13 +2,11 @@
 # play — play Portal on Vulkan with one command.
 #
 #   ./play                    native Vulkan renderer (shaderapivulkan, build/)
-#   ./play dxvk               D3D9 renderer on Vulkan through DXVK Native
-#                             (build-portal-vulkan/, the stable reference)
 #   ./play native testchmb_a_02 -console      a map, then any game arguments
 #   ./play living_room        a PBRT map published by pbrt_map_build.py
 #                             (list: python3 tools/quality/playable_maps.py list)
 #   ./play --no-core-world testchmb_a_01   render switches first (./play --render-help):
-#                             --native --dxvk --null --core-world (default)
+#                             --native --null --core-world (default)
 #                             --no-core-world --no-core
 #                             --core-probe=MODE --no-legacy-ports --validate
 #
@@ -30,8 +28,8 @@ render_flags_parse "$@"
 set -- ${RENDER_REST[@]+"${RENDER_REST[@]}"}
 backend=$RENDER_BACKEND
 case "${1:-}" in
-    native|dxvk) backend=$1; shift ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    native) backend=$1; shift ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
 esac
 # A leading word that is not an option is the map.
 if [ $# -gt 0 ] && [ "${1#[-+]}" = "$1" ]; then
@@ -41,7 +39,6 @@ fi
 
 case "$backend" in
     native) build_dir=${PLAY_BUILD_DIR:-build}; renderer=native-vulkan ;;
-    dxvk) build_dir=build-portal-vulkan; renderer=vulkan-compat ;;
     null) build_dir=${PLAY_BUILD_DIR:-build}; renderer=null ;;
 esac
 if [ ! -d "$build_dir" ]; then

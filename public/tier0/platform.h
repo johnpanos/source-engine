@@ -109,11 +109,7 @@
 			#define PLATFORM_WINDOWS_PC32 1
 		#endif
 	// Adding IsPlatformOpenGL() to help fix a bunch of code that was using IsPosix() to infer if the DX->GL translation layer was being used.
-	#if defined( DX_TO_GL_ABSTRACTION )
-		#define IsPlatformOpenGL() true
-	#else
 		#define IsPlatformOpenGL() false
-	#endif
 #elif defined(POSIX)
 	#define IsPC() true
 	#define IsWindows() false
@@ -137,11 +133,7 @@
 	#endif
 
 	#define IsPosix() true
-#if defined( DX_TO_GL_ABSTRACTION )
-#define IsPlatformOpenGL() true
-#else
 #define IsPlatformOpenGL() false
-#endif
 #else
 	#error
 #endif

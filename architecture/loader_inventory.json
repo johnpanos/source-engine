@@ -1764,46 +1764,6 @@
       "reason": "Optional product, renderer, input, video, or vendor provider."
     },
     {
-      "fingerprint": "dc57ad1251615f3c4529",
-      "mechanism": "native-loader",
-      "path": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
-      "line": 153,
-      "excerpt": "if ( HMODULE hMod = ::LoadLibraryA( \"d3d9.dll\" ) )",
-      "classification": "optional-provider",
-      "reason": "Optional product, renderer, input, video, or vendor provider.",
-      "telemetry": "tier0-native-adapter"
-    },
-    {
-      "fingerprint": "ef516ef80c7f59e5096c",
-      "mechanism": "native-loader",
-      "path": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
-      "line": 205,
-      "excerpt": "m_hD3D9 = LoadLibraryA(\"d3d9.dll\");",
-      "classification": "optional-provider",
-      "reason": "Optional product, renderer, input, video, or vendor provider.",
-      "telemetry": "tier0-native-adapter"
-    },
-    {
-      "fingerprint": "6396589dda77ad52fc78",
-      "rule": "ARCH101",
-      "path": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
-      "line": 908,
-      "excerpt": "m_pShaderCompiler30 = Sys_LoadModule( \"d3dx9d_33.dll\" );",
-      "mechanism": "ARCH101",
-      "classification": "optional-provider",
-      "reason": "Optional product, renderer, input, video, or vendor provider."
-    },
-    {
-      "fingerprint": "c53f22f558727dd21ba2",
-      "rule": "ARCH101",
-      "path": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
-      "line": 912,
-      "excerpt": "m_pShaderCompiler30 = Sys_LoadModule( \"d3dx9_33.dll\" );",
-      "mechanism": "ARCH101",
-      "classification": "optional-provider",
-      "reason": "Optional product, renderer, input, video, or vendor provider."
-    },
-    {
       "fingerprint": "03265437a764ee72d274",
       "mechanism": "native-loader",
       "path": "materialsystem/shaderapivulkan/shaderapivulkan.cpp",

@@ -104,8 +104,6 @@ struct LegacyShaderProvider
 // dynamic linker would silently bind all callers to whichever module it resolved
 // first, making the other backends unselectable. No filename, native handle, or
 // untyped interface registry crosses this boundary.
-extern "C" const render::LegacyShaderProvider *Dx9ShaderBackend_Describe();
-extern "C" bool Dx9ShaderBackend_Create( render::LegacyShaderServices *services );
 extern "C" const render::LegacyShaderProvider *NativeVulkanShaderBackend_Describe();
 extern "C" bool NativeVulkanShaderBackend_Create( render::LegacyShaderServices *services );
 extern "C" const render::LegacyShaderProvider *NullShaderBackend_Describe();

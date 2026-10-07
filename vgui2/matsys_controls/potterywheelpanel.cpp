@@ -1213,22 +1213,7 @@ bool CPotteryWheelPanel::WarpMouse( int &x, int &y )
 	int ypos = centery;
 	LocalToScreen( xpos, ypos );
 
-#if defined( DX_TO_GL_ABSTRACTION )
-	//
-	// Really reset the cursor to the center for the PotteryWheel Control
-	//
-	// In TF2's edit loadout dialog there is a character model that you can rotate
-	// around using the mouse.  This control resets the cursor to the center of the window
-	// after each mouse move.  Except the input()->SetCursorPos results (after a lot of redirection) to
-	// vgui/matsurface/Cursor.cpp function CursorSetPos but it has a (needed) test to not move the 
-	// cursor if it's currently hidden. Rather than change all the levels between here and there
-	// to support a flag, we are just jumping to the chase and directly calling the inputsystem
-	// SetCursorPosition on OpenGL platforms
-	//
-	g_pInputSystem->SetCursorPosition( xpos, ypos );
-#else
 	input()->SetCursorPos( xpos, ypos );
-#endif
 
 	int dx = x - centerx;
 	int dy = y - centery;

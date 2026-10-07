@@ -36,7 +36,6 @@ class RenderFlagsTest(unittest.TestCase):
         self.assertEqual(parse("--core-world"), ("native", CORE_WORLD, ""))
 
     def test_core_world_only_on_the_native_backend(self):
-        self.assertEqual(parse("--dxvk", default=1), ("dxvk", "", ""))
         self.assertEqual(parse("--null", default=1), ("null", "", ""))
         self.assertEqual(parse("--no-core", default=1), ("native", "-norendercore", ""))
 

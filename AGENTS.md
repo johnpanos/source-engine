@@ -207,15 +207,25 @@ platform acceptance.
     render core's long-term gain: adopt the core's new formats and
     contracts, drop shims kept only for them, delete what the core
     replaces. Favor progress over preserving a frozen path; never put new
-    work in the wrong place. This retires no backend or profile: D3D9 and
-    its DXVK profiles, ToGL and the others keep building and running until
-    their replacement lands. Each such commit carries a `Frozen-path:` line.
+    work in the wrong place. Each such commit carries a `Frozen-path:`
+    line.
   - The legacy backends are deleted completely (user decision, 2026-10-07):
     `shaderapidx9`, `shaderapivulkan`, `shaderapiempty`, `stdshaders`,
     ToGL and ToGLES, under the shrink-only ratchet
     `tools/render/retirement_scans.py legacy-backends` (RFC 0028
     decision 10). A change that deletes legacy backend code records it with
-    `--write --rev <commit>`; nothing grows them.
+    `--write --rev <commit>`; nothing grows them. ToGL, ToGLES, DXVK Native
+    and `shaderapidx9` are deleted (user decision, 2026-10-07), with the
+    client profiles that only they served: the SDL2/legacy-renderer Linux
+    client, `android-armv7a-legacy`, `freebsd-legacy`, the Windows client
+    and `linux-x86_64-portal-client-dxvk`. Clients render only through
+    native Vulkan; `--render-backend=legacy` means no client renderer and
+    is accepted only for dedicated, test and tool products.
+  - `IShaderDeviceMgr`/`IShaderDevice` become a facade on the render core's
+    device (user decision, 2026-10-07): device creation, adapter
+    enumeration, mode setting and loss/recovery are owned by
+    `render.device.v2` adapters and the composition root only; the frozen
+    interfaces answer from the core's device and own nothing.
   - New render work lands on the core in its owning module and is proven
     in `render_lab` before any integration.
   - The old copy is deleted in the change that replaces it.
@@ -1239,8 +1249,9 @@ Keep the table concise and link details below or from the domain progress file.
     usages, fixed conventions, capability negotiation, per-target shader
     artifacts through pinned SPIRV-Cross). Vulkan is the first adapter and
     OpenGL 4.5 the second (K10, row R92, ranked after R88 as the RFC 0001
-    step 10 proof). ToGL stays on the SDL2 legacy-renderer profiles for mod
-    shader DLLs (user decision, 2026-09-26).
+    step 10 proof). ToGL was kept for mod shader DLLs (user decision,
+    2026-09-26) until its deletion on 2026-10-07; mod bytecode moves to RFC
+    0028's D3D9 adapter.
   - Layout and layers: `public/render/<module>/` and `render/<module>/`;
     eight declared layers plus an adapter column, enforced by a new archlint
     rule CAP011 (down-only edges, independent siblings, no portable edge to
@@ -1523,17 +1534,14 @@ Keep the table concise and link details below or from the domain progress file.
     every declared SDL3 profile, SDL is off generic include paths (the
     `platform/sdl3/legacy_include` adapter's callers are migrated), and the
     SDL2 legacy profiles still build. SDL2 behavior parity is not required.
-  - SDL2 stays only as the provider for the legacy compatibility profiles
-    (the Windows client, `linux-i386-legacy`, `android-armv7a-legacy`,
-    `freebsd-legacy`). It gets no further work, and
-    `platform/sdl2/window_system` needs no suite. Retiring those profiles, or
-    SDL2 itself, is a separate user decision.
+  - SDL2 stays only for products without a client renderer (dedicated,
+    tests, tools, `linux-i386-legacy`'s dedicated and tests). Its client
+    profiles were retired with ToGL (2026-10-07). It gets no further work,
+    and `platform/sdl2/window_system` needs no suite.
   - Waf defaults (2026-09-26, user direction): `--render-backend` is `auto`,
-    selecting `native-vulkan` for 64-bit Linux, Android and iOS/tvOS clients
-    and `legacy` for dedicated, test and tool products, 32-bit, GLES, other
-    OSes and an explicit `--platform-provider=sdl2`.
-    `scripts/build-ubuntu-amd64.sh` pins `--render-backend=legacy` for the
-    legacy client lane. `--physics-backend` defaults to `box3d` but is not
+    selecting `native-vulkan` for clients and `legacy` (no client renderer)
+    for dedicated, test and tool products; since 2026-10-07 any other client
+    configuration fails configure. `--physics-backend` defaults to `box3d` but is not
     read by the build (both providers are always linked; existing trees
     stored the old `ivp`, so wiring it would drop Box3D from them).
   - `--platform-provider` defaults to `auto`: `sdl3` for every Vulkan

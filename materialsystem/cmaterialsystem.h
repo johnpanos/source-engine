@@ -614,9 +614,6 @@ private:
 	IThreadPool * CreateMatQueueThreadPool();
 	void DestroyMatQueueThreadPool();
 
-#ifdef DX_TO_GL_ABSTRACTION
-	void									DoStartupShaderPreloading( void );
-#endif
 
 	// -----------------------------------------------------------
 

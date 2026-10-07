@@ -894,12 +894,8 @@ bool CSourceAppSystemGroup::Create()
 	// entry-point name; see legacy_shader_provider.h. The first entry is the
 	// default when -renderer is absent.
 	const render::LegacyShaderProvider *catalog[] = {
-#if defined( LINKED_DX9_BACKEND )
-	    Dx9ShaderBackend_Describe(),
-#endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
-	    // Waf's default client renderer (RFC 0001 R32). A DXVK build links the
-	    // compatibility backend instead, listed first above.
+	    // The client renderer (RFC 0001 R32).
 	    NativeVulkanShaderBackend_Describe(),
 #endif
 	    NullShaderBackend_Describe() };

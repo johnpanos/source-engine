@@ -1019,9 +1019,6 @@ public:
 	// Contains context in so it can make decisions (i.e. if it's a model, ignore certain cheat parameters)
 	virtual IMaterial *			FindMaterialEx( char const* pMaterialName, const char *pTextureGroupName, int nContext, bool complain = true, const char *pComplainPrefix = NULL ) = 0;
 
-#ifdef DX_TO_GL_ABSTRACTION
-	virtual void				DoStartupShaderPreloading( void ) = 0;
-#endif	
 
 	// Sets the override sizes for all render target size tests. These replace the frame buffer size.
 	// Set them when you are rendering primarily to something larger than the frame buffer (as in VR mode).

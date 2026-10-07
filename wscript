@@ -83,9 +83,8 @@ projects={
 		'launcher_main',
 		'materialsystem',
 		'materialsystem/shaderapiempty',
-		# Each graphics backend is added below only when its product configured
-		# the SDK it needs (DXVK Native for shaderapidx9, the Vulkan SDK for
-		# shaderapivulkan). The composition root offers whichever were linked.
+		# The native Vulkan backend is added below when its product configured
+		# the Vulkan SDK; dedicated, test and tool products link only the null one.
 		'materialsystem/shaderlib',
 		'materialsystem/stdshaders',
 		'mathlib',
@@ -273,16 +272,21 @@ def run_test(self, fragment, msg):
 	return False if result == None else True
 
 def resolve_render_backend(conf):
-	# Native Vulkan is the default client renderer (user decision, 2026-09-26)
-	# where the SDL3/Vulkan profiles build: 64-bit Linux, Android and Apple
-	# (macOS, iOS, tvOS) clients. Server, test and tool products, 32-bit and GLES builds, other
-	# OSes, and an explicit --platform-provider=sdl2 keep the legacy renderer.
+	# Native Vulkan is the client renderer (user decision, 2026-09-26) on
+	# 64-bit Linux, Android and Apple (macOS, iOS, tvOS). ToGL, ToGLES, DXVK
+	# Native and shaderapidx9 were removed (user decision, 2026-10-07), so
+	# 'legacy' (no client renderer) remains only for server, test and tool
+	# products; a client that cannot build native Vulkan fails configure.
+	client = not (conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS)
 	if conf.options.RENDER_BACKEND == 'auto':
-		client = not (conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS)
-		native = (client and conf.env.DEST_OS in ('linux', 'android', 'darwin', 'ios')
-			and not conf.options.TARGET32 and not conf.options.TOGLES
-			and conf.options.PLATFORM_PROVIDER != 'sdl2')
-		conf.options.RENDER_BACKEND = 'native-vulkan' if native else 'legacy'
+		conf.options.RENDER_BACKEND = 'native-vulkan' if client else 'legacy'
+	if client and conf.options.RENDER_BACKEND != 'native-vulkan':
+		conf.fatal('clients render only through native Vulkan; ToGL, ToGLES and DXVK Native '
+			'were removed (2026-10-07)')
+	if client and (conf.options.TARGET32 or conf.options.PLATFORM_PROVIDER == 'sdl2'
+			or conf.env.DEST_OS not in ('linux', 'android', 'darwin', 'ios')):
+		conf.fatal('no client renderer for this target: native Vulkan needs a 64-bit SDL3 '
+			'Linux, Android or Apple client (ToGL was removed 2026-10-07)')
 	conf.msg('Render backend', conf.options.RENDER_BACKEND)
 
 def resolve_platform_provider(conf):
@@ -292,7 +296,7 @@ def resolve_platform_provider(conf):
 	# The resolved name replaces 'auto' so product-profile checks see the
 	# provider actually linked; stored options keep 'auto' and resolve again.
 	if conf.options.PLATFORM_PROVIDER == 'auto':
-		vulkan = conf.options.RENDER_BACKEND in ('vulkan', 'native-vulkan')
+		vulkan = conf.options.RENDER_BACKEND == 'native-vulkan'
 		conf.options.PLATFORM_PROVIDER = 'sdl3' if vulkan or conf.env.APPLE else 'sdl2'
 	conf.msg('Window/input provider', conf.options.PLATFORM_PROVIDER)
 
@@ -306,23 +310,17 @@ def define_platform(conf):
 	resolve_render_backend(conf)
 	resolve_platform_provider(conf)
 	conf.env.SDL3 = conf.options.PLATFORM_PROVIDER == 'sdl3'
-	conf.env.DXVK = conf.options.RENDER_BACKEND == 'vulkan'
 	conf.env.NATIVE_VULKAN = conf.options.RENDER_BACKEND == 'native-vulkan'
-	if conf.env.SDL3 or conf.env.DXVK or conf.env.NATIVE_VULKAN:
+	if conf.env.SDL3 or conf.env.NATIVE_VULKAN:
 		if conf.env.DEST_OS not in ['linux', 'android', 'darwin', 'ios'] or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
 			conf.fatal('The SDL3/Vulkan profiles currently target the Linux, Android and Apple clients')
-		if conf.env.DEST_OS == 'android' and not conf.env.NATIVE_VULKAN:
-			conf.fatal('The Android client requires --render-backend=native-vulkan')
 	if conf.env.APPLE and not (conf.env.NATIVE_VULKAN and conf.env.SDL3):
 		conf.fatal('The Apple clients require --platform-provider=sdl3 --render-backend=native-vulkan')
-	if conf.env.SDL3 or conf.env.DXVK or conf.env.NATIVE_VULKAN:
-		if not (conf.env.SDL3 and (conf.env.DXVK or conf.env.NATIVE_VULKAN)):
-			conf.fatal('SDL3 and the Vulkan render backends require each other; '
-				'--platform-provider=sdl2 selects the legacy renderer')
+	if conf.env.SDL3 or conf.env.NATIVE_VULKAN:
+		if not (conf.env.SDL3 and conf.env.NATIVE_VULKAN):
+			conf.fatal('SDL3 and the native Vulkan backend require each other')
 		conf.options.SDL = 1
-		conf.options.GL = 0
 		conf.define('USE_SDL3', 1)
-		conf.define('USE_DXVK', 1)
 	# The SDL3/native Vulkan Android client (build-android-apk.sh). Its native
 	# dependencies come from the profile's cross-built prefix through
 	# pkg-config, not from the legacy prebuilt lib/android tree.
@@ -332,8 +330,6 @@ def define_platform(conf):
 	conf.env.TOOLS = conf.options.TOOLS
 	if sum(bool(value) for value in (conf.env.DEDICATED, conf.env.TESTS, conf.env.TOOLS)) > 1:
 		conf.fatal('--dedicated, --tests, and --tools select different products')
-	conf.env.TOGLES = conf.options.TOGLES
-	conf.env.GL = conf.options.GL and not conf.options.TESTS and not conf.options.DEDICATED and not conf.options.TOOLS
 	conf.env.OPUS = conf.options.OPUS
 	# One FFmpeg provider library (video/video_bink) serves both providers: 'bink'
 	# plays retail .bik, 'av1' plays the offline AV1 transcodes, 'ffmpeg' links
@@ -367,16 +363,6 @@ def define_platform(conf):
 
 	if conf.options.TESTS:
 		conf.define('UNITTESTS', 1)
-
-	if conf.env.GL:
-		conf.env.append_unique('DEFINES', [
-			'DX_TO_GL_ABSTRACTION',
-			'GL_GLEXT_PROTOTYPES',
-			'BINK_VIDEO'
-		])
-
-	if conf.options.TOGLES:
-		conf.env.append_unique('DEFINES', ['TOGLES'])
 
 	# Retail Portal 2 models have up to 248 bones (public/studio.h).
 	if conf.options.GAMES == 'portal2':
@@ -496,10 +482,10 @@ def options(opt):
 		dest='PLATFORM_PROVIDER',
 		help='linked window/input provider; auto selects sdl3 for Vulkan and iOS clients, '
 			'sdl2 for legacy-renderer products [default: %default]')
-	grp.add_option('--render-backend', choices=['auto', 'legacy', 'vulkan', 'native-vulkan'], default='auto',
+	grp.add_option('--render-backend', choices=['auto', 'legacy', 'native-vulkan'], default='auto',
 		dest='RENDER_BACKEND',
-		help='linked renderer; auto selects native-vulkan for 64-bit Linux, Android and iOS clients '
-			'and legacy otherwise; vulkan uses the DXVK compatibility provider [default: %default]')
+		help='linked renderer; clients render through native-vulkan, server, test and tool '
+			'products link none (legacy) [default: %default]')
 	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal', 'd3d12'], default='null',
 		dest='RENDER_CORE_DEVICE',
 		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
@@ -543,10 +529,6 @@ def options(opt):
 		dest='DEBUG_API', help='engine debug API server (JSON-RPC 2.0; Linux desktop development only)')
 	grp.add_option('--protobuf-root', default='', dest='PROTOBUF_ROOT',
 		help='pinned protobuf prefix for --debug-api [default: build-deps/debugapi/prefix]')
-	grp.add_option('--dxvk-root', default='', dest='DXVK_ROOT',
-		help='pinned DXVK Native package prefix (contains include/dxvk and lib)')
-	grp.add_option('--product-profile', default='quality/product_profiles/portal-linux-wayland.json',
-		dest='PRODUCT_PROFILE', help='versioned profile for the Vulkan compatibility product')
 	grp.add_option('--ktx-source-root', default='', dest='KTX_SOURCE_ROOT',
 		help='explicit checkout of the pinned KTX-Software revision for texture reader tests')
 	grp.add_option('--ktx-build-root', default='', dest='KTX_BUILD_ROOT',
@@ -557,9 +539,6 @@ def options(opt):
 			dest=name.upper().replace('-', '_') + '_ROOT',
 			help='isolated pinned World Stage host-tool dependency path')
 
-	grp.add_option('--use-togl', action = 'store', dest = 'GL', type = 'int', default = sys.platform != 'win32',
-		help = 'build engine with ToGL [default: %default]')
-
 	grp.add_option('--build-games', action = 'store', dest = 'GAMES', type = 'string', default = 'hl2',
 		help = 'build games [default: %default]')
 
@@ -568,9 +547,6 @@ def options(opt):
 
 	grp.add_option('--disable-warns', action = 'store_true', dest = 'DISABLE_WARNS', default = False,
 		help = 'build using ccache [default: %default]')
-
-	grp.add_option('--togles', action = 'store_true', dest = 'TOGLES', default = False,
-		help = 'build engine with ToGLES [default: %default]')
 
 	# TODO(nillerusr): add wscript for opus building
 	grp.add_option('--enable-opus', action = 'store_true', dest = 'OPUS', default = False,
@@ -782,11 +758,6 @@ def configure(conf):
 		conf.load('force_32bit')
 
 	define_platform(conf)
-
-	if conf.env.TOGLES:
-		projects['game'] += ['togles']
-	elif conf.env.GL:
-		projects['game'] += ['togl']
 
 	if conf.env.DEST_OS == 'win32':
 		projects['game'] += ['utils/bzip2']
@@ -1055,33 +1026,6 @@ def configure(conf):
 	if conf.env.VIDEO_FFMPEG:
 		for package, store in [('libavcodec', 'AVCODEC'), ('libavformat', 'AVFORMAT'), ('libavutil', 'AVUTIL')]:
 			conf.check_cfg(package=package, uselib_store=store, args=['--cflags', '--libs'])
-	if conf.env.DXVK:
-
-		sys.path.insert(0, os.path.abspath('tools/quality'))
-		from product_profile import load_profile, check_environment, verify_dependency, ProfileError
-		try:
-			profile = load_profile(conf.options.PRODUCT_PROFILE)
-			for key, value in profile['configure_options'].items():
-				actual = {'platform_provider': conf.options.PLATFORM_PROVIDER,
-					'render_backend': conf.options.RENDER_BACKEND, 'build_games': conf.options.GAMES}[key]
-				if actual != value:
-					raise ProfileError('profile requires %s=%s' % (key, value))
-			check_environment(profile, cxx=conf.env.CXX)
-			verify_dependency(profile, 'dxvk_native', conf.options.DXVK_ROOT)
-		except ProfileError as error:
-			conf.fatal(str(error))
-		dependency = profile['dependencies']['dxvk_native']
-		dxvk_root = os.path.abspath(conf.options.DXVK_ROOT)
-		if not conf.options.DXVK_ROOT or not os.path.isfile(os.path.join(dxvk_root, 'include/dxvk/d3d9.h')):
-			conf.fatal('Vulkan requires --dxvk-root pointing to pinned DXVK Native 2.7.1')
-		conf.env.INCLUDES_DXVK = [os.path.join(dxvk_root, dependency['include_directory'])]
-		conf.env.LIBPATH_DXVK = [os.path.join(dxvk_root, dependency['library_directory'])]
-		conf.env.LIB_DXVK = [dependency['link_library']]
-		conf.env.DXVK_ROOT = dxvk_root
-		conf.env.PRODUCT_PROFILE = os.path.abspath(conf.options.PRODUCT_PROFILE)
-		conf.check_cxx(fragment='#include <d3d9.h>\nint main() { return Direct3DCreate9 ? 0 : 1; }',
-			use='DXVK', mandatory=True, msg='Checking DXVK Native D3D9 ABI')
-
 	# The engine debug API links a pinned, ABI-matched protobuf. It is a desktop
 	# development feature: store and mobile products must never enable it.
 	conf.env.DEBUGAPI = conf.options.DEBUG_API == 'enabled'
@@ -1146,8 +1090,6 @@ def configure(conf):
 			# A launchable desktop tool module, and the server browser, which
 			# only a desktop platform menu loads; neither is in the product.
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
-		if conf.env.DXVK:
-			projects['game'] += ['materialsystem/shaderapidx9']
 		if conf.env.NATIVE_VULKAN:
 			projects['game'] += ['materialsystem/shaderapivulkan']
 			if not conf.env.ANDROID_SDL3:
@@ -1239,13 +1181,6 @@ def configure_render_core(conf):
 
 def build(bld):
 	os.environ["CCACHE_DIR"] = os.path.abspath('.ccache/'+bld.env.COMPILER_CC+'/'+bld.env.DEST_OS+'/'+bld.env.DEST_CPU)
-	if bld.env.DXVK:
-		# Ordinary package linkage: install the selected runtime dependency beside
-		# the engine, preserving its SONAME. No developer-checkout path is needed.
-		from pathlib import Path
-		for library in Path(bld.env.LIBPATH_DXVK[0]).glob('libdxvk_d3d9.so*'):
-			bld.install_files(bld.env.LIBDIR, [str(library)])
-
 	if bld.env.DEST_OS == 'win32' or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 		sdl_name = 'SDL2.dll' if bld.env.DEST_OS == 'win32' else 'libSDL2.so'
 		sdl_path = os.path.join('lib', bld.env.DEST_OS, bld.env.DEST_CPU, sdl_name)
@@ -1293,8 +1228,6 @@ def build(bld):
 			# A launchable desktop tool module, and the server browser, which
 			# only a desktop platform menu loads; neither is in the product.
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
-		if bld.env.DXVK:
-			projects['game'] += ['materialsystem/shaderapidx9']
 		if bld.env.NATIVE_VULKAN:
 			projects['game'] += ['materialsystem/shaderapivulkan']
 			if not bld.env.ANDROID_SDL3:
@@ -1304,11 +1237,6 @@ def build(bld):
 				projects['game'] += ['unittests/texturecontainertest']
 		if not bld.env.ANDROID_SDL3:
 			projects['game'] += ['unittests/physicstest']
-		if bld.env.TOGLES:
-			projects['game'] += ['togles']
-		elif bld.env.GL:
-			projects['game'] += ['togl']
-
 		if bld.env.VIDEO_FFMPEG:
 			projects['game'] += ['video/video_bink']
 		# Configured only for --build-games=portal2 (see configure).

@@ -78,7 +78,7 @@
 ConVar mat_loadtextures( "mat_loadtextures", "1", FCVAR_CHEAT );
 
 // OS X and Linux are blowing up right now due to this.  Benefits vs possible regressions on DX less clear.
-#if defined( DX_TO_GL_ABSTRACTION ) || defined( STAGING_ONLY )
+#if defined( STAGING_ONLY )
 	#define CONVAR_DEFAULT_MOD_OFFLINE_HDR_SWITCH "1"
 #else
 	#define CONVAR_DEFAULT_MOD_OFFLINE_HDR_SWITCH "0"

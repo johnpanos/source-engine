@@ -861,7 +861,8 @@ measured for this RFC; measured numbers are quoted from their records.
   have theirs.
 - Keeping any legacy backend. User decision (2026-10-07) reverses the
   2026-09-26 decision to keep ToGL: every legacy backend is deleted, under
-  the ratchet in [RFC 0028](0028-direct3d9-device-adapter.md) decision 10.
+  the ratchet in [RFC 0028](0028-direct3d9-device-adapter.md) decision 10. ToGL, ToGLES, DXVK
+  Native and `shaderapidx9` were deleted the same day.
 - Running D3D bytecode from mod shader DLLs on adapters other than D3D9
   (RFC 0028 runs it on the D3D9 adapter only)
   ([Mod shader DLLs](#mod-shader-dlls)).

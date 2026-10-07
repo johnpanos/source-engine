@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Release flavor of ./play (RFC 0023): native Vulkan Portal from build-release,
 # configured like build/ plus --product-flavor=release and LTO, staged into
-# run/runtime-release. Arguments are ./play's (the dxvk backend is not offered).
+# run/runtime-release. Arguments are ./play's.
 set -euo pipefail
 cd "$(dirname "$0")"
 if [ ! -d build-release/c4che ]; then

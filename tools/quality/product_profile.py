@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 
 
-DEFAULT_PROFILE = Path(__file__).resolve().parents[2] / "quality/product_profiles/portal-linux-wayland.json"
+DEFAULT_PROFILE = Path(__file__).resolve().parents[2] / "quality/product_profiles/portal-linux-wayland-native-vulkan.json"
 MAX_MEMBERS = 8192
 MAX_EXPANDED_BYTES = 512 * 1024 * 1024
 
@@ -50,8 +50,9 @@ def load_profile(path=DEFAULT_PROFILE):
         for name, version in profile["dependencies"]["pkg_config"].items():
             if not re.fullmatch(r"[A-Za-z0-9_.+-]+", name) or not isinstance(version, str) or not version:
                 raise ProfileError("invalid pkg-config dependency pin")
-        if "dxvk_native" in profile["dependencies"]:
-            dep = profile["dependencies"]["dxvk_native"]
+        for name, dep in profile["dependencies"].items():
+            if name == "pkg_config" or not isinstance(dep, dict) or "url" not in dep:
+                continue
             parsed = urllib.parse.urlparse(dep["url"])
             if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
                 raise ProfileError("dependency downloads require a public HTTPS URL")
@@ -246,7 +247,7 @@ class _HTTPSRedirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, fp, code, message, headers, newurl)
 
 
-def fetch_dependency(profile, cache_dir, name="dxvk_native"):
+def fetch_dependency(profile, cache_dir, name):
     dependency = profile["dependencies"][name]
     cache = Path(cache_dir)
     cache.mkdir(parents=True, exist_ok=True)
@@ -283,18 +284,22 @@ def main(argv=None):
     parser.add_argument("action", choices=("fetch", "check"))
     parser.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
     parser.add_argument("--cache-dir", type=Path, default=Path("build/dependencies"))
-    parser.add_argument("--dxvk-root", type=Path)
+    parser.add_argument("--dependency", help="a pinned archive dependency the profile declares")
+    parser.add_argument("--root", type=Path, help="check: the dependency's extracted prefix")
     parser.add_argument("--cxx")
     args = parser.parse_args(argv)
     try:
         profile = load_profile(args.profile)
         if args.action == "fetch":
-            print(fetch_dependency(profile, args.cache_dir))
+            if args.dependency is None:
+                parser.error("fetch requires --dependency")
+            print(fetch_dependency(profile, args.cache_dir, args.dependency))
         else:
-            if args.dxvk_root is None:
-                parser.error("check requires --dxvk-root")
             result = check_environment(profile, cxx=args.cxx)
-            result["dependency"] = verify_dependency(profile, "dxvk_native", args.dxvk_root)
+            if args.dependency is not None:
+                if args.root is None:
+                    parser.error("--dependency requires --root")
+                result["dependency"] = verify_dependency(profile, args.dependency, args.root)
             result["profile"] = profile["id"]
             print(json.dumps(result, indent=2, sort_keys=True))
         return 0

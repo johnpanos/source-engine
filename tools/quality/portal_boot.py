@@ -206,37 +206,18 @@ def install_build(build, stage, game="portal", launcher_name="hl2_launcher", too
     # Waf gives single-game products an unqualified game/client output path.
     # Read only its literal game selection, never execute the Python cache.
     selected_games = set()
-    native_library_paths, native_roots, profiles = set(), set(), set()
     for cache in (build / "c4che").rglob("*_cache.py"):
         for line in cache.read_text().splitlines():
             key, separator, literal = line.partition(" = ")
-            if not separator or key not in {"GAMES", "LIBPATH_DXVK", "DXVK_ROOT", "PRODUCT_PROFILE"}:
+            if not separator or key != "GAMES":
                 continue
             try:
                 value = ast.literal_eval(literal)
             except (ValueError, SyntaxError) as error:
                 raise ValueError("invalid literal Waf setting: " + key) from error
-            if key == "LIBPATH_DXVK":
-                if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-                    raise ValueError("invalid Waf DXVK search paths")
-                native_library_paths.update(Path(item).resolve() for item in value)
-            else:
-                if not isinstance(value, str):
-                    raise ValueError("invalid literal Waf setting: " + key)
-                {"GAMES": selected_games, "DXVK_ROOT": native_roots,
-                 "PRODUCT_PROFILE": profiles}[key].add(value)
-    if native_library_paths:
-        if len(native_roots) != 1 or len(profiles) != 1:
-            raise ValueError("DXVK staging requires one configured product profile and dependency root")
-        profile = product_profile.load_profile(next(iter(profiles)))
-        prefix = Path(next(iter(native_roots)))
-        dependency = profile["dependencies"]["dxvk_native"]
-        product_profile.verify_dependency(profile, "dxvk_native", prefix)
-        directory = (prefix / dependency["library_directory"]).resolve()
-        if native_library_paths != {directory}:
-            raise ValueError("DXVK search paths differ from the verified product profile")
-        for library in sorted(directory.glob("lib%s.so*" % dependency["link_library"])):
-            sources["bin/" + library.name] = library
+            if not isinstance(value, str):
+                raise ValueError("invalid literal Waf setting: " + key)
+            selected_games.add(value)
     for source in products + launchers:
         relative = source.relative_to(build)
         if source.name == launcher_name:
@@ -418,9 +399,7 @@ def evaluate(log, screenshots, returncode, timed_out, map_name, requirements, lo
     if re.search(r"Couldn't load (?:combo|vertex shader|pixel shader)|Using invalid shader combo", log):
         failures.append("required shader artifact or permutation was unavailable")
     markers = {
-        "vulkan": (r"\[NativeVulkan\] IShaderAPI::SetMode: device [^\n]+ up\b"
-                   if renderer == "native-vulkan" else
-                   r"RFC0001 renderer: provider=vulkan-compat\b"),
+        "vulkan": r"\[NativeVulkan\] IShaderAPI::SetMode: device [^\n]+ up\b",
         "sdl3": r"RFC0001 window: provider=sdl3\b",
         "wayland": r"RFC0001 window: provider=sdl3 driver=wayland\b",
     }
@@ -838,7 +817,7 @@ def main(argv=None):
     parser.add_argument("--physics", default="vphysics",
                         help="physics provider module name (e.g. vphysics, vphysics_box3d)")
     parser.add_argument("--renderer", default=None,
-                        help="render provider id (e.g. vulkan-compat, native-vulkan); engine default if unset")
+                        help="render provider id (e.g. native-vulkan, null); engine default if unset")
     parser.add_argument("--no-mouse", action="store_true",
                         help="disable mouse input for repeatable windowed camera captures")
     parser.add_argument("--width", type=int, default=1024)
@@ -986,8 +965,6 @@ def main(argv=None):
             environment["GDK_BACKEND"] = "wayland"
             environment["SDL_VIDEO_DRIVER"] = "wayland"
             environment["SDL_VIDEODRIVER"] = "wayland"
-        if args.require_vulkan:
-            environment["DXVK_WSI_DRIVER"] = "SDL3"
         if args.headless:
             # SDL3's offscreen driver: real GPU rendering through
             # VK_EXT_headless_surface, no window, compositor or display.

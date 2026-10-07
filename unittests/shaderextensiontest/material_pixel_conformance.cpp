@@ -292,9 +292,6 @@ bool CMaterialPixelApp::Create()
 
 	// The same render catalog the product's composition root offers.
 	const render::LegacyShaderProvider *catalog[] = {
-#if defined( LINKED_DX9_BACKEND )
-	    Dx9ShaderBackend_Describe(),
-#endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 	    NativeVulkanShaderBackend_Describe(),
 #endif

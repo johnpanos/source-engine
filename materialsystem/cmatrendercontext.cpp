@@ -20,9 +20,6 @@
 #include "tier1/fmtstr.h"
 #include "tier0/icommandline.h"
 #ifndef DEDICATED
-#if defined( DX_TO_GL_ABSTRACTION )
-#include "togl/rendermechanism.h"
-#endif
 #endif
 
 // NOTE: This must be the last file included!!!
@@ -1083,12 +1080,6 @@ void CMatRenderContext::OnReleaseShaderObjects()
 	m_pBoundMorph = NULL;
 }
 
-#ifdef DX_TO_GL_ABSTRACTION
-void CMatRenderContext::DoStartupShaderPreloading( void )
-{
-	g_pShaderDevice->DoStartupShaderPreloading();
-}
-#endif
 
 void CMatRenderContext::TextureManagerUpdate()
 {

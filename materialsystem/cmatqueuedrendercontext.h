@@ -590,9 +590,6 @@ public:
 	virtual void							PrintfVA( char *fmt, va_list vargs ){};
 	virtual float							Knob( char *knobname, float *setvalue=NULL ) { return 0.0f; };
 	
-#ifdef DX_TO_GL_ABSTRACTION
-	void									DoStartupShaderPreloading( void ) {};
-#endif
 
 private:
 	void QueueMatrixSync();

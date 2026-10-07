@@ -5,7 +5,7 @@
 //
 //=============================================================================//
 
-#if defined( _WIN32 ) && !defined( DX_TO_GL_ABSTRACTION )
+#if defined( _WIN32 )
 #include <windows.h>
 #endif
 #include "tier0/platform.h"
@@ -15,7 +15,7 @@
 // Should be last include
 #include "tier0/memdbgon.h"
 
-#if defined( _WIN32 ) && !defined( NO_X360_XDK ) && !defined( DX_TO_GL_ABSTRACTION )
+#if defined( _WIN32 ) && !defined( NO_X360_XDK )
 // the x86 version of the 360 (used by win32 tools)
 // It would have been nice to use the 360 D3DFORMAT bit encodings, but the codes
 // are different for WIN32, and this routine is used by a WIN32 library to

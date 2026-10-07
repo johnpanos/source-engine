@@ -1838,11 +1838,6 @@ public:
 		pFallbackShader[0] = 0;
 	}
 
-#ifdef DX_TO_GL_ABSTRACTION
-	virtual void DoStartupShaderPreloading( void )
-	{
-	}
-#endif
 
 	// Blit a subrect of the current render target to another texture
 	virtual void CopyRenderTargetToTextureEx( ITexture *pTexture, int nRenderTargetID, Rect_t *pSrcRect, Rect_t *pDstRect = NULL )

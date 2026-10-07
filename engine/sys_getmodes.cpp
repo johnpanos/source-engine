@@ -1064,9 +1064,6 @@ void CVideoMode_Common::DrawStartupGraphic()
 		}
 	}
 
-#ifdef DX_TO_GL_ABSTRACTION
-	g_pMaterialSystem->DoStartupShaderPreloading();
-#endif
 
     pMaterial->Release();
     pLoadingMaterial->Release();

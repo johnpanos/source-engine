@@ -1908,9 +1908,6 @@ public:
 	virtual void RefreshFrontBufferNonInteractive() {}
 	virtual void HandleThreadEvent( uint32 threadEvent ) {}
 
-#ifdef DX_TO_GL_ABSTRACTION
-	virtual void DoStartupShaderPreloading( void ) {}
-#endif
 
 	virtual char *GetDisplayDeviceName() OVERRIDE { return ""; }
 

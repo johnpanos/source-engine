@@ -56,12 +56,7 @@ ConVar mat_requires_rt_alloc_first( "mat_requires_rt_alloc_first", "0", FCVAR_HI
 // Make sure this convar gets created before videocfg.lib is initialized, so it can be driven by dxsupport.cfg
 static ConVar mat_tonemapping_occlusion_use_stencil( "mat_tonemapping_occlusion_use_stencil", "0" );
 
-#ifdef DX_TO_GL_ABSTRACTION
-// In GL mode, we currently require mat_dxlevel to be between 90-92
-static ConVar mat_dxlevel( "mat_dxlevel", "92", 0, "", true, 90, true, 92, NULL );
-#else
 static ConVar mat_dxlevel( "mat_dxlevel", "0", 0, "Current DirectX Level. Competitive play requires at least mat_dxlevel 90", false, 0, false, 0, true, 90, false, 0, NULL  );
-#endif
 
 IMaterialInternal *g_pErrorMaterial = NULL;
 
@@ -2220,11 +2215,7 @@ void CMaterialSystem::ReadConfigFromConVars( MaterialSystem_Config_t *pConfig )
 	pConfig->m_fGammaTVExponent = mat_monitorgamma_tv_exp.GetFloat();
 	pConfig->m_bGammaTVEnabled = mat_monitorgamma_tv_enabled.GetBool();
 
-#ifdef TOGLES
-	pConfig->m_nAASamples = 0;
-#else
 	pConfig->m_nAASamples = mat_antialias.GetInt();
-#endif
 
 	pConfig->m_nAAQuality = mat_aaquality.GetInt();
 	pConfig->bShowDiffuse = mat_diffuse.GetInt() ? true : false;	
@@ -2239,11 +2230,7 @@ void CMaterialSystem::ReadConfigFromConVars( MaterialSystem_Config_t *pConfig )
 	pConfig->nShowMipLevels = mat_showmiplevels.GetInt();
 	pConfig->bReverseDepth = mat_reversedepth.GetInt() ? true : false;
 
-#ifdef DX_TO_GL_ABSTRACTION
-	pConfig->bBufferPrimitives = false; // nillerusr: causes rendering bugs and sefaults with nvidia driver
-#else
 	pConfig->bBufferPrimitives = mat_bufferprimitives.GetInt() ? true : false;
-#endif
 
 	pConfig->bDrawFlat = mat_drawflat.GetInt() ? true : false;
 	pConfig->bSoftwareLighting = mat_softwarelighting.GetInt() ? true : false;
@@ -2807,7 +2794,6 @@ bool CMaterialSystem::OverrideConfig( const MaterialSystem_Config_t &_config, bo
 	// In GL, we just check this and it's just a function call--no need for device shenanigans.
 	// Windowed toggles also reach the device: a presenter that owns its present
 	// mode (native Vulkan) honours vsync in a window.
-#if !defined( DX_TO_GL_ABSTRACTION )
 	if ( config.WaitForVSync() != g_config.WaitForVSync() )
 	{
 		{
@@ -2818,7 +2804,6 @@ bool CMaterialSystem::OverrideConfig( const MaterialSystem_Config_t &_config, bo
 			bVideoModeChange = true;
 		}
 	}
-#endif
 
 	g_config = config;
 	g_config_internal = config_internal;
@@ -4568,12 +4553,6 @@ void CMaterialSystem::GetShaderFallback( const char *pShaderName, char *pFallbac
 //-----------------------------------------------------------------------------
 // Triggers OpenGL shader preloading at game startup
 //-----------------------------------------------------------------------------
-#ifdef DX_TO_GL_ABSTRACTION
-void	CMaterialSystem::DoStartupShaderPreloading( void )
-{
-	GetRenderContextInternal()->DoStartupShaderPreloading();
-}
-#endif
 
 
 void CMaterialSystem::SwapBuffers( void )

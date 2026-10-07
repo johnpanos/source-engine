@@ -65,7 +65,6 @@ python3 tools/quality/stage_runtime.py \
 cd "$RUNTIME"
 export SDL_VIDEODRIVER="$SDL_VIDEODRIVER"
 export SDL_VIDEO_DRIVER="$SDL_VIDEODRIVER"
-export DXVK_WSI_DRIVER=SDL3
 export SteamAppId=400 SteamGameId=400
 export LD_LIBRARY_PATH="$PWD/bin:${LD_LIBRARY_PATH:-}"
 

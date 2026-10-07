@@ -3721,35 +3721,19 @@ void CShadowMgr::DrawFlashlightDepthTexture( )
 			meshBuilder.Begin( pMesh, MATERIAL_QUADS, 1 );
 
 			meshBuilder.Position3f( wOffset, hOffset, 0.0f );
-#ifdef DX_TO_GL_ABSTRACTION
-			meshBuilder.TexCoord2f( 0, 0.0f, 1.0f );					// Posix is rotated due to render target origin differences
-#else
 			meshBuilder.TexCoord2f( 0, 0.0f, 0.0f );
-#endif
 			meshBuilder.AdvanceVertex();
 
 			meshBuilder.Position3f( wOffset + w, hOffset, 0.0f );
-#ifdef DX_TO_GL_ABSTRACTION
-			meshBuilder.TexCoord2f( 0, 0.0f, 0.0f );
-#else
 			meshBuilder.TexCoord2f( 0, 1.0f, 0.0f );
-#endif
 			meshBuilder.AdvanceVertex();
 
 			meshBuilder.Position3f( wOffset + w, hOffset + h, 0.0f );
-#ifdef DX_TO_GL_ABSTRACTION
-			meshBuilder.TexCoord2f( 0, 1.0f, 0.0f );
-#else
 			meshBuilder.TexCoord2f( 0, 1.0f, 1.0f );
-#endif
 			meshBuilder.AdvanceVertex();
 
 			meshBuilder.Position3f( wOffset, hOffset + h, 0.0f );
-#ifdef DX_TO_GL_ABSTRACTION
-			meshBuilder.TexCoord2f( 0, 1.0f, 1.0f );
-#else
 			meshBuilder.TexCoord2f( 0, 0.0f, 1.0f );
-#endif			
 			meshBuilder.AdvanceVertex();
 
 			meshBuilder.End();
