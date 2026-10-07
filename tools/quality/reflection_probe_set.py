@@ -251,20 +251,23 @@ def candidate_bytes(count):
 
 
 def candidate_grid(probes, bounds=None):
-    """The CANDIDATE_DIM^3 grid over the local probes' reach. `bounds` (world
-    min, max) limits it to where surfaces can be: a probe whose fitted box
-    reaches past the world (a depth fit that saw the void) would otherwise
-    stretch every cell over the whole map. Masks stay conservative inside the
+    """The CANDIDATE_DIM^3 grid over the local probes' reach, or over `bounds`
+    (world min, max) when given: where every surface can be, so no surface
+    point is outside it, and a probe whose fitted box reaches past the world
+    (a depth fit that saw the void) cannot stretch the cells. Masks stay conservative inside the
     grid and every rank is a candidate outside it, so bounds change only the
     candidates visited, never a weight."""
     local = [p for p in probes if not p["global"]] or probes
     low = np.min([p["influence_min"] - p["fade"] for p in local], axis=0)
     high = np.max([p["influence_max"] + p["fade"] for p in local], axis=0)
     if bounds is not None:
-        low = np.maximum(low, np.asarray(bounds[0], dtype=np.float64))
-        high = np.minimum(high, np.asarray(bounds[1], dtype=np.float64))
+        # The grid covers every surface the world can have, so no point falls
+        # outside it (where every rank would be a candidate); cells beyond
+        # every local probe hold only the probes that reach them.
+        low = np.asarray(bounds[0], dtype=np.float64)
+        high = np.asarray(bounds[1], dtype=np.float64)
         if np.any(high <= low):
-            raise RprbError("InvalidCandidates", "the bounds miss every local probe")
+            raise RprbError("InvalidCandidates", "empty world bounds")
     step = 2.0 ** math.ceil(math.log2(max(1.0, float(np.max(high - low)) /
                                        (CANDIDATE_DIM - 1))))
     origin = np.floor(low / step) * step

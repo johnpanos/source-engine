@@ -657,9 +657,18 @@ class RegridTest(unittest.TestCase):
         self.assertEqual(baked[:end], regridded[:end])
         self.assertEqual(regridded[end:], self.data[end:])
 
-    def test_bounds_missing_every_probe_are_refused(self):
+    def test_empty_bounds_are_refused(self):
         with self.assertRaises(rps.RprbError):
-            rps.regrid(self.data, (np.full(3, 9e5), np.full(3, 9.5e5)))
+            rps.regrid(self.data, (np.full(3, 9e5), np.full(3, 9e5)))
+
+    def test_grid_covers_the_bounds(self):
+        # Every point of the world bounds is inside the grid, so no surface
+        # point falls back to every rank being a candidate.
+        low, high = np.array([-40.0, -30.0, -20.0]), np.array([50.0, 60.0, 10.0])
+        grid = rps.read(rps.regrid(self.data, (low, high)))["candidates"]
+        origin, step = np.asarray(grid["origin"]), float(grid["step"])
+        self.assertTrue(np.all(origin <= low))
+        self.assertTrue(np.all(origin + step * rps.CANDIDATE_DIM >= high))
 
 
 class PlacementTest(unittest.TestCase):

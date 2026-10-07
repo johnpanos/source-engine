@@ -12097,3 +12097,7 @@ intro4 demo, RTX 3070, fullscreen 4K, first run of the new binaries (a
 cold pipeline cache): frame p50 36.1 → 20.0 ms, GPU p50 33.9 → 17.7 ms,
 render-thread CPU p50 7.4 ms; the mean (29.0 fps) and p99 (250 ms) carry
 the run's first-use shader compiles. No gate closes.
+
+## RPRB candidate grid covers the world bounds (2026-10-06, user request)
+
+`reflection_probe_set.py`'s candidate grid now spans the world bounds instead of the probes' extent, so no surface falls outside it (where every probe rank was a candidate). `sp_a1_intro4_relit` regridded: candidates per pixel mean 46.8 → 8.0 (median 14 → 6, max 23). Warm 4K intro4 demo on the RTX 3070 (soft shadows and probe bounce off): 44.6/45.3 → 45.9/46.0 fps, GPU p50 17.9 → 17.0 ms. Term sweep after the fix (core view saved / mean ΔE): clustered lights 7.1 ms / 4.03, reflection probes 4.7 ms / 0.71, shadow visibility 4.0 ms / 12.6, projected 0.7 ms / 1.26. The three `PlacementTest` failures predate this change.
