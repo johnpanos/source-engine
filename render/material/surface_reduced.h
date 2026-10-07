@@ -14,7 +14,9 @@
 //			           the vertex colour (unlit: when $vertexcolor),
 //			           the static prop's baked vertex colour x 2, or
 //			           the model's ambient cube and four lights evaluated per
-//			           vertex (spot cones and half-Lambert dropped) x 2;
+//			           vertex (spot cones and half-Lambert dropped) x 2 (a
+//			           model draw, or the pbr point's world geometry without
+//			           a baked lightmap: a model handed over as world geometry);
 //			  self-illumination (base alpha) mixes in base x $selfillumtint;
 //			  the alpha test is the GPU's (reference from $alphatest), the
 //			  blend the port's.
@@ -42,7 +44,9 @@ enum class ReducedVertex : std::uint8_t
 {
 	kFlat,        // flat and world layouts: the vertex colour under $vertexcolor
 	kStaticLight, // world layout, a static prop's baked vertex light
-	kModel        // model layout: per-vertex model lighting
+	kModel,       // model layout: per-vertex model lighting
+	kWorldLit     // world layout in world space (a model draw handed over as
+	              // world geometry): per-vertex model lighting, no transform
 };
 
 struct ReducedPoint

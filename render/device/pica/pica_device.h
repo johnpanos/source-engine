@@ -52,6 +52,11 @@ struct BufferRecord
 	std::byte *data = nullptr; // linear memory
 	ResourceUsage usage = ResourceUsage::kUndefined;
 	bool released = false;
+	// The submission count when it was made, and whether a write reached it:
+	// a buffer's first write before any submission since its creation is
+	// copied in at record time (no command can have read it yet), not staged.
+	std::uint64_t createdAt = 0;
+	bool written = false;
 };
 
 struct TextureRecord
@@ -116,6 +121,13 @@ struct PipelineRecord
 	std::array<bool, kMaxBindGroups> layoutHasBindings{};
 	bool released = false;
 };
+
+// The memory audit (pica_device.cpp): checks the guard bands around every
+// linear allocation, the `span` bytes nearest its edges, printing each newly
+// broken one; returns how many are broken.
+std::size_t CheckGuards( std::size_t span );
+// PicaAdapterOptions::guardLinearMemory, applied by Create.
+void EnableGuardBands( bool enabled );
 
 class PicaDevice final : public IRenderDevice2,
                          public recording::IUploadStager,
@@ -196,6 +208,13 @@ private:
 	// citro3d frame; Drain submits it and waits.
 	void OpenFrame();
 	void Drain();
+	// 32-bit indices narrowed for the GPU (replay.cpp): scratch linear memory
+	// for one draw, freed when the frame drains; and the count of draws that
+	// could not be narrowed.
+	std::uint16_t *IndexScratch( std::uint32_t count );
+	void NoteUnnarrowableDraw();
+	std::vector<std::uint16_t *> m_IndexScratch;
+	std::uint64_t m_UnnarrowableDraws = 0;
 	// The CPU is about to read or write these resources: drains first when
 	// work the GPU may not have finished uses one of them.
 	void BeforeCpuAccess( std::initializer_list<std::uint64_t> resources );

@@ -81,6 +81,12 @@ struct LevelLayout
 	std::uint32_t storedHeight = 0;
 	std::uint64_t offset = 0; // from the texture's first byte
 	std::uint64_t bytes = 0;
+	// A sampleable texture smaller than a tile (a 1x1 neutral texture) is
+	// stored stretched over the whole tile, each texel repeated stretchX by
+	// stretchY times, so the GPU (8x8 at least) samples the same texels at
+	// every coordinate. 1 for every other level.
+	std::uint32_t stretchX = 1;
+	std::uint32_t stretchY = 1;
 };
 
 struct TextureLayout

@@ -1645,6 +1645,12 @@ bool CMDLCache::BuildHardwareData( MDLHandle_t handle, studiodata_t *pStudioData
 	if ( bLoaded )
 	{
 		pStudioData->m_nFlags |= STUDIODATA_FLAGS_STUDIOMESH_LOADED;
+#if defined( PLATFORM_3DS )
+		// The meshes hold the vertices now: the VVD copy (15 MB on
+		// sp_a1_intro4) is released, and a later user (decals, flex) reloads it
+		// through the cache (the 3DS memory audit, 2026-10-07).
+		Flush( handle, MDLCACHE_FLUSH_VERTEXES );
+#endif
 	}
 	else
 	{

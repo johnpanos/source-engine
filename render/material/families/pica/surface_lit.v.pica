@@ -1,0 +1,192 @@
+; The reduced 3DS material model's lit world vertex (RFC 0026 decision 8,
+; render/material/surface_reduced.h): a model draw handed over as world
+; geometry (SurfaceWorldVertex: position, normal and uv in world space, the
+; pbr point on a map without a stage), lit by the draw's ModelLighting like
+; surface_model.v.pica. c0-c3: world-to-clip rows; c4-c7: the object-to-world
+; slot (the foliage root, not applied: the vertex is already world space);
+; c8-c34: ModelLighting. Out as surface_model.v.pica.
+
+.fvec toClip[4]
+.fvec world[4]
+.fvec lighting[27]
+
+.constf k(1.0, 0.5, 0.0, 0.0001)
+
+.out outpos position
+.out outclr color
+.out outtc0 texcoord0
+
+.alias inpos v0
+.alias innormal v1
+.alias inuv v3
+
+.proc main
+	mov r0.xyz, inpos
+	mov r0.w, k.xxxx
+	dp4 r1.x, toClip[0], r0
+	dp4 r1.y, toClip[1], r0
+	dp4 r1.z, toClip[2], r0
+	dp4 r1.w, toClip[3], r0
+	mov r1.z, -r1.zzzz
+	mov outpos, r1
+
+	mov r2, k.xxxx
+	mov r2.x, inuv.xxxx
+	add r2.y, k.xxxx, -inuv.yyyy
+	mov outtc0, r2
+
+	; r3: world position; r4: world normal, normalized (both given in world space)
+	mov r3, r0
+	mov r4.xyz, innormal
+	mov r4.w, k.zzzz
+	dp3 r6.x, r4, r4
+	max r6.x, k.wwww, r6.xxxx
+	rsq r6.x, r6.xxxx
+	mul r4, r4, r6.xxxx
+
+	; r7: the ambient cube, n^2 weighting the cube face each axis faces
+	mul r8, r4, r4
+	sge r9, r4, k.zzzz
+
+	mov r10, lighting[1]
+	mov r11, lighting[2]
+	add r10, r10, -r11
+	mul r10, r9.xxxx, r10
+	add r10, r10, r11
+	mul r7, r8.xxxx, r10
+	mov r10, lighting[3]
+	mov r11, lighting[4]
+	add r10, r10, -r11
+	mul r10, r9.yyyy, r10
+	add r10, r10, r11
+	mad r7, r8.yyyy, r10, r7
+	mov r10, lighting[5]
+	mov r11, lighting[6]
+	add r10, r10, -r11
+	mul r10, r9.zzzz, r10
+	add r10, r10, r11
+	mad r7, r8.zzzz, r10, r7
+	; light 0
+	mov r12, lighting[9]
+	add r12, r12, -r3
+	dp3 r13.x, r12, r12
+	max r13.x, k.wwww, r13.xxxx
+	rsq r13.y, r13.xxxx
+	mul r12, r12, r13.yyyy
+	rcp r13.z, r13.yyyy
+	mov r14, lighting[11]
+	mul r15.x, r14.yyyy, r13.zzzz
+	add r15.x, r14.xxxx, r15.xxxx
+	mul r15.y, r14.zzzz, r13.xxxx
+	add r15.x, r15.xxxx, r15.yyyy
+	max r15.x, k.wwww, r15.xxxx
+	rcp r15.x, r15.xxxx
+	mov r14, lighting[7]
+	mov r10, lighting[8]
+	mov r10, -r10
+	add r10, r10, -r12
+	mul r10, r14.wwww, r10
+	add r12, r12, r10
+	add r15.y, k.xxxx, -r15.xxxx
+	mul r15.y, r14.wwww, r15.yyyy
+	add r15.x, r15.xxxx, r15.yyyy
+	dp3 r10.x, r4, r12
+	max r10.x, k.zzzz, r10.xxxx
+	mul r10.x, r10.xxxx, r15.xxxx
+	mad r7, r14, r10.xxxx, r7
+	; light 1
+	mov r12, lighting[14]
+	add r12, r12, -r3
+	dp3 r13.x, r12, r12
+	max r13.x, k.wwww, r13.xxxx
+	rsq r13.y, r13.xxxx
+	mul r12, r12, r13.yyyy
+	rcp r13.z, r13.yyyy
+	mov r14, lighting[16]
+	mul r15.x, r14.yyyy, r13.zzzz
+	add r15.x, r14.xxxx, r15.xxxx
+	mul r15.y, r14.zzzz, r13.xxxx
+	add r15.x, r15.xxxx, r15.yyyy
+	max r15.x, k.wwww, r15.xxxx
+	rcp r15.x, r15.xxxx
+	mov r14, lighting[12]
+	mov r10, lighting[13]
+	mov r10, -r10
+	add r10, r10, -r12
+	mul r10, r14.wwww, r10
+	add r12, r12, r10
+	add r15.y, k.xxxx, -r15.xxxx
+	mul r15.y, r14.wwww, r15.yyyy
+	add r15.x, r15.xxxx, r15.yyyy
+	dp3 r10.x, r4, r12
+	max r10.x, k.zzzz, r10.xxxx
+	mul r10.x, r10.xxxx, r15.xxxx
+	mad r7, r14, r10.xxxx, r7
+	; light 2
+	mov r12, lighting[19]
+	add r12, r12, -r3
+	dp3 r13.x, r12, r12
+	max r13.x, k.wwww, r13.xxxx
+	rsq r13.y, r13.xxxx
+	mul r12, r12, r13.yyyy
+	rcp r13.z, r13.yyyy
+	mov r14, lighting[21]
+	mul r15.x, r14.yyyy, r13.zzzz
+	add r15.x, r14.xxxx, r15.xxxx
+	mul r15.y, r14.zzzz, r13.xxxx
+	add r15.x, r15.xxxx, r15.yyyy
+	max r15.x, k.wwww, r15.xxxx
+	rcp r15.x, r15.xxxx
+	mov r14, lighting[17]
+	mov r10, lighting[18]
+	mov r10, -r10
+	add r10, r10, -r12
+	mul r10, r14.wwww, r10
+	add r12, r12, r10
+	add r15.y, k.xxxx, -r15.xxxx
+	mul r15.y, r14.wwww, r15.yyyy
+	add r15.x, r15.xxxx, r15.yyyy
+	dp3 r10.x, r4, r12
+	max r10.x, k.zzzz, r10.xxxx
+	mul r10.x, r10.xxxx, r15.xxxx
+	mad r7, r14, r10.xxxx, r7
+	; light 3
+	mov r12, lighting[24]
+	add r12, r12, -r3
+	dp3 r13.x, r12, r12
+	max r13.x, k.wwww, r13.xxxx
+	rsq r13.y, r13.xxxx
+	mul r12, r12, r13.yyyy
+	rcp r13.z, r13.yyyy
+	mov r14, lighting[26]
+	mul r15.x, r14.yyyy, r13.zzzz
+	add r15.x, r14.xxxx, r15.xxxx
+	mul r15.y, r14.zzzz, r13.xxxx
+	add r15.x, r15.xxxx, r15.yyyy
+	max r15.x, k.wwww, r15.xxxx
+	rcp r15.x, r15.xxxx
+	mov r14, lighting[22]
+	mov r10, lighting[23]
+	mov r10, -r10
+	add r10, r10, -r12
+	mul r10, r14.wwww, r10
+	add r12, r12, r10
+	add r15.y, k.xxxx, -r15.xxxx
+	mul r15.y, r14.wwww, r15.yyyy
+	add r15.x, r15.xxxx, r15.yyyy
+	dp3 r10.x, r4, r12
+	max r10.x, k.zzzz, r10.xxxx
+	mul r10.x, r10.xxxx, r15.xxxx
+	mad r7, r14, r10.xxxx, r7
+
+	; sqrt per channel, then halved
+	max r7, k.wwww, r7
+	rsq r11.x, r7.xxxx
+	rsq r11.y, r7.yyyy
+	rsq r11.z, r7.zzzz
+	mul r7.xyz, r7, r11
+	mul r7.xyz, k.yyyy, r7
+	mov r7.w, k.xxxx
+	mov outclr, r7
+	end
+.end

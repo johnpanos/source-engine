@@ -734,7 +734,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		SurfaceTextures textures;
 		auto request = s.lightmapped->Program().Request( variant, constants, textures );
 		if ( !request )
-			return foundation::MakeUnexpected( std::string( "a depth pipeline was refused" ) );
+			return foundation::MakeUnexpected( "a depth pipeline was refused (" +
+			    s.lightmapped->Program().PipelineFailure() + ")" );
 		out.name = "depth";
 		out.request = std::move( request ).Value();
 		return out;
@@ -771,7 +772,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			    std::string( request.Error() == LightmappedStatus::kInvalidRequest
 			                     ? "its bump or env map term reads the surface vertex, and the "
 			                       "resolver's is flat"
-			                     : "a lightmapped pipeline was refused" ) );
+			                     : "a lightmapped pipeline was refused (" +
+			                           s.lightmapped->Program().PipelineFailure() + ")" ) );
 		out.name = "lightmapped";
 		out.request = std::move( request ).Value();
 		out.blend = claim.blend;
@@ -987,7 +989,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		auto request = s.lightmapped->Program().Request( variant, constants, textures );
 		if ( !request )
 			return foundation::MakeUnexpected(
-			    std::string( "the modern mesh pipeline was refused" ) );
+			    "the modern mesh pipeline was refused (" +
+			    s.lightmapped->Program().PipelineFailure() + ")" );
 		out.name = "pbr";
 		out.request = std::move( request ).Value();
 		out.blend = claim.blend;

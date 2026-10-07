@@ -238,7 +238,13 @@ public:
 
 
 	// cache 64 MB total
+#if defined( PLATFORM_3DS )
+	// One 1 MB read buffer on the 3DS (its heap is ~100 MB): content is one
+	// pack, read mostly in order at load (the memory audit, 2026-10-07).
+	static const int k_nCacheBuffersToKeep = 1;
+#else
 	static const int k_nCacheBuffersToKeep = 4;
+#endif
 	static const int k_cubCacheBufferSize = 0x00100000; // 1MB
 	static const int k_nCacheBufferMask = 0x7FF00000;
 

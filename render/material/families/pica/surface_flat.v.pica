@@ -1,11 +1,12 @@
 ; The reduced 3DS material model's flat and world vertex (RFC 0026 decision
 ; 8, render/material/surface_reduced.h): SurfaceFlatVertex's position, uv,
 ; lightmap uv and colour (a world vertex's other attributes are not read).
-; c0-c3: the draw's world-to-clip rows (FamilyDrawConstants); c4-c5: the
+; c0-c3: the draw's world-to-clip rows (FamilyDrawConstants); c8-c9: the
 ; material's tint and flags (SurfaceConstants; flags.x is $vertexcolor).
 ; Writes PICA clip space (z negated) and PVS1's texture coordinates (u, 1 - v).
 
 .fvec toClip[4]
+.fvec world[4] ; the draw-constant block's second half (c4-c7, FamilyDrawConstants)
 .fvec material[2]
 
 .constf k(1.0, 0.00392156862745098, 0.0, 0.0)

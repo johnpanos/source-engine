@@ -25,7 +25,9 @@ DeviceResult<std::unique_ptr<IRenderDevice2>> CreateFromRequest( const DeviceReq
 	if ( auto missing = FirstMissing( AdapterFacts().capabilities, request.required ) )
 		return foundation::Unexpected<DeviceError>( DeviceError{ DeviceStatus::kUnsupported,
 		    DeviceOperation::kCreateDevice, static_cast<std::int32_t>( *missing ) } );
-	return Create( PicaAdapterOptions{} );
+	PicaAdapterOptions options;
+	options.guardLinearMemory = request.validation;
+	return Create( options );
 }
 
 } // namespace
@@ -63,6 +65,7 @@ DeviceResult<std::unique_ptr<IRenderDevice2>> Create( const PicaAdapterOptions &
 		return foundation::Unexpected<DeviceError>(
 		    DeviceError{ DeviceStatus::kInvalidDescription, DeviceOperation::kCreateDevice } );
 #if defined( __3DS__ )
+	EnableGuardBands( options.guardLinearMemory );
 	auto device = std::make_unique<PicaDevice>( options );
 	if ( auto initialized = device->Initialize(); !initialized )
 		return foundation::MakeUnexpected( initialized.Error() );

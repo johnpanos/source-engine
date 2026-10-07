@@ -51,6 +51,8 @@ bool CorePanels::DrawPanel( const RenderCorePanel &panel, const float worldToCli
 		m_LastRefusal = std::move( why );
 		return false;
 	};
+	if ( !m_Compute )
+		return refuse( "the device has no compute (the panel image's mip chain)" );
 	legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots();
 	if ( !slots )
 		return refuse( "the backend has no core-pass slots" );

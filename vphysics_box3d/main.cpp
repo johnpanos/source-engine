@@ -5,6 +5,7 @@
 #include "vphysics/step_profile.h"
 #include "vstdlib/jobthread.h"
 #include "tier0/dbg.h"
+#include "tier0/memalloc.h"
 #include "utlmap.h"
 
 #include "box3d/base.h"
@@ -34,6 +35,30 @@ static struct CBox3DLengthUnits
 		b3SetLogFcn( Box3DLog );
 	}
 } s_box3dLengthUnits;
+
+// Box3D allocates through tier0 (the memory audit, 2026-10-07): its default
+// allocator calls aligned_alloc directly, and its null check is an assert
+// compiled out of release builds, so on a full heap (the 3DS) b3GrowAlloc
+// wrote through a null pointer. tier0 ends the process with a named
+// out-of-memory error instead. Installed at static initialization, before
+// any collision model or world is made.
+namespace
+{
+void *Box3DAlloc( size_t size, int32_t alignment )
+{
+	return MemAlloc_AllocAligned( size, size_t( alignment ) );
+}
+
+void Box3DFree( void *mem, size_t )
+{
+	MemAlloc_FreeAligned( mem );
+}
+
+struct Box3DAllocator
+{
+	Box3DAllocator() { b3SetAllocator( Box3DAlloc, Box3DFree ); }
+} s_Box3DAllocator;
+} // namespace
 
 class CPhysicsInterfaceBox3D : public IPhysics {
 public:

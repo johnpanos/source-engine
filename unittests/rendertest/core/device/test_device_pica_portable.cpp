@@ -588,8 +588,30 @@ void LayoutCases( testing::Checks &checks )
 	TextureLayout small;
 	checks.That( LayoutOf( Format::kRGBA8Unorm, 4, 4, 1, small ) &&
 	                 small.levels[0].storedWidth == 8 && small.levels[0].storedHeight == 8 &&
-	                 small.sampledLevels == 0 && small.bytes == 256,
-	    "P8 a 4x4 texture takes one tile and cannot be sampled" );
+	                 small.sampledLevels == 1 && small.levels[0].stretchX == 2 &&
+	                 small.levels[0].stretchY == 2 && small.bytes == 256,
+	    "P8 a 4x4 texture takes one tile, stretched over it (2x2 per texel), sampled" );
+	{
+		// Each port texel fills its stretched block; a copy out reads it back.
+		std::array<std::byte, 4 * 4 * 4> port{};
+		for ( std::size_t i = 0; i < port.size(); ++i )
+			port[i] = std::byte( i * 7 + 1 );
+		std::vector<std::byte> stored( std::size_t( small.bytes ) );
+		CopyIn( Format::kRGBA8Unorm, small.levels[0], stored.data(), 0, 0, 4, 4, port.data() );
+		bool repeated = true;
+		for ( std::uint32_t y = 0; y < 8; ++y )
+			for ( std::uint32_t x = 0; x < 8; ++x )
+				repeated = repeated &&
+				           std::memcmp( &stored[std::size_t( TiledIndex( x, y, 8 ) ) * 4],
+				               &stored[std::size_t( TiledIndex( x & ~1u, y & ~1u, 8 ) ) * 4], 4 ) == 0;
+		std::array<std::byte, 4 * 4 * 4> back{};
+		CopyOut( Format::kRGBA8Unorm, small.levels[0], stored.data(), 0, 0, 4, 4, back.data() );
+		checks.That( repeated, "P8 a stretched texel repeats over its 2x2 block" );
+		checks.That( back == port, "P8 a stretched texture copies back unchanged" );
+	}
+	TextureLayout tinyEtc;
+	checks.That( LayoutOf( Format::kETC1Rgb, 4, 4, 1, tinyEtc ) && tinyEtc.sampledLevels == 0,
+	    "P8 a block format under a tile is not stretched (no texel to repeat)" );
 	TextureLayout chain;
 	const bool made = LayoutOf( Format::kRGBA8Unorm, 64, 32, 7, chain );
 	checks.That( made && chain.sampledLevels == 3, "P8 64x32: levels down to 16x8 are sampled" );

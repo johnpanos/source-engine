@@ -1025,6 +1025,7 @@ bool CSourceAppSystemGroup::Create()
 		// RFC 0026: the 3DS has one device, the core's; the shader API
 		// borrows it.
 		PicaShaderBackend_BindDevice( binding->device );
+		PicaShaderBackend_BindCorePassRecorder( binding->corePasses );
 #endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 		// RFC 0016 legacy device facade (F1): the material system reports the
@@ -1201,6 +1202,7 @@ void CSourceAppSystemGroup::Destroy()
 	NativeVulkanShaderBackend_BindCorePassRecorder( nullptr );
 #endif
 #if defined( LINKED_PICA_BACKEND )
+	PicaShaderBackend_BindCorePassRecorder( nullptr );
 	PicaShaderBackend_BindDevice( nullptr );
 #endif
 	RenderCore_Destroy( m_pRenderCore );

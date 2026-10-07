@@ -10,6 +10,7 @@
 #include "render/device/pica_codes.h"
 
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 
 #if defined( __3DS__ )
@@ -19,6 +20,8 @@ extern "C" const unsigned char surface_static_shbin[];
 extern "C" const unsigned surface_static_shbin_size;
 extern "C" const unsigned char surface_model_shbin[];
 extern "C" const unsigned surface_model_shbin_size;
+extern "C" const unsigned char surface_lit_shbin[];
+extern "C" const unsigned surface_lit_shbin_size;
 #endif
 
 namespace render::material
@@ -126,14 +129,16 @@ ReducedPoint ReduceSurface( const SurfaceVariant &variant )
 		return refuse( "portal masks (the stencil portal path is not reduced yet)" );
 	if ( variant.instanced )
 		return refuse( "instanced draws (the PICA200 draws no instances)" );
-	if ( variant.treeSwayMode != 0 )
-		return refuse( "tree sway (vertex deformation is not reduced yet)" );
 	for ( const Refused &refused : kRefusedTerms )
 		if ( variant.terms & refused.term )
 			return refuse( refused.reason );
 	for ( const Dropped &dropped : kDroppedTerms )
 		if ( variant.terms & dropped.term )
 			point.dropped.push_back( dropped.name );
+	// Foliage keeps its shape and loses its motion (the reduced vertex
+	// programs deform nothing).
+	if ( variant.treeSwayMode != 0 )
+		point.dropped.push_back( "tree sway (vertex deformation)" );
 	// The PICA200's fog unit is not driven: every point loses fog.
 	point.dropped.push_back( "fog" );
 
@@ -153,10 +158,17 @@ ReducedPoint ReduceSurface( const SurfaceVariant &variant )
 	}
 
 	const bool unlit = ( variant.terms & kSurfaceUnlit ) != 0;
-	const bool model = variant.layout == SurfaceVertexLayout::kModel;
+	// A model draw handed over as world geometry (the pbr point with no baked
+	// lightmap, on a map without a stage) is lit by the draw's model lighting
+	// like the model layout; every other world surface by its lightmap.
+	const bool worldLit = variant.layout != SurfaceVertexLayout::kModel && !unlit &&
+	                      !variant.staticVertexLight && ( variant.terms & kSurfacePbr ) &&
+	                      !( variant.terms & kSurfaceBakedLightmap );
+	const bool model = variant.layout == SurfaceVertexLayout::kModel || worldLit;
 	const bool selfIllum = ( variant.terms & kSurfaceSelfIllum ) != 0 &&
 	                       ( variant.terms & kSurfaceSelfIllumMask ) == 0 && !unlit;
-	point.vertex = model                       ? ReducedVertex::kModel
+	point.vertex = worldLit                 ? ReducedVertex::kWorldLit
+	               : model                     ? ReducedVertex::kModel
 	               : variant.staticVertexLight ? ReducedVertex::kStaticLight
 	                                           : ReducedVertex::kFlat;
 	// Self-illumination: base x $selfillumtint, kept in the combiner buffer.
@@ -207,9 +219,11 @@ ReducedPoint ReduceSurface( const SurfaceVariant &variant )
 std::vector<std::byte> ReducedVertexArtifact( ReducedVertex vertex )
 {
 #if defined( __3DS__ )
-	// families/pica/*.v.pica: toClip (and the model's object-to-world) in
-	// c0 on (the draw-constant block), then the material constants' tint
-	// and flags, then the model's lighting (ModelLighting, 27 registers).
+	// families/pica/*.v.pica: the draw-constant block in c0-c7 (toClip, and
+	// the world/model's object-to-world: FamilyDrawConstants is 128 bytes),
+	// then the material constants' tint and flags (c8-c9) or the model's
+	// lighting (c8 on, ModelLighting, 27 registers); picasso's own constants
+	// follow, clear of the block.
 	pf::VertexProgram program;
 	program.drawConstantRegister = 0;
 	const unsigned char *code = surface_flat_shbin;
@@ -217,7 +231,7 @@ std::vector<std::byte> ReducedVertexArtifact( ReducedVertex vertex )
 	switch ( vertex )
 	{
 	case ReducedVertex::kFlat:
-		program.uniforms = { { std::uint8_t( BindGroupRole::kMaterial ), 0, 4, 2 } };
+		program.uniforms = { { std::uint8_t( BindGroupRole::kMaterial ), 0, 8, 2 } };
 		break;
 	case ReducedVertex::kStaticLight:
 		code = surface_static_shbin;
@@ -226,6 +240,11 @@ std::vector<std::byte> ReducedVertexArtifact( ReducedVertex vertex )
 	case ReducedVertex::kModel:
 		code = surface_model_shbin;
 		size = surface_model_shbin_size;
+		program.uniforms = { { std::uint8_t( BindGroupRole::kDraw ), 2, 8, 27 } };
+		break;
+	case ReducedVertex::kWorldLit:
+		code = surface_lit_shbin;
+		size = surface_lit_shbin_size;
 		program.uniforms = { { std::uint8_t( BindGroupRole::kDraw ), 2, 8, 27 } };
 		break;
 	}
@@ -295,6 +314,11 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ReducedPipeline(
 	    { 3, VertexFormat::kUnorm8x4, 28, 0 } };
 	const VertexAttribute modelAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
 	    { 1, VertexFormat::kFloat3, 12, 0 }, { 3, VertexFormat::kFloat2, 40, 0 } };
+	// SurfaceWorldVertex's position, normal and uv.
+	static_assert( offsetof( SurfaceWorldVertex, uv ) == 12 &&
+	               offsetof( SurfaceWorldVertex, normal ) == 32 );
+	const VertexAttribute litAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
+	    { 1, VertexFormat::kFloat3, 32, 0 }, { 3, VertexFormat::kFloat2, 12, 0 } };
 	const VertexBufferLayout buffers[] = { { SurfaceVertexStride( variant.layout ), false } };
 	const BindGroupLayoutId layouts[] = {
 	    m_FrameLayout, m_ViewLayout, m_MaterialLayout, m_DrawLayout };
@@ -303,8 +327,10 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ReducedPipeline(
 	desc.stages = stages;
 	desc.layouts = layouts;
 	desc.drawConstantBytes = drawConstantBytes;
-	desc.vertex = { model ? std::span<const VertexAttribute>( modelAttributes )
-	                      : std::span<const VertexAttribute>( flatAttributes ),
+	desc.vertex = { point.vertex == ReducedVertex::kWorldLit
+	                    ? std::span<const VertexAttribute>( litAttributes )
+	                : model ? std::span<const VertexAttribute>( modelAttributes )
+	                        : std::span<const VertexAttribute>( flatAttributes ),
 	    buffers };
 	desc.topology = PrimitiveTopology::kTriangleList;
 	desc.raster.cull = variant.drawState.cull;

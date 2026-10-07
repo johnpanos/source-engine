@@ -27,8 +27,12 @@ namespace render::composition
 class CorePanels final : public IRenderCorePanels
 {
 public:
-	CorePanels( legacy::ILegacyFrontend &frontend, const frame::IRenderer &renderer )
-	    : m_Frontend( frontend ), m_Renderer( renderer )
+	// compute: whether the device has compute, which the pass needs for each
+	// panel image's mip chain; without it every panel is refused (the
+	// caller draws it) rather than taken and failed (RFC 0026: the PICA200).
+	CorePanels(
+	    legacy::ILegacyFrontend &frontend, const frame::IRenderer &renderer, bool compute )
+	    : m_Frontend( frontend ), m_Renderer( renderer ), m_Compute( compute )
 	{
 	}
 
@@ -49,6 +53,7 @@ public:
 private:
 	legacy::ILegacyFrontend &m_Frontend;
 	const frame::IRenderer &m_Renderer;
+	bool m_Compute = true;
 	const legacy::RenderCallQueueHost *m_Host = nullptr;
 	pass::panels::PanelPass m_Pass;
 	mutable std::mutex m_Lock; // m_LastRefusal

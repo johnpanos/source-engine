@@ -5564,8 +5564,16 @@ void WorldPass::RecordBatch(
 		const WorldView::DynamicDraw *source;
 		const Group *lit = nullptr; // the draw's own group, with its model lighting
 		PipelineId pipeline;        // the program's, or its static vertex light variant
+		// The draw's slices of the batch's buffers, in bytes.
+		std::uint64_t vertexOffset = 0;
+		std::uint64_t indexOffset = 0;
 	};
 	std::vector<DynamicDraw> dynamicDraws;
+	// Every dynamic draw's geometry in one vertex and one index buffer for the
+	// batch, sliced by offset (a buffer pair per draw fragmented the PICA200's
+	// linear memory until allocations failed with megabytes free).
+	std::vector<WorldVertex> batchVertices;
+	std::vector<std::uint32_t> batchIndices;
 	// Draw groups holding one draw's model lighting: built per draw and
 	// retired with the frame, never cached.
 	std::deque<Group> litDrawGroups;
@@ -5618,38 +5626,8 @@ void WorldPass::RecordBatch(
 			}
 			lit = &litDrawGroups.back();
 		}
-		BufferDesc desc;
-		desc.size = draw.vertices.size() * sizeof( WorldVertex );
-		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
-		desc.debugName = "core dynamic vertices";
-		auto vertices = device.CreateBuffer( desc );
-		desc.size = draw.indices.size() * sizeof( std::uint32_t );
-		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
-		desc.debugName = "core dynamic indices";
-		auto indices = device.CreateBuffer( desc );
-		if ( !vertices || !indices )
-		{
-			for ( auto *buffer : { &vertices, &indices } )
-			{
-				if ( *buffer )
-					(void)device.Release( buffer->Value(), CompletionToken() );
-			}
-			note( "dynamic geometry buffers were refused" );
-			complete = false;
-			continue;
-		}
-		for ( const auto &[buffer, bytes, usage] :
-		    { std::tuple{ vertices.Value(), std::as_bytes( std::span( draw.vertices ) ),
-		          ResourceUsage::kVertex },
-		        std::tuple{ indices.Value(), std::as_bytes( std::span( draw.indices ) ),
-		            ResourceUsage::kIndex } } )
-		{
-			encoder.TransitionBuffer(
-			    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-			encoder.WriteBuffer( buffer, 0, bytes );
-			encoder.TransitionBuffer( buffer, ResourceUsage::kCopyDestination, usage );
-			s.retiredBuffers.emplace_back( target.frame, buffer );
-		}
+		const std::uint64_t vertexOffset = batchVertices.size() * sizeof( WorldVertex );
+		const std::uint64_t indexOffset = batchIndices.size() * sizeof( std::uint32_t );
 		// A static prop's baked vertex lighting is a variant of its program.
 		PipelineId pipeline = m->program.request.pipeline;
 		if ( draw.staticVertexLight )
@@ -5657,7 +5635,6 @@ void WorldPass::RecordBatch(
 			auto variant = m->resolver->StaticVertexLightPipeline( m->program );
 			if ( !variant )
 			{
-				// The buffers above retire with the frame.
 				note( "material " + draw.material.name +
 				      ": its static vertex light variant: " + variant.Error() );
 				complete = false;
@@ -5665,8 +5642,60 @@ void WorldPass::RecordBatch(
 			}
 			pipeline = variant.Value();
 		}
-		dynamicDraws.push_back( { m, vertices.Value(), indices.Value(),
-		    std::uint32_t( draw.indices.size() ), draw.lightmapPage, &draw, lit, pipeline } );
+		batchVertices.insert( batchVertices.end(), draw.vertices.begin(), draw.vertices.end() );
+		batchIndices.insert( batchIndices.end(), draw.indices.begin(), draw.indices.end() );
+		dynamicDraws.push_back( { m, BufferId{}, BufferId{}, std::uint32_t( draw.indices.size() ),
+		    draw.lightmapPage, &draw, lit, pipeline, vertexOffset, indexOffset } );
+	}
+	if ( !dynamicDraws.empty() )
+	{
+		BufferDesc desc;
+		desc.size = batchVertices.size() * sizeof( WorldVertex );
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
+		desc.debugName = "core dynamic vertices";
+		auto vertices = device.CreateBuffer( desc );
+		desc.size = batchIndices.size() * sizeof( std::uint32_t );
+		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
+		desc.debugName = "core dynamic indices";
+		auto indices = device.CreateBuffer( desc );
+		if ( !vertices || !indices )
+		{
+			const DeviceError error = !vertices ? vertices.Error() : indices.Error();
+			for ( auto *buffer : { &vertices, &indices } )
+			{
+				if ( *buffer )
+					(void)device.Release( buffer->Value(), CompletionToken() );
+			}
+			note( "dynamic geometry buffers were refused (" +
+			      std::string( DescribeStatus( error.status ) ) + ", " +
+			      std::to_string( batchVertices.size() ) + " vertices)" );
+			complete = false;
+			dynamicDraws.clear();
+		}
+		else
+		{
+			for ( const auto &[buffer, bytes, usage] :
+			    { std::tuple{ vertices.Value(), std::as_bytes( std::span( batchVertices ) ),
+			          ResourceUsage::kVertex },
+			        std::tuple{ indices.Value(), std::as_bytes( std::span( batchIndices ) ),
+			            ResourceUsage::kIndex } } )
+			{
+				encoder.TransitionBuffer(
+				    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+				encoder.WriteBuffer( buffer, 0, bytes );
+				encoder.TransitionBuffer( buffer, ResourceUsage::kCopyDestination, usage );
+				s.retiredBuffers.emplace_back( target.frame, buffer );
+			}
+			for ( DynamicDraw &draw : dynamicDraws )
+			{
+				draw.vertices = vertices.Value();
+				draw.indices = indices.Value();
+			}
+		}
+		batchVertices.clear();
+		batchVertices.shrink_to_fit();
+		batchIndices.clear();
+		batchIndices.shrink_to_fit();
 	}
 
 	preparation.End();
@@ -6032,10 +6061,10 @@ void WorldPass::RecordBatch(
 		std::copy_n( draw.source->modelToWorld, 16, dynamicConstants.world );
 		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &dynamicConstants, 1 ) )
 		                                 .first( m.program.request.drawConstantBytes ) );
-		encoder.SetVertexBuffer( 0, draw.vertices );
+		encoder.SetVertexBuffer( 0, draw.vertices, draw.vertexOffset );
 		if ( recordingTemporal )
-			encoder.SetVertexBuffer( 1, draw.vertices );
-		encoder.SetIndexBuffer( draw.indices, 0, IndexFormat::kUint32 );
+			encoder.SetVertexBuffer( 1, draw.vertices, draw.vertexOffset );
+		encoder.SetIndexBuffer( draw.indices, draw.indexOffset, IndexFormat::kUint32 );
 		encoder.DrawIndexed( draw.count, 1, 0, 0, 0 );
 		++drawnDynamic;
 	}

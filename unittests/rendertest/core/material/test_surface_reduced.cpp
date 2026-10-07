@@ -256,6 +256,12 @@ std::vector<PointCase> Points()
 	        Light::kVertexDoubled, false, ReducedVertex::kModel, 1 },
 	    { "static prop", Variant( SurfaceVertexLayout::kWorld, kSurfaceVertexLit, true ),
 	        Light::kVertexDoubled, false, ReducedVertex::kStaticLight, 1 },
+	    { "model handed over as world geometry (pbr, no baked lightmap)",
+	        Variant( SurfaceVertexLayout::kWorld, kSurfacePbr ), Light::kVertexDoubled, false,
+	        ReducedVertex::kWorldLit, 1 },
+	    { "pbr world surface with its baked lightmap",
+	        Variant( SurfaceVertexLayout::kWorld, kSurfacePbr | kSurfaceBakedLightmap ),
+	        Light::kLightmap, false, ReducedVertex::kFlat, 2 },
 	    { "self-illuminated model",
 	        Variant( SurfaceVertexLayout::kModel, kSurfaceVertexLit | kSurfaceSelfIllum ),
 	        Light::kVertexDoubled, true, ReducedVertex::kModel, 1 },
@@ -327,10 +333,6 @@ void RuleCases( testing::Checks &checks )
 	        []( SurfaceVariant &v )
 	        {
 		        v.instanced = true;
-	        } },
-	    { "tree sway", []( SurfaceVariant &v )
-	        {
-		        v.treeSwayMode = 1;
 	        } } };
 	for ( const Flag &flag : flags )
 	{
@@ -369,6 +371,11 @@ void RuleCases( testing::Checks &checks )
 		    ReduceSurface( Variant( SurfaceVertexLayout::kWorld, kSurfaceBakedLightmap ) );
 		checks.That( p.dropped.size() == 1 && Names( p, "fog" ),
 		    "R2 a plain lightmapped point drops fog alone" );
+		SurfaceVariant sway = Variant( SurfaceVertexLayout::kModel, kSurfaceVertexLit );
+		sway.treeSwayMode = 1;
+		const ReducedPoint swaying = ReduceSurface( sway );
+		checks.That( swaying.refusal.empty() && Names( swaying, "tree sway" ),
+		    "R2 tree sway is dropped by name, the foliage still drawn" );
 	}
 
 	// R5: the alpha test reference.

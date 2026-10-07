@@ -14,6 +14,11 @@
 #include "render/device/pica_codes.h"
 
 #include <algorithm>
+#include <climits>
+#include <cstdint>
+#include <atomic>
+#include <map>
+#include <mutex>
 #include <cstdio>
 #include <cstring>
 
@@ -54,13 +59,161 @@ bool AcquireContext( std::uint32_t commandBytes );
 
 constexpr std::size_t kLinearAlignment = 0x80;
 
-std::byte *AllocateLinear( std::uint64_t bytes )
+// Guard bands (the memory audit, 2026-10-07): every linear allocation has
+// kGuardBytes of a known pattern on each side, and a registry of what it is.
+// CheckGuards finds an overrun into or out of device memory at the first
+// submit after it and names the allocation; FreeLinear checks the whole band.
+constexpr std::size_t kGuardBytes = kLinearAlignment;
+constexpr std::byte kGuardBefore{ 0xA5 };
+constexpr std::byte kGuardAfter{ 0x5A };
+
+// Set by Create (PicaAdapterOptions::guardLinearMemory): bands cost
+// 2 x kGuardBytes of linear memory per allocation.
+std::atomic<bool> g_GuardBands{ false };
+
+struct Guarded
+{
+	std::size_t guard = 0; // this allocation's band, 0 when none
+	std::size_t bytes = 0;
+	const char *what = "";
+	std::uint64_t id = 0;
+	bool reported = false;
+};
+
+std::map<std::uintptr_t, Guarded> &GuardRegistry()
+{
+	static std::map<std::uintptr_t, Guarded> registry;
+	return registry;
+}
+
+std::mutex &GuardLock()
+{
+	static std::mutex lock;
+	return lock;
+}
+
+std::size_t Padded( std::uint64_t bytes )
+{
+	return std::size_t( ( bytes + 15 ) & ~std::uint64_t( 15 ) );
+}
+
+// The first broken byte of an allocation's bands within `span` bytes of the
+// allocation (all of them when span is 0), as an offset from its start
+// (negative: before it); INT32_MIN when intact.
+std::int64_t BrokenGuard( std::uintptr_t at, const Guarded &guarded, std::size_t span )
+{
+	const std::byte *data = reinterpret_cast<const std::byte *>( at );
+	const std::size_t padded = Padded( guarded.bytes );
+	const std::size_t check = span ? std::min( span, guarded.guard ) : guarded.guard;
+	for ( std::size_t i = 0; i < check; ++i )
+		if ( data[-std::ptrdiff_t( i ) - 1] != kGuardBefore )
+			return -std::int64_t( i ) - 1;
+	for ( std::size_t i = 0; i < check; ++i )
+		if ( data[padded + i] != kGuardAfter )
+			return std::int64_t( padded + i );
+	return INT64_MIN;
+}
+
+void ReportGuard( std::uintptr_t at, Guarded &guarded, std::int64_t offset )
+{
+	if ( guarded.reported )
+		return;
+	guarded.reported = true;
+	const std::byte *data = reinterpret_cast<const std::byte *>( at );
+	std::printf( "pica-device: GUARD BROKEN %s %llu (%zu bytes at %p): byte %lld is %02x\n",
+	    guarded.what, (unsigned long long)guarded.id, guarded.bytes, (const void *)data,
+	    (long long)offset, unsigned( data[offset] ) );
+}
+
+std::byte *AllocateLinear( std::uint64_t bytes, const char *what = "internal", std::uint64_t id = 0 )
 {
 	if ( bytes == 0 || bytes > 0x7FFFFFFF )
 		return nullptr;
-	return static_cast<std::byte *>(
-	    linearMemAlign( std::size_t( ( bytes + 15 ) & ~std::uint64_t( 15 ) ), kLinearAlignment ) );
+	const std::size_t padded = Padded( bytes );
+	const std::size_t band = g_GuardBands.load() ? kGuardBytes : 0;
+	auto *base = static_cast<std::byte *>( linearMemAlign( padded + 2 * band, kLinearAlignment ) );
+	if ( !base )
+	{
+		// The memory audit: the first refusal names what holds linear memory.
+		static int s_reported = 0;
+		if ( s_reported++ < 3 )
+		{
+			std::lock_guard<std::mutex> guard( GuardLock() );
+			std::size_t buffers = 0, textures = 0, other = 0, largest = 0;
+			for ( const auto &[at, guarded] : GuardRegistry() )
+			{
+				( std::strcmp( guarded.what, "buffer" ) == 0    ? buffers
+				    : std::strcmp( guarded.what, "texture" ) == 0 ? textures
+				                                                  : other ) += guarded.bytes;
+				largest = std::max( largest, guarded.bytes );
+			}
+			std::printf( "pica-device: linear allocation of %llu bytes refused (%s): free %lu KB; "
+			             "device buffers %zu KB, textures %zu KB, other %zu KB (largest %zu KB, "
+			             "%zu allocations)\n",
+			    (unsigned long long)bytes, what, (unsigned long)( linearSpaceFree() / 1024 ),
+			    buffers / 1024, textures / 1024, other / 1024, largest / 1024,
+			    GuardRegistry().size() );
+		}
+		return nullptr;
+	}
+	std::memset( base, int( kGuardBefore ), band );
+	std::memset( base + band + padded, int( kGuardAfter ), band );
+	std::byte *data = base + band;
+	std::lock_guard<std::mutex> guard( GuardLock() );
+	GuardRegistry()[reinterpret_cast<std::uintptr_t>( data )] = { band, std::size_t( bytes ), what, id };
+	return data;
 }
+
+void FreeLinear( std::byte *data )
+{
+	if ( !data )
+		return;
+	std::size_t band = 0;
+	{
+		std::lock_guard<std::mutex> guard( GuardLock() );
+		auto found = GuardRegistry().find( reinterpret_cast<std::uintptr_t>( data ) );
+		if ( found != GuardRegistry().end() )
+		{
+			band = found->second.guard;
+			const std::int64_t broken = BrokenGuard( found->first, found->second, 0 );
+			if ( broken != INT64_MIN )
+				ReportGuard( found->first, found->second, broken );
+			GuardRegistry().erase( found );
+		}
+	}
+	linearFree( data - band );
+}
+
+} // namespace
+
+// Every allocation's nearest guard bytes (span); the count of broken ones.
+void EnableGuardBands( bool enabled )
+{
+	if ( enabled && !g_GuardBands.load() )
+		std::printf( "pica-device: guard bands on (the memory audit)\n" );
+	g_GuardBands.store( enabled );
+}
+
+std::size_t CheckGuards( std::size_t span )
+{
+	std::lock_guard<std::mutex> guard( GuardLock() );
+	std::size_t broken = 0;
+	for ( auto &[at, guarded] : GuardRegistry() )
+	{
+		if ( guarded.guard == 0 )
+			continue;
+		const std::int64_t offset = BrokenGuard( at, guarded, span );
+		if ( offset != INT64_MIN )
+		{
+			++broken;
+			ReportGuard( at, guarded, offset );
+		}
+	}
+	return broken;
+}
+
+namespace
+{
 
 bool UsesAny( const UsageSet &usages, std::initializer_list<ResourceUsage> any )
 {
@@ -166,6 +319,21 @@ void PicaDevice::OpenFrame()
 	m_FrameOpen = true;
 }
 
+std::uint16_t *PicaDevice::IndexScratch( std::uint32_t count )
+{
+	auto *block = static_cast<std::uint16_t *>(
+	    linearMemAlign( std::size_t( count ) * 2 + 16, kLinearAlignment ) );
+	if ( block )
+		m_IndexScratch.push_back( block );
+	return block;
+}
+
+void PicaDevice::NoteUnnarrowableDraw()
+{
+	if ( m_UnnarrowableDraws++ == 0 )
+		std::printf( "pica-device: a 32-bit indexed draw has an index past 65535: skipped\n" );
+}
+
 void PicaDevice::Drain()
 {
 	if ( m_FrameOpen )
@@ -186,6 +354,13 @@ void PicaDevice::Drain()
 		// The GPU wrote render targets behind the CPU's cache.
 		GSPGPU_InvalidateDataCache(
 		    reinterpret_cast<const void *>( __ctru_linear_heap ), __ctru_linear_heap_size );
+	}
+	// The narrowed indices of the frames drained (IndexScratch).
+	if ( !m_GpuPending && !m_FrameOpen )
+	{
+		for ( std::uint16_t *block : m_IndexScratch )
+			linearFree( block );
+		m_IndexScratch.clear();
 	}
 }
 
@@ -329,14 +504,14 @@ void PicaDevice::Erase( ResourceId resource )
 	case ResourceKind::kBuffer:
 		if ( const auto found = m_Buffers.find( resource.value ); found != m_Buffers.end() )
 		{
-			linearFree( found->second.data );
+			FreeLinear( found->second.data );
 			m_Buffers.erase( found );
 		}
 		break;
 	case ResourceKind::kTexture:
 		if ( const auto found = m_Textures.find( resource.value ); found != m_Textures.end() )
 		{
-			linearFree( found->second.data );
+			FreeLinear( found->second.data );
 			m_Textures.erase( found );
 		}
 		break;
@@ -407,7 +582,8 @@ DeviceResult<BufferId> PicaDevice::CreateBuffer( const BufferDesc &desc )
 	BufferRecord record;
 	record.desc = desc;
 	record.desc.debugName = {};
-	record.data = AllocateLinear( desc.size );
+	record.data = AllocateLinear( desc.size, "buffer", m_NextId + 1 );
+	record.createdAt = m_Submitted;
 	if ( !record.data )
 		return Fail( DeviceStatus::kOutOfMemory, op );
 	std::memset( record.data, 0, std::size_t( desc.size ) );
@@ -483,7 +659,7 @@ DeviceResult<TextureId> PicaDevice::CreateTexture( const TextureDesc &desc )
 	record.desc.debugName = {};
 	if ( !LayoutOf( desc.format, desc.width, desc.height, desc.mipLevels, record.layout ) )
 		return Fail( DeviceStatus::kUnsupported, op );
-	record.data = AllocateLinear( record.layout.bytes );
+	record.data = AllocateLinear( record.layout.bytes, "texture", m_NextId + 1 );
 	if ( !record.data )
 		return Fail( DeviceStatus::kOutOfMemory, op );
 	std::memset( record.data, 0, std::size_t( record.layout.bytes ) );
@@ -493,8 +669,9 @@ DeviceResult<TextureId> PicaDevice::CreateTexture( const TextureDesc &desc )
 		tex.data = record.data;
 		tex.fmt = GPU_TEXCOLOR( *SampledFormat( desc.format ) );
 		tex.size = std::size_t( record.layout.levels[0].bytes );
-		tex.width = std::uint16_t( desc.width );
-		tex.height = std::uint16_t( desc.height );
+		// The stored extent: a stretched level fills its tile.
+		tex.width = std::uint16_t( record.layout.levels[0].width * record.layout.levels[0].stretchX );
+		tex.height = std::uint16_t( record.layout.levels[0].height * record.layout.levels[0].stretchY );
 		tex.param = GPU_TEXTURE_MODE( GPU_TEX_2D );
 		tex.border = 0;
 		tex.lodBias = 0;
@@ -626,6 +803,22 @@ DeviceResult<CommandEncoder> PicaDevice::BeginEncoder( QueueKind queue )
 void PicaDevice::StageUpload(
     recording::RecordingEncoder &, recording::Command &command, std::span<const std::byte> bytes )
 {
+	// A fresh buffer's first write (made since the last submission, never
+	// written): nothing recorded can have read it, so it is copied in now and
+	// the replay only flushes it. This keeps no second copy of per-frame
+	// geometry in the recording (the 3DS memory audit, 2026-10-07).
+	std::lock_guard<std::recursive_mutex> lock( m_Lock );
+	const auto found = m_Buffers.find( command.a );
+	if ( found != m_Buffers.end() && !found->second.released && !found->second.written &&
+	     found->second.createdAt == m_Submitted &&
+	     command.copy.destinationOffset + bytes.size() <= found->second.desc.size )
+	{
+		std::memcpy( found->second.data + command.copy.destinationOffset, bytes.data(), bytes.size() );
+		found->second.written = true;
+		return; // command.bytes stays empty: applied (replay.cpp)
+	}
+	if ( found != m_Buffers.end() )
+		found->second.written = true;
 	command.bytes.assign( bytes.begin(), bytes.end() );
 }
 
@@ -662,9 +855,7 @@ std::optional<DeviceStatus> PicaDevice::CheckPicaLimits(
 				break;
 			}
 			case Op::kSetIndexBuffer:
-				// 8- and 16-bit indices only.
-				if ( command.indexFormat != IndexFormat::kUint16 )
-					return DeviceStatus::kUnsupported;
+				// 16-bit indices, and 32-bit ones narrowed at replay.
 				break;
 			default:
 				break;
@@ -722,6 +913,9 @@ DeviceResult<CompletionToken> PicaDevice::Submit(
 		ReplayCommands( *this, encoder->Commands() );
 	Drain();
 	m_Completed = token.value;
+	// The memory audit: an overrun into or out of device memory is named at
+	// the submit after it (the 32 bytes nearest each allocation's edges).
+	CheckGuards( 32 );
 	return token;
 }
 

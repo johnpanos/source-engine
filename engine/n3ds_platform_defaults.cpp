@@ -36,6 +36,11 @@ const PlatformDefault kDefaults[] =
 	{ "gpu_level", "0" },
 	{ "mem_level", "0" },
 	{ "gpu_mem_level", "0" },
+	// The data cache's target (models' vertex data, animation blocks): the
+	// desktop's 64 MB is never reached on the 3DS, so nothing is evicted and
+	// model vertex data (15 MB on sp_a1_intro4) outlives the meshes built from
+	// it; evicted data reloads from disk when used again.
+	{ "datacachesize", "16" },
 	// Post-processing samples render targets the backend never draws.
 	{ "mat_motion_blur_enabled", "0" },
 	{ "mat_disable_bloom", "1" },

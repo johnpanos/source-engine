@@ -75,8 +75,11 @@ private:
 			m_D.BeforeCpuAccess( { command.a } );
 			BufferRecord &b = m_D.m_Buffers.at( command.a );
 			std::byte *to = b.data + command.copy.destinationOffset;
-			std::memcpy( to, command.bytes.data(), command.bytes.size() );
-			GSPGPU_FlushDataCache( to, command.bytes.size() );
+			// A write with no staged bytes was copied in at record time
+			// (PicaDevice::StageUpload); a staged one carries all of them.
+			if ( !command.bytes.empty() )
+				std::memcpy( to, command.bytes.data(), command.bytes.size() );
+			GSPGPU_FlushDataCache( to, command.copy.size );
 			break;
 		}
 		case Op::kCopyBuffer:
@@ -147,6 +150,7 @@ private:
 			break;
 		case Op::kSetIndexBuffer:
 			m_Index = { &m_D.m_Buffers.at( command.a ), command.offset, command.a };
+			m_IndexWide = command.indexFormat == IndexFormat::kUint32;
 			break;
 		case Op::kSetViewport:
 			m_Viewport = command.viewport;
@@ -527,6 +531,29 @@ private:
 			C3D_DrawArrays( m_Pipeline->topology, int( command.first ), int( command.count ) );
 			return;
 		}
+		if ( m_IndexWide )
+		{
+			// The GPU reads 8- and 16-bit indices: 32-bit ones are narrowed into
+			// scratch linear memory kept until the frame drains. An index past
+			// 65535 cannot be: the draw is skipped and counted, never drawn wrong.
+			const auto *wide = reinterpret_cast<const std::uint32_t *>(
+			    m_Index.buffer->data + m_Index.offset + std::size_t( command.first ) * 4 );
+			std::uint16_t *narrow = m_D.IndexScratch( command.count );
+			if ( !narrow )
+				return;
+			for ( std::uint32_t i = 0; i < command.count; ++i )
+			{
+				if ( wide[i] > 0xFFFFu )
+				{
+					m_D.NoteUnnarrowableDraw();
+					return;
+				}
+				narrow[i] = std::uint16_t( wide[i] );
+			}
+			GSPGPU_FlushDataCache( narrow, command.count * 2 );
+			C3D_DrawElements( m_Pipeline->topology, int( command.count ), C3D_UNSIGNED_SHORT, narrow );
+			return;
+		}
 		const std::byte *indices =
 		    m_Index.buffer->data + m_Index.offset + std::size_t( command.first ) * 2;
 		C3D_DrawElements( m_Pipeline->topology, int( command.count ), C3D_UNSIGNED_SHORT, indices );
@@ -544,6 +571,7 @@ private:
 	std::array<BindGroupRecord *, kMaxBindGroups> m_Groups{};
 	std::array<VertexSlot, kInputRegisters> m_Vertex{};
 	VertexSlot m_Index;
+	bool m_IndexWide = false;
 	Viewport m_Viewport;
 	std::array<std::byte, kMaxDrawConstantBytes> m_Constants{};
 	bool m_Rendering = false;

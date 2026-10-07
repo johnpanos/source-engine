@@ -23,4 +23,15 @@ class IRenderDevice2;
 // error (the shader API never creates a device of its own).
 extern "C" void PicaShaderBackend_BindDevice( render::device::IRenderDevice2 *device );
 
+namespace render::legacy
+{
+class ICorePassRecorder;
+}
+
+// Exported by the 3DS shader API (RFC 0026 P3): the core's passes record at
+// the stream's slots, into the frame's encoder on the shared device. Without
+// one the shader API marks no slot.
+extern "C" void PicaShaderBackend_BindCorePassRecorder(
+    render::legacy::ICorePassRecorder *recorder );
+
 #endif // RENDER_DEVICE_PICA_HOST_BINDING_H

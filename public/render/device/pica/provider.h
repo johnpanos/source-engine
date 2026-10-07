@@ -36,6 +36,10 @@ struct PicaAdapterOptions
 	// (at least 4096; the device opens a new frame when it is full). Uploads
 	// need no ring: the replay copies them on the CPU.
 	std::uint32_t commandListBytes = 256u << 10;
+	// The memory audit: guard bands of 128 bytes around every linear
+	// allocation, checked at each submit and free; a broken band is printed
+	// with its allocation. Costs 256 bytes of linear memory per allocation.
+	bool guardLinearMemory = false;
 	// Sensitivity fixtures only (render.device.v2.pica.sensitivity): each makes
 	// the adapter break one port rule the shared suite must catch. Never set
 	// by a product.

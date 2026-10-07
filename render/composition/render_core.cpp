@@ -238,7 +238,10 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 			    render::device::DeviceError{ render::device::DeviceStatus::kUnsupported,
 			        render::device::DeviceOperation::kCreateDevice,
 			        static_cast<std::int32_t>( *missing ) } );
-		return render::device::pica::Create( render::device::pica::PicaAdapterOptions{} );
+		render::device::pica::PicaAdapterOptions options;
+		// The memory audit's guard bands under -render-validation.
+		options.guardLinearMemory = request.validation;
+		return render::device::pica::Create( options );
 	}
 #endif
 	return foundation::MakeUnexpected(
@@ -371,7 +374,8 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 		core->binding.gpuCompute = core->compute.get();
 	}
 	core->panels =
-	    std::make_unique<render::composition::CorePanels>( *core->frontend, *core->renderer );
+	    std::make_unique<render::composition::CorePanels>( *core->frontend, *core->renderer,
+	        core->device->Facts().capabilities.Has( render::device::Capability::kCompute ) );
 	core->forwarded =
 	    std::make_unique<render::composition::ForwardedSlots>( *core->world, *core->panels );
 	core->world->EnableTemporal( config->temporal, config->temporalAssets );

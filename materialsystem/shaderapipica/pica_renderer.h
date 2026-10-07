@@ -31,6 +31,7 @@
 namespace render::device
 {
 class IRenderDevice2;
+class CommandEncoder;
 }
 
 namespace pica
@@ -131,6 +132,8 @@ public:
 	int Height() const { return m_height; }
 	std::size_t Bytes() const { return m_bytes; }
 	std::uint32_t Group(); // the material bind group drawing it (renderer use)
+	std::uint32_t Id() const { return m_texture; } // the device's TextureId value
+	bool Repeat() const { return m_repeat; }
 
 private:
 	std::uint32_t m_texture; // TextureId
@@ -148,7 +151,11 @@ struct Stats
 	std::uint32_t ringOverflows = 0;
 	std::uint32_t blendRefusals = 0; // D3D factor pairs no port blend mode draws
 	std::uint32_t submits = 0;
+	std::uint32_t submitFailures = 0; // frames the device refused (not presented)
+	std::uint32_t residencyRefusals = 0; // draws whose mesh found no linear memory
 	std::size_t textureBytes = 0;
+	std::size_t meshBytes = 0; // linear memory of the meshes (AllocLinear)
+	std::size_t ringPeak[2] = {}; // the most of each transient ring a frame used
 };
 
 // Screen: the top screen, 400x240.
@@ -160,6 +167,9 @@ constexpr int kScreenHeight = 240;
 void BindDevice( render::device::IRenderDevice2 *device );
 
 bool Init();
+// Test fixture (-pica_linear_reserve): holds `bytes` of linear memory in a
+// device buffer until Shutdown, so exhaustion paths run on demand.
+bool ReserveLinear( std::size_t bytes );
 void Shutdown();
 bool Initialized();
 
@@ -185,6 +195,29 @@ void FlushLinear( const void *ptr, std::size_t bytes );
 void Draw( const float clipFromObject[16], const DrawState &state, Texture *texture,
     const Vertex *vertices, int vertexCount, const std::uint16_t *indices, int indexCount,
     Primitive primitive );
+
+// A section of the frame for a render core pass (RFC 0026 P3, the core's
+// passes at slots of this stream): ends this renderer's pass and returns the
+// frame's encoder with the target in its home usages (color
+// kColorAttachment, depth kDepthWrite, the frame's top-left 400x240); null
+// outside a frame. EndCoreSection reopens the pass, loading what the section
+// drew, with the current viewport.
+struct CoreSectionTarget
+{
+	render::device::IRenderDevice2 *device = nullptr;
+	std::uint32_t color = 0; // TextureId values
+	std::uint32_t depth = 0;
+	std::uint32_t width = 0;
+	std::uint32_t height = 0;
+	// The recording's serial: it rises at every submission, so what the core
+	// kept of earlier recordings can be released behind them.
+	std::uint64_t serial = 0;
+	// The last submission's token (CompletionToken's epoch and value).
+	std::uint32_t submittedEpoch = 0;
+	std::uint64_t submittedValue = 0;
+};
+render::device::CommandEncoder *BeginCoreSection( CoreSectionTarget &target );
+void EndCoreSection();
 
 // Writes the last presented frame as a binary PPM (400x240, RGB).
 bool CaptureTopScreen( const char *path );

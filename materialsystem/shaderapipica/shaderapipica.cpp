@@ -42,7 +42,17 @@
 #include "bitmap/imageformat.h"
 #include "tier0/icommandline.h"
 #include "pica_renderer.h"
+#include "renderparm.h"
+#include "pixelwriter.h"
+#include "render/legacy/core_passes.h"
+#include "render/legacy/material_flag_keys.h"
+#include "itextureinternal.h"
+#include <string>
+#include <vector>
 #include <malloc.h>
+
+extern "C" unsigned int linearSpaceFree( void ); // libctru: GPU-visible linear heap
+extern "C" unsigned int __ctru_heap_size; // libctru: the main heap's size
 #include "pica_texture.h"
 
 
@@ -108,9 +118,14 @@ public:
 	// gets the associated material
 	IMaterial* GetMaterial();
 
+	// A static prop's baked vertex lighting (studiorender binds it per draw):
+	// this backend draws it fullbright, and the draw stays off the render
+	// core's model point (RFC 0026 P3: model lighting is the dynamic models').
 	void SetColorMesh( IMesh *pColorMesh, int nVertexOffset )
 	{
+		m_bHasColorMesh = pColorMesh != NULL;
 	}
+	bool m_bHasColorMesh = false;
 
 
 	virtual int IndexCount() const
@@ -138,13 +153,22 @@ public:
 	}
 
 private:
-	bool EnsureVertices( int count );
-	bool EnsureIndices( int count );
+	// exact: a lock that is not appending sizes the buffer to the count
+	// (static meshes are filled once; doubling wasted linear memory).
+	bool EnsureVertices( int count, bool exact = false );
+	bool EnsureIndices( int count, bool exact = false );
+	// A dynamic mesh's storage is CPU memory: every draw copies it into the
+	// frame's transient ring, so it never needs GPU-visible linear memory.
+	void *AllocStorage( pica::Memory kind, size_t bytes );
+	void FreeStorage( void *storage );
 	int SourceVertexCount() const { return m_pVertexSource ? m_pVertexSource->m_nVertices : m_nVertices; }
 public:
 	void SetVertexSource( CEmptyMesh *source ) { m_pVertexSource = source != this ? source : NULL; }
 private:
 	void DrawRange( int firstIndex, int indexCount );
+	// RFC 0026 P3: a VertexLitGeneric draw handed to the render core's model
+	// point (reduced model lighting); false leaves it to this backend.
+	bool EmitToCore( int firstIndex, int indexCount );
 	void DumpDraw( const float *clip, const pica::DrawState &state, const char *textureName, int textureWidth, int textureHeight, const pica::Vertex *vertices,
 		const unsigned short *indices, int count ) const;
 
@@ -160,12 +184,33 @@ private:
 	int m_nVertexCapacity;
 	int m_nVertices;
 	int m_nLockFirstVertex;
+	// What the last Lock granted (0 when it failed): Unlock never records
+	// more, so no draw reads past the buffer (the memory audit, 2026-10-07).
+	int m_nLockedVertices = 0;
 	unsigned short *m_pIndices;
 	int m_nIndexCapacity;
 	int m_nIndices;
 	int m_nLockFirstIndex;
+	int m_nLockedIndices = 0;
 	// Skinning inputs (CPU memory), when the format has bone weights.
 	float *m_pBoneWeights;     // 2 per vertex
+	// Normals of a format with VERTEX_NORMAL (3 per vertex, CPU memory): the
+	// PICA record holds none, and the core's model lighting reads them.
+	float *m_pNormals = nullptr;
+	int m_nNormalCapacity = 0;
+	// Texture coordinate 0 of a format with more than two components (sprite
+	// cards, particles): the builder writes every component, so they go here,
+	// 4 per vertex, and the record takes the first two at Unlock/ModifyEnd.
+	// Writing them into the record's two floats overran into the next vertex
+	// and, past the last, into the neighbouring allocation (the memory audit,
+	// 2026-10-07).
+	float *m_pWideTexCoords = nullptr;
+	int m_nWideTexCoordCapacity = 0;
+	int m_nModifyFirstVertex = 0;
+	int m_nModifyVertexCount = 0;
+	bool WideTexCoords() const { return TexCoordSize( 0, m_Format ) > 2; }
+	bool EnsureWideTexCoords();
+	void CommitWideTexCoords( int first, int count );
 	unsigned char *m_pBoneIndices; // 4 per vertex
 	int m_nBoneCapacity;
 	// The draw in progress.
@@ -213,6 +258,9 @@ struct PicaTexture
 	bool wrapT = true;
 	// The levels chosen for the GPU, RGBA8 row-major, base first.
 	CUtlVector< CUtlVector<unsigned char> > levels;
+	// The memory audit: each level's FNV-1a when it arrived, checked at upload
+	// (a stray write into the heap between the two shows as texture noise).
+	CUtlVector<unsigned int> levelHashes;
 	int baseWidth = 0;
 	int baseHeight = 0;
 	char name[48] = ""; // CreateTextures' debug name (-pica_dump_draws)
@@ -241,6 +289,11 @@ CUtlVector<PicaTexture *> g_Textures; // index = handle - 1
 ShaderAPITextureHandle_t g_ModifyTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
 ShaderAPITextureHandle_t g_BoundTextures[16];
 IMaterialInternal *g_pBoundMaterial = NULL;
+// Model lighting as studiorender sets it (SetAmbientLightCube, SetLight): the
+// render core's model point reads it at each draw (RFC 0026 P3).
+float g_AmbientCube[6][3] = {};
+constexpr int kPicaMaxLights = 4;
+LightDesc_t g_Lights[kPicaMaxLights];
 CEmptyMesh *g_pRenderMesh = NULL;
 int g_CurrentSnapshot = -1;
 bool g_bDrawingToBackBuffer = true;
@@ -267,6 +320,9 @@ struct DrawPathCounters
 	unsigned renderPasses = 0;   // RenderPass calls
 	unsigned targetSkips = 0;    // passes skipped while drawing to a render target
 	unsigned clears = 0;         // back buffer clears
+	unsigned overrunDraws = 0;   // refused: a count past the mesh's buffer
+	unsigned wideTexCoordLocks = 0; // locks of a 3- or 4-component texcoord 0
+	unsigned coreMeshDraws = 0;  // model draws the render core took (EmitToCore)
 };
 // Texture path counters since startup.
 struct TexturePathCounters
@@ -276,6 +332,7 @@ struct TexturePathCounters
 	unsigned convertFailed = 0;  // ... whose source format did not convert
 	unsigned uploads = 0;        // GPU textures created
 	unsigned uploadFailed = 0;   // ... that failed (size or linear memory)
+	unsigned corrupted = 0;      // levels changed between arrival and upload
 };
 TexturePathCounters g_TextureCounters;
 DrawPathCounters g_Counters;
@@ -381,6 +438,14 @@ pica::Blend BlendFactor( ShaderBlendFactor_t factor )
 	}
 }
 
+unsigned int LevelHash( const CUtlVector<unsigned char> &level )
+{
+	unsigned int hash = 2166136261u;
+	for ( int i = 0; i < level.Count(); ++i )
+		hash = ( hash ^ level[i] ) * 16777619u;
+	return hash;
+}
+
 // Encodes a texture's chosen levels and uploads them.
 void UploadTexture( PicaTexture &texture )
 {
@@ -388,6 +453,15 @@ void UploadTexture( PicaTexture &texture )
 	texture.gpu.Release();
 	if ( texture.levels.Count() == 0 || texture.baseWidth < 8 || texture.baseHeight < 8 )
 		return;
+	for ( int i = 0; i < texture.levels.Count() && i < texture.levelHashes.Count(); ++i )
+	{
+		if ( LevelHash( texture.levels[i] ) != texture.levelHashes[i] )
+		{
+			++g_TextureCounters.corrupted;
+			printf( "pica: MEMORY CORRUPTION texture %s level %d (%dx%d) changed after it arrived\n",
+				texture.name, i, texture.baseWidth >> i, texture.baseHeight >> i );
+		}
+	}
 	const bool mipped = texture.mipLevels > 1;
 	bool alpha = false;
 	for ( int i = 0; i < texture.levels.Count() && !alpha; ++i )
@@ -430,7 +504,10 @@ void UploadTexture( PicaTexture &texture )
 		++g_TextureCounters.uploadFailed;
 	// Mipmapped levels are not updated in place: drop the CPU copy.
 	if ( mipped )
+	{
 		texture.levels.Purge();
+		texture.levelHashes.Purge();
+	}
 }
 
 // The size the GPU keeps for a source level of (w, h): powers of two at most
@@ -642,21 +719,23 @@ public:
 			// The heap over time (out-of-memory diagnosis): arena = sbrk'd heap,
 			// used and free inside it.
 			const struct mallinfo heap = mallinfo();
-			printf( "pica: frame %d heap arena %u KB used %u KB free %u KB\n", s_frame,
-				(unsigned)( heap.arena / 1024 ), (unsigned)( heap.uordblks / 1024 ),
-				(unsigned)( heap.fordblks / 1024 ) );
+			printf( "pica: frame %d heap arena %u of %u KB used %u KB free %u KB linear free %u KB\n", s_frame,
+				(unsigned)( heap.arena / 1024 ), (unsigned)( __ctru_heap_size / 1024 ),
+				(unsigned)( heap.uordblks / 1024 ), (unsigned)( heap.fordblks / 1024 ),
+				(unsigned)( linearSpaceFree() / 1024 ) );
 		}
 		if ( s_frame % 120 == 1 )
-			printf( "pica: frame %d draws %u triangles %u textures %u KB ring overflows %u blend refusals %u submits %u | "
-				"mesh draws %u primlist %u empty %u material %u passes %u target skips %u clears %u\n", s_frame,
-				(unsigned)stats.draws, (unsigned)stats.triangles, (unsigned)( stats.textureBytes / 1024 ),
+			printf( "pica: frame %d draws %u triangles %u textures %u KB meshes %u KB rings %u/%u KB ring overflows %u blend refusals %u submits %u | "
+				"mesh draws %u primlist %u empty %u material %u passes %u target skips %u clears %u overrun draws %u wide texcoords %u core meshes %u\n", s_frame,
+				(unsigned)stats.draws, (unsigned)stats.triangles, (unsigned)( stats.textureBytes / 1024 ), (unsigned)( stats.meshBytes / 1024 ), (unsigned)( stats.ringPeak[0] / 1024 ), (unsigned)( stats.ringPeak[1] / 1024 ),
 				(unsigned)stats.ringOverflows, (unsigned)stats.blendRefusals, (unsigned)stats.submits, g_Counters.meshDraws, g_Counters.primListDraws,
 				g_Counters.primListEmpty, g_Counters.materialDraws,
-				g_Counters.renderPasses, g_Counters.targetSkips, g_Counters.clears );
+				g_Counters.renderPasses, g_Counters.targetSkips, g_Counters.clears, g_Counters.overrunDraws, g_Counters.wideTexCoordLocks, g_Counters.coreMeshDraws );
 		if ( s_frame % 120 == 1 )
-			printf( "pica: textures: images %u rejected %u convert failed %u uploads %u failed %u\n",
+			printf( "pica: textures: images %u rejected %u convert failed %u uploads %u failed %u "
+				"corrupted %u\n",
 				g_TextureCounters.images, g_TextureCounters.rejected, g_TextureCounters.convertFailed,
-				g_TextureCounters.uploads, g_TextureCounters.uploadFailed );
+				g_TextureCounters.uploads, g_TextureCounters.uploadFailed, g_TextureCounters.corrupted );
 		g_Counters = DrawPathCounters();
 	}
 	virtual void GetWindowSize( int &width, int &height ) const;
@@ -801,6 +880,9 @@ public:
 			Warning( "pica: GPU initialization failed\n" );
 			return false;
 		}
+		if ( const int reserveKB = CommandLine()->ParmValue( "-pica_linear_reserve", 0 ) )
+			printf( "pica: linear reserve %d KB %s\n", reserveKB,
+				pica::ReserveLinear( std::size_t( reserveKB ) * 1024 ) ? "held" : "refused" );
 		InitStacks();
 		return true;
 	}
@@ -1446,31 +1528,43 @@ public:
 	{
 	}
 
+	// Rendering parameters, stored (the render core's slots read the wind
+	// and foliage time from them, RFC 0026 P3).
 	void SetFloatRenderingParameter(int parm_number, float value)
 	{
+		if ( parm_number >= 0 && parm_number < kRenderParams )
+			m_FloatParams[parm_number] = value;
 	}
 
 	void SetIntRenderingParameter(int parm_number, int value)
 	{
+		if ( parm_number >= 0 && parm_number < kRenderParams )
+			m_IntParams[parm_number] = value;
 	}
 	void SetVectorRenderingParameter(int parm_number, Vector const &value)
 	{
+		if ( parm_number >= 0 && parm_number < kRenderParams )
+			m_VectorParams[parm_number] = value;
 	}
 
 	float GetFloatRenderingParameter(int parm_number) const
 	{
-		return 0;
+		return parm_number >= 0 && parm_number < kRenderParams ? m_FloatParams[parm_number] : 0.0f;
 	}
 
 	int GetIntRenderingParameter(int parm_number) const
 	{
-		return 0;
+		return parm_number >= 0 && parm_number < kRenderParams ? m_IntParams[parm_number] : 0;
 	}
 
 	Vector GetVectorRenderingParameter(int parm_number) const
 	{
-		return Vector(0,0,0);
+		return parm_number >= 0 && parm_number < kRenderParams ? m_VectorParams[parm_number] : Vector( 0, 0, 0 );
 	}
+	static constexpr int kRenderParams = 64;
+	float m_FloatParams[kRenderParams] = {};
+	int m_IntParams[kRenderParams] = {};
+	Vector m_VectorParams[kRenderParams];
 
 	// Methods related to stencil
 	void SetStencilEnable(bool onoff)
@@ -1764,6 +1858,105 @@ static bool DescribePicaAdapter( int adapter, render::RenderAdapterInfo *info )
 	return true;
 }
 
+// RFC 0026 P3: the render core's passes at slots of this stream. The core
+// shares this backend's device (the launcher's), so a slot records into the
+// frame's own encoder and target, and the core samples this backend's
+// textures by their material system handles.
+render::legacy::ICorePassRecorder *g_CorePassRecorder = NULL;
+
+class CPicaCoreTextures final : public render::legacy::ICoreTextures
+{
+public:
+	render::device::TextureId Import( int handle, bool srgb ) override
+	{
+		PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
+		// The PICA200 decodes no sRGB: the reduced model asks for none.
+		if ( !texture || srgb )
+		{
+			printf( "pica: core import of texture %d refused: %s\n", handle,
+				srgb ? "sRGB view" : "no such texture" );
+			return render::device::TextureId{};
+		}
+		if ( texture->dirty )
+			UploadTexture( *texture );
+		if ( !texture->gpu.Valid() )
+			printf( "pica: core import of texture %d (%s) refused: not uploaded (%d levels, %dx%d)\n",
+				handle, texture->name, texture->levels.Count(), texture->baseWidth, texture->baseHeight );
+		return render::device::TextureId{ texture->gpu.Id() };
+	}
+	render::device::SamplerDesc Sampler( int handle ) override
+	{
+		render::device::SamplerDesc desc;
+		desc.minFilter = render::device::Filter::kNearest;
+		desc.magFilter = render::device::Filter::kLinear;
+		desc.mipFilter = render::device::Filter::kLinear;
+		const PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
+		desc.address = !texture || ( texture->wrapS && texture->wrapT )
+			? render::device::AddressMode::kRepeat
+			: render::device::AddressMode::kClampToEdge;
+		return desc;
+	}
+	bool Pending( int handle ) override
+	{
+		const PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
+		return texture && !texture->gpu.Valid() && texture->levels.Count() == 0;
+	}
+};
+CPicaCoreTextures g_PicaCoreTextures;
+
+class CPicaCorePassSlots final : public render::legacy::ICorePassSlots
+{
+public:
+	void MarkSlot( std::uint32_t tag ) override
+	{
+		if ( !g_CorePassRecorder )
+			return;
+		pica::CoreSectionTarget section;
+		render::device::CommandEncoder *encoder = pica::BeginCoreSection( section );
+		if ( !encoder )
+			return;
+		render::legacy::CorePassTarget target;
+		target.device = section.device;
+		target.color = render::device::TextureId{ section.color };
+		target.depth = render::device::TextureId{ section.depth };
+		target.colorFormat = render::device::Format::kRGBA8Unorm;
+		target.depthFormat = render::device::Format::kD24UnormS8;
+		target.width = section.width;
+		target.height = section.height;
+		target.textures = &g_PicaCoreTextures;
+		target.frame = section.serial;
+		target.submitted = render::device::CompletionToken{ render::device::QueueKind::kGraphics,
+			section.submittedEpoch, section.submittedValue };
+		// Each recording is submitted once and discarded (no capture replays
+		// it): a new epoch per recording lets the core release what it kept of
+		// the last (a constant epoch kept every recorded view, up to 8192 with
+		// their geometry, and a present-counted frame let retired geometry
+		// pile up between presents: the 3DS ran out of memory).
+		target.streamEpoch = target.frame;
+		// LDR, gamma space: the reduced model reads the pages as they are.
+		target.lightmapScale = 1.0f;
+		target.outputScale = 1.0f;
+		target.specular = false;
+		// The wind and foliage time ($treesway's inputs; the reduced model
+		// drops the sway, but the pass reads them).
+		const Vector wind = g_ShaderAPIEmpty.GetVectorRenderingParameter( VECTOR_RENDERPARM_WIND_DIRECTION );
+		const Vector previousWind =
+			g_ShaderAPIEmpty.GetVectorRenderingParameter( VECTOR_RENDERPARM_PREVIOUS_WIND_DIRECTION );
+		target.foliage[0][0] = wind.x;
+		target.foliage[0][1] = wind.y;
+		target.foliage[0][2] = g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_TIME );
+		target.foliage[1][0] = previousWind.x;
+		target.foliage[1][1] = previousWind.y;
+		target.foliage[1][2] =
+			g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_PREVIOUS_FOLIAGE_TIME );
+		target.foliageAvailable =
+			g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_AVAILABLE ) > 0.0f;
+		g_CorePassRecorder->RecordSlot( tag, *encoder, target );
+		pica::EndCoreSection();
+	}
+};
+CPicaCorePassSlots g_PicaCorePassSlots;
+
 static bool CreatePicaShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
@@ -1775,7 +1968,14 @@ static bool CreatePicaShaderBackend( render::LegacyShaderServices *services )
 	services->hardware = &g_ShaderAPIEmpty;
 	services->debugTextures = &g_ShaderAPIEmpty;
 	services->describeAdapter = DescribePicaAdapter;
+	services->corePassSlots = &g_PicaCorePassSlots;
 	return true;
+}
+
+extern "C" DLL_EXPORT void PicaShaderBackend_BindCorePassRecorder(
+	render::legacy::ICorePassRecorder *recorder )
+{
+	g_CorePassRecorder = recorder;
 }
 
 extern "C" DLL_EXPORT void PicaShaderBackend_BindDevice( render::device::IRenderDevice2 *device )
@@ -2055,10 +2255,38 @@ CEmptyMesh::CEmptyMesh( bool bIsDynamic ) : m_bIsDynamic( bIsDynamic )
 
 CEmptyMesh::~CEmptyMesh()
 {
-	pica::FreeLinear( m_pVertices );
-	pica::FreeLinear( m_pIndices );
+	FreeStorage( m_pVertices );
+	FreeStorage( m_pIndices );
 	delete[] m_pBoneWeights;
 	delete[] m_pBoneIndices;
+	delete[] m_pWideTexCoords;
+	delete[] m_pNormals;
+}
+
+bool CEmptyMesh::EnsureWideTexCoords()
+{
+	if ( m_nWideTexCoordCapacity >= m_nVertexCapacity )
+		return m_pWideTexCoords != NULL;
+	float *wide = new float[m_nVertexCapacity * 4];
+	memset( wide, 0, m_nVertexCapacity * 4 * sizeof( float ) );
+	if ( m_pWideTexCoords )
+		memcpy( wide, m_pWideTexCoords, m_nWideTexCoordCapacity * 4 * sizeof( float ) );
+	delete[] m_pWideTexCoords;
+	m_pWideTexCoords = wide;
+	m_nWideTexCoordCapacity = m_nVertexCapacity;
+	return true;
+}
+
+void CEmptyMesh::CommitWideTexCoords( int first, int count )
+{
+	if ( !m_pWideTexCoords || !m_pVertices || first < 0 || count <= 0 ||
+		first + count > m_nWideTexCoordCapacity || first + count > m_nVertexCapacity )
+		return;
+	for ( int i = first; i < first + count; ++i )
+	{
+		m_pVertices[i].uv[0] = m_pWideTexCoords[i * 4 + 0];
+		m_pVertices[i].uv[1] = m_pWideTexCoords[i * 4 + 1];
+	}
 }
 
 bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t& desc )
@@ -2067,7 +2295,8 @@ bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t& desc )
 	if ( !bAppend )
 		m_nIndices = 0;
 	static unsigned short s_Bogus[8];
-	if ( !EnsureIndices( first + ( nMaxIndexCount > 0 ? nMaxIndexCount : 0 ) ) || nMaxIndexCount <= 0 )
+	m_nLockedIndices = 0;
+	if ( !EnsureIndices( first + ( nMaxIndexCount > 0 ? nMaxIndexCount : 0 ), !bAppend ) || nMaxIndexCount <= 0 )
 	{
 		desc.m_pIndices = s_Bogus;
 		desc.m_nIndexSize = 0;
@@ -2077,6 +2306,7 @@ bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t& desc )
 	}
 	pica::PrepareWrite( m_pIndices );
 	m_nLockFirstIndex = first;
+	m_nLockedIndices = nMaxIndexCount;
 	desc.m_pIndices = m_pIndices + first;
 	desc.m_nIndexSize = 1;
 	desc.m_nFirstIndex = first;
@@ -2086,6 +2316,12 @@ bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t& desc )
 
 void CEmptyMesh::Unlock( int nWrittenIndexCount, IndexDesc_t& desc )
 {
+	// Never more than the lock granted, inside the buffer.
+	if ( nWrittenIndexCount > m_nLockedIndices )
+		nWrittenIndexCount = m_nLockedIndices;
+	if ( nWrittenIndexCount > m_nIndexCapacity - m_nLockFirstIndex )
+		nWrittenIndexCount = m_nIndexCapacity - m_nLockFirstIndex;
+	m_nLockedIndices = 0;
 	if ( nWrittenIndexCount > 0 && m_pIndices )
 	{
 		if ( m_nLockFirstIndex + nWrittenIndexCount > m_nIndices )
@@ -2102,7 +2338,11 @@ void CEmptyMesh::ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, 
 		Lock( 0, false, desc );
 		return;
 	}
+	// In place: a recorded draw reading these indices is submitted first.
+	if ( !bReadOnly )
+		pica::PrepareWrite( m_pIndices );
 	m_nLockFirstIndex = nFirstIndex;
+	m_nLockedIndices = nIndexCount;
 	desc.m_pIndices = m_pIndices + nFirstIndex;
 	desc.m_nIndexSize = 1;
 	desc.m_nFirstIndex = nFirstIndex;
@@ -2133,8 +2373,9 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	if ( !bAppend )
 		m_nVertices = 0;
 	const bool skinned = NumBoneWeights( m_Format ) > 0;
-	if ( nVertexCount <= 0 || !EnsureVertices( first + nVertexCount ) )
+	if ( nVertexCount <= 0 || !EnsureVertices( first + nVertexCount, !bAppend ) )
 		nVertexCount = 0;
+	m_nLockedVertices = nVertexCount;
 	if ( m_pVertices )
 		pica::PrepareWrite( m_pVertices );
 
@@ -2185,7 +2426,20 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 		desc.m_pColor = base->color;
 		desc.m_VertexSize_Color = stride;
 	}
-	if ( TexCoordSize( 0, m_Format ) > 0 )
+	if ( m_pNormals && first + nVertexCount <= m_nNormalCapacity )
+	{
+		desc.m_pNormal = m_pNormals + first * 3;
+		desc.m_VertexSize_Normal = 3 * sizeof( float );
+	}
+	if ( TexCoordSize( 0, m_Format ) > 2 )
+		++g_Counters.wideTexCoordLocks;
+	if ( WideTexCoords() && EnsureWideTexCoords() )
+	{
+		memset( m_pWideTexCoords + first * 4, 0, nVertexCount * 4 * sizeof( float ) );
+		desc.m_pTexCoord[0] = m_pWideTexCoords + first * 4;
+		desc.m_VertexSize_TexCoord[0] = 4 * sizeof( float );
+	}
+	else if ( TexCoordSize( 0, m_Format ) > 0 )
 	{
 		desc.m_pTexCoord[0] = base->uv;
 		desc.m_VertexSize_TexCoord[0] = stride;
@@ -2208,6 +2462,14 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 
 void CEmptyMesh::Unlock( int nVertexCount, VertexDesc_t &desc )
 {
+	// Never more than the lock granted, inside the buffer.
+	if ( nVertexCount > m_nLockedVertices )
+		nVertexCount = m_nLockedVertices;
+	if ( nVertexCount > m_nVertexCapacity - m_nLockFirstVertex )
+		nVertexCount = m_nVertexCapacity - m_nLockFirstVertex;
+	m_nLockedVertices = 0;
+	if ( WideTexCoords() )
+		CommitWideTexCoords( m_nLockFirstVertex, nVertexCount );
 	if ( nVertexCount > 0 && m_pVertices )
 	{
 		if ( m_nLockFirstVertex + nVertexCount > m_nVertices )
@@ -2256,7 +2518,19 @@ void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, i
 			vdesc.m_pColor = base->color;
 			vdesc.m_VertexSize_Color = stride;
 		}
-		if ( TexCoordSize( 0, m_Format ) > 0 )
+		if ( m_pNormals && firstVertex + numVerts <= m_nNormalCapacity )
+		{
+			vdesc.m_pNormal = m_pNormals + firstVertex * 3;
+			vdesc.m_VertexSize_Normal = 3 * sizeof( float );
+		}
+		if ( WideTexCoords() && EnsureWideTexCoords() )
+		{
+			vdesc.m_pTexCoord[0] = m_pWideTexCoords + firstVertex * 4;
+			vdesc.m_VertexSize_TexCoord[0] = 4 * sizeof( float );
+			m_nModifyFirstVertex = firstVertex;
+			m_nModifyVertexCount = numVerts;
+		}
+		else if ( TexCoordSize( 0, m_Format ) > 0 )
 		{
 			vdesc.m_pTexCoord[0] = base->uv;
 			vdesc.m_VertexSize_TexCoord[0] = stride;
@@ -2276,6 +2550,9 @@ void CEmptyMesh::ModifyBegin( int firstVertex, int numVerts, int firstIndex, int
 
 void CEmptyMesh::ModifyEnd( MeshDesc_t& desc )
 {
+	if ( m_nModifyVertexCount > 0 )
+		CommitWideTexCoords( m_nModifyFirstVertex, m_nModifyVertexCount );
+	m_nModifyVertexCount = 0;
 	if ( m_pVertices && !m_bIsDynamic )
 		pica::FlushLinear( m_pVertices, m_nVertices * sizeof( pica::Vertex ) );
 	ModifyEnd( *static_cast<IndexDesc_t*>( &desc ) );
@@ -2321,20 +2598,36 @@ void CEmptyMesh::Draw(CPrimList *pPrims, int nPrims)
 	m_nPrims = 0;
 }
 
-bool CEmptyMesh::EnsureVertices( int count )
+void *CEmptyMesh::AllocStorage( pica::Memory kind, size_t bytes )
+{
+	return m_bIsDynamic ? malloc( bytes ) : pica::AllocLinear( kind, bytes );
+}
+
+void CEmptyMesh::FreeStorage( void *storage )
+{
+	if ( m_bIsDynamic )
+		free( storage );
+	else
+		pica::FreeLinear( storage );
+}
+
+bool CEmptyMesh::EnsureVertices( int count, bool exact )
 {
 	if ( count <= m_nVertexCapacity )
 		return m_pVertices != NULL;
 	int capacity = m_nVertexCapacity ? m_nVertexCapacity : 64;
 	while ( capacity < count )
 		capacity *= 2;
-	pica::Vertex *vertices = static_cast<pica::Vertex *>( pica::AllocLinear( pica::Memory::kVertices, capacity * sizeof( pica::Vertex ) ) );
+	if ( exact && !m_bIsDynamic )
+		capacity = count;
+	pica::Vertex *vertices = static_cast<pica::Vertex *>(
+		AllocStorage( pica::Memory::kVertices, capacity * sizeof( pica::Vertex ) ) );
 	if ( !vertices )
 		return false;
 	if ( m_pVertices )
 	{
 		memcpy( vertices, m_pVertices, m_nVertexCapacity * sizeof( pica::Vertex ) );
-		pica::FreeLinear( m_pVertices );
+		FreeStorage( m_pVertices );
 	}
 	m_pVertices = vertices;
 	m_nVertexCapacity = capacity;
@@ -2353,23 +2646,36 @@ bool CEmptyMesh::EnsureVertices( int count )
 		m_pBoneIndices = indices;
 		m_nBoneCapacity = capacity;
 	}
+	if ( m_Format & VERTEX_NORMAL )
+	{
+		float *normals = new float[capacity * 3];
+		memset( normals, 0, capacity * 3 * sizeof( float ) );
+		if ( m_pNormals )
+			memcpy( normals, m_pNormals, m_nNormalCapacity * 3 * sizeof( float ) );
+		delete[] m_pNormals;
+		m_pNormals = normals;
+		m_nNormalCapacity = capacity;
+	}
 	return true;
 }
 
-bool CEmptyMesh::EnsureIndices( int count )
+bool CEmptyMesh::EnsureIndices( int count, bool exact )
 {
 	if ( count <= m_nIndexCapacity )
 		return count == 0 || m_pIndices != NULL;
 	int capacity = m_nIndexCapacity ? m_nIndexCapacity : 192;
 	while ( capacity < count )
 		capacity *= 2;
-	unsigned short *indices = static_cast<unsigned short *>( pica::AllocLinear( pica::Memory::kIndices, capacity * sizeof( unsigned short ) ) );
+	if ( exact && !m_bIsDynamic )
+		capacity = count;
+	unsigned short *indices = static_cast<unsigned short *>(
+		AllocStorage( pica::Memory::kIndices, capacity * sizeof( unsigned short ) ) );
 	if ( !indices )
 		return false;
 	if ( m_pIndices )
 	{
 		memcpy( indices, m_pIndices, m_nIndexCapacity * sizeof( unsigned short ) );
-		pica::FreeLinear( m_pIndices );
+		FreeStorage( m_pIndices );
 	}
 	m_pIndices = indices;
 	m_nIndexCapacity = capacity;
@@ -2393,9 +2699,249 @@ void CEmptyMesh::RenderPass()
 		DrawRange( m_nDrawFirst, m_nDrawCount );
 }
 
+bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
+{
+	static unsigned s_reasons = 0;
+	auto skip = [&]( unsigned bit, const char *why )
+	{
+		if ( !( s_reasons & bit ) )
+		{
+			s_reasons |= bit;
+			printf( "pica: a model draw stays legacy: %s (%s)\n", why,
+				g_pBoundMaterial ? g_pBoundMaterial->GetShaderName() : "no material" );
+		}
+		return false;
+	};
+	if ( !g_CorePassRecorder || !g_pBoundMaterial ||
+		V_stricmp( g_pBoundMaterial->GetShaderName(), "VertexLitGeneric" ) )
+		return false;
+	if ( !g_CorePassRecorder->AcceptsMeshes() )
+		return skip( 1, "the core accepts no meshes" );
+	if ( m_bHasColorMesh )
+		return false; // a static prop: baked lighting, not the model point's
+	const CEmptyMesh &src = m_pVertexSource ? *m_pVertexSource : *this;
+	if ( !src.m_pVertices || !src.m_pNormals || src.m_nVertices <= 0 ||
+		src.m_nVertices > src.m_nNormalCapacity )
+		return skip( 2, "the mesh has no normals" );
+	// The memory audit: the PICA's indices are 16-bit, so a larger mesh is
+	// not a model draw this backend can hand over.
+	static int s_largest = 0;
+	if ( src.m_nVertices > 0xFFFF || indexCount > 3 * 0xFFFF )
+		return skip( 8, "the mesh is larger than 16-bit indices address" );
+	if ( src.m_nVertices > s_largest )
+	{
+		s_largest = src.m_nVertices;
+		if ( s_largest > 4096 )
+			printf( "pica: core model draw of %d vertices, %d indices (%s)\n", src.m_nVertices,
+				indexCount, g_pBoundMaterial->GetName() );
+	}
+	// Triangles, counterclockwise for the core (legacy meshes face clockwise).
+	std::vector<std::uint32_t> triangles;
+	const bool indexed = m_nIndices > 0 && indexCount > 0;
+	const int count = indexed ? ( firstIndex + indexCount <= m_nIndices ? indexCount : 0 ) : src.m_nVertices;
+	auto element = [&]( int i ) { return indexed ? int( m_pIndices[firstIndex + i] ) : i; };
+	bool valid = count > 0;
+	auto triangle = [&]( int a, int b, int c )
+	{
+		if ( a < 0 || b < 0 || c < 0 || a >= src.m_nVertices || b >= src.m_nVertices || c >= src.m_nVertices )
+		{
+			valid = false;
+			return;
+		}
+		if ( a != b && b != c && a != c )
+		{
+			triangles.push_back( std::uint32_t( a ) );
+			triangles.push_back( std::uint32_t( c ) );
+			triangles.push_back( std::uint32_t( b ) );
+		}
+	};
+	if ( m_Type == MATERIAL_TRIANGLES )
+	{
+		if ( count % 3 )
+			return false;
+		for ( int i = 0; i < count; i += 3 )
+			triangle( element( i ), element( i + 1 ), element( i + 2 ) );
+	}
+	else if ( m_Type == MATERIAL_TRIANGLE_STRIP )
+	{
+		for ( int i = 0; i + 2 < count; ++i )
+			triangle( element( i + ( i & 1 ) ), element( i + 1 - ( i & 1 ) ), element( i + 2 ) );
+	}
+	else
+		return false;
+	if ( !valid || triangles.empty() )
+		return false;
+
+	// World-space positions and normals: skinned by the bones, else by the model.
+	const bool skinned = src.m_pBoneWeights && g_MaxBone > 0;
+	const float *model = Top( kStackModel );
+	std::vector<render::material::SurfaceWorldVertex> vertices( src.m_nVertices );
+	for ( int i = 0; i < src.m_nVertices; ++i )
+	{
+		const pica::Vertex &in = src.m_pVertices[i];
+		const float *n = src.m_pNormals + i * 3;
+		render::material::SurfaceWorldVertex &out = vertices[i];
+		float pos[3] = { 0, 0, 0 }, normal[3] = { 0, 0, 0 };
+		if ( skinned )
+		{
+			const float *w = src.m_pBoneWeights + i * 2;
+			const unsigned char *b = src.m_pBoneIndices + i * 4;
+			const float weights[3] = { w[0], w[1], 1.0f - w[0] - w[1] };
+			for ( int k = 0; k < 3; ++k )
+			{
+				if ( weights[k] <= 0.0f || b[k] >= kMaxBones )
+					continue;
+				const float *m = g_Bones[b[k]];
+				for ( int r = 0; r < 3; ++r )
+				{
+					pos[r] += weights[k] * ( m[r * 4] * in.pos[0] + m[r * 4 + 1] * in.pos[1] + m[r * 4 + 2] * in.pos[2] + m[r * 4 + 3] );
+					normal[r] += weights[k] * ( m[r * 4] * n[0] + m[r * 4 + 1] * n[1] + m[r * 4 + 2] * n[2] );
+				}
+			}
+		}
+		else
+		{
+			for ( int j = 0; j < 3; ++j )
+			{
+				pos[j] = in.pos[0] * model[j] + in.pos[1] * model[4 + j] + in.pos[2] * model[8 + j] + model[12 + j];
+				normal[j] = n[0] * model[j] + n[1] * model[4 + j] + n[2] * model[8 + j];
+			}
+		}
+		const float length = sqrtf( normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] );
+		for ( int j = 0; j < 3; ++j )
+		{
+			out.position[j] = pos[j];
+			out.normal[j] = length > 0.0f ? normal[j] / length : ( j == 2 ? 1.0f : 0.0f );
+		}
+		out.uv[0] = in.uv[0];
+		out.uv[1] = in.uv[1];
+		out.color[0] = in.color[2];
+		out.color[1] = in.color[1];
+		out.color[2] = in.color[0];
+		out.color[3] = in.color[3];
+	}
+
+	// The material's variables, as the core's claim reads them.
+	std::vector<render::legacy::CoreMeshVariable> variables;
+	std::vector<std::string> texts;
+	IMaterialVar **params = g_pBoundMaterial->GetShaderParams();
+	IShader *shader = g_pBoundMaterial->GetShader();
+	const int paramCount = g_pBoundMaterial->ShaderParamCount();
+	texts.reserve( paramCount + 1 );
+	for ( int i = 0; i < paramCount; ++i )
+	{
+		IMaterialVar *var = params[i];
+		if ( !var || !var->IsDefined() || !V_strnicmp( var->GetName(), "$flags", 6 ) )
+			continue;
+		render::legacy::CoreMeshVariable value;
+		value.key = var->GetName();
+		texts.push_back( var->GetStringValue() );
+		value.value = texts.back().c_str();
+		if ( shader && i < shader->GetNumParams() && !V_stricmp( shader->GetParamName( i ), value.key ) )
+			value.defaultValue = shader->GetParamDefault( i );
+		if ( var->GetType() == MATERIAL_VAR_TYPE_TEXTURE && var->GetTextureValue() )
+		{
+			ITextureInternal *texture = static_cast<ITextureInternal *>( var->GetTextureValue() );
+			value.textureHandle = int( texture->GetTextureHandle( 0 ) );
+		}
+		variables.push_back( value );
+	}
+	for ( const auto &flag : RenderLegacyMaterialFlags::Keys )
+		if ( g_pBoundMaterial->GetMaterialVarFlag( flag.flag ) )
+			variables.push_back( { flag.key, "1", "0", 0 } );
+
+	render::legacy::CoreMeshDraw draw;
+	draw.kind = render::legacy::CoreMeshKind::kModelSurface;
+	draw.name = g_pBoundMaterial->GetName();
+	draw.shader = g_pBoundMaterial->GetShaderName();
+	draw.variables = variables.data();
+	draw.variableCount = std::uint32_t( variables.size() );
+	draw.vertices = vertices.data();
+	draw.vertexCount = std::uint32_t( vertices.size() );
+	draw.indices = triangles.data();
+	draw.indexCount = std::uint32_t( triangles.size() );
+	draw.mesh = true;
+	draw.modelLighting = true;
+	memcpy( draw.ambientCube, g_AmbientCube, sizeof( draw.ambientCube ) );
+	for ( int i = 0; i < kPicaMaxLights && draw.lightCount < render::material::kMaxModelLights; ++i )
+	{
+		const LightDesc_t &desc = g_Lights[i];
+		if ( desc.m_Type == MATERIAL_LIGHT_DISABLE )
+			continue;
+		render::material::ModelLightDesc &light = draw.lights[draw.lightCount++];
+		light.type = desc.m_Type == MATERIAL_LIGHT_SPOT ? render::material::ModelLightType::kSpot
+			: desc.m_Type == MATERIAL_LIGHT_DIRECTIONAL ? render::material::ModelLightType::kDirectional
+			: render::material::ModelLightType::kPoint;
+		light.color[0] = desc.m_Color.x;
+		light.color[1] = desc.m_Color.y;
+		light.color[2] = desc.m_Color.z;
+		light.position[0] = desc.m_Position.x;
+		light.position[1] = desc.m_Position.y;
+		light.position[2] = desc.m_Position.z;
+		light.direction[0] = desc.m_Direction.x;
+		light.direction[1] = desc.m_Direction.y;
+		light.direction[2] = desc.m_Direction.z;
+		light.attenuation[0] = desc.m_Attenuation0;
+		light.attenuation[1] = desc.m_Attenuation1;
+		light.attenuation[2] = desc.m_Attenuation2;
+		light.theta = desc.m_Theta;
+		light.phi = desc.m_Phi;
+		light.falloff = desc.m_Falloff;
+	}
+	// Row-major, column vectors (FamilyDrawConstants): the transposes of the
+	// stacks' row-vector matrices; positions are already world space.
+	float viewProj[16];
+	Mul( Top( kStackView ), Top( kStackProjection ), viewProj );
+	const float *view = Top( kStackView );
+	const float *projection = Top( kStackProjection );
+	for ( int row = 0; row < 4; ++row )
+		for ( int col = 0; col < 4; ++col )
+		{
+			draw.toClip[row * 4 + col] = viewProj[col * 4 + row];
+			draw.worldToView[row * 4 + col] = view[col * 4 + row];
+			draw.viewToClip[row * 4 + col] = projection[col * 4 + row];
+			draw.modelToWorld[row * 4 + col] = model[col * 4 + row];
+		}
+	int vx = 0, vy = 0, vw = pica::kScreenWidth, vh = pica::kScreenHeight;
+	ShaderViewport_t viewport;
+	g_ShaderAPIEmpty.GetViewports( &viewport, 1 );
+	if ( viewport.m_nWidth > 0 && viewport.m_nHeight > 0 )
+	{
+		vx = viewport.m_nTopLeftX;
+		vy = viewport.m_nTopLeftY;
+		vw = viewport.m_nWidth;
+		vh = viewport.m_nHeight;
+	}
+	draw.viewport = { float( vx ), float( vy ), float( vw ), float( vh ), 0.0f, 1.0f };
+	const std::uint32_t tag = g_CorePassRecorder->QueueMesh( draw );
+	if ( !tag )
+		return skip( 4, "QueueMesh refused it" );
+	g_PicaCorePassSlots.MarkSlot( tag );
+	static unsigned s_taken = 0;
+	if ( ++s_taken % 50 == 0 && s_taken <= 2000 )
+	{
+		const struct mallinfo heap = mallinfo();
+		printf( "pica: %u core model draws, heap used %u KB, frame %d\n", s_taken,
+			(unsigned)( heap.uordblks / 1024 ), g_PicaFrame );
+	}
+	return true;
+}
+
 void CEmptyMesh::DrawRange( int firstIndex, int indexCount )
 {
 	const CEmptyMesh &src = m_pVertexSource ? *m_pVertexSource : *this;
+	// The memory audit: a count past a buffer would read neighbouring memory
+	// as geometry; such a draw is refused and counted.
+	if ( src.m_nVertices > src.m_nVertexCapacity || m_nIndices > m_nIndexCapacity )
+	{
+		++g_Counters.overrunDraws;
+		return;
+	}
+	if ( EmitToCore( firstIndex, indexCount ) )
+	{
+		++g_Counters.coreMeshDraws;
+		return;
+	}
 	pica::Primitive primitive = pica::Primitive::kTriangles;
 	switch ( m_Type )
 	{
@@ -3298,6 +3844,8 @@ void CShaderAPIEmpty::SetHeightClipMode( enum MaterialHeightClipMode_t heightCli
 // Sets the lights
 void CShaderAPIEmpty::SetLight( int lightNum, const LightDesc_t& desc )
 {
+	if ( lightNum >= 0 && lightNum < kPicaMaxLights )
+		g_Lights[lightNum] = desc;
 }
 
 // Sets lighting origin for the current model
@@ -3311,18 +3859,21 @@ void CShaderAPIEmpty::SetAmbientLight( float r, float g, float b )
 
 void CShaderAPIEmpty::SetAmbientLightCube( Vector4D cube[6] )
 {
+	for ( int face = 0; face < 6; ++face )
+		for ( int c = 0; c < 3; ++c )
+			g_AmbientCube[face][c] = cube[face][c];
 }
 
 // Get lights
 int CShaderAPIEmpty::GetMaxLights( void ) const
 {
-	return 0;
+	return kPicaMaxLights;
 }
 
 const LightDesc_t& CShaderAPIEmpty::GetLight( int lightNum ) const
 {
 	static LightDesc_t blah;
-	return blah;
+	return lightNum >= 0 && lightNum < kPicaMaxLights ? g_Lights[lightNum] : blah;
 }
 
 // Render state for the ambient light cube (vertex shaders)
@@ -3754,10 +4305,33 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 {
 	++g_TextureCounters.images;
 	PicaTexture *texture = TextureFor( g_ModifyTexture );
-	if ( !texture || cubeFace != 0 || zOffset != 0 || !imageData || width <= 0 || height <= 0 ||
+	if ( !texture || cubeFace != 0 || zOffset != 0 || width <= 0 || height <= 0 ||
 		texture->renderTarget || texture->depth )
 	{
 		++g_TextureCounters.rejected;
+		return;
+	}
+	// No data (a lightmap page, filled later by TexSubImage2D): the level is
+	// allocated at the GPU size and cleared, so the updates have a home and
+	// the render core can sample the page (RFC 0026 P3).
+	if ( !imageData )
+	{
+		if ( level != 0 || texture->mipLevels > 1 )
+		{
+			++g_TextureCounters.rejected;
+			return;
+		}
+		int gpuW, gpuH;
+		GpuSize( width, height, g_UnmippedSizeCap, gpuW, gpuH );
+		texture->levels.Purge();
+		texture->levelHashes.Purge();
+		texture->baseWidth = gpuW;
+		texture->baseHeight = gpuH;
+		CUtlVector<unsigned char> &out = texture->levels[texture->levels.AddToTail()];
+		out.SetCount( gpuW * gpuH * 4 );
+		memset( out.Base(), 0, out.Count() );
+		texture->levelHashes.AddToTail( LevelHash( out ) );
+		texture->dirty = true;
 		return;
 	}
 	const bool mipped = texture->mipLevels > 1;
@@ -3795,6 +4369,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 	if ( texture->levels.Count() == 0 || !mipped )
 	{
 		texture->levels.Purge();
+		texture->levelHashes.Purge();
 		texture->baseWidth = gpuW;
 		texture->baseHeight = gpuH;
 	}
@@ -3808,6 +4383,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 		memcpy( out.Base(), rgba.Base(), rgba.Count() );
 	else
 		pica::Resample( rgba.Base(), width, height, out.Base(), wantW, wantH );
+	texture->levelHashes.AddToTail( LevelHash( out ) );
 	texture->dirty = true;
 }
 
@@ -3840,6 +4416,8 @@ void CShaderAPIEmpty::TexSubImage2D( int level, int cubeFace, int xOffset, int y
 			memcpy( dst + ( ty * dw + tx ) * 4, rgba.Base() + ( y * width + x ) * 4, 4 );
 		}
 	}
+	if ( texture->levelHashes.Count() > 0 )
+		texture->levelHashes[0] = LevelHash( texture->levels[0] );
 	texture->dirty = true;
 }
 
@@ -3860,14 +4438,51 @@ void CShaderAPIEmpty::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 	}
 }
 
+// TexLock/TexUnlock: the material system writes lightmap pages through a
+// pixel writer (cmatlightmaps.cpp). The writer gets a scratch RGBA8 rectangle;
+// TexUnlock puts it into the texture's level as TexSubImage2D does, making the
+// level first when the texture has none (RFC 0026 P3: the render core samples
+// the pages).
+namespace
+{
+CUtlVector<unsigned char> g_TexLockPixels;
+ShaderAPITextureHandle_t g_TexLockTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
+int g_TexLockRect[4] = {}; // x, y, width, height
+}
+
 bool CShaderAPIEmpty::TexLock( int level, int cubeFaceID, int xOffset, int yOffset, 
 								int width, int height, CPixelWriter& writer )
 {
-	return false;
+	PicaTexture *texture = TextureFor( g_ModifyTexture );
+	if ( !texture || level != 0 || cubeFaceID != 0 || width <= 0 || height <= 0 ||
+		texture->mipLevels > 1 || texture->renderTarget || texture->depth )
+		return false;
+	if ( texture->levels.Count() == 0 )
+		TexImage2D( 0, 0, IMAGE_FORMAT_RGBA8888, 0, texture->width, texture->height,
+			IMAGE_FORMAT_RGBA8888, false, NULL );
+	if ( texture->levels.Count() == 0 )
+		return false;
+	g_TexLockPixels.SetCount( width * height * 4 );
+	memset( g_TexLockPixels.Base(), 0, g_TexLockPixels.Count() );
+	g_TexLockTexture = g_ModifyTexture;
+	g_TexLockRect[0] = xOffset;
+	g_TexLockRect[1] = yOffset;
+	g_TexLockRect[2] = width;
+	g_TexLockRect[3] = height;
+	writer.SetPixelMemory( IMAGE_FORMAT_RGBA8888, g_TexLockPixels.Base(), width * 4 );
+	return true;
 }
 
 void CShaderAPIEmpty::TexUnlock( )
 {
+	if ( g_TexLockTexture == INVALID_SHADERAPI_TEXTURE_HANDLE )
+		return;
+	const ShaderAPITextureHandle_t modify = g_ModifyTexture;
+	g_ModifyTexture = g_TexLockTexture;
+	TexSubImage2D( 0, 0, g_TexLockRect[0], g_TexLockRect[1], 0, g_TexLockRect[2], g_TexLockRect[3],
+		IMAGE_FORMAT_RGBA8888, g_TexLockRect[2] * 4, false, g_TexLockPixels.Base() );
+	g_ModifyTexture = modify;
+	g_TexLockTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
 }
 
 

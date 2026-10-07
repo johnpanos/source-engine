@@ -88,6 +88,10 @@ BOOT_FILES = [
     "materials/vgui/*", "materials/console/*", "materials/debug/*", "materials/engine/*",
     "materials/editor/*", "materials/gamepadui/*", "materials/dev/*",
     "models/error.*",
+    # $flashlighttexture's declared default (BaseShader.cpp): every material
+    # holds it, and the render core claims a material only when its live value
+    # is the declared one (RFC 0026 P3).
+    "materials/effects/flashlight001.*",
 ]
 # Fonts and the 2D UI skin: the VGUI scheme loads these by name. With no fonts
 # under platform/resource the font manager has nothing to rasterize.
@@ -137,9 +141,9 @@ def norm(path):
 class Content:
     """A staged runtime in gameinfo order, plus the BSP's pak lump on top."""
 
-    def __init__(self, runtime, pak=None):
+    def __init__(self, runtime, pak=None, resolver=None):
         import source_content
-        self.resolver = source_content.ContentResolver(str(runtime))
+        self.resolver = resolver or source_content.ContentResolver(str(runtime))
         self.pak = {}
         if pak is not None:
             for info in pak.infolist():
@@ -879,41 +883,94 @@ def pack_vpk(out_mod, limit=VPK_ARCHIVE_LIMIT):
     return files
 
 
-def stage(bsp_path, runtime, out, max_size=DEFAULT_MAX_SIZE, mod=DEFAULT_MOD, out_format="auto",
-          extra_boot=(), with_boot=True, keep_ani=False, keep_pak=False, model_lod_index=0,
-          use_vpk=True, bitmap_font=True):
-    """Run the closure walk and write the content tree; returns the report dict."""
+def resolve_bsp(bsp_path, runtime, mod):
     bsp_path = Path(bsp_path)
-    runtime = Path(runtime)
     if not bsp_path.is_file():
         candidate = runtime / mod / "maps" / (bsp_path.name + ".bsp" if bsp_path.suffix != ".bsp"
                                               else bsp_path.name)
         bsp_path = candidate if candidate.is_file() else bsp_path
+    return bsp_path
+
+
+def stage_map(stager, bsp_path, resolver, keep_pak):
+    """Add one map's closure to the shared stager and write its BSP; returns its report entry.
+
+    Files already staged by an earlier map are shared, not written again. A map's pak lump
+    is its own: names it holds are staged again from it into this map's pak, and are
+    forgotten afterwards so a later map without them resolves the shared copy."""
     bsp = read_bsp(bsp_path)
     pak = bsp.pakfile()
-    content = Content(runtime, pak)
-    out_mod = Path(out) / mod
-    stager = Stager(content, out_mod, max_size, out_format, keep_ani, model_lod_index)
+    content = Content(None, pak, resolver)
+    stager.content = content
+    stager.pak_out = {}
+    for name in content.pak:
+        stager.seen_materials.discard(name)
+        stager.seen_models.discard(name)
+        if name in stager.written:
+            stager.written.pop(name)
+            if name.endswith(".vtf"):
+                stager.pending_textures.setdefault(name, "bsp pak override")
+    before_written = set(stager.written)
     map_name = bsp_path.stem
     materials, models, vmts, sky, vscripts = bsp_references(bsp)
-
     bsp_bytes = bsp_path.read_bytes()
     pak_bytes = len(bsp.lump(LUMP_PAKFILE)) if pak else 0
     for extra in ("maps/%s.txt" % map_name, "maps/%s.nav" % map_name):
         if content.exists(extra):
             stager.copy(extra, "map")
-
     for name in sorted(materials):
-        stager.material(name, "bsp texdata")
+        stager.material(name, "%s texdata" % map_name)
     for name in sorted(vmts):
-        stager.vmt(name, "bsp entity")
+        stager.vmt(name, "%s entity" % map_name)
     if sky:
         for side in SKY_SIDES:
-            stager.material("skybox/" + sky + side, "bsp skyname")
+            stager.material("skybox/" + sky + side, "%s skyname" % map_name)
     for model in sorted(models):
-        stager.model(model, "bsp model")
+        stager.model(model, "%s model" % map_name)
     for script in sorted(vscripts):
-        stager.copy("scripts/vscripts/" + script, "bsp entity vscripts")
+        stager.copy("scripts/vscripts/" + script, "%s vscripts" % map_name)
+    stager.textures()
+    stager.pending_textures = {}
+    if keep_pak or not pak:
+        new_bsp = bsp_bytes
+    else:
+        new_pak = build_pak(stager.pak_out) if stager.pak_out else b""
+        new_bsp = rewrite_bsp(bsp_bytes, new_pak)
+        verify_bsp(new_bsp, bsp_bytes, stager.pak_out)
+    stager.put("maps/%s.bsp" % map_name, new_bsp, len(bsp_bytes), "bsp", str(bsp_path))
+    new_files = sorted(set(stager.written) - before_written)
+    entry = {"map": map_name, "bsp": str(bsp_path), "bsp_pak_bytes": pak_bytes,
+             "in_bsp_pak": sorted(stager.pak_out),
+             "bsp_pak_bytes_after": sum(len(v) for v in stager.pak_out.values()),
+             "dropped_pak_files": sorted(set(content.pak) - set(stager.pak_out)),
+             "world_materials": len(materials), "models": len(models),
+             "new_shared_files": len([n for n in new_files
+                                      if not stager.written[n]["kind"].startswith("pak-")
+                                      and n != "maps/%s.bsp" % map_name])}
+    # Pak-sourced files belong to this map's BSP only; a later map resolves its own.
+    for name in content.pak:
+        if name in stager.written and stager.written[name]["kind"].startswith("pak-"):
+            stager.written.pop(name)
+            stager.seen_materials.discard(name)
+            stager.seen_models.discard(name)
+    return entry
+
+
+def stage(bsp_paths, runtime, out, max_size=DEFAULT_MAX_SIZE, mod=DEFAULT_MOD, out_format="auto",
+          extra_boot=(), with_boot=True, keep_ani=False, keep_pak=False, model_lod_index=0,
+          use_vpk=True, bitmap_font=True):
+    """Stage one or more maps into one content tree whose materials, models and textures are
+    shared: each file is written once, whichever maps reference it. Returns the report dict."""
+    if isinstance(bsp_paths, (str, Path)):
+        bsp_paths = [bsp_paths]
+    runtime = Path(runtime)
+    bsp_paths = [resolve_bsp(p, runtime, mod) for p in bsp_paths]
+    base = Content(runtime)
+    out_mod = Path(out) / mod
+    stager = Stager(base, out_mod, max_size, out_format, keep_ani, model_lod_index)
+    maps = [stage_map(stager, path, base.resolver, keep_pak) for path in bsp_paths]
+    stager.content = base
+    stager.pak_out = {}
     if with_boot:
         stager.boot(extra_boot)
     stager.textures()
@@ -931,19 +988,9 @@ def stage(bsp_path, runtime, out, max_size=DEFAULT_MAX_SIZE, mod=DEFAULT_MOD, ou
                 stager.put(logical, hooked.encode("latin-1"), len(before), "scheme-bitmap-font",
                            stager.written[logical]["origin"])
 
-    # The BSP goes last: its pak lump is rewritten to the files the closure used.
-    if keep_pak or not pak:
-        new_bsp = bsp_bytes
-    else:
-        new_pak = build_pak(stager.pak_out) if stager.pak_out else b""
-        new_bsp = rewrite_bsp(bsp_bytes, new_pak)
-        verify_bsp(new_bsp, bsp_bytes, stager.pak_out)
-    stager.put("maps/%s.bsp" % map_name, new_bsp, len(bsp_bytes), "bsp", str(bsp_path))
-    dropped_pak = sorted(set(content.pak) - set(stager.pak_out))
-
     gameinfo_path = runtime / mod / "gameinfo.txt"
     gameinfo = gameinfo_path.read_bytes() if gameinfo_path.is_file() else \
-        content.resolver.read("gameinfo.txt")[0]
+        base.resolver.read("gameinfo.txt")[0]
     if gameinfo is None:
         raise FileNotFoundError("no gameinfo.txt under %s" % runtime)
     out_mod.mkdir(parents=True, exist_ok=True)
@@ -956,7 +1003,8 @@ def stage(bsp_path, runtime, out, max_size=DEFAULT_MAX_SIZE, mod=DEFAULT_MOD, ou
     packed = pack_vpk(out_mod) if use_vpk else {}
     on_disk = [(p, p.stat().st_size) for p in out_mod.rglob("*") if p.is_file()]
     report = {
-        "map": map_name, "mod_dir": str(out_mod), "max_size": max_size,
+        "map": ",".join(m["map"] for m in maps), "maps": maps,
+        "mod_dir": str(out_mod), "max_size": max_size,
         "file_count": len(on_disk),
         "loose_files_before_packing": len(loose),
         "vpk_entries": len(packed),
@@ -966,20 +1014,22 @@ def stage(bsp_path, runtime, out, max_size=DEFAULT_MAX_SIZE, mod=DEFAULT_MOD, ou
         "loose_files": sorted(p.relative_to(out_mod).as_posix() for p, _s in on_disk),
         "bytes_before": sum(e["before"] for _l, e in files if not e["kind"].startswith("pak-")),
         "bytes_after": sum(size for _p, size in on_disk),
-        "bsp_pak_bytes": pak_bytes,
-        "in_bsp_pak": sorted(stager.pak_out),
-        "bsp_pak_bytes_after": sum(len(v) for v in stager.pak_out.values()),
-        "dropped_pak_files": dropped_pak,
+        "bsp_pak_bytes": sum(m["bsp_pak_bytes"] for m in maps),
+        "in_bsp_pak": sorted({n for m in maps for n in m["in_bsp_pak"]}),
+        "bsp_pak_bytes_after": sum(m["bsp_pak_bytes_after"] for m in maps),
+        "dropped_pak_files": sorted({n for m in maps for n in m["dropped_pak_files"]}),
         "editor_models_skipped": sorted(stager.skipped_editor),
         "largest": [(str(p.relative_to(out_mod)), size)
                     for p, size in sorted(loose, key=lambda item: -item[1])[:12]],
         "by_kind": {},
         "missing": dict(sorted(stager.missing.items())),
         "notes": stager.notes + BOOT_NOTES,
-        "counts": {"materials": len(stager.seen_materials), "models": len(stager.seen_models),
+        "counts": {"maps": len(maps), "materials": len(stager.seen_materials),
+                   "models": len(stager.seen_models),
                    "textures": sum(1 for e in stager.written.values()
                                    if e["kind"] in ("vtf", "vtf-passthrough")),
-                   "world_materials": len(materials), "static_prop_and_entity_models": len(models)},
+                   "world_materials": sum(m["world_materials"] for m in maps),
+                   "static_prop_and_entity_models": sum(m["models"] for m in maps)},
     }
     for logical, entry in files:
         kind = report["by_kind"].setdefault(entry["kind"], {"files": 0, "before": 0, "after": 0})
@@ -1008,6 +1058,11 @@ def format_report(report):
     for kind, entry in sorted(report["by_kind"].items()):
         lines.append("  %-16s %5d files  %12d -> %12d" % (kind, entry["files"], entry["before"],
                                                            entry["after"]))
+    if len(report.get("maps", [])) > 1:
+        lines.append("maps (files first staged by each; the rest are shared):")
+        lines += ["  %-28s %5d new  pak %d -> %d bytes" % (
+            m["map"], m["new_shared_files"], m["bsp_pak_bytes"], m["bsp_pak_bytes_after"])
+            for m in report["maps"]]
     lines.append("largest remaining files:")
     lines += ["  %10d  %s" % (size, name) for name, size in report["largest"]]
     lines.append("missing assets: %d" % len(report["missing"]))
@@ -1020,11 +1075,29 @@ def format_report(report):
     return "\n".join(lines)
 
 
+def expand_maps(names, runtime, mod):
+    """Map names with fnmatch patterns expanded against <runtime>/<mod>/maps, in order."""
+    maps_dir = Path(runtime) / mod / "maps"
+    result = []
+    for name in names:
+        if any(c in name for c in "*?[") and not Path(name).is_file():
+            matched = sorted(p for p in maps_dir.glob(name if name.endswith(".bsp")
+                                                      else name + ".bsp"))
+            if not matched:
+                raise SystemExit("no map matches %s under %s" % (name, maps_dir))
+            result += [p for p in matched if p not in result]
+        else:
+            result.append(name)
+    return result
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--bsp", required=True,
-                        help="BSP path, or a map name found under <runtime>/<mod>/maps")
+    parser.add_argument("--bsp", required=True, action="append",
+                        help="BSP path, or a map name (fnmatch pattern allowed) found under "
+                             "<runtime>/<mod>/maps; repeatable: every map goes into one content "
+                             "set whose materials, models and textures are shared")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2")
     parser.add_argument("--out", type=Path, required=True,
                         help="output root; the content goes in <out>/<mod>")
@@ -1053,7 +1126,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.max_size < 1 or args.max_size & (args.max_size - 1):
         parser.error("--max-size must be a power of two")
-    report = stage(args.bsp, args.runtime, args.out, args.max_size, args.mod, args.format,
+    report = stage(expand_maps(args.bsp, args.runtime, args.mod), args.runtime, args.out, args.max_size, args.mod, args.format,
                    args.boot_extra, not args.no_boot, args.keep_ani, args.keep_pak,
                    None if args.no_lod_trim else args.model_lod, args.vpk,
                    not args.no_bitmap_font)

@@ -121,6 +121,17 @@ bool LayoutOf( Format format, std::uint32_t width, std::uint32_t height, std::ui
 		l.bytes = StoredBlockBytes( format ) ? texels / 16 * StoredBlockBytes( format )
 		                                     : texels * kStoredTexelBytes;
 		offset += l.bytes;
+		// A power-of-two level 0 under a tile is stretched over it (texels
+		// only; a block format has no texel to repeat): one sampled level.
+		if ( level == 0 && sampleable && !StoredBlockBytes( format ) &&
+		     ( l.width < kTile || l.height < kTile ) )
+		{
+			l.stretchX = l.storedWidth / l.width;
+			l.stretchY = l.storedHeight / l.height;
+			out.sampledLevels = 1;
+			sampleable = false;
+			continue;
+		}
 		sampleable = sampleable && l.width >= kTile && l.height >= kTile;
 		if ( sampleable )
 			out.sampledLevels = level + 1;
@@ -228,14 +239,20 @@ void CopyIn( Format format, const LevelLayout &level, std::byte *stored, std::ui
 		for ( std::uint32_t column = 0; column < width; ++column )
 		{
 			const std::byte *from = rows + ( std::size_t( row ) * width + column ) * texel;
-			std::byte *to =
-			    stored + std::size_t( TiledIndex( x + column, y + row, level.storedWidth ) ) *
-			                 kStoredTexelBytes;
-			std::uint32_t word = StoreTexel( format, { from, texel } );
-			// A depth copy writes depth and keeps the stencil already stored.
-			if ( format == Format::kD24UnormS8 )
-				word |= Word( to ) & ~kDepthMax;
-			PutWord( to, word );
+			const std::uint32_t word = StoreTexel( format, { from, texel } );
+			// A stretched level repeats the texel over its block.
+			for ( std::uint32_t sy = 0; sy < level.stretchY; ++sy )
+				for ( std::uint32_t sx = 0; sx < level.stretchX; ++sx )
+				{
+					std::byte *to = stored + std::size_t( TiledIndex(
+					                             ( x + column ) * level.stretchX + sx,
+					                             ( y + row ) * level.stretchY + sy,
+					                             level.storedWidth ) ) *
+					                             kStoredTexelBytes;
+					// A depth copy writes depth and keeps the stencil already stored.
+					PutWord( to, format == Format::kD24UnormS8 ? word | ( Word( to ) & ~kDepthMax )
+					                                           : word );
+				}
 		}
 	}
 }
@@ -259,7 +276,8 @@ void CopyOut( Format format, const LevelLayout &level, const std::byte *stored, 
 		for ( std::uint32_t column = 0; column < width; ++column )
 		{
 			const std::byte *from =
-			    stored + std::size_t( TiledIndex( x + column, y + row, level.storedWidth ) ) *
+			    stored + std::size_t( TiledIndex( ( x + column ) * level.stretchX,
+			                             ( y + row ) * level.stretchY, level.storedWidth ) ) *
 			                 kStoredTexelBytes;
 			std::byte *to = rows + ( std::size_t( row ) * width + column ) * texel;
 			LoadTexel( format, Word( from ), { to, texel } );

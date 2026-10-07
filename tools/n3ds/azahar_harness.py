@@ -228,35 +228,10 @@ def package():
     return ROOT / "build-3ds/Portal2.cxi"
 
 
-_COMPOSITOR = None
-
-
-def _private_display():
-    """N3DS_RENDERER=opengl: a private headless mutter (run_device_suite.py's),
-    kept for this process, so Azahar renders with OpenGL (texture LOD) and
-    never opens a window on the user's desktop."""
-    global _COMPOSITOR
-    if _COMPOSITOR is None:
-        import atexit
-        import run_device_suite
-        _COMPOSITOR = run_device_suite.compositor()
-        display = _COMPOSITOR.__enter__()
-        atexit.register(lambda: _COMPOSITOR.__exit__(None, None, None))
-        _private_display.name = display
-    return _private_display.name
-
-
 def start_emulator(headless, app, hold=False):
     azahar_ns.stop()
     command = ["flatpak", "run", "--filesystem=%s" % ROOT, "--command=%s" % AZAHAR_BINARY]
-    opengl = os.environ.get("N3DS_RENDERER") == "opengl"
-    environment = None
-    if opengl:
-        display = _private_display()
-        command += ["--socket=wayland", "--nosocket=x11", "--env=QT_QPA_PLATFORM=wayland"]
-        environment = dict(os.environ, WAYLAND_DISPLAY=display)
-        environment.pop("DISPLAY", None)
-    elif headless:
+    if headless:
         command.append("--env=QT_QPA_PLATFORM=offscreen")
     command += ["org.azahar_emu.Azahar", "--harness", str(SOCKET)]
     if hold:
@@ -264,9 +239,8 @@ def start_emulator(headless, app, hold=False):
     command.append(str(app))
     azahar_ns.HARNESS_LOG.parent.mkdir(parents=True, exist_ok=True)
     log = open(azahar_ns.HARNESS_LOG, "w")
-    azahar_ns.popen(command, headless=headless, opengl=opengl, env=environment, stdout=log,
-                    stderr=subprocess.STDOUT)
-    print(azahar_ns.describe() + (" (OpenGL, private display)" if opengl else ""), flush=True)
+    azahar_ns.popen(command, headless=headless, stdout=log, stderr=subprocess.STDOUT)
+    print(azahar_ns.describe(), flush=True)
 
 
 GDB = ROOT / "dependencies/3ds/devkitpro/devkitARM/bin/arm-none-eabi-gdb"

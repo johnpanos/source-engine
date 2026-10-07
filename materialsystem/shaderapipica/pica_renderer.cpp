@@ -42,18 +42,25 @@ namespace pc = render::device::pica;
 // its top-left 400x240.
 constexpr std::uint32_t kTargetWidth = 512;
 constexpr std::uint32_t kTargetHeight = 256;
-constexpr std::size_t kVertexRingBytes = 3u * 1024u * 1024u;
-constexpr std::size_t kIndexRingBytes = 512u * 1024u;
+constexpr std::size_t kVertexRingBytes = 1024u * 1024u; // peak 302 KB on sp_a1_intro4
+constexpr std::size_t kIndexRingBytes = 128u * 1024u; // peak 4 KB
 // c0-c3 the column-vector clip rows, c4 the tint (fullbright.v.pica).
 constexpr std::uint32_t kDrawConstantBytes = 5 * 16;
 
 // One linear allocation: a device upload buffer, mapped.
+// A mesh's memory: CPU memory the shader API writes, and (resident) a device
+// buffer copied from it when a draw first reads it or after a write. A mesh
+// the render core draws instead is never resident (RFC 0026 P3: the legacy
+// world meshes and the core's world geometry no longer share linear memory).
+// A transient ring's allocation is the device buffer itself.
 struct Allocation
 {
 	BufferId buffer;
+	std::byte *resident = nullptr; // the device buffer's mapped bytes
 	std::size_t bytes = 0;
 	Memory kind = Memory::kVertices;
 	bool transient = false;
+	bool dirty = true; // the CPU bytes changed since the last copy
 	std::uint32_t usedInRecording = 0; // the recording that last read it
 };
 
@@ -84,10 +91,14 @@ struct State
 	ResourceUsage depthUsage = ResourceUsage::kUndefined;
 	Viewport viewport{ 0, 0, float( kScreenWidth ), float( kScreenHeight ), 0, 1 };
 	std::vector<ResourceId> releases; // after the recording that reads them
+	BufferId reserve; // ReserveLinear
+	CompletionToken submitted; // the last SubmitRecording's
 	bool initialized = false;
 	bool inFrame = false;
 	Stats stats;
 	std::size_t textureBytes = 0;
+	std::size_t meshBytes = 0;
+	std::size_t residentBytes = 0; // meshes with a device copy
 };
 
 State g_state;
@@ -369,6 +380,16 @@ void SubmitRecording( bool sample )
 	CommandEncoder list[] = { std::move( *g_state.encoder ) };
 	g_state.encoder.reset();
 	auto token = Device().Submit( QueueKind::kGraphics, list, {} );
+	if ( token )
+		g_state.submitted = token.Value();
+	else
+	{
+		++g_state.stats.submitFailures;
+		static unsigned s_reported = 0;
+		if ( s_reported++ < 4 )
+			std::printf( "pica: the frame's submission was refused: %s (%s)\n",
+				DescribeStatus( token.Error().status ), DescribeOperation( token.Error().operation ) );
+	}
 	++g_state.stats.submits;
 	++g_state.recording;
 	for ( ResourceId id : g_state.releases )
@@ -577,6 +598,21 @@ bool Init()
 	return true;
 }
 
+bool ReserveLinear( std::size_t bytes )
+{
+	if ( !g_state.initialized || bytes == 0 || g_state.reserve.IsValid() )
+		return false;
+	BufferDesc desc;
+	desc.size = bytes;
+	desc.memory = MemoryKind::kUpload;
+	desc.usages = { ResourceUsage::kVertex };
+	auto buffer = Device().CreateBuffer( desc );
+	if ( !buffer )
+		return false;
+	g_state.reserve = buffer.Value();
+	return true;
+}
+
 void Shutdown()
 {
 	if ( !g_state.initialized )
@@ -594,6 +630,8 @@ void Shutdown()
 			(void)device.Release( pipeline, {} );
 	for ( const auto &[address, allocation] : g_state.allocations )
 		(void)device.Release( allocation.buffer, {} );
+	if ( g_state.reserve.IsValid() )
+		(void)device.Release( g_state.reserve, {} );
 	for ( ResourceId id : { ResourceId( g_state.color ), ResourceId( g_state.depth ),
 			  ResourceId( g_state.materialLayout ), ResourceId( g_state.samplers[0] ),
 			  ResourceId( g_state.samplers[1] ) } )
@@ -630,6 +668,7 @@ void EndFrame()
 	if ( !g_state.inFrame )
 		return;
 	g_state.stats.textureBytes = g_state.textureBytes;
+	g_state.stats.meshBytes = g_state.meshBytes;
 	SubmitRecording( true );
 	(void)pc::PresentTopScreen( Device(), g_state.color, kScreenWidth, kScreenHeight );
 	g_state.inFrame = false;
@@ -663,6 +702,8 @@ void *AllocTransient( Memory kind, std::size_t bytes, std::size_t align )
 		return nullptr;
 	}
 	ring.used = at + bytes;
+	std::size_t &peak = g_state.stats.ringPeak[int( kind )];
+	peak = ring.used > peak ? ring.used : peak;
 	return ring.data + at;
 }
 
@@ -673,12 +714,41 @@ void *AllocLinear( Memory kind, std::size_t bytes )
 	Allocation allocation;
 	allocation.kind = kind;
 	allocation.bytes = bytes;
-	std::byte *data = CreateLinear( kind, bytes, allocation.buffer );
+	auto *data = static_cast<std::byte *>( std::malloc( bytes ) );
 	if ( !data )
 		return nullptr;
 	g_state.allocations.emplace( reinterpret_cast<std::uintptr_t>( data ), allocation );
+	g_state.meshBytes += bytes;
 	return data;
 }
+
+namespace
+{
+// The device copy of a mesh's bytes, made or refreshed before a draw reads it.
+bool MakeResident( std::uintptr_t cpu, Allocation &allocation )
+{
+	if ( allocation.transient )
+		return true;
+	if ( !allocation.resident )
+	{
+		allocation.resident = CreateLinear( allocation.kind, allocation.bytes, allocation.buffer );
+		if ( !allocation.resident )
+			return false;
+		g_state.residentBytes += allocation.bytes;
+		allocation.dirty = true;
+	}
+	if ( allocation.dirty )
+	{
+		// A recorded draw reads the old copy: it is submitted first.
+		if ( allocation.usedInRecording == g_state.recording && g_state.encoder )
+			SubmitRecording( false );
+		std::memcpy( allocation.resident, reinterpret_cast<const void *>( cpu ), allocation.bytes );
+		pc::FlushUploadBuffer( Device(), allocation.buffer, 0, allocation.bytes );
+		allocation.dirty = false;
+	}
+	return true;
+}
+} // namespace
 
 void FreeLinear( void *ptr )
 {
@@ -687,7 +757,13 @@ void FreeLinear( void *ptr )
 	const auto found = g_state.allocations.find( reinterpret_cast<std::uintptr_t>( ptr ) );
 	if ( found == g_state.allocations.end() || found->second.transient )
 		return;
-	g_state.releases.push_back( found->second.buffer );
+	if ( found->second.resident )
+	{
+		g_state.releases.push_back( found->second.buffer );
+		g_state.residentBytes -= found->second.bytes;
+	}
+	g_state.meshBytes -= found->second.bytes;
+	std::free( ptr );
 	g_state.allocations.erase( found );
 	if ( !g_state.encoder )
 	{
@@ -697,19 +773,22 @@ void FreeLinear( void *ptr )
 	}
 }
 
-void PrepareWrite( const void *ptr )
+void PrepareWrite( const void * )
 {
-	Allocation *allocation = Find( ptr, nullptr );
-	if ( allocation && !allocation->transient && allocation->usedInRecording == g_state.recording &&
-	     g_state.encoder )
-		SubmitRecording( false );
+	// A mesh's bytes are CPU memory now: a write never races the GPU, which
+	// reads the device copy MakeResident refreshes.
 }
 
 void FlushLinear( const void *ptr, std::size_t bytes )
 {
 	std::size_t offset = 0;
-	if ( Allocation *allocation = Find( ptr, &offset ) )
+	Allocation *allocation = Find( ptr, &offset );
+	if ( !allocation )
+		return;
+	if ( allocation->transient )
 		pc::FlushUploadBuffer( Device(), allocation->buffer, offset, bytes );
+	else
+		allocation->dirty = true;
 }
 
 void Draw( const float clipFromObject[16], const DrawState &state, Texture *texture,
@@ -728,10 +807,20 @@ void Draw( const float clipFromObject[16], const DrawState &state, Texture *text
 	}
 	std::size_t vertexOffset = 0, indexOffset = 0;
 	Allocation *vertexMemory = Find( vertices, &vertexOffset );
+	if ( vertexMemory && !MakeResident( reinterpret_cast<std::uintptr_t>( vertices ) - vertexOffset, *vertexMemory ) )
+	{
+		++g_state.stats.residencyRefusals;
+		return;
+	}
 	Allocation *indexMemory = indices ? Find( indices, &indexOffset ) : nullptr;
 	if ( !vertexMemory || vertexMemory->kind != Memory::kVertices ||
 	     ( indices && ( !indexMemory || indexMemory->kind != Memory::kIndices ) ) )
 		return;
+	if ( indexMemory && !MakeResident( reinterpret_cast<std::uintptr_t>( indices ) - indexOffset, *indexMemory ) )
+	{
+		++g_state.stats.residencyRefusals;
+		return;
+	}
 	const bool textured = texture && texture->Valid();
 	const PipelineId pipeline = PipelineFor( state, *blend, textured, primitive );
 	if ( !pipeline.IsValid() )
@@ -767,6 +856,32 @@ void Draw( const float clipFromObject[16], const DrawState &state, Texture *text
 		    std::uint32_t( primitive == Primitive::kTriangles ? vertexCount / 3 : vertexCount - 2 );
 	}
 	++g_state.stats.draws;
+}
+
+render::device::CommandEncoder *BeginCoreSection( CoreSectionTarget &target )
+{
+	if ( !g_state.inFrame )
+		BeginFrame();
+	if ( !g_state.encoder )
+		return nullptr;
+	if ( g_state.rendering )
+		g_state.encoder->EndRendering();
+	g_state.rendering = false;
+	target.device = g_state.device;
+	target.color = std::uint32_t( g_state.color.value );
+	target.depth = std::uint32_t( g_state.depth.value );
+	target.width = kScreenWidth;
+	target.height = kScreenHeight;
+	target.serial = g_state.recording;
+	target.submittedEpoch = g_state.submitted.epoch;
+	target.submittedValue = g_state.submitted.value;
+	return &*g_state.encoder;
+}
+
+void EndCoreSection()
+{
+	if ( g_state.encoder && !g_state.rendering )
+		BeginPass( false, false, 0 );
 }
 
 bool CaptureTopScreen( const char *path )
