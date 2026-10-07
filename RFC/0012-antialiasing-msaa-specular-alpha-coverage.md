@@ -391,7 +391,34 @@ runtime path.
   upward without derivatives (fails identity and reference), and the filter
   applied to only one roughness consumer (fails prediction).
 
-**A2 progress (2026-10-06, first slice, render core only).** Installed:
+**A2 decision (user, 2026-10-06): rejected and removed.** Both forms of
+specular antialiasing measured worse than no filter against converged
+supersampled references, and the user's rule is that only changes that move
+the renderer toward Source 2's image are kept. The commit "Render core: remove specular antialiasing (RFC 0012 A2)" deletes
+the owner, GLSL, view feature, `r_core_specular_aa`, the lab suites, the
+shimmer tool and their manifest rows; the history below and the commits
+`6f63556a8`, `0d6ccf7e1` and `08a47b072` reproduce the evidence.
+
+Version 2 (geometric-normal derivatives plus a Toksvig term from the
+filtered normal-map sample's length) against the image oracle, extended with
+a row of smooth low-roughness metal spheres about seven pixels across:
+
+| Fixture | Shimmer on/off | Reference L1 on/off | Mean on / off / reference |
+| --- | --- | --- | --- |
+| spheres, roughness 0.05 | 8.03 | 9.88 | 0.0013 / 0.0001 / 0.0001 |
+| spheres, roughness 0.15 | 2.18 | 2.44 | 0.0013 / 0.0007 / 0.0006 |
+| bumpy plane, roughness 0.10 | 4.48 | 21.1 | 0.387 / 0.056 / 0.057 |
+| bumpy plane, roughness 0.25 | 1.65 | 4.61 | 0.391 / 0.239 / 0.226 |
+
+The reference had converged: at 8x8 supersampling the plane's means were
+0.0566 and 0.219, against 0.057 and 0.226 at 4x4. Without any filter the
+1x image already matches the reference's mean on every fixture; widening
+the lobe spreads small highlights into more, brighter display pixels.
+Consequence for R66: the Toksvig term here is the runtime form of A4's
+normal-variance roughness mips and over-brightened the bumpy plane 7x;
+A4 needs its own evidence before any work.
+
+**A2 history (2026-10-06, first slice, render core only).** Installed:
 
 - the owner `public/render/pbr_specular_aa.h` (version 1, screen variance
   0.15, threshold 0.2) and its GPU copy

@@ -447,7 +447,6 @@ private:
 	std::atomic<bool> m_ShadowPcss{ false };
 	std::atomic<bool> m_AreaLightsOn{ false };
 	std::atomic<bool> m_ProbeBounce{ false };
-	std::atomic<bool> m_SpecularAa{ true };
 	// Runtime direct light on the next stage (RenderCoreWorldQuality), and
 	// on the stage set.
 	std::atomic<bool> m_RuntimeDirect{ true };

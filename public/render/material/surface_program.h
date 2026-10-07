@@ -570,10 +570,7 @@ inline constexpr std::uint32_t kSurfaceViewClipPlanes = 8u;
 // the product's defaults (r_core_shadow_pcss, r_core_probe_bounce).
 inline constexpr std::uint32_t kSurfaceViewSoftShadows = 16u;
 inline constexpr std::uint32_t kSurfaceViewProbeBounce = 32u;
-// Geometric specular antialiasing of the pbr point (render.pbr-specular-aa.v1,
-// RFC 0012 A2); on in the product's defaults (r_core_specular_aa).
-inline constexpr std::uint32_t kSurfaceViewSpecularAa = 64u;
-inline constexpr std::uint32_t kSurfaceAllViewFeatures = 127u;
+inline constexpr std::uint32_t kSurfaceAllViewFeatures = 63u;
 
 // The per-instance record of an instanced model point: FamilyDrawConstants
 // (object-to-clip, then object-to-world, row-major).

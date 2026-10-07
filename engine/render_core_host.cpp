@@ -135,10 +135,6 @@ ConVar r_core_shadow_pcss( "r_core_shadow_pcss", "0", FCVAR_ARCHIVE,
 ConVar r_core_probe_bounce( "r_core_probe_bounce", "0", FCVAR_ARCHIVE,
     "Render core: the probe volume's projected-light bounce, compiled into the shaders when 1. "
     "0 (default) leaves it out." );
-ConVar r_core_specular_aa( "r_core_specular_aa", "1", FCVAR_ARCHIVE,
-    "Render core: geometric specular antialiasing (RFC 0012 A2): the shading normal's change "
-    "across a pixel widens PBR roughness, so glossy bumpy surfaces stop shimmering. Compiled "
-    "into the shaders when 1 (default); 0 leaves it out." );
 ConVar r_core_area_lights( "r_core_area_lights", "0", FCVAR_ARCHIVE,
     "Render core: runtime area lights (LTC) for the map's light fixtures and the frame's "
     "emitting surfaces. 0 (default, Source 2's lighting): fixtures light through the bake and "
@@ -471,7 +467,7 @@ void RenderCoreHost_BeginFrame()
 			    r_core_runtime_direct.GetInt(), RenderCoreWorldDraw_OnlyCore(),
 			    r_core_dynamic_draws.GetBool(), r_core_volumetric.GetInt(), r_core_ssr.GetInt(),
 			    r_core_world_gpu_submit.GetInt(), r_core_area_lights.GetInt(),
-			    r_core_probe_bounce.GetInt(), r_core_specular_aa.GetInt() };
+			    r_core_probe_bounce.GetInt() };
 			host.world->SetQuality( quality );
 			host.world->BeginFrame();
 		}

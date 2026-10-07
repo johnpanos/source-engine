@@ -427,11 +427,9 @@ struct WorldTarget
 	// setting off). A change rebuilds the pass's programs, as runtimeDirect's.
 	bool ambientOcclusionTerm = true;
 	// Profile options compiled into the view's programs
-	// (material::kSurfaceViewSoftShadows, kSurfaceViewProbeBounce,
-	// kSurfaceViewSpecularAa).
+	// (material::kSurfaceViewSoftShadows, kSurfaceViewProbeBounce).
 	bool softShadows = true;
 	bool probeBounce = true;
-	bool specularAa = true;
 	// The device the slot records on (the legacy backend's); the pass's
 	// device objects live on it.
 	device::IRenderDevice2 *device = nullptr;

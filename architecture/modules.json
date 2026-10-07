@@ -368,7 +368,6 @@
           "public/render/draw_phase.h",
           "public/render/render_presentation.h",
           "public/render/pbr_brdf.h",
-          "public/render/pbr_specular_aa.h",
           "public/render/pbr_sh_l1.h",
           "public/render/pbr_split_sum_table.h",
           "public/render/pbr_ltc_table.h",

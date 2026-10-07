@@ -182,10 +182,6 @@ struct RenderCoreWorldQuality
 	// sweep measured 4.9 ms at 4K on an RTX 3070 for no visible change on
 	// intro4 (RFC/0016-progress.md).
 	int probeBounce = 0;
-	// Nonzero (the default): geometric specular antialiasing of the PBR
-	// lobe (render.pbr-specular-aa.v1, RFC 0012 A2), compiled in. Zero:
-	// compiled out; roughness is the material's.
-	int specularAa = 1;
 };
 
 // The game's files as the core reads them (projector cookies,

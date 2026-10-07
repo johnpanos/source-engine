@@ -70,8 +70,6 @@
 namespace render::lab
 {
 int RunTreeSwaySuite( int argc, char **argv );
-int RunSpecularAaSuite( int argc, char **argv );
-int RunSpecularAaImageSuite( int argc, char **argv );
 
 int RunTemporalSuite( int argc, char **argv );
 
