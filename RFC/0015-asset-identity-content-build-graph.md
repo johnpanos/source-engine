@@ -5,7 +5,13 @@
   [Decisions](#decisions-2026-09-26)). Amended 2026-10-05 at the user's
   direction: legacy VPK, VTF and VMT are degenerate cases of the asset
   index, and the resolver is the only asset lookup path (see
-  [One lookup path](#one-lookup-path-amended-2026-10-05))
+  [One lookup path](#one-lookup-path-amended-2026-10-05)).
+  [RFC 0027](0027-product-pipeline-lowering-streaming-kiln.md) (proposed,
+  2026-10-07) proposes four amendments, applied only as its phases land:
+  opt-in per-profile lowering with passthrough as the default, a
+  profile-independent IR store region, streaming units in index entries
+  with asynchronous ranged reads, and `content_build` folded into
+  `kiln content`
 - Date: 2026-09-26
 - Scope: How every kind of game content is named, compiled, recorded,
   packaged, resolved at runtime and reloaded during development. This
