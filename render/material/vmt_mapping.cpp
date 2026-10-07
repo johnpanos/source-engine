@@ -299,6 +299,7 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "cable", "$maxlight", "maxlight", ValueKind::kFloat, "0.3" },
     { "unlit", "$color2", "color2", ValueKind::kFloat3, "[1 1 1]" },
     { "unlit", "$gammacolorread", "gammacolorread", ValueKind::kInt, "0" },
+    { "unlit", "$linearwrite", "linearwrite", ValueKind::kInt, "0" },
     { "unlit", "$hdrbasetexture", "hdrbasetexture", ValueKind::kTexture, "" },
     { "unlit", "$hdrcompressedtexture", "hdrcompressedtexture", ValueKind::kTexture, "" },
     { "unlit", "$hdrcompressedtexture0", "hdrcompressedtexture0", ValueKind::kTexture, "" },

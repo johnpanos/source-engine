@@ -12568,3 +12568,14 @@ Portal 1 unsupported: 452 → 362; Portal 2: 148 → 145. What remains in
 Portal 1 is mostly real features: Eyeball, eyes and Teeth (81 HL2 character
 materials), screen-space and debug shaders, `$linearwrite` (16),
 `$envmap` without native probes, and model vertex colors.
+
+### K12: Portal 1 chapter images, UnlitGeneric $linearwrite (2026-10-07, user request)
+
+`$linearwrite 1` only turns off UnlitGeneric's sRGB write
+(`vertexlitgeneric_dx9_helper.cpp`). After a `$gammacolorread 1` read with
+no color modulation the bytes pass through unchanged, which the linear
+pipeline draws as the decoded base encoded on output: the 15 Portal 1
+chapter-select images now claim. Modulation between the raw read and the raw
+write (vertex color, `$color`, `$color2`), or `$linearwrite` after a decoded
+read, is refused by name (`console/rt_background`). `render.lab.posed-model`
+checks both. Portal 1 unsupported: 362 → 347.

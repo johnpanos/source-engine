@@ -34,7 +34,8 @@ using detail::SourceGammaToLinear;
 // The SpriteCard and Sprite rows of the family's schema: UnlitGeneric
 // declares none of them, so an UnlitGeneric material that carries one draws
 // as if it did not.
-constexpr std::array<std::string_view, 53> kClaimed = { "gammacolorread", "addbasetexture2",
+constexpr std::array<std::string_view, 54> kClaimed = { "gammacolorread", "linearwrite",
+    "addbasetexture2",
     "addoverblend", "mod2x", "dualsequence", "sequence_blend_mode", "maxlumframeblend1",
     "maxlumframeblend2", "ramptexture", "zoomanimateseq2", "extractgreenalpha", "useinstancing",
     "nosrgb", "orientation", "overbrightfactor",
@@ -80,6 +81,24 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 	// $gammacolorread 1 reads the base without sRGB decoding
 	// (vertexlitgeneric_dx9_helper.cpp's EnableSRGBRead).
 	claim.baseSrgb = int( ReadParameter( block, "gammacolorread" ) ) != 1;
+	// $linearwrite 1 turns off the sRGB write. After a $gammacolorread 1 read
+	// with no color modulation the bytes pass through unchanged, which the
+	// linear pipeline draws as the decoded base, encoded on output (the menu
+	// chapter images). Any modulation in between would happen in the wrong
+	// space, so that is refused by name.
+	if ( int( ReadParameter( block, "linearwrite" ) ) == 1 )
+	{
+		bool modulated = ReadFlag( block, "vertexcolor" );
+		for ( int c = 0; c < 3; ++c )
+			modulated = modulated || ReadParameter( block, "color", c ) != 1.0f ||
+			            ReadParameter( block, "color2", c ) != 1.0f;
+		if ( claim.baseSrgb || modulated )
+		{
+			claim.reason = "$linearwrite needs $gammacolorread 1 and no color modulation";
+			return claim;
+		}
+		claim.baseSrgb = true;
+	}
 	const float depthScale = ReadParameter( block, "depthblendscale" );
 	if ( claim.depthBlend && ( !std::isfinite( depthScale ) || depthScale <= 0.0f ) )
 	{

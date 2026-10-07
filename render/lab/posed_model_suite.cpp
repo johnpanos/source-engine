@@ -1612,6 +1612,26 @@ std::optional<std::string> RunChecks(
 		results.That( !refused && refused.Error().find( "$color2" ) != std::string::npos,
 		    "posed-model.unlit-negative-color2-is-refused-by-name" );
 	}
+	// $linearwrite after $gammacolorread passes the bytes through (claimed);
+	// with color modulation in between, or without the gamma read, refused.
+	{
+		auto claim = []( const std::vector<material::VmtPair> &extra )
+		{
+			std::vector<material::VmtPair> pairs = { { "$basetexture", "a/b" },
+			    { "$linearwrite", "1" } };
+			pairs.insert( pairs.end(), extra.begin(), extra.end() );
+			const auto mapped = material::MapVariables( "UnlitGeneric", pairs, {} );
+			return mapped ? material::ClaimForDrawing( mapped.Value() )
+			              : foundation::MakeUnexpected( std::string( "unmapped" ) );
+		};
+		results.That( claim( { { "$gammacolorread", "1" }, { "$vertexalpha", "1" } } ).HasValue(),
+		    "posed-model.unlit-linearwrite-after-gamma-read-is-claimed" );
+		const auto modulated = claim( { { "$gammacolorread", "1" }, { "$vertexcolor", "1" } } );
+		const auto decoded = claim( {} );
+		results.That( !modulated && modulated.Error().find( "$linearwrite" ) != std::string::npos &&
+		                  !decoded,
+		    "posed-model.unlit-linearwrite-refuses-modulation-and-decoded-reads" );
+	}
 	const auto unsupportedDecal = material::MapVariables(
 	    "DecalModulate", { { "$basetexture", "decal" }, { "$envmap", "cube" } }, {} );
 	results.That( unsupportedDecal && !material::ClaimForDrawing( unsupportedDecal.Value() ),
