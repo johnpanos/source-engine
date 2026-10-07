@@ -852,6 +852,9 @@ static void LevelInitWorld()
 	worldbrushdata_t *pBrush = host_state.worldbrush;
 	if ( !pWorld || !pBrush )
 		return;
+	// The core's pipeline prewarm list lives with the game's files; both the
+	// stage and the surface world record into it and prewarm from it.
+	pWorld->SetPipelineStore( com_gamedir );
 	if ( pBrush->pWorldMeshData && pBrush->pWorldMeshBatches && pBrush->worldMeshBatchCount &&
 	     pBrush->pWorldMeshClusters )
 	{
@@ -966,8 +969,6 @@ static void LevelInitWorld()
 		}
 		materialDescs.AddToTail( desc );
 	}
-	// The core's pipeline prewarm list lives with the game's files.
-	pWorld->SetPipelineStore( com_gamedir );
 	UploadCubemapProbes( pWorld, pBrush );
 	pWorld->SetWorld( vertices.Base(), vertices.Count(), indices.Base(), indices.Count(),
 	    surfaces.Base(), surfaces.Count(), materialDescs.Base(), materialDescs.Count() );
