@@ -1646,6 +1646,17 @@ std::optional<std::string> RunChecks(
 		        std::to_string( wireCount ) + ", eyeball " + std::to_string( eyeballCount ) + " " +
 		        decalPass.Stats().lastFailure );
 	}
+	// $ignorez on the mesh points (VertexLitGeneric, Refract) is claimed: the
+	// variant's ignoreDepth, as UnlitGeneric's.
+	{
+		const auto lit = material::MapVariables(
+		    "VertexLitGeneric", { { "$basetexture", "a/b" }, { "$ignorez", "1" } }, {} );
+		const auto refract = material::MapVariables( "Refract",
+		    { { "$normalmap", "a/n" }, { "$ignorez", "1" }, { "$translucent", "1" } }, {} );
+		results.That( lit && material::ClaimForMesh( lit.Value(), false ).HasValue() && refract &&
+		                  material::ClaimForMesh( refract.Value(), false, true ).HasValue(),
+		    "posed-model.mesh-points-claim-ignorez" );
+	}
 	// UnlitGeneric's $color2 multiplies $color (ApplyColor2Factor); a negative
 	// product is refused by name.
 	{

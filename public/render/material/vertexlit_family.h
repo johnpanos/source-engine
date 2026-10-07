@@ -115,11 +115,13 @@ struct VertexLitMeshClaim
 	bool alphaTest = false;
 	bool alphaToCoverage = false;
 	bool halfLambert = false;
+	bool ignoreDepth = false; // $ignorez
 	device::BlendMode blend = device::BlendMode::kOpaque;
 	SurfaceConstants constants;
 	SurfaceVariant Variant() const
 	{
 		SurfaceVariant variant;
+		variant.ignoreDepth = ignoreDepth;
 		variant.terms = kSurfacePbr |
 		                ( normalMap ? ( ssbump ? kSurfaceSsbump : kSurfaceBump ) : 0u ) |
 		                ( selfIllum ? kSurfaceSelfIllum : 0u ) |

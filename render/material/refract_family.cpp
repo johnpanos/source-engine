@@ -31,12 +31,15 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 	// (scene color, or a base texture read at the warped screen position) have
 	// no base coordinates for a transform to move.
 	const bool local = detail::ReadFlag( block, "localrefract" );
-	constexpr std::array<std::string_view, 20> kClaimed = { "model", "translucent", "basetexture",
+	// $ignorez: no depth test (SurfaceVariant::ignoreDepth; a captured draw's
+	// depth state carries it too).
+	constexpr std::array<std::string_view, 21> kClaimed = { "ignorez", "model", "translucent",
+	    "basetexture",
 	    "normalmap", "refractamount", "refracttint", "bluramount", "fadeoutonsilhouette", "envmap",
 	    "envmaptint", "envmapcontrast", "envmapsaturation", "refracttinttexture", "nocull",
 	    "bumptransform", "bumpframe", "vertexcolor", "vertexalpha", "vertexcolormodulate",
 	    "nofog" };
-	constexpr std::array<std::string_view, 17> kLocalClaimed = { "model", "translucent",
+	constexpr std::array<std::string_view, 18> kLocalClaimed = { "ignorez", "model", "translucent",
 	    "basetexture", "normalmap", "refractamount", "refracttint", "bluramount", "envmap",
 	    "envmaptint", "envmapcontrast", "envmapsaturation", "basetexturetransform", "localrefract",
 	    "localrefractdepth", "nocull", "bumptransform", "bumpframe" };
@@ -50,6 +53,7 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 		return claim;
 	}
 	claim.local = local;
+	claim.ignoreDepth = detail::ReadFlag( block, "ignorez" );
 	claim.translucent = detail::ReadFlag( block, "translucent" );
 	claim.baseTexture = detail::TextureBound( block, "basetexture" );
 	if ( local && !claim.baseTexture )

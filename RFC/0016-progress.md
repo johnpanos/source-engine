@@ -12684,3 +12684,13 @@ refused by name. `render.lab.selfillum`: dark, the mask's alpha 0 half is
 black and its alpha 1 half exactly 8 x the white albedo; the
 `envmapmask-alpha-ignored` seed is caught (8 of 8). Portal 1 unsupported:
 235 → 233; Portal 2: 127 → 126.
+
+### K12: $ignorez on the mesh points (2026-10-07, user request)
+
+VertexLitGeneric's and Refract's mesh claims accept `$ignorez` as the
+variant's `ignoreDepth` (UnlitGeneric's existing mechanism; a captured game
+draw also carries the depth state). Refract gains the `$ignorez` row (it is
+not one of the families the common keys reach); `$scaleamount` and `$scale`
+are keys no Refract source declares. `render.lab.posed-model` checks both
+claims. Portal 1 unsupported: 233 → 227 (Refract warps and the teleport
+eye effect); Portal 2: 126 → 124.

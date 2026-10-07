@@ -31,6 +31,7 @@ struct RefractClaim
 	// (refract_ps2x LOCALREFRACT). No scene color; opaque unless $translucent.
 	bool local = false;
 	bool translucent = false;
+	bool ignoreDepth = false; // $ignorez
 	SurfaceConstants constants;
 
 	device::BlendMode Blend() const
@@ -47,6 +48,7 @@ struct RefractClaim
 		variant.terms = kSurfacePbr | kSurfaceTransmission | kSurfaceBump;
 		variant.blend = Blend();
 		variant.alphaWrite = false;
+		variant.ignoreDepth = ignoreDepth;
 		return variant;
 	}
 };

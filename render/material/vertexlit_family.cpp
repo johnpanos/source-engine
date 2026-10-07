@@ -38,7 +38,7 @@ constexpr std::array<std::string_view, 12> kClaimed = { "basetexture", "color", 
 // texture's frame where the texture is imported (the legacy frontend hands
 // the core the frame's own image, as for the unlit and lightmapped points),
 // so an AnimatedTexture proxy's frame draws without a mesh-point term.
-constexpr std::array<std::string_view, 77> kMeshClaimed = { "selfillum_envmapmask_alpha",
+constexpr std::array<std::string_view, 78> kMeshClaimed = { "ignorez", "selfillum_envmapmask_alpha",
     "frame", "basetexture", "color", "color2",
     "alpha", "translucent", "bumpmap", "phong", "phongexponent", "phongboost", "phongtint",
     "phongfresnelranges", "model", "ignore_alpha_modulation", "selfillum", "selfillummask",
@@ -357,6 +357,7 @@ VertexLitMeshClaim ClaimVertexLitMesh( const ParameterBlock &block )
 	}
 	claim.alphaTest = ReadFlag( block, "alphatest" );
 	claim.halfLambert = ReadFlag( block, "halflambert" );
+	claim.ignoreDepth = ReadFlag( block, "ignorez" );
 	claim.constants.flags[3] = claim.halfLambert ? 1.0f : 0.0f;
 	claim.constants.envSaturation[3] = ReadFlag( block, "invertphongmask" ) ? 1.0f : 0.0f;
 	claim.constants.meshControls[0] = ReadFlag( block, "basemapalphaphongmask" ) ? 1.0f : 0.0f;

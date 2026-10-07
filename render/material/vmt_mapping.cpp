@@ -466,6 +466,7 @@ constexpr VmtKeyRow kRefractKeys[] = {
     { "refract", "$time", "time", ValueKind::kFloat, "0" },
     // Two-sided panes (shattered glass): the resolver draws both faces.
     { "refract", "$nocull", "nocull", ValueKind::kBool, "0" },
+    { "refract", "$ignorez", "ignorez", ValueKind::kBool, "0" },
     // refract_vs20's normal map (and tint texture) coordinates: the vertex
     // UV through $bumptransform (a TextureScroll proxy animates it), at the
     // normal map's $bumpframe (the mesh handoff binds that frame's handle).
@@ -579,6 +580,8 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$clientshader", "a model hint (MouthShader) no shader declares" },
     { "$nodecal", "a material flag the engine's decal placement reads; no shader reads it" },
     { "$polyoffset", "no shader in this engine declares it" },
+    { "$scaleamount", "Refract declares no such parameter in this engine", "refract" },
+    { "$scale", "Refract declares no such parameter in this engine", "refract" },
     { "$displacementmap", "UnlitGeneric declares no displacement map", "unlit" },
     { "$debug", "a material flag for debugger breaks; no shader reads it" },
     { "$halflambert", "teeth_vs20 lights without half Lambert whatever the flag", "teeth" },
