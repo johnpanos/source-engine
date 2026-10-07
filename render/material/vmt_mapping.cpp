@@ -58,6 +58,10 @@ constexpr VmtShaderRow kShaders[] = {
         "Teeth: the base under Source's model lighting darkened by $illumfactor x N.$forward, "
         "on VertexLitGeneric's mesh point (vertexlit_family.h ClaimTeeth)" },
     { "teeth_dx9", "teeth", "Teeth's DirectX 9 implementation" },
+    { "eyes", "eyes",
+        "Eyes: the sclera with the projected iris under the eyeball's model lighting, plus the "
+        "projected glint, on VertexLitGeneric's mesh point (vertexlit_family.h ClaimEyes)" },
+    { "eyes_dx9", "eyes", "Eyes' DirectX 9 implementation" },
     { "cable", "cable", "CPU-expanded rope ribbons with normal UV0 and color UV1" },
     { "cable_dx9", "cable", "Cable's expanded ribbon implementation" },
     { "splinerope", "cable", "this client expands SplineRope ribbons before drawing" },
@@ -98,7 +102,7 @@ constexpr std::string_view kLegacyReason =
 // kLegacyDerivedFamilies a copy.
 constexpr std::string_view kLegacyDerivedFamilies[] = {
     "lightmapped", "vertexlit", "unlit", "depth", "portal-mask", "cable", "decal-modulate",
-    "energy", "modulate", "teeth" };
+    "energy", "modulate", "teeth", "eyes" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$one", "one", ValueKind::kFloat, "1" },
@@ -150,6 +154,23 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "teeth", "$intro", "intro", ValueKind::kBool, "0" },
     { "teeth", "$entityorigin", "entityorigin", ValueKind::kFloat3, "[0 0 0]" },
     { "teeth", "$warpparam", "warpparam", ValueKind::kFloat, "0" },
+    // Eyes (eyes_dx8_dx9_helper.h's parameters; studiorender sets the
+    // vectors and $glint per draw, and the shader system leaves an undefined
+    // vector at zero).
+    { "eyes", "$iris", "iris", ValueKind::kTexture, "" },
+    { "eyes", "$irisframe", "irisframe", ValueKind::kInt, "0" },
+    { "eyes", "$glint", "glint", ValueKind::kTexture, "" },
+    { "eyes", "$eyeorigin", "eyeorigin", ValueKind::kFloat3, "[0 0 0]" },
+    { "eyes", "$eyeup", "eyeup", ValueKind::kFloat3, "[0 0 0]" },
+    { "eyes", "$irisu", "irisu", ValueKind::kFloat4, "[0 0 0 0]" },
+    { "eyes", "$irisv", "irisv", ValueKind::kFloat4, "[0 0 0 0]" },
+    { "eyes", "$glintu", "glintu", ValueKind::kFloat4, "[0 0 0 0]" },
+    { "eyes", "$glintv", "glintv", ValueKind::kFloat4, "[0 0 0 0]" },
+    { "eyes", "$dilation", "dilation", ValueKind::kFloat, "0" },
+    { "eyes", "$intro", "intro", ValueKind::kBool, "0" },
+    { "eyes", "$entityorigin", "entityorigin", ValueKind::kFloat3, "[0 0 0]" },
+    { "eyes", "$warpparam", "warpparam", ValueKind::kFloat, "0" },
+    { "eyes", "$halflambert", "halflambert", ValueKind::kBool, "0" },
     // Modulate (modulate_dx9.cpp's parameters).
     { "modulate", "$writez", "writez", ValueKind::kBool, "0" },
     { "modulate", "$mod2x", "mod2x", ValueKind::kBool, "0" },
@@ -548,6 +569,7 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$vertextcolor", "misspelled; no shader declares it (the flag is $vertexcolor)" },
     { "$decalfadetime", "the engine's decal fade (r_decal.cpp), not a shader parameter" },
     { "$clientshader", "a model hint (MouthShader) no shader declares" },
+    { "$debug", "a material flag for debugger breaks; no shader reads it" },
     { "$halflambert", "teeth_vs20 lights without half Lambert whatever the flag", "teeth" },
     { "$envmapmode", "a DirectX 6 material flag; no DirectX 9 shader reads it" },
     { "$envmapcameraspace", "a material flag only the DirectX 8 passes read" },

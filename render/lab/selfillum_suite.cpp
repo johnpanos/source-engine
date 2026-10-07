@@ -27,6 +27,7 @@
 #include "lab_support.h"
 #include "suites.h"
 
+#include "render/material/model_lighting.h"
 #include "render/material/program_resolver.h"
 #include "render/material/vmt_import.h"
 #include "render/pass/world/world_pass.h"
@@ -62,6 +63,8 @@ constexpr int kBaseHandle = 1;
 // The $selfillummask fixture's handle: two texels, left rgb 0, right rgb 1,
 // the inverse of the base alpha, so the mask texture alone decides the region.
 constexpr int kMaskHandle = 2;
+// The eyes fixture's iris: two texels, left opaque black, right transparent.
+constexpr int kIrisHandle = 3;
 // Sample points inside the quad (pixels 16 to 47): the emitting and the
 // unmasked half.
 constexpr std::uint32_t kEmitX = 22, kPlainX = 41, kRow = 32;
@@ -71,12 +74,15 @@ class FixtureTextures final : public IWorldTextures
 public:
 	TextureId base;
 	TextureId mask;
+	TextureId iris;
 	TextureId Import( int handle, bool ) override
 	{
 		if ( handle == kBaseHandle )
 			return base;
 		if ( handle == kMaskHandle )
 			return mask;
+		if ( handle == kIrisHandle )
+			return iris;
 		return TextureId{};
 	}
 	SamplerDesc Sampler( int ) override
@@ -129,6 +135,14 @@ WorldMaterial Material(
 	}
 	if ( maskHandle != 0 )
 		material.textures.push_back( { "$selfillummask", maskHandle } );
+	// Eyes: the iris fixture, and the base's white texel as the glint.
+	for ( const auto &[key, value] : variables )
+	{
+		if ( key == "$iris" )
+			material.textures.push_back( { "$iris", kIrisHandle } );
+		if ( key == "$glint" )
+			material.textures.push_back( { "$glint", kBaseHandle } );
+	}
 	return material;
 }
 
@@ -278,6 +292,12 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 	if ( !mask )
 		return "the two-texel self-illumination mask fixture could not be staged";
 	fixture.mask = mask.Value().texture;
+	const std::array<std::byte, 8> irisTexels = { std::byte{ 0 }, std::byte{ 0 }, std::byte{ 0 },
+	    std::byte{ 255 }, std::byte{ 0 }, std::byte{ 0 }, std::byte{ 0 }, std::byte{ 0 } };
+	auto iris = textures.Stage( "selfillum/iris", baseDesc, irisTexels );
+	if ( !iris )
+		return "the two-texel iris fixture could not be staged";
+	fixture.iris = iris.Value().texture;
 
 	std::vector<std::unique_ptr<WorldPass>> passes;
 	std::uint64_t frame = 0;
@@ -288,7 +308,8 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 	// vertex normal.
 	auto render = [&]( const Variables &variables, float degrees, bool lit, CanvasImage &image,
 	                  bool dynamic = false, bool noNormal = false, int maskHandle = 0,
-	                  const char *shader = "VertexLitGeneric" ) -> std::optional<std::string>
+	                  const char *shader = "VertexLitGeneric",
+	                  const material::ModelLighting *lighting = nullptr ) -> std::optional<std::string>
 	{
 		auto pass = std::make_unique<WorldPass>();
 		pass->SetSurfaceFragmentModule( module );
@@ -302,6 +323,8 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		{
 			WorldView::DynamicDraw draw;
 			draw.material = Material( variables, maskHandle, shader );
+			if ( lighting )
+				draw.lighting = *lighting;
 			for ( const material::SurfaceModelVertex &vertex : QuadVertices() )
 			{
 				WorldVertex out;
@@ -580,6 +603,67 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		    Detail( "teeth across", across.At( kEmitX, kRow ), 0.0f ) );
 	}
 
+	// Eyes (eyes_ps2x) on the same point, as captured meshes under Source's
+	// model lighting: an ambient cube lit only from +z, so the eyeball's
+	// normal decides the light. With the eye's origin far behind the quad its
+	// normal is the quad's: a transparent iris is the plain surface, an
+	// opaque black iris (projected onto the left half) covers it; with the
+	// origin in front the normal turns away and the surface goes dark. The
+	// glint (the base's white texel) adds one after lighting, damped to
+	// nothing under a black ambient cube.
+	{
+		material::ModelLighting front;
+		front.cube[4][0] = front.cube[4][1] = front.cube[4][2] = 1.0f; // +z
+		material::ModelLighting dark;
+		const Variables behind = { { "$iris", "selfillum/iris" }, { "$eyeorigin", "[0 0 -1e6]" },
+		    { "$irisu", "[1 0 0 0.5]" }, { "$irisv", "[0 0 0 0.5]" } };
+		Variables clear = behind;
+		clear[2] = { "$irisu", "[0 0 0 0.75]" }; // every pixel reads the transparent texel
+		Variables inFront = clear;
+		inFront[1] = { "$eyeorigin", "[0 0 1e6]" };
+		Variables glinting = clear;
+		glinting.push_back( { "$glint", "selfillum/two_texels" } );
+		glinting.push_back( { "$glintu", "[0 0 0 0.25]" } );
+		glinting.push_back( { "$glintv", "[0 0 0 0.5]" } );
+		CanvasImage plainEye, clearEye, coveredEye, turnedEye, glintEye, darkGlint, darkClear;
+		for ( auto [variables, image, shader, light] :
+		    { std::tuple{ Variables{}, &plainEye, "VertexLitGeneric", &front },
+		        std::tuple{ clear, &clearEye, "Eyes", &front },
+		        std::tuple{ behind, &coveredEye, "Eyes", &front },
+		        std::tuple{ inFront, &turnedEye, "Eyes", &front },
+		        std::tuple{ glinting, &glintEye, "Eyes", &front },
+		        std::tuple{ glinting, &darkGlint, "Eyes", &dark },
+		        std::tuple{ clear, &darkClear, "Eyes", &dark } } )
+		{
+			if ( auto why =
+			         render( variables, 0.0f, false, *image, true, false, 0, shader, light ) )
+				return why;
+		}
+		const float *plain = plainEye.At( kPlainX, kRow );
+		auto same = []( const float *a, const float *b )
+		{ return Near( a[0], b[0] ) && Near( a[1], b[1] ) && Near( a[2], b[2] ); };
+		results.That( plain[0] > 0.05f && same( clearEye.At( kPlainX, kRow ), plain ) &&
+		                  same( clearEye.At( kEmitX, kRow ), plainEye.At( kEmitX, kRow ) ),
+		    "selfillum.eyes.iris.transparent-iris-is-the-sclera",
+		    Detail( "clear iris", clearEye.At( kPlainX, kRow ), plain[0] ) );
+		results.That( coveredEye.At( kEmitX, kRow )[0] < 0.25f * plainEye.At( kEmitX, kRow )[0] &&
+		                  same( coveredEye.At( kPlainX, kRow ), plain ),
+		    "selfillum.eyes.iris.opaque-iris-covers-the-sclera",
+		    Detail( "covered half", coveredEye.At( kEmitX, kRow ), 0.0f ) );
+		results.That( turnedEye.At( kPlainX, kRow )[0] < 0.25f * plain[0],
+		    "selfillum.eyes.normal.from-the-eye-origin",
+		    Detail( "origin in front", turnedEye.At( kPlainX, kRow ), 0.0f ) );
+		const float *glint = glintEye.At( kPlainX, kRow );
+		const float *clearPixel = clearEye.At( kPlainX, kRow );
+		results.That( Near( glint[0] - clearPixel[0], 1.0f ) && Near( glint[1] - clearPixel[1], 1.0f ),
+		    "selfillum.eyes.glint.adds-after-lighting",
+		    Detail( "glint", glint, clearPixel[0] + 1.0f ) );
+		results.That( same( darkGlint.At( kPlainX, kRow ), darkClear.At( kPlainX, kRow ) ),
+		    "selfillum.eyes.glint-damped-in-the-dark",
+		    Detail( "dark glint", darkGlint.At( kPlainX, kRow ),
+		        darkClear.At( kPlainX, kRow )[0] ) );
+	}
+
 	for ( auto &pass : passes )
 		pass->ReleaseDevice( *device );
 	(void)device->WaitIdle();
@@ -592,6 +676,8 @@ const Seeded kSeeded[] = {
     { "brightness-ignored", spirv::kSurfaceSelfIllumBrightnessIgnored, "selfillum.fresnel" },
     { "mask-ignored", spirv::kSurfaceSelfIllumMaskIgnored, "selfillum.mask" },
     { "teeth-ignored", spirv::kSurfaceTeethIgnored, "selfillum.teeth" },
+    { "eyes-iris-ignored", spirv::kSurfaceEyesIrisIgnored, "selfillum.eyes.iris" },
+    { "eyes-glint-ignored", spirv::kSurfaceEyesGlintIgnored, "selfillum.eyes.glint" },
 };
 
 } // namespace

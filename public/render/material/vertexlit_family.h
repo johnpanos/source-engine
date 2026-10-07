@@ -154,6 +154,30 @@ struct TeethClaim
 };
 TeethClaim ClaimTeeth( const ParameterBlock &block );
 
+// Eyes (eyes_dx8_dx9_helper.cpp, Eyes_vs20/eyes_ps2x): the sclera with the
+// iris lerped over it by iris alpha, the iris planar-projected from the
+// world position by $irisu and $irisv, lit by Source's model lighting with
+// the eyeball's normal (position less $eyeorigin, less half its $eyeup
+// component), plus the glint projected by $glintu and $glintv and damped by
+// the ambient cube's luminance. studiorender sets the vectors and the glint
+// render target per draw (SetEyeMaterialVars, R_StudioEyeballGlint). It
+// draws on VertexLitGeneric's mesh point (SurfaceConstants::eyes). $dilation
+// is read by no DirectX 9 eye shader (its code is commented out); $intro is
+// refused by name.
+struct EyesClaim
+{
+	bool claimed = false;
+	std::string reason;
+	float origin[3] = {};
+	float up[3] = {};
+	float irisU[4] = {};
+	float irisV[4] = {};
+	float glintU[4] = {};
+	float glintV[4] = {};
+	bool glint = false; // $glint bound
+};
+EyesClaim ClaimEyes( const ParameterBlock &block );
+
 using VertexLitStatus = SurfaceStatus;
 
 class VertexLitFamily : public SurfaceFamily

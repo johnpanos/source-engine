@@ -12599,3 +12599,31 @@ without it).
 light, Teeth with factor 0.5 along the normal is exactly half the plain
 surface; across the normal and unset it is black. The sensitivity run's new
 `teeth-ignored` seed is caught (5 of 5). Portal 1 unsupported: 347 → 330.
+
+### K12: Eyes on VertexLitGeneric's mesh point (2026-10-07, user request)
+
+Eyes (30 HL2 character eye materials in Portal 1's content path) draws
+`Eyes_vs20`/`eyes_ps2x`: the sclera with the iris lerped over it by iris
+alpha, the iris planar-projected from the world position by `$irisu` and
+`$irisv`; Source's model lighting with the eyeball's normal (position less
+`$eyeorigin`, less half its component along `$eyeup`); and the glint
+projected by `$glintu`/`$glintv`, added after lighting and damped toward zero
+when the ambient cube's mean luminance falls below 0.01. studiorender sets
+the vectors and the glint render target per draw (`SetEyeMaterialVars`,
+`R_StudioEyeballGlint`). `ClaimEyes` (vertexlit_family.h) claims it; the
+resolver draws it as VertexLitGeneric (Teeth's route, now `AsVertexLit`,
+keeping `$halflambert`) with `SurfaceConstants::eyes`, the iris at the
+emission binding and the glint at MRAO's. A material without a bound
+`$glint` adds none. `$dilation` is read by no DirectX 9 eye shader (its code
+is commented out); `$intro` is refused by name; `$debug` is a debugger flag
+no shader reads.
+
+`render.lab.selfillum` gains `selfillum.eyes.*` on captured meshes under an
+ambient cube lit from +z only: a transparent iris is the plain surface, an
+opaque black iris covers its half, an eye origin in front turns the normal
+away (dark), the glint adds its texel after lighting and is damped to nothing
+under a black cube. Seeds `eyes-iris-ignored` and `eyes-glint-ignored` are
+caught (7 of 7). Portal 1 unsupported: 330 → 300.
+
+Eyeball (34 materials) is a dead shader whose fallback is Wireframe;
+Wireframe needs a device fill mode and stays refused.

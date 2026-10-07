@@ -181,8 +181,13 @@ struct SurfaceConstants
 	// Teeth on VertexLitGeneric's mesh point (vertexlit_family.h ClaimTeeth):
 	// row 0 $forward and $illumfactor, row 1 x 1 when the factor applies.
 	float teeth[2][4] = {};
+	// Eyes on VertexLitGeneric's mesh point (vertexlit_family.h ClaimEyes):
+	// 0 $eyeorigin with w 1 when on, 1 $eyeup with w 1 when $glint is
+	// bound, 2 and 3 $irisu and $irisv, 4
+	// and 5 $glintu and $glintv (rows of world-to-texture projections).
+	float eyes[6][4] = {};
 };
-static_assert( sizeof( SurfaceConstants ) == 848 );
+static_assert( sizeof( SurfaceConstants ) == 944 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).

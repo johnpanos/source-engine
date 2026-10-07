@@ -474,4 +474,57 @@ TeethClaim ClaimTeeth( const ParameterBlock &block )
 	return claim;
 }
 
+EyesClaim ClaimEyes( const ParameterBlock &block )
+{
+	EyesClaim claim;
+	if ( block.Family().desc.name != "eyes" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	constexpr std::string_view keys[] = { "basetexture", "frame", "basetexturetransform", "color",
+	    "alpha", "model", "nocull", "nofog", "translucent", "halflambert", "iris", "irisframe",
+	    "glint", "eyeorigin", "eyeup", "irisu", "irisv", "glintu", "glintv", "dilation",
+	    "entityorigin", "warpparam" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the eyes point does not draw " + *unread;
+		return claim;
+	}
+	if ( ReadFlag( block, "intro" ) )
+	{
+		claim.reason = "the eyes point does not draw $intro (the episode intro warp)";
+		return claim;
+	}
+	if ( !detail::TextureBound( block, "basetexture" ) || !detail::TextureBound( block, "iris" ) )
+	{
+		claim.reason = "Eyes needs its base and $iris textures";
+		return claim;
+	}
+	bool finite = true;
+	for ( int c = 0; c < 4; ++c )
+	{
+		if ( c < 3 )
+		{
+			claim.origin[c] = ReadParameter( block, "eyeorigin", c );
+			claim.up[c] = ReadParameter( block, "eyeup", c );
+			finite = finite && std::isfinite( claim.origin[c] ) && std::isfinite( claim.up[c] );
+		}
+		claim.irisU[c] = ReadParameter( block, "irisu", c );
+		claim.irisV[c] = ReadParameter( block, "irisv", c );
+		claim.glintU[c] = ReadParameter( block, "glintu", c );
+		claim.glintV[c] = ReadParameter( block, "glintv", c );
+		finite = finite && std::isfinite( claim.irisU[c] ) && std::isfinite( claim.irisV[c] ) &&
+		         std::isfinite( claim.glintU[c] ) && std::isfinite( claim.glintV[c] );
+	}
+	if ( !finite )
+	{
+		claim.reason = "the eye's projection vectors must be finite";
+		return claim;
+	}
+	claim.glint = detail::TextureBound( block, "glint" );
+	claim.claimed = true;
+	return claim;
+}
+
 } // namespace render::material

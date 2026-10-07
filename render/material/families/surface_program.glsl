@@ -897,6 +897,18 @@ void PbrSurface( out float coverage )
 		const vec3 tinted = mix( base, material.tint.rgb, material.meshProbeMasks.w );
 		base = mix( baseSample.rgb, tinted, baseSample.a );
 	}
+	// Eyes (eyes_ps2x): the iris, planar-projected from the world position,
+	// lerped over the sclera by its alpha.
+	const bool eyes = material.eyes[0].w > 0.5;
+	if ( eyes && !furnace )
+	{
+		const vec4 position = vec4( worldPosition, 1.0 );
+		const vec4 iris = texture( sampler2D( emissionTexture, emissionSampler ),
+		    vec2( dot( material.eyes[2], position ), dot( material.eyes[3], position ) ) );
+#ifndef SEEDED_EYES_IRIS_IGNORED
+		base = mix( baseSample.rgb, iris.rgb, iris.a );
+#endif
+	}
 	const bool unlitMesh = MaterialFeature( kMaterialUnlitMesh, material.meshModes.w > 0.5 );
 	// With an MRAO texture, mraoScale scales its sample per channel (P2:CE's
 	// $mraoscale; [1 1 1] by default); without one pbrFactors is the value.
@@ -948,6 +960,14 @@ void PbrSurface( out float coverage )
 
 	const vec3 view = normalize( frame.eye.xyz - worldPosition );
 	vec3 normal = dot( worldNormal, worldNormal ) > 1e-12 ? normalize( worldNormal ) : view;
+	// Eyes (Eyes_vs20): the eyeball's normal is its position less the eye's
+	// origin, less half its component along the eye's up.
+	if ( eyes )
+	{
+		const vec3 outward = worldPosition - material.eyes[0].xyz;
+		normal = normalize(
+		    outward - 0.5 * dot( outward, material.eyes[1].xyz ) * material.eyes[1].xyz );
+	}
 	const vec3 smoothNormal = normal;
 	vec3 mapped = vec3( 0.0, 0.0, 1.0 );
 	float directSpecularMask =
@@ -1605,6 +1625,30 @@ void PbrSurface( out float coverage )
 #endif
 		color *= material.teeth[0].w *
 		         clamp( dot( normalize( worldNormal ), material.teeth[0].xyz ), 0.0, 1.0 );
+	// Eyes' glint, projected like the iris and added after lighting, damped
+	// toward zero in the dark (the ambient cube's mean luminance below 0.01,
+	// eyes_dx8_dx9_helper.cpp's SimpleSplineRemapVal).
+	if ( eyes && material.eyes[1].w > 0.5 && DebugTermOn( kDebugTermEmission ) && !furnace )
+	{
+		const vec3 weights = vec3( 0.3, 0.59, 0.11 );
+		float luminance = 0.0;
+		for ( int axis = 0; axis < 3; ++axis )
+		{
+			vec3 direction = vec3( 0.0 );
+			direction[axis] = 1.0;
+			luminance += dot( AmbientCube( direction ), weights ) +
+			             dot( AmbientCube( -direction ), weights );
+		}
+		luminance = clamp( luminance / 6.0, 0.0, 1.0 );
+		const float t = luminance / 0.01;
+		const float damping = luminance > 0.01 ? 1.0 : luminance * t * t * ( 3.0 - 2.0 * t );
+		const vec4 position = vec4( worldPosition, 1.0 );
+		const vec3 glint = texture( sampler2D( mraoTexture, mraoSampler ),
+		    vec2( dot( material.eyes[4], position ), dot( material.eyes[5], position ) ) ).rgb;
+#ifndef SEEDED_EYES_GLINT_IGNORED
+		color += glint * damping;
+#endif
+	}
 	WriteSsrTargets( normal, roughness, iblRadiance, iblWeight,
 	    emissive && material.emission.z > 0.5 );
 	vec3 emission = vec3( 0.0 );

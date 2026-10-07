@@ -412,8 +412,12 @@ struct ProgramResolver::State
 	bool worldPbr = false;
 	std::uint32_t sceneTerms = 0;
 	bool mesh = false; // ResolveMesh's call of Resolve
-	// Teeth's factor while Resolve draws Teeth as VertexLitGeneric.
+	// Teeth's factor, or Eyes' projections and textures, while Resolve draws
+	// them as VertexLitGeneric.
 	std::optional<TeethClaim> teeth;
+	std::optional<EyesClaim> eyes;
+	std::string eyesIris;
+	std::string eyesGlint;
 	bool sceneColorAvailable = false;
 };
 
@@ -472,19 +476,20 @@ foundation::Expected<std::unique_ptr<ProgramResolver>, std::string> ProgramResol
 	return std::unique_ptr<ProgramResolver>( new ProgramResolver( std::move( state ) ) );
 }
 
-// Teeth as the VertexLitGeneric description its point draws: the base and
-// the parameters both shaders read the same way.
-MaterialDesc TeethAsVertexLit( const MaterialDesc &teeth )
+// Teeth or Eyes as the VertexLitGeneric description its point draws: the
+// base and the parameters both shaders read the same way.
+MaterialDesc AsVertexLit( const MaterialDesc &material )
 {
-	MaterialDesc out = teeth;
+	MaterialDesc out = material;
 	out.family = "vertexlit";
 	out.shader = "VertexLitGeneric";
 	out.legacyShader = "vertexlitgeneric";
 	out.values.clear();
-	for ( const MaterialValue &value : teeth.values )
+	for ( const MaterialValue &value : material.values )
 		if ( value.parameter == "basetexture" || value.parameter == "frame" ||
 		     value.parameter == "basetexturetransform" || value.parameter == "translucent" ||
-		     value.parameter == "nocull" || value.parameter == "model" || value.parameter == "nofog" )
+		     value.parameter == "nocull" || value.parameter == "model" || value.parameter == "nofog" ||
+		     value.parameter == "halflambert" )
 			out.values.push_back( value );
 	return out;
 }
@@ -615,12 +620,19 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 			return foundation::MakeUnexpected( "model vertices have no color or alpha channel" );
 		return claim.blend;
 	}
+	if ( material.family == "eyes" )
+	{
+		const EyesClaim eyes = ClaimEyes( *block );
+		if ( !eyes.claimed )
+			return foundation::MakeUnexpected( eyes.reason );
+		return ClaimForMesh( AsVertexLit( material ), nativeReflectionProbes, sceneColorAvailable );
+	}
 	if ( material.family == "teeth" )
 	{
 		const TeethClaim teeth = ClaimTeeth( *block );
 		if ( !teeth.claimed )
 			return foundation::MakeUnexpected( teeth.reason );
-		return ClaimForMesh( TeethAsVertexLit( material ), nativeReflectionProbes,
+		return ClaimForMesh( AsVertexLit( material ), nativeReflectionProbes,
 		    sceneColorAvailable );
 	}
 	if ( material.family == "modulate" )
@@ -843,8 +855,20 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		if ( !teeth.claimed )
 			return foundation::MakeUnexpected( teeth.reason );
 		s.teeth = teeth;
-		auto resolved = Resolve( TeethAsVertexLit( material ) );
+		auto resolved = Resolve( AsVertexLit( material ) );
 		s.teeth.reset();
+		return resolved;
+	}
+	if ( material.family == "eyes" )
+	{
+		const EyesClaim eyes = ClaimEyes( *block );
+		if ( !eyes.claimed )
+			return foundation::MakeUnexpected( eyes.reason );
+		s.eyes = eyes;
+		s.eyesIris = TextureOf( material, "iris" );
+		s.eyesGlint = TextureOf( material, "glint" );
+		auto resolved = Resolve( AsVertexLit( material ) );
+		s.eyes.reset();
 		return resolved;
 	}
 	if ( material.family == "vertexlit" )
@@ -887,6 +911,21 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			std::copy_n( s.teeth->forward, 3, constants.teeth[0] );
 			constants.teeth[0][3] = s.teeth->illum;
 			constants.teeth[1][0] = 1.0f;
+		}
+		if ( s.eyes )
+		{
+			// The iris (sRGB) at the emission binding and the glint (data)
+			// at MRAO's: VertexLitGeneric's base claim reads neither.
+			std::copy_n( s.eyes->origin, 3, constants.eyes[0] );
+			constants.eyes[0][3] = 1.0f;
+			std::copy_n( s.eyes->up, 3, constants.eyes[1] );
+			constants.eyes[1][3] = s.eyes->glint ? 1.0f : 0.0f;
+			std::copy_n( s.eyes->irisU, 4, constants.eyes[2] );
+			std::copy_n( s.eyes->irisV, 4, constants.eyes[3] );
+			std::copy_n( s.eyes->glintU, 4, constants.eyes[4] );
+			std::copy_n( s.eyes->glintV, 4, constants.eyes[5] );
+			textures.emission = s.eyesIris;
+			textures.mrao = s.eyesGlint;
 		}
 		auto request = s.lightmapped->Program().Request( variant, constants, textures );
 		if ( !request )
