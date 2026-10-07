@@ -93,7 +93,9 @@ struct SurfaceConstants
 	// RGB: env saturation on legacy points, native mesh probe tint on PBR;
 	// alpha: the native mesh's inverted normal-alpha Phong mask.
 	float envSaturation[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
-	float selfIllumTint[4] = { 1.0f, 1.0f, 1.0f, 0.0f }; // in effect
+	// rgb: the tint in effect; w: 1 with VertexLitGeneric's
+	// $selfillum_envmapmask_alpha (the envmap mask's alpha x 8 is the weight).
+	float selfIllumTint[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
 	float detailTint[4] = { 1.0f, 1.0f, 1.0f, 1.0f };    // $detailtint, $detailblendfactor
 	float detailScale[4] = { 4.0f, 4.0f, 0.0f, 0.0f };   // $detailscale
 	// Portal 2's $envmaplightscale: the cube map darkened where the diffuse

@@ -142,6 +142,8 @@ WorldMaterial Material(
 			material.textures.push_back( { "$iris", kIrisHandle } );
 		if ( key == "$glint" )
 			material.textures.push_back( { "$glint", kBaseHandle } );
+		if ( key == "$envmapmask" )
+			material.textures.push_back( { "$envmapmask", kMaskHandle } );
 	}
 	return material;
 }
@@ -664,6 +666,27 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		        darkClear.At( kPlainX, kRow )[0] ) );
 	}
 
+	// $selfillum_envmapmask_alpha: the envmap mask's alpha x 8 replaces the
+	// surface with the albedo (the mask fixture: alpha 0 on the left, 1 on
+	// the right). Dark: the left half black, the right 8 x the white albedo.
+	// With $selfillum the pair has no shader combo and is refused.
+	{
+		CanvasImage inMask;
+		if ( auto why = render( { { "$envmapmask", "selfillum/mask" },
+		                            { "$selfillum_envmapmask_alpha", "1" } },
+		         0.0f, false, inMask ) )
+			return why;
+		results.That( Gray( inMask.At( kEmitX, kRow ), 0.0f ) &&
+		                  Gray( inMask.At( kPlainX, kRow ), 8.0f ),
+		    "selfillum.envmapmask-alpha.weight-is-eight-times-the-alpha",
+		    Detail( "mask alpha 1", inMask.At( kPlainX, kRow ), 8.0f ) );
+		results.That(
+		    refusedNaming( { { "$selfillum", "1" }, { "$envmapmask", "paint/mask" },
+		                       { "$selfillum_envmapmask_alpha", "1" } },
+		        "$selfillum_envmapmask_alpha" ),
+		    "selfillum.envmapmask-alpha.refuses-with-selfillum-by-name" );
+	}
+
 	for ( auto &pass : passes )
 		pass->ReleaseDevice( *device );
 	(void)device->WaitIdle();
@@ -678,6 +701,8 @@ const Seeded kSeeded[] = {
     { "teeth-ignored", spirv::kSurfaceTeethIgnored, "selfillum.teeth" },
     { "eyes-iris-ignored", spirv::kSurfaceEyesIrisIgnored, "selfillum.eyes.iris" },
     { "eyes-glint-ignored", spirv::kSurfaceEyesGlintIgnored, "selfillum.eyes.glint" },
+    { "envmapmask-alpha-ignored", spirv::kSurfaceSelfIllumEnvmapMaskAlphaIgnored,
+        "selfillum.envmapmask-alpha.weight" },
 };
 
 } // namespace

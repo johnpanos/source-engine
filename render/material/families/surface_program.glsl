@@ -1703,6 +1703,19 @@ void PbrSurface( out float coverage )
 		emission += selfLit * mask;
 		color = mix( color, selfLit, mask );
 	}
+	// $selfillum_envmapmask_alpha: w = 8 x the envmap mask's alpha replaces
+	// the lit surface with the tinted albedo, over-bright past 1/8.
+	if ( material.selfIllumTint.a > 0.5 && DebugTermOn( kDebugTermEmission ) && !furnace )
+	{
+#ifndef SEEDED_SELFILLUM_ENVMAPMASK_ALPHA_IGNORED
+		const float weight = 8.0 * texture( sampler2D( envmapMaskTexture, envmapMaskSampler ), uv ).a;
+#else
+		const float weight = 0.0; // negative control: the mask's alpha is dropped
+#endif
+		const vec3 selfLit = base * material.selfIllumTint.rgb;
+		emission += selfLit * weight;
+		color = max( 1.0 - weight, 0.0 ) * color + weight * selfLit;
+	}
 	// TextureCombinePostLighting (common_ps_fxc.h): modes 5 and 6 add the
 	// detail to the lit surface after self-illumination, unlit.
 	if ( Term( kDetailTexture ) && ( kDetailMode == 5 || kDetailMode == 6 ) &&

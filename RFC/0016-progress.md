@@ -12671,3 +12671,16 @@ follows the same rule (`MESH_SHADERS`, `mesh_only`): a VMT under
 shader, so func_breakable_surf's broken glass (UnlitGeneric with vertex
 color, drawn by game code) takes its world claims. Unit test added (14 pass).
 Portal 1 unsupported: 248 → 235; Portal 2: 129 → 127.
+
+### K12: VertexLitGeneric $selfillum_envmapmask_alpha (2026-10-07, user request)
+
+`vertexlit_and_unlit_generic_ps2x`'s SELFILLUM_ENVMAPMASK_ALPHA: the envmap
+mask's alpha x 8 is a weight w, and the diffuse becomes max(0, 1 - w) x
+diffuse + w x `$selfillumtint` x albedo, glowing past alpha 1/8 (Portal 2's
+`light_panel` and its kind). The mesh point applies it after
+self-illumination (flag `SurfaceConstants::selfIllumTint.w`); without a
+`$envmapmask` it is inert, and with `$selfillum` (a shader SKIP) it is
+refused by name. `render.lab.selfillum`: dark, the mask's alpha 0 half is
+black and its alpha 1 half exactly 8 x the white albedo; the
+`envmapmask-alpha-ignored` seed is caught (8 of 8). Portal 1 unsupported:
+235 → 233; Portal 2: 127 → 126.

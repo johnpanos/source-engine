@@ -516,7 +516,9 @@ GENERATED = {
         ("kSurfaceEyesIrisIgnored", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_EYES_IRIS_IGNORED",)),
         ("kSurfaceEyesGlintIgnored", FAMILIES + "/surface.frag",
-         DEVICE_OPTIONS + ("-DSEEDED_EYES_GLINT_IGNORED",)))),
+         DEVICE_OPTIONS + ("-DSEEDED_EYES_GLINT_IGNORED",)),
+        ("kSurfaceSelfIllumEnvmapMaskAlphaIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_ENVMAPMASK_ALPHA_IGNORED",)))),
     "energy_surface_defects_spv.h": ("render::lab::spirv",
         "render_lab's energy-surface suite's seeded programs (render.lab.energy-surface "
         "sensitivity, RFC 0016 K12 SolidEnergy)", (
