@@ -321,6 +321,11 @@ constexpr VmtKeyRow kRefractKeys[] = {
     { "refract", "$time", "time", ValueKind::kFloat, "0" },
     // Two-sided panes (shattered glass): the resolver draws both faces.
     { "refract", "$nocull", "nocull", ValueKind::kBool, "0" },
+    // refract_vs20's normal map (and tint texture) coordinates: the vertex
+    // UV through $bumptransform (a TextureScroll proxy animates it), at the
+    // normal map's $bumpframe (the mesh handoff binds that frame's handle).
+    { "refract", "$bumptransform", "bumptransform", ValueKind::kTransform, "" },
+    { "refract", "$bumpframe", "bumpframe", ValueKind::kInt, "0" },
 };
 
 constexpr VmtMetadataRow kMetadata[] = {
@@ -431,6 +436,7 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$envmapconstrast", "misspelled; VertexLitGeneric declares $envmapcontrast", "vertexlit" },
     { "$envampsaturation", "misspelled; VertexLitGeneric declares $envmapsaturation", "vertexlit" },
     { "$dudvmap", "Refract_DX90 samples $normalmap, not $dudvmap", "refract" },
+    { "$dudvframe", "the frame of $dudvmap, which Refract_DX90 does not sample", "refract" },
     { "$scale", "Refract_DX90 has no $scale shader parameter", "refract" },
     { "$normalmapalphaenvmapmask", "Refract_DX90 always uses normal alpha for reflection",
         "refract" },

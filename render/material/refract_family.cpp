@@ -31,13 +31,14 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 	// (scene color, or a base texture read at the warped screen position) have
 	// no base coordinates for a transform to move.
 	const bool local = detail::ReadFlag( block, "localrefract" );
-	constexpr std::array<std::string_view, 14> kClaimed = { "model", "translucent", "basetexture",
+	constexpr std::array<std::string_view, 16> kClaimed = { "model", "translucent", "basetexture",
 	    "normalmap", "refractamount", "refracttint", "bluramount", "fadeoutonsilhouette", "envmap",
-	    "envmaptint", "envmapcontrast", "envmapsaturation", "refracttinttexture", "nocull" };
-	constexpr std::array<std::string_view, 15> kLocalClaimed = { "model", "translucent",
+	    "envmaptint", "envmapcontrast", "envmapsaturation", "refracttinttexture", "nocull",
+	    "bumptransform", "bumpframe" };
+	constexpr std::array<std::string_view, 17> kLocalClaimed = { "model", "translucent",
 	    "basetexture", "normalmap", "refractamount", "refracttint", "bluramount", "envmap",
 	    "envmaptint", "envmapcontrast", "envmapsaturation", "basetexturetransform", "localrefract",
-	    "localrefractdepth", "nocull" };
+	    "localrefractdepth", "nocull", "bumptransform", "bumpframe" };
 	if ( const std::optional<std::string> unclaimed = detail::UnclaimedParameter(
 	         block, local ? std::span<const std::string_view>( kLocalClaimed )
 	                      : std::span<const std::string_view>( kClaimed ) ) )
@@ -88,6 +89,9 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 	// Refract_DX90 reads $bluramount as an integer and clamps it to 0 or 1.
 	claim.constants.transmission[1] = blur >= 1.0f ? 1.0f : 0.0f;
 	claim.constants.transmission[2] = 1.0f; // Refract point, not PBR thin glass
+	// The normal map's (and tint texture's) coordinates: $bumptransform.
+	for ( int i = 0; i < 8; ++i )
+		claim.constants.texture2Transform[i] = detail::ReadParameter( block, "bumptransform", i );
 	if ( local )
 	{
 		// LOCALREFRACT warps no screen coordinate and has no blur; the amount's

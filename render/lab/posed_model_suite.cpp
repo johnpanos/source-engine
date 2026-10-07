@@ -57,6 +57,7 @@ public:
 	TextureId environmentFixture;
 	TextureId decalFixture;
 	TextureId localRefractBase; // 2x2: red left column, green right (nearest, clamped)
+	TextureId splitNormal;      // 2x1: flat left, +x warp right (nearest, clamped)
 	TextureId Import( int handle, bool ) override
 	{
 		return handle == 1    ? normalFixture
@@ -69,12 +70,13 @@ public:
 		       : handle == 9  ? decalFixture
 		       : handle == 8  ? environmentFixture
 		       : handle == 10 ? localRefractBase
+		       : handle == 11 ? splitNormal
 		                      : TextureId{};
 	}
 	SamplerDesc Sampler( int handle ) override
 	{
 		SamplerDesc sampler;
-		if ( handle == 6 || handle == 7 || handle == 10 )
+		if ( handle == 6 || handle == 7 || handle == 10 || handle == 11 )
 		{
 			sampler.address = AddressMode::kClampToEdge;
 			sampler.minFilter = sampler.magFilter = Filter::kNearest;
@@ -495,6 +497,15 @@ std::optional<std::string> RunChecks(
 	if ( !localBase )
 		return "the local Refract base fixture could not be staged";
 	empty.localRefractBase = localBase.Value().texture;
+	TextureDesc splitDesc = normalDesc;
+	splitDesc.width = 2;
+	const std::array<std::byte, 8> splitPixels = { std::byte{ 128 }, std::byte{ 128 },
+	    std::byte{ 255 }, std::byte{ 255 }, std::byte{ 255 }, std::byte{ 128 }, std::byte{ 255 },
+	    std::byte{ 255 } };
+	auto split = textures.Stage( "split-normal-fixture", splitDesc, splitPixels );
+	if ( !split )
+		return "the split normal fixture could not be staged";
+	empty.splitNormal = split.Value().texture;
 	TextureDesc colorDesc = normalDesc;
 	colorDesc.format = Format::kRGBA8Srgb;
 	const std::array<std::byte, 4> basePixelFixture = {
@@ -1247,6 +1258,55 @@ std::optional<std::string> RunChecks(
 		};
 		results.That( transformed( true ) && !transformed( false ),
 		    "posed-model.refract-base-transform-only-on-local-point" );
+	}
+	// $bumptransform (refract_vs20's normal map coordinates; a TextureScroll
+	// proxy animates it): translated by .75 the lookup leaves the flat texel
+	// for the warp texel and displaces the scene edge as the warp fixture does.
+	{
+		CanvasImage scrolled[2];
+		for ( int i = 0; i < 2; ++i )
+		{
+			WorldData world = MeshWorld();
+			world.materials[0].shader = "Refract_DX90";
+			world.materials[0].variables = { { "$model", "1" },
+			    { "$normalmap", "split-normal-fixture" }, { "$refractamount", "0.3" },
+			    { "$bumptransform", i == 0 ? "center .5 .5 scale 1 1 rotate 0 translate 0 0"
+			                               : "center .5 .5 scale 1 1 rotate 0 translate .75 0" } };
+			world.materials[0].textures.push_back( { "$normalmap", 11 } );
+			WorldPass scrollPass;
+			scrollPass.SetWorld( std::move( world ) );
+			if ( auto why = render( scrollPass, 0.0f, false, 50 + i, black, scrolled[i], false,
+			         RenderCoreDrawPhase::kAll, true, &under ) )
+				return why;
+			scrollPass.ReleaseDevice( *device );
+		}
+		results.That( scrolled[0].At( 40, 32 )[0] > scrolled[1].At( 40, 32 )[0] + 0.15f &&
+		                  std::abs( scrolled[0].At( 40, 32 )[0] - noWarp.At( 40, 32 )[0] ) < 0.01f,
+		    "posed-model.refract-bump-transform-moves-normal-lookup",
+		    "identity " + std::to_string( scrolled[0].At( 40, 32 )[0] ) + ", scrolled " +
+		        std::to_string( scrolled[1].At( 40, 32 )[0] ) );
+	}
+	// The neurotoxin tube's live values (AnimatedTexture on $normalmap and
+	// $dudvmap, TextureScroll on $bumptransform) claim: the handoff binds the
+	// $bumpframe's handle, $dudvframe names a map Refract never samples. A
+	// scrolled base texture on the screen-space point stays refused.
+	{
+		const auto animated = material::MapVariables( "Refract_DX90",
+		    { { "$model", "1" }, { "$normalmap", "dev/water_normal" },
+		        { "$dudvmap", "dev/water_dudv" }, { "$bumpframe", "17" }, { "$dudvframe", "17" },
+		        { "$bumptransform", "center .5 .5 scale 1 1 rotate 0 translate .31 .31" },
+		        { "$refractamount", ".2" }, { "$bluramount", "1" },
+		        { "$refracttint", "{255 200 110}" },
+		        { "$refracttinttexture", "models/props_lab/glass_tint001" } },
+		    {} );
+		const auto scrolledBase = material::MapVariables( "Refract_DX90",
+		    { { "$model", "1" }, { "$normalmap", "n" }, { "$basetexture", "b" },
+		        { "$basetexturetransform", "center .5 .5 scale 1 1 rotate 0 translate .5 0" } },
+		    {} );
+		results.That( animated && material::ClaimForMesh( animated.Value(), true, true ) &&
+		                  scrolledBase &&
+		                  !material::ClaimForMesh( scrolledBase.Value(), true, true ),
+		    "posed-model.refract-animated-normal-frames-claim" );
 	}
 	// A smaller or offset viewport shares a full-size scene-color attachment
 	// in the game. It must sample the scene beneath that pixel, not clear

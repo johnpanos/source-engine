@@ -12221,3 +12221,28 @@ core's Fresnel crack reflections over legacy's full cubemap glints
 (2026-10-06). Remaining Refract gaps: animated normal frames (`$bumpframe`,
 `$dudvframe`; the viewfinder HUD and the neurotoxin tube) and the warp
 particles, which belong to the particle cohort.
+
+## K12 glass cohort, fifth slice: animated normal maps on Refract (2026-10-06, user goal)
+
+- `$bumptransform` is the Refract point's normal-map (and tint-texture)
+  coordinate transform, as in `refract_vs20` (TextureScroll animates it):
+  `texture2Transform` on this point; the local point's base keeps
+  `$basetexturetransform`.
+- `$bumpframe` is claimed: the mesh handoff already binds the frame's handle
+  (`GetTextureHandle($bumpframe)` for `$normalmap`). `$dudvframe` is a named
+  no-effect key (the frame of `$dudvmap`, which Refract does not sample).
+- Lab `posed-model` 121/0: a `$bumptransform` translated by .75 moves the
+  normal lookup onto a warp texel and displaces the scene edge (the seeded
+  defect, sampling at the raw UV, fails it); the neurotoxin tube's live proxy
+  values claim, and a scrolled base on the screen-space point stays refused.
+- `tube_neurotoxin_glass` now claims (scene color, alpha); it stays
+  "dynamically unresolved" in the inventory because proxies set its values.
+  No retail map places its models (`vactube_*_neurotoxin`), and console
+  spawns did not produce a visible prop, so it has no game capture. The
+  standalone `render_lab` map renderer has no scene-color capture, so no
+  scene-color Refract model has a matched lab frame yet (WorldPass suites
+  carry the proof). `hud/camera_viewfinder_*` is a screen overlay, outside
+  the world glass cohort.
+- Glass cohort closed for world/model Refract on retail and baked maps; open:
+  frame time, the warp particles (particle cohort), and a scene-color capture
+  in `render_lab`'s map renderer for matched glass frames.

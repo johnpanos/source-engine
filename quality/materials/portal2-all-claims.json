@@ -405,7 +405,6 @@
     "the model does not read $alphatesttocoverage": 1,
     "the model does not read $blendframes": 1,
     "the model does not read $bump_force_on": 2,
-    "the model does not read $bumpframe": 1,
     "the model does not read $bumpscale": 1,
     "the model does not read $color2": 2,
     "the model does not read $comparez": 1,
@@ -414,6 +413,7 @@
     "the model does not read $flat": 7,
     "the model does not read $fresnelreflection": 1,
     "the model does not read $groupbame": 1,
+    "the model does not read $ignorez": 1,
     "the model does not read $linearwrite": 1,
     "the model does not read $nomip": 1,
     "the model does not read $nooverbright": 1,
@@ -51262,32 +51262,32 @@
     "materials/hud/camera_viewfinder_ul.vmt": {
       "candidates": [],
       "family": "refract",
-      "gap": "the model does not read $bumpframe",
+      "gap": "the model does not read $ignorez",
       "input_sha256": "6e283c9b31fe29123a17ac7a6ca5d7d0cfc7ad6df268b9ad46542905558cc9eb",
       "mesh_claims": [
         {
-          "gap": "the model does not read $bumpframe",
+          "gap": "the model does not read $ignorez",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $bumpframe",
+          "gap": "the model does not read $ignorez",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $bumpframe",
+          "gap": "the model does not read $ignorez",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $bumpframe",
+          "gap": "the model does not read $ignorez",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -51296,12 +51296,11 @@
       ],
       "proxies": [],
       "refusal_features": [
-        "parameter:$bumpframe"
+        "parameter:$ignorez"
       ],
       "shader": "refract",
       "status": "unsupported",
       "unmapped_keys": [
-        "$bumpframe",
         "$ignorez",
         "$nofog",
         "$forcerefract",
@@ -51309,13 +51308,13 @@
       ],
       "world_claims": [
         {
-          "gap": "the model does not read $bumpframe",
+          "gap": "the model does not read $ignorez",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $bumpframe",
+          "gap": "the model does not read $ignorez",
           "scene_inputs": {
             "world_stage": true
           }
@@ -98605,33 +98604,42 @@
       ]
     },
     "materials/models/props_bts/tube_neurotoxin_glass.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "alpha",
+          "geometry": "model_mesh",
+          "pass": "blended",
+          "scene_inputs": {
+            "linear_scene_color": true
+          }
+        }
+      ],
       "family": "refract",
       "input_sha256": "40e49b63f6a1a19c580888441489771ab0a9ba0d95ba3a84ebf9557deeda0355",
       "mesh_claims": [
         {
-          "gap": "the model does not read $dudvframe",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $dudvframe",
+          "claim": "alpha",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $dudvframe",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $dudvframe",
+          "claim": "alpha",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -98645,19 +98653,15 @@
       ],
       "shader": "refract",
       "status": "dynamically_unresolved",
-      "unmapped_keys": [
-        "$dudvframe",
-        "$bumpframe"
-      ],
       "world_claims": [
         {
-          "gap": "the model does not read $dudvframe",
+          "gap": "family refract has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $dudvframe",
+          "gap": "family refract has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -223617,14 +223621,6 @@
       "refused_materials": 2,
       "unmapped_materials": 2
     },
-    "parameter:$bumpframe": {
-      "examples": [
-        "materials/hud/camera_viewfinder_ul.vmt"
-      ],
-      "first_refusals": 1,
-      "refused_materials": 1,
-      "unmapped_materials": 1
-    },
     "parameter:$bumpscale": {
       "examples": [
         "materials/motel/motel_mural01.vmt"
@@ -223747,10 +223743,11 @@
     "parameter:$ignorez": {
       "examples": [
         "materials/effects/tesla_glow_noz.vmt",
+        "materials/hud/camera_viewfinder_ul.vmt",
         "materials/models/editor/white_model_outline.vmt"
       ],
-      "first_refusals": 2,
-      "refused_materials": 2,
+      "first_refusals": 3,
+      "refused_materials": 3,
       "unmapped_materials": 2
     },
     "parameter:$linearwrite": {

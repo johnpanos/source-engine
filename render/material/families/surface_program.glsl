@@ -708,7 +708,12 @@ vec3 LocalRefractColor( vec3 mapped, vec2 uv )
 
 void RefractSurface()
 {
-	const vec4 bump = texture( sampler2D( bumpTexture, bumpSampler ), baseUv );
+	// refract_vs20: the normal map and tint texture read the vertex UV through
+	// $bumptransform (texture2Transform on this point).
+	const vec4 bumpSource = vec4( baseUv, 0.0, 1.0 );
+	const vec2 bumpUv = vec2( dot( bumpSource, material.texture2Transform[0] ),
+	    dot( bumpSource, material.texture2Transform[1] ) );
+	const vec4 bump = texture( sampler2D( bumpTexture, bumpSampler ), bumpUv );
 	const vec3 mapped = bump.rgb * 2.0 - 1.0;
 	const bool local = material.transmission.z > 1.5;
 	const vec2 unwarped = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
@@ -734,7 +739,7 @@ void RefractSurface()
 	// map's coordinates (refract_ps2x.fxc REFRACTTINTTEXTURE).
 	vec3 refractTint = material.tint.rgb;
 	if ( material.meshModes.z > 0.5 )
-		refractTint *= 2.0 * texture( sampler2D( emissionTexture, emissionSampler ), baseUv ).rgb;
+		refractTint *= 2.0 * texture( sampler2D( emissionTexture, emissionSampler ), bumpUv ).rgb;
 	const vec4 baseSource = vec4( baseUv, 0.0, 1.0 );
 	const vec2 localUv = vec2(
 	    dot( baseSource, material.baseTransform[0] ), dot( baseSource, material.baseTransform[1] ) );
