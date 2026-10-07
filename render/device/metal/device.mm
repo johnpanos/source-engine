@@ -101,77 +101,6 @@ bool IsSrgb( Format format )
 	}
 }
 
-// Upload ring ---------------------------------------------------------------------
-
-std::optional<std::uint64_t> UploadRing::Allocate( std::uint64_t size, std::uint64_t id )
-{
-	size = ( size + 15u ) & ~std::uint64_t( 15u );
-	if ( size == 0 || size >= m_Capacity )
-		return std::nullopt;
-	std::uint64_t offset = 0;
-	if ( !m_Live.empty() )
-	{
-		const std::uint64_t tail = m_Live.front().offset;
-		if ( m_Head >= tail )
-		{
-			if ( m_Capacity - m_Head >= size )
-				offset = m_Head;
-			else if ( tail > size )
-				offset = 0;
-			else
-				return std::nullopt;
-		}
-		else if ( tail - m_Head > size )
-		{
-			offset = m_Head;
-		}
-		else
-		{
-			return std::nullopt;
-		}
-	}
-	m_Live.push_back( { offset, size, id, {}, false, false } );
-	m_Head = offset + size;
-	return offset;
-}
-
-void UploadRing::Submit( std::uint64_t id, CompletionToken token )
-{
-	for ( Allocation &allocation : m_Live )
-	{
-		if ( allocation.id == id )
-		{
-			allocation.token = token;
-			allocation.submitted = true;
-		}
-	}
-}
-
-void UploadRing::Abandon( std::uint64_t id )
-{
-	for ( Allocation &allocation : m_Live )
-	{
-		if ( allocation.id == id && !allocation.submitted )
-			allocation.abandoned = true;
-	}
-}
-
-void UploadRing::Retire( std::uint32_t epoch, std::uint64_t completed )
-{
-	while ( !m_Live.empty() )
-	{
-		const Allocation &front = m_Live.front();
-		const bool done =
-		    front.abandoned ||
-		    ( front.submitted && ( front.token.epoch < epoch || front.token.value <= completed ) );
-		if ( !done )
-			break;
-		m_Live.pop_front();
-	}
-	if ( m_Live.empty() )
-		m_Head = 0;
-}
-
 // Device ------------------------------------------------------------------------
 
 MetalDevice::MetalDevice( const MetalAdapterOptions &options ) : m_Options( options ) {}
@@ -293,6 +222,54 @@ id<MTLSamplerState> MetalDevice::Sampler( std::uint64_t id ) const
 {
 	const auto found = m_Samplers.find( id );
 	return found != m_Samplers.end() ? found->second.sampler : nil;
+}
+
+// Recorded resources (recording::IRecordedResources) --------------------------------
+
+std::optional<recording::TextureView> MetalDevice::Texture( std::uint64_t id ) const
+{
+	const auto found = m_Textures.find( id );
+	if ( found == m_Textures.end() || found->second.released )
+		return std::nullopt;
+	return recording::TextureView{ found->second.desc, found->second.layers, found->second.usage };
+}
+
+std::optional<recording::BufferView> MetalDevice::Buffer( std::uint64_t id ) const
+{
+	const auto found = m_Buffers.find( id );
+	if ( found == m_Buffers.end() || found->second.released )
+		return std::nullopt;
+	return recording::BufferView{ found->second.desc, found->second.usage };
+}
+
+std::optional<recording::PipelineView> MetalDevice::Pipeline( std::uint64_t id ) const
+{
+	const auto found = m_Pipelines.find( id );
+	if ( found == m_Pipelines.end() || found->second.released )
+		return std::nullopt;
+	const PipelineRecord &p = found->second;
+	return recording::PipelineView{ p.kind, p.colorFormats, p.depthFormat, p.sampleCount,
+	    p.vertexBuffers, p.drawConstantBytes, p.layouts, p.layoutHasBindings };
+}
+
+std::optional<BindGroupLayoutId> MetalDevice::BindGroup( std::uint64_t id ) const
+{
+	const auto group = m_BindGroups.find( id );
+	if ( group == m_BindGroups.end() || group->second.released )
+		return std::nullopt;
+	auto live = [&]( const auto &map, std::uint64_t key )
+	{
+		const auto found = map.find( key );
+		return found != map.end() && !found->second.released;
+	};
+	for ( const BindGroupEntry &entry : group->second.entries )
+	{
+		if ( ( entry.buffer.IsValid() && !live( m_Buffers, entry.buffer.value ) ) ||
+		     ( entry.texture.IsValid() && !live( m_Textures, entry.texture.value ) ) ||
+		     ( entry.sampler.IsValid() && !live( m_Samplers, entry.sampler.value ) ) )
+			return std::nullopt;
+	}
+	return group->second.layout;
 }
 
 std::optional<LayoutView> MetalDevice::FindLayout( BindGroupLayoutId id ) const
@@ -703,7 +680,8 @@ DeviceResult<CommandEncoder> MetalDevice::BeginEncoder( QueueKind queue )
 		return Fail( DeviceStatus::kDeviceLost, DeviceOperation::kBeginEncoder );
 	if ( queue != QueueKind::kGraphics )
 		return Fail( DeviceStatus::kUnsupported, DeviceOperation::kBeginEncoder );
-	return CommandEncoder( queue, std::make_unique<MetalEncoder>( *this, queue ) );
+	return CommandEncoder( queue, std::make_unique<RecordingEncoder>(
+	    static_cast<recording::IUploadStager &>( *this ), this, queue ) );
 }
 
 void MetalDevice::OnCompleted( std::uint32_t epoch, std::uint64_t value, bool failed, bool lost )
@@ -749,27 +727,19 @@ DeviceResult<CompletionToken> MetalDevice::Submit(
 			return Fail( DeviceStatus::kInvalidDescription, op );
 	}
 	std::unordered_map<std::uint64_t, ResourceUsage> states;
-	std::vector<MetalEncoder *> recorded;
+	std::vector<RecordingEncoder *> recorded;
 	for ( std::unique_ptr<IEncoderBackend> &backend : backends )
 	{
-		MetalEncoder *encoder = dynamic_cast<MetalEncoder *>( backend.get() );
-		if ( !encoder || &encoder->Device() != this || encoder->Queue() != queue )
+		RecordingEncoder *encoder = dynamic_cast<RecordingEncoder *>( backend.get() );
+		if ( !encoder || encoder->Owner() != this || encoder->Queue() != queue )
 			return Fail( DeviceStatus::kInvalidHandle, op );
-		if ( !encoder->Complete() || !Validate( encoder->Commands(), states ) )
+		if ( !encoder->Complete() || !recording::Validate( encoder->Commands(), states, *this ) )
 			return Fail( DeviceStatus::kInvalidState, op );
 		recorded.push_back( encoder );
 	}
-	for ( MetalEncoder *encoder : recorded )
-	{
-		for ( const Command &command : encoder->Commands() )
-		{
-			if ( ( command.op == Op::kDrawIndexedIndirect &&
-			         !m_Facts.capabilities.Has( Capability::kMultiDrawIndirect ) ) ||
-			     command.op == Op::kDrawIndexedIndirectCount ||
-			     command.op == Op::kWriteTimestamp )
-				return Fail( DeviceStatus::kUnsupported, op );
-		}
-	}
+	if ( const std::optional<DeviceStatus> refused =
+	         recording::CheckSubmission( recorded, m_Facts.capabilities, states ) )
+		return Fail( *refused, op );
 	for ( const auto &[id, usage] : states )
 	{
 		if ( TextureRecord *t = LiveTexture( id ) )
@@ -780,7 +750,7 @@ DeviceResult<CompletionToken> MetalDevice::Submit(
 	const CompletionToken token{ queue, m_Epoch, ++m_Submitted };
 	{
 		std::lock_guard<std::mutex> ring( m_RingLock );
-		for ( MetalEncoder *encoder : recorded )
+		for ( RecordingEncoder *encoder : recorded )
 		{
 			for ( std::uint64_t allocation : encoder->RingAllocations() )
 				m_Ring.Submit( allocation, token );

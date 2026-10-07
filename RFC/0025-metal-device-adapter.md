@@ -90,10 +90,14 @@ legacy host until then.
    timestamps (Apple GPUs sample counters only at stage boundaries),
    indirect count, async queues, parallel recording, transient aliasing,
    external images, ray query.
-9. **Shared recording (debt).** The command list, its validator and the
-   upload ring follow `render.device.gl` line for line. They move into one
-   `render.device` helper used by GL, Metal and D3D12 when RFC 0024 needs the
-   same; deletion condition: a second copy lands.
+9. **Shared recording.** The command list, the recording encoder, the
+   upload ring's bookkeeping and the validation rules are one
+   `render.device` helper (`public/render/device/recording.h`), used by GL
+   and Metal since 2026-10-07 and by D3D12 once RFC 0024 migrates. Each
+   adapter answers validation through `recording::IRecordedResources`
+   (live resources, its limits, and named limits of its own: GL refuses
+   cube and BC texture copies and D24 buffer copies, Metal 3D clears) and
+   keeps its own replay. The copies in the adapters are deleted.
 
 ## Gates
 
@@ -118,5 +122,10 @@ legacy host until then.
   are pre-existing (`games/csgo`, `external/`).
 - `tools/render/tests/test_shader*`: 33 of 36 pass; the 3 failures are
   identical at HEAD without this change.
+- Shared recording (2026-10-07): the 31 conformance suites that compile
+  the GL adapter run against the migrated adapter (see the commit); the
+  Metal objects link with the helper for iOS and macOS. Linking found, and
+  the migration removed, a duplicate `UploadRing` definition in the first
+  Metal slice.
 - Not run: any Metal device, Apple's MSL compiler, a full Apple product
   build, any suite. No support claim follows.

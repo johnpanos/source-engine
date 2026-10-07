@@ -529,6 +529,68 @@ bool *GlDevice::ReleasedFlag( ResourceId resource )
 	return nullptr;
 }
 
+// Recorded resources (recording::IRecordedResources) --------------------------------
+
+std::optional<recording::TextureView> GlDevice::Texture( std::uint64_t id ) const
+{
+	const auto found = m_Textures.find( id );
+	if ( found == m_Textures.end() || found->second.released )
+		return std::nullopt;
+	return recording::TextureView{ found->second.desc, found->second.layers, found->second.usage };
+}
+
+std::optional<recording::BufferView> GlDevice::Buffer( std::uint64_t id ) const
+{
+	const auto found = m_Buffers.find( id );
+	if ( found == m_Buffers.end() || found->second.released )
+		return std::nullopt;
+	return recording::BufferView{ found->second.desc, found->second.usage };
+}
+
+std::optional<recording::PipelineView> GlDevice::Pipeline( std::uint64_t id ) const
+{
+	const auto found = m_Pipelines.find( id );
+	if ( found == m_Pipelines.end() || found->second.released )
+		return std::nullopt;
+	const PipelineRecord &p = found->second;
+	return recording::PipelineView{ p.kind, p.colorFormats, p.depthFormat, p.sampleCount,
+	    p.vertexBuffers, p.drawConstantBytes, p.layouts, p.layoutHasBindings };
+}
+
+std::optional<BindGroupLayoutId> GlDevice::BindGroup( std::uint64_t id ) const
+{
+	const auto group = m_BindGroups.find( id );
+	if ( group == m_BindGroups.end() || group->second.released )
+		return std::nullopt;
+	auto live = [&]( const auto &map, std::uint64_t key )
+	{
+		const auto found = map.find( key );
+		return found != map.end() && !found->second.released;
+	};
+	for ( const BindGroupEntry &entry : group->second.entries )
+	{
+		if ( ( entry.buffer.IsValid() && !live( m_Buffers, entry.buffer.value ) ) ||
+		     ( entry.texture.IsValid() && !live( m_Textures, entry.texture.value ) ) ||
+		     ( entry.sampler.IsValid() && !live( m_Samplers, entry.sampler.value ) ) )
+			return std::nullopt;
+	}
+	return group->second.layout;
+}
+
+bool GlDevice::CanCopyWithBuffer( const recording::TextureView &texture ) const
+{
+	// D24's depth has no 32-bit transfer equal to the port's (formats.cpp).
+	return texture.desc.format != Format::kD24UnormS8;
+}
+
+bool GlDevice::CanCopyTexture( const recording::TextureView &texture ) const
+{
+	// Through a framebuffer blit, which copies no cube face and no
+	// block-compressed texture: GL refuses those by name.
+	return texture.desc.dimension != TextureDimension::kCube &&
+	       !IsBlockCompressed( texture.desc.format );
+}
+
 bool GlDevice::QueueSupported( QueueKind queue ) const
 {
 	// One context, one command stream: no separate compute or transfer queue.
@@ -895,7 +957,8 @@ DeviceResult<CommandEncoder> GlDevice::BeginEncoder( QueueKind queue )
 		return Fail( DeviceStatus::kDeviceLost, DeviceOperation::kBeginEncoder );
 	if ( !QueueSupported( queue ) )
 		return Fail( DeviceStatus::kUnsupported, DeviceOperation::kBeginEncoder );
-	return CommandEncoder( queue, std::make_unique<GlEncoder>( *this, queue ) );
+	return CommandEncoder( queue, std::make_unique<RecordingEncoder>(
+	    static_cast<recording::IUploadStager &>( *this ), this, queue ) );
 }
 
 DeviceResult<CompletionToken> GlDevice::Submit(
@@ -923,37 +986,21 @@ DeviceResult<CompletionToken> GlDevice::Submit(
 			return Fail( DeviceStatus::kInvalidDescription, op );
 	}
 	std::unordered_map<std::uint64_t, ResourceUsage> states;
-	std::vector<GlEncoder *> recorded;
+	std::vector<RecordingEncoder *> recorded;
 	for ( std::unique_ptr<IEncoderBackend> &backend : backends )
 	{
-		GlEncoder *encoder = dynamic_cast<GlEncoder *>( backend.get() );
-		if ( !encoder || &encoder->Device() != this || encoder->Queue() != queue )
+		RecordingEncoder *encoder = dynamic_cast<RecordingEncoder *>( backend.get() );
+		if ( !encoder || encoder->Owner() != this || encoder->Queue() != queue )
 			return Fail( DeviceStatus::kInvalidHandle, op );
-		if ( !encoder->Complete() || !Validate( encoder->Commands(), states ) )
+		if ( !encoder->Complete() || !recording::Validate( encoder->Commands(), states, *this ) )
 			return Fail( DeviceStatus::kInvalidState, op );
 		recorded.push_back( encoder );
 	}
-	// D23: timestamps need the capability, and each buffer ends the
-	// submission in kCopyDestination.
-	for ( GlEncoder *encoder : recorded )
-	{
-		for ( const Command &command : encoder->Commands() )
-		{
-			// D30/D31: refused where unclaimed.
-			if ( ( command.op == Op::kDrawIndexedIndirect &&
-			         !m_Facts.capabilities.Has( Capability::kMultiDrawIndirect ) ) ||
-			     ( command.op == Op::kDrawIndexedIndirectCount &&
-			         !m_Facts.capabilities.Has( Capability::kDrawIndirectCount ) ) )
-				return Fail( DeviceStatus::kUnsupported, op );
-			if ( command.op != Op::kWriteTimestamp )
-				continue;
-			if ( !m_Facts.capabilities.Has( Capability::kTimestamps ) )
-				return Fail( DeviceStatus::kUnsupported, op );
-			const auto found = states.find( command.a );
-			if ( found == states.end() || found->second != ResourceUsage::kCopyDestination )
-				return Fail( DeviceStatus::kInvalidState, op );
-		}
-	}
+	// D23, D30, D31: the capabilities the lists use, and each timestamp
+	// buffer ends the submission in kCopyDestination.
+	if ( const std::optional<DeviceStatus> refused =
+	         recording::CheckSubmission( recorded, m_Facts.capabilities, states ) )
+		return Fail( *refused, op );
 	ContextScope scope( *m_Context );
 	if ( !scope.Ok() )
 		return Fail( DeviceStatus::kUnavailable, op );
@@ -972,7 +1019,7 @@ DeviceResult<CompletionToken> GlDevice::Submit(
 	const CompletionToken token{ queue, m_Epoch, ++m_Submitted };
 	{
 		std::lock_guard<std::mutex> ring( m_RingLock );
-		for ( GlEncoder *encoder : recorded )
+		for ( RecordingEncoder *encoder : recorded )
 		{
 			for ( std::uint64_t allocation : encoder->RingAllocations() )
 			{
@@ -994,7 +1041,7 @@ DeviceResult<CompletionToken> GlDevice::Submit(
 	return token;
 }
 
-void GlDevice::Issue( std::vector<GlEncoder *> &encoders, CompletionToken token )
+void GlDevice::Issue( std::vector<RecordingEncoder *> &encoders, CompletionToken token )
 {
 	Execute( encoders, token );
 	m_Fences.push_back( { token.value, Gl().FenceSync( GL_SYNC_GPU_COMMANDS_COMPLETE, 0 ) } );

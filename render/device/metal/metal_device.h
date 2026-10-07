@@ -25,10 +25,8 @@
 //
 //			Resource state is tracked per resource, not per subresource.
 //
-//			Debt (RFC 0025 "Shared recording"): the command list, its
-//			validation and the upload ring follow render.device.gl's line for
-//			line; both move into one render.device helper when a third
-//			list-replaying adapter (RFC 0024) needs them.
+//			The command list, its validation and the upload ring are the
+//			port's shared recording (render/device/recording.h).
 //
 //=============================================================================//
 
@@ -42,6 +40,7 @@
 #import <Metal/Metal.h>
 
 #include "render/device/metal/provider.h"
+#include "render/device/recording.h"
 #include "render/device/validation.h"
 
 #include <algorithm>
@@ -174,176 +173,16 @@ struct PipelineRecord
 	bool released = false;
 };
 
-// Commands ----------------------------------------------------------------------
-
-enum class Op : std::uint8_t
-{
-	kTransitionTexture,
-	kTransitionBuffer,
-	kClearTexture,
-	kWriteBuffer,
-	kCopyBuffer,
-	kCopyTextureToBuffer,
-	kCopyBufferToTexture,
-	kCopyTexture,
-	kBeginRendering,
-	kEndRendering,
-	kSetPipeline,
-	kSetBindGroup,
-	kSetVertexBuffer,
-	kSetIndexBuffer,
-	kSetViewport,
-	kDraw,
-	kDrawIndexed,
-	kDispatch,
-	kSetDrawConstants,
-	kBeginLabel,
-	kEndLabel,
-	kWriteTimestamp,
-	kDrawIndexedIndirect,
-	kDrawIndexedIndirectCount
-};
-
-struct Command
-{
-	Op op = Op::kDraw;
-	std::uint64_t a = 0; // main handle
-	std::uint64_t b = 0; // second handle
-	ResourceUsage before = ResourceUsage::kUndefined;
-	ResourceUsage after = ResourceUsage::kUndefined;
-	SubresourceRange range;
-	ClearColor color;
-	BufferCopy copy;
-	TextureBufferCopy textureCopy;
-	std::uint64_t offset = 0; // a vertex, index or draw-constant offset
-	std::uint32_t slot = 0;   // a vertex slot or bind-group role
-	std::uint32_t count = 0;  // vertices, indices or x groups
-	std::uint32_t instances = 1;
-	std::uint32_t first = 0; // first vertex or index; y groups; an indirect stride
-	std::int32_t vertexOffset = 0;
-	std::uint32_t firstInstance = 0; // z groups of a dispatch
-	IndexFormat indexFormat = IndexFormat::kUint16;
-	Viewport viewport;
-	std::vector<ColorAttachment> colors;
-	std::optional<DepthAttachment> depth;
-	std::uint32_t width = 0;
-	std::uint32_t height = 0;
-	// An upload: in the ring at ringOffset, else in bytes (a full ring); the
-	// bytes of draw constants; a label's text.
-	std::uint64_t ringOffset = 0;
-	bool fromRing = false;
-	std::vector<std::byte> bytes;
-};
-
-class MetalDevice;
-struct ValidationState;
-
-class MetalEncoder final : public IEncoderBackend
-{
-public:
-	MetalEncoder( MetalDevice &device, QueueKind queue ) : m_Device( device ), m_Queue( queue ) {}
-	~MetalEncoder() override;
-
-	void TransitionTexture( TextureId texture, ResourceUsage before, ResourceUsage after,
-	    const SubresourceRange &range ) override;
-	void TransitionBuffer( BufferId buffer, ResourceUsage before, ResourceUsage after ) override;
-	void ClearTexture(
-	    TextureId texture, const ClearColor &color, const SubresourceRange &range ) override;
-	void WriteBuffer(
-	    BufferId buffer, std::uint64_t offset, std::span<const std::byte> bytes ) override;
-	void CopyBuffer( BufferId source, BufferId destination, const BufferCopy &copy ) override;
-	void CopyTextureToBuffer(
-	    TextureId source, BufferId destination, const TextureBufferCopy &copy ) override;
-	void CopyBufferToTexture(
-	    BufferId source, TextureId destination, const TextureBufferCopy &copy ) override;
-	void CopyTexture( TextureId source, TextureId destination, const TextureCopy &copy ) override;
-	void BeginRendering( const RenderingDesc &desc ) override;
-	void EndRendering() override;
-	void SetPipeline( PipelineId pipeline ) override;
-	void SetBindGroup( BindGroupRole role, BindGroupId group ) override;
-	void SetVertexBuffer( std::uint32_t slot, BufferId buffer, std::uint64_t offset ) override;
-	void SetIndexBuffer( BufferId buffer, std::uint64_t offset, IndexFormat format ) override;
-	void SetViewport( const Viewport &viewport ) override;
-	void DrawIndexedIndirect( BufferId buffer, std::uint64_t offset, std::uint32_t drawCount,
-	    std::uint32_t stride ) override;
-	void DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset, BufferId countBuffer,
-	    std::uint64_t countOffset, std::uint32_t maxDrawCount, std::uint32_t stride ) override;
-	void Draw( std::uint32_t vertexCount, std::uint32_t instanceCount, std::uint32_t firstVertex,
-	    std::uint32_t firstInstance ) override;
-	void DrawIndexed( std::uint32_t indexCount, std::uint32_t instanceCount,
-	    std::uint32_t firstIndex, std::int32_t vertexOffset, std::uint32_t firstInstance ) override;
-	void Dispatch( std::uint32_t x, std::uint32_t y, std::uint32_t z ) override;
-	void SetDrawConstants( std::uint32_t offset, std::span<const std::byte> bytes ) override;
-	void BeginLabel( std::string_view label ) override;
-	void EndLabel() override;
-	void WriteTimestamp( BufferId buffer, std::uint64_t offset ) override;
-	bool HasError() const override { return m_Error; }
-
-	bool Complete() const { return !m_Error && !m_Rendering && m_Labels == 0; }
-	MetalDevice &Device() const { return m_Device; }
-	QueueKind Queue() const { return m_Queue; }
-	const std::vector<Command> &Commands() const { return m_Commands; }
-	const std::vector<std::uint64_t> &RingAllocations() const { return m_RingAllocations; }
-	void AddRingAllocation( std::uint64_t id ) { m_RingAllocations.push_back( id ); }
-	void MarkSubmitted() { m_Submitted = true; }
-
-private:
-	void Push( Command command ) { m_Commands.push_back( std::move( command ) ); }
-	void NotRendering()
-	{
-		if ( m_Rendering )
-			m_Error = true;
-	}
-	void Drawing()
-	{
-		if ( !m_Rendering )
-			m_Error = true;
-	}
-
-	MetalDevice &m_Device;
-	QueueKind m_Queue;
-	std::vector<Command> m_Commands;
-	std::vector<std::uint64_t> m_RingAllocations;
-	bool m_Rendering = false;
-	bool m_Error = false;
-	bool m_Submitted = false;
-	std::uint32_t m_Labels = 0;
-};
-
-// The upload ring: one shared-storage MTLBuffer. Ranges retire in order once
-// their token completes, or when their encoder is destroyed unsubmitted.
-class UploadRing
-{
-public:
-	void Reset( std::uint64_t capacity )
-	{
-		m_Capacity = capacity;
-		m_Live.clear();
-		m_Head = 0;
-	}
-	std::optional<std::uint64_t> Allocate( std::uint64_t size, std::uint64_t id );
-	void Submit( std::uint64_t id, CompletionToken token );
-	void Abandon( std::uint64_t id );
-	void Retire( std::uint32_t epoch, std::uint64_t completed );
-
-private:
-	struct Allocation
-	{
-		std::uint64_t offset;
-		std::uint64_t size;
-		std::uint64_t id;
-		CompletionToken token;
-		bool submitted;
-		bool abandoned;
-	};
-	std::uint64_t m_Capacity = 0;
-	std::deque<Allocation> m_Live;
-	std::uint64_t m_Head = 0;
-};
+using recording::Command;
+using recording::Op;
+using recording::RecordingEncoder;
+using recording::UploadRing;
 
 // Device -------------------------------------------------------------------------
 
-class MetalDevice final : public IRenderDevice2
+class MetalDevice final : public IRenderDevice2,
+                          private recording::IUploadStager,
+                          private recording::IRecordedResources
 {
 public:
 	explicit MetalDevice( const MetalAdapterOptions &options );
@@ -379,11 +218,6 @@ public:
 	std::uint64_t CommandBufferErrors() const { return m_Errors.load(); }
 	void SimulateLoss() { m_State.store( DeviceState::kLost ); }
 
-	// For MetalEncoder: copies an upload into the ring, or into the command
-	// when the ring is full. Any recording thread.
-	void StageUpload( MetalEncoder &encoder, Command &command, std::span<const std::byte> bytes );
-	void AbandonUploads( const std::vector<std::uint64_t> &allocations );
-
 	// For the replay (execute.mm).
 	id<MTLDevice> Native() const { return m_Device; }
 	BufferRecord *ExistingBuffer( std::uint64_t id );
@@ -397,6 +231,28 @@ public:
 	    std::uint32_t stage, const StageGroup &view );
 
 private:
+	// recording::IUploadStager: copies an upload into the ring, or into the
+	// command when the ring is full. Any recording thread.
+	void StageUpload(
+	    RecordingEncoder &encoder, Command &command, std::span<const std::byte> bytes ) override;
+	void AbandonUploads( const std::vector<std::uint64_t> &allocations ) override;
+
+	// recording::IRecordedResources (the device lock is held).
+	std::optional<recording::TextureView> Texture( std::uint64_t id ) const override;
+	std::optional<recording::BufferView> Buffer( std::uint64_t id ) const override;
+	std::optional<recording::PipelineView> Pipeline( std::uint64_t id ) const override;
+	std::optional<BindGroupLayoutId> BindGroup( std::uint64_t id ) const override;
+	std::uint32_t MaxColorAttachments() const override
+	{
+		return m_Facts.limits.maxColorAttachments;
+	}
+	std::uint32_t MaxVertexSlots() const override { return kMaxVertexSlots; }
+	// Clears are render passes: no 3D texture (it is no render target).
+	bool CanClear( const recording::TextureView &texture ) const override
+	{
+		return texture.desc.dimension != TextureDimension::k3D;
+	}
+
 	struct PendingRelease
 	{
 		ResourceId resource;
@@ -419,11 +275,7 @@ private:
 	    PipelineRecord &record, id<MTLFunction> __strong &function, std::int32_t &nativeCode );
 
 	// execute.mm
-	bool Validate( const std::vector<Command> &commands,
-	    std::unordered_map<std::uint64_t, ResourceUsage> &states );
-	bool ValidateDraw( const ValidationState &state, bool indexed ) const;
-	bool GroupsMatch( const ValidationState &state ) const;
-	void Execute( id<MTLCommandBuffer> commands, std::vector<MetalEncoder *> &encoders );
+	void Execute( id<MTLCommandBuffer> commands, std::vector<RecordingEncoder *> &encoders );
 
 	MetalAdapterOptions m_Options;
 	id<MTLDevice> m_Device = nil;
