@@ -96,15 +96,11 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 			claim.reason = "the family does not draw $detailblendmode " + std::to_string( mode );
 			return claim;
 		}
-		// Mode 10 (TCOMBINE_SSBUMP_BUMP) scales a normal map's basis weights
-		// by the detail. With an ssbump the shader's ssbump branch never reads
-		// the detail and TextureCombine has no mode 10 case
-		// (lightmappedgeneric_ps2_3_x.h), so the detail has no effect.
-		if ( !( mode == 10 && ReadFlag( block, "ssbump" ) ) )
-		{
-			claim.terms |= kSurfaceDetail;
-			claim.detailMode = std::uint32_t( mode );
-		}
+		// Mode 10 (TCOMBINE_SSBUMP_BUMP) scales the bump's basis weights by the
+		// detail, an ssbump's too (Portal 2's shaders and the native backend's
+		// lightmapped.frag; the dimples of tile/white_wall_tile003a).
+		claim.terms |= kSurfaceDetail;
+		claim.detailMode = std::uint32_t( mode );
 	}
 
 	const bool alphaBlended = ReadFlag( block, "translucent" ) ||

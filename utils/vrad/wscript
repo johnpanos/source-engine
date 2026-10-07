@@ -71,7 +71,7 @@ def build(bld):
 		defines = [ 'MACRO_MATHLIB', 'PROTECTED_THINGS_DISABLE', 'VRAD',
 			'VRAD_TOOL_ENTRY_EXPORTS', '_LZMA_PROB32', '_7ZIP_ST' ],
 		use = [ 'materialsystem', 'shaderapiempty', 'mathlib', 'raytrace',
-			'tier0', 'tier1', 'tier2', 'vstdlib', 'vtf', 'bitmap' ],
+			'tier0', 'tier1', 'tier2', 'vstdlib', 'vtf', 'vtf_container', 'vtf_decompress', 'bitmap' ],
 		ldflags = [ '-Wl,-Bstatic', '-Lbitmap', '-lbitmap', '-Wl,-Bdynamic' ],
 		rpath = [ '$ORIGIN/bin' ],
 		install_path = bld.env.BINDIR,

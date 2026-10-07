@@ -84,7 +84,7 @@ def build(bld):
 		defines = [ 'MACRO_MATHLIB', 'PROTECTED_THINGS_DISABLE',
 			'_LZMA_PROB32', '_7ZIP_ST' ],
 		use = [ 'materialsystem', 'shaderapiempty', 'fgdlib', 'mathlib',
-			'tier0', 'tier1', 'tier2', 'vstdlib', 'vtf', 'bitmap' ],
+			'tier0', 'tier1', 'tier2', 'vstdlib', 'vtf', 'vtf_container', 'vtf_decompress', 'bitmap' ],
 		# libvtf refers to ImageLoader in libbitmap; Waf's transitive archive
 		# order places bitmap first, so repeat it after the other libraries.
 		ldflags = [ '-Wl,-Bstatic', '-Lbitmap', '-lbitmap', '-Wl,-Bdynamic' ],
@@ -162,7 +162,7 @@ def build(bld):
 		defines = [ 'MACRO_MATHLIB', 'PROTECTED_THINGS_DISABLE',
 			'_LZMA_PROB32', '_7ZIP_ST', 'SOURCE_WORLD_STAGE' ],
 		use = [ 'vbspworldstage', 'mapcontainer', 'sourceWorld', 'materialsystem', 'shaderapiempty',
-			'fgdlib', 'mathlib', 'tier0', 'tier1', 'tier2', 'vstdlib', 'vtf', 'bitmap' ],
+			'fgdlib', 'mathlib', 'tier0', 'tier1', 'tier2', 'vstdlib', 'vtf', 'vtf_container', 'vtf_decompress', 'bitmap' ],
 		uselib = 'OPENUSD',
 		ldflags = [ '-Wl,-Bstatic', '-Lbitmap', '-lbitmap', '-Wl,-Bdynamic' ],
 		rpath = [ '$ORIGIN/bin', '$ORIGIN', bld.env.WORLDSTAGE_OPENUSD_LIBDIR,

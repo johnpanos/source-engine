@@ -2173,6 +2173,14 @@ void main()
 		    texture( sampler2D( lightmap, lightmapSampler ), lightmapUv + 3.0 * offset ).rgb;
 		if ( ssbump )
 		{
+			// TCOMBINE_SSBUMP_BUMP on an ssbump (Portal 2's shaders, and the
+			// native backend's lightmapped.frag): the detail ssbump scales the
+			// basis weights.
+			if ( kDetailMode == 10 && Term( kDetailTexture ) )
+				normalSample.xyz *= 2.0 * material.detailTint.rgb *
+				                    texture( sampler2D( detailTexture, detailSampler ),
+				                        baseUv * material.detailScale.xy )
+				                        .rgb;
 			diffuse = normalSample.x * light1 + normalSample.y * light2 + normalSample.z * light3;
 			// The running game's shaders may scale every ssbump (Portal 2's
 			// do); else $ssbumpmathfix does.
