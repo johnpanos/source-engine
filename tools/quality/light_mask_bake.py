@@ -34,8 +34,8 @@ import pbrt_blender  # noqa: E402
 # (light_shadow_masks.area_visibility): Cycles bakes a texel at one point, so
 # without it a hard edge is all or nothing per texel (stair-steps). SAMPLES
 # per sub-texel keeps 64 per texel.
-SUPERSAMPLE = 2
-SAMPLES = 16
+SUPERSAMPLE = 4
+SAMPLES = 4
 BAKE_TILE = 1024
 
 
@@ -156,8 +156,12 @@ def bake_light_masks(merged, scene, path, size, render):
                          fine)
                 with pbrt_blender.direct_only_light_paths():
                     bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT"})
-                planes.append(np.array(image.pixels[:], dtype=np.float32)
-                              .reshape(fine, fine, 4)[..., :3].mean(axis=2))
+                # foreach_get into one buffer: image.pixels[:] would build a
+                # Python list of every float (tens of GB at this size).
+                pixels = np.empty(fine * fine * 4, np.float32)
+                image.pixels.foreach_get(pixels)
+                planes.append(pixels.reshape(fine, fine, 4)[..., :3].mean(axis=2))
+                del pixels
                 bpy.data.images.remove(image)
             for obj in keep:
                 if obj.type == "LIGHT":
