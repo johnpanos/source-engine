@@ -23,6 +23,7 @@
 #include "tier1/utlintrusivelist.h"
 #include "utlvector.h"
 #include "utldict.h"
+#include "tier1/utlstring.h"
 #include "cmaterialdict.h"
 #include "cmatlightmaps.h"
 #include "cmatrendercontext.h"
@@ -621,6 +622,16 @@ private:
 
 	CMaterialDict							m_MaterialDict;
 	CUtlDict<IMaterialInternal *, int> m_CoreNeutralMaterials;
+	// FindCoreMaterialDefault's answers by "key\nshader" (case-sensitive:
+	// a differently cased request only adds an equal entry), kept once the
+	// shader's neutral material is published (its variables never change
+	// after that): a render core capture asks per variable of every draw.
+	struct CoreMaterialDefault_t
+	{
+		bool m_bDefined = false;
+		CUtlString m_Value;
+	};
+	CUtlDict<CoreMaterialDefault_t, int> m_CoreMaterialDefaults;
 	CMatLightmaps							m_Lightmaps;
 	CTHREADLOCAL(IMatRenderContextInternal *) m_pRenderContext;
 	CMatRenderContext						m_HardwareRenderContext;

@@ -11674,3 +11674,156 @@ after new binaries shows multi-second pipeline-compile hitches (NVIDIA's
 `_nv002nvvm` thread); warm runs do not. Open: `VulkanDevice::Submit`/`Validate`
 hash lookups (~14 % of the render thread), recording on the pool, the full
 resolution sweep, Fold7 and other GPUs. No gate closes.
+
+## Baked static-light shadow masks (LSMK), Source 2 lighting defaults (2026-10-06, user goal)
+
+What landed:
+
+- **LSMK v1** (`tools/quality/light_shadow_masks.py` owns the encoding;
+  `public/mapcontainer/light_shadow_masks.h` mirrors it): per lightmap texel
+  the visibility of its four dominant static lights and their ids, one
+  RGBA16 page (`id << 8 | visibility`; exact, since a texel's ids change
+  order between neighbours). Lights are matched by origin (0.1 units), as
+  `MergeMapLights` matches lamps.
+- **Bake**: `light_mask_bake.py` (the baker's `light-masks` operation) reads
+  the lighting stage, groups lights so a group's reaches are disjoint, and
+  bakes each group's direct diffuse with and without shadows (64 spp, a
+  per-group checkpoint survives a GPU fault). `lightmap_ktx2.py` packs it,
+  `bsp2tool --light-masks` carries it, the engine and core upload it.
+- **Runtime**: a lightmapped surface reads the 2x2 mask texels once; a
+  light whose id all four hold takes the bilinear mask and skips PCSS, or
+  the lesser of mask and tile with a mover in reach; elsewhere the runtime
+  shadow remains. `r_core_world` stats report the split.
+- **Defaults**: `r_core_area_lights 0` (LTC compiled out with `kViewAreas`),
+  `r_core_ao_quality 0` (`kSurfaceAmbientOcclusion` compiled out through
+  `WorldTarget::ambientOcclusionTerm`), `r_core_ssr 0`; `r_core_shadow_pcss`
+  with an Advanced Video row "Soft Shadows (PCSS)" in both menus; the High
+  and Low profile rows list the declared-off terms.
+- R91 slices begun: static props' colour-mesh lighting reaches the core
+  (`SurfaceVariant::staticVertexLight`, specialization constant 9; lab suite `render.lab.static-light`, 7 checks pass with a rejected linear-decode control; not yet
+  in game); water reflection views are now eligible for the core (not yet
+  verified in game).
+
+Evidence, `sp_a1_intro4_relit` (36 lights, 27 groups, all with an id; bake on
+the Radeon 8060S via HIP), intro4 demo, ABBA, same build, maps A (no LSMK,
+byte-identical repack of the published map) and B (LSMK):
+
+| | A1 | B1 | B2 | A2 |
+| --- | ---: | ---: | ---: | ---: |
+| 8060S 1080p median / GPU p50 (ms) | 16.65 / 12.65 | 17.12 / 13.19 | 17.36 / 13.41 | 17.43 / 13.52 |
+| RTX 3070 1440p (desktop compositor) median / GPU p50 | 18.33 / 16.83 | 18.72 / 17.15 | 19.12 / 17.34 | 18.70 / 17.15 |
+
+The masks bring **no measurable gain** on this demo: per frame about 20
+light-view pairs take the mask alone and 16 a mover tile; the expected
+"most of 12 ms" of static-light PCSS is not present in this build's frame.
+A first stand-in implementation of goal item 2 that turned every frame
+emitter into a shadowed spot (65 per frame) cost ~10 ms and was removed
+(RFC 0016: the frame's emitting surfaces add no runtime light). Tests:
+`test_light_shadow_masks.py` (7), `render.area-light` (61), the five GL
+family suites, the menu suite (453; seeded controls fail), device v2
+null/Vulkan. Pre-existing failures not from this slice: Vulkan family
+suites' frame-group bindings 9/13 (RPRB v8 cube arrays), vmt-corpus shader
+table, claim inventory. Open: per-pass GPU attribution of where the frame's
+time goes, VGPR measurement (item 3), the static-prop and reflection-view
+game/lab captures, the resolution sweep.
+
+## Where the intro4 frame goes: measured per thread and per pass (2026-10-06, user request)
+
+Turning area lights, PCSS and dynamic lights off left frame time
+unchanged, so this records where the time goes. Setup: Radeon 8060S
+(RADV, Mesa 26.2.3), 1920×1080 windowed, `sp_a1_intro4_relit.dem`
+(the LSMK map), `mat_queue_mode 2`, `r_core_world 1`, no MSAA, FSR off,
+`build-p2-fsr` at `aafe246db` + this dirty tree. Commands:
+`demo_frames.py run --runtime /tmp/claude-1000/i4rt --no-stage [--profile]
+[--width 1280 --height 720]`, and `perf record -p <hl2_launcher>` during
+playback (frame pointers, then DWARF call graphs).
+
+| run | interval p50 | presenting-thread CPU p50 | GPU p50 | GPU-bound frames |
+| --- | --- | --- | --- | --- |
+| 1080p | 15.21 ms | 12.39 ms | 12.68 ms | 1443 of 3077 |
+| 1080p, `--profile` (timers add ~2 ms) | 17.11 ms | 13.87 ms | 12.67 ms | 578 of 2751 |
+| 720p | 10.29 ms | 9.38 ms | 6.36 ms | 304 of 4558 |
+
+**Threads.** `MatQueue0` (the render thread, which records the core and
+the frozen backend) holds 61 % of all samples, about 93 % of one core over
+the window; the main thread is about 40 % busy and the three `CmpJob`
+workers about 4 % each. The frame is one thread's critical path.
+
+**Render-thread time** (DWARF inclusive, share of the thread):
+
+| work | share | ≈ ms at 12.4 |
+| --- | --- | --- |
+| core world batch recording (`CoreWorld::RecordWorldBatch`: `WorldPass::QueueView`/`RecordBatch`, per-frame string-keyed material resolution `FindCoreMaterialDefault`, `ClaimForDrawing`, `BlockFor`, `MaterialSnapshotKey`/`tolower`, `ProgramResolver::FrameGroup` with `V_snprintf`, `WorldView` copies) | 36 % | 4.4 |
+| legacy stdshader `DrawElements` run for each model/prop draw only to be captured (`VertexLitGeneric`, `UnlitGeneric`, `LightmappedGeneric` → `EmitToCoreQueue` → `CoreWorld::QueueMesh`, itself 17 %) | 29 % | 3.6 |
+| `VulkanDevice::Submit`: command-vector translation (`Translator::Encoder`, `RunSectionsThrough`) and `Validate` | 27 % | 3.4 |
+| CPU dynamic-light lightmaps (`R_BuildLightMapGuts`, `CMatLightmaps::UpdateLightmap`, texture uploads) | 8 % | 1.0 |
+
+`memmove` (7 % of the thread) and malloc/free sit inside those rows.
+
+**GPU passes** (`cl_render_debug_gpu_timers`, mean ms at 1080p, mid-demo
+report): core world view 9.4, of which world surfaces / PBR 5.0, posed
+models 0.9, static models 1.0, dynamic PBR 1.0, cutout shadows 0.33,
+clustered light assignment 0.16, shadow tiles 0.05 (cached; baked masks
+cover the static lights), depth prepass 0.03–0.05. Outside the core: frozen
+backend copies and post (`_rt_fullframefb`, `_rt_poweroftwofb`) 2.0. Area
+lights are compiled out and cost 0.
+
+**Reading.** At 720p the frame is CPU-bound in 94 % of frames; at 1080p on
+this GPU, CPU and GPU are within 0.3 ms of each other. Shadows, clustered
+lights and area lights together are under 0.6 ms of GPU, and the GPU was not
+the limit for most frames, so turning them off could not move the frame. On
+the RTX 3070 at 1440p (the LSMK ABBA above) the GPU p50 is 16.8–17.3 ms
+against an 18.3–19.1 ms interval: GPU-bound there, and world surface
+shading is the largest GPU pass here; its 3070 per-pass split is not yet
+measured. No gate closes.
+
+### Item 1: materials resolved once per snapshot, not per draw (2026-10-06, user request)
+
+From the breakdown above: per dynamic draw the render thread rebuilt the
+material's snapshot key twice (queue and record), ran the material claim,
+re-copied the reflection-probe storage bytes into a frame-group request for
+every recorded view, copied each recorded view (with its draws' vertices)
+for the replay queue, and asked the material system for each variable's
+neutral default by name. Changes:
+
+- `WorldPass::State::Mapped` keeps the claim with the mapping
+  (`MappedEntry`: a pure function of the mapping and the world's stage and
+  reflection flags, recomputed when they change); `QueueView` no longer
+  claims per draw.
+- A queued view's dynamic draws, keys and mappings move into a shared
+  `QueuedDynamic`; the record reads them by index (no second key or map
+  lookup) and recording a slot no longer copies the draws' geometry.
+- `MaterialSnapshotKey` builds into one reserved string with `to_chars`.
+- `ProgramResolver::FrameConstants`: an already built frame group rewrites
+  its constants only (the frame block's packing is shared with
+  `FrameGroup`); the texture names and probe storage are copied only when
+  the group is built.
+- `CMaterialSystem::FindCoreMaterialDefault` caches its answer per
+  published neutral material (whose variables are immutable),
+  case-sensitive by `key\nshader` (Frozen-path: core progress).
+
+Render-thread inclusive shares (DWARF, 12 s of playback, before → after):
+claims 6.3 → 0.3 %, `FrameGroup` 5.2 → 0 %, `QueueView` 9.2 → 2.9 %,
+`QueueMesh` 17.7 → 9.9 %, `WorldView` copies 3.0 → 1.5 %; the thread took
+about 17 % fewer samples over the window.
+
+Interleaved ABBA, intro4 demo, 8060S, 1920×1080, same host session
+(A = the 16:16 build staged before the change, B = this change):
+
+| run | interval p50 / p99 | render-thread CPU p50 | GPU p50 | GPU-bound |
+| --- | --- | --- | --- | --- |
+| A1 | 16.73 / 43.67 ms | 13.00 ms | 12.88 ms | 1069 of 2922 |
+| B1 | 16.17 / 40.07 ms | 11.12 ms | 13.54 ms | 1757 of 3029 |
+| B2 | 16.61 / 40.58 ms | 11.45 ms | 13.99 ms | 1724 of 2950 |
+| A2 | 18.03 / 43.96 ms | 13.69 ms | 14.20 ms | 1297 of 2725 |
+
+Render-thread CPU −2.0 ms (−15 %), p99 −3.5 ms, median frame −1.0 ms; the
+frame is now GPU-bound in 58 % of frames against 37–48 %. The interval
+still exceeds both the render thread's CPU time and the GPU time by about
+2.5 ms at the median: the threads and the GPU do not fully overlap (open).
+Lab suites pass (map-terms, selfillum, sprite, posed-model,
+shadowed-lights, softparticle, reflection-probes, panel, static-light);
+`build-p2`, `build-p2-fsr` and `render_lab` build. `VulkanDevice::Validate`
+(5 % of the thread) computes the submit's resource states and the port's
+refusals, so it is not a debug check to drop; it stays with the submission
+work. No gate closes.

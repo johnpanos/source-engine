@@ -1622,6 +1622,12 @@ std::shared_ptr<const pass::world::StageViewLights> CoreWorld::StageViewLightsFo
 					break;
 				}
 			}
+		( maskId <= 0      ? m_UnmaskedLights
+		    : moverInReach ? m_MaskedMoverLights
+		                   : m_MaskedLights )
+		    .fetch_add( 1, std::memory_order_relaxed );
+		if ( maskId <= 0 && light.kind == light_set::LightKind::World )
+			m_UnmaskedWorldLights.fetch_add( 1, std::memory_order_relaxed );
 		out->lights.push_back( material::PackSurfaceLight(
 		    light, tile, layout, light.baked, maskId, moverInReach ) );
 	}
@@ -2364,6 +2370,20 @@ unsigned int CoreWorld::TakeGpuTimes( char *out, unsigned int size )
 		const int written = std::snprintf( out + used, size - used,
 		    "0 %.3f %.2f core world view (CPU recording, render sequence)\n",
 		    double( recordNs ) * 1e-6 / frames, double( recordViews ) / frames );
+		if ( written > 0 )
+			used = std::min( std::size_t( size ) - 1, used + std::size_t( written ) );
+	}
+	// The views' lights by baked shadow mask (CPU counts).
+	const std::uint64_t masked = m_MaskedLights.exchange( 0, std::memory_order_relaxed );
+	const std::uint64_t maskedMovers = m_MaskedMoverLights.exchange( 0, std::memory_order_relaxed );
+	const std::uint64_t unmasked = m_UnmaskedLights.exchange( 0, std::memory_order_relaxed );
+	if ( masked + maskedMovers + unmasked && used + 1 < size )
+	{
+		const int written = std::snprintf( out + used, size - used,
+		    "0 0 %.2f view lights with baked shadow masks (count; %.2f with a mover in reach, "
+		    "%.2f without a mask, %.2f of them world lights, per frame)\n",
+		    double( masked ) / frames, double( maskedMovers ) / frames, double( unmasked ) / frames,
+		    double( m_UnmaskedWorldLights.exchange( 0, std::memory_order_relaxed ) ) / frames );
 		if ( written > 0 )
 			used = std::min( std::size_t( size ) - 1, used + std::size_t( written ) );
 	}

@@ -454,6 +454,10 @@ the roadmap's hard prerequisites:
    without cutting filter samples, resolution or cohorts. Current standing
    (what is done, last recorded VGPRs and frame times, open items) is in
    [RFC 0016's priority table](RFC/0016-render-core.md#source-2-lighting-defaults-user-direction-2026-10-06).
+   Emitters follow RFC 0016's goal of emissive surfaces without LTC: static
+   panels baked (lightmap, shadow masks, probe reflections), animated screens
+   one soft stand-in spot following the video's average colour as a delta
+   over the bake, emission and bloom for the look, LTC opt-in.
 
 Game integration fixes follow RFC 0016's
 [strict FSR-on/off game coverage rule](RFC/0016-render-core.md#the-rules)

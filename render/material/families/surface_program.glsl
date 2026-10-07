@@ -68,6 +68,9 @@ layout( constant_id = 5 ) const bool kAlphaCoverage = false;
 layout( constant_id = 6 ) const bool kCable = false;
 layout( constant_id = 7 ) const bool kDecalModulate = false;
 layout( constant_id = 8 ) const bool kShadowDepth = false;
+// A static prop's baked vertex lighting, in vertexLighting
+// (SurfaceVariant::staticVertexLight).
+layout( constant_id = 9 ) const bool kStaticVertexLight = false;
 const uint kMaterialAlphaTest = 1u;
 const uint kMaterialHalfLambert = 2u;
 const uint kMaterialDiffuseWarp = 4u;
@@ -135,8 +138,6 @@ const int kWater = 33554432;
 // Runtime direct light on a world surface (surface_program.h): the basis
 // reads the indirect layer, and every light's direct light is drawn here.
 const int kRuntimeDirect = 134217728;
-// A static prop's baked vertex lighting (surface_program.h), in vertexLighting.
-const int kStaticVertexLight = int( 0x80000000u );
 
 #include "surface_frame.glsl"
 // The split-sum table (RFC 0007, pbr_split_sum_table.h), read by the pbr point.
@@ -976,7 +977,7 @@ void PbrSurface( out float coverage )
 	// indirect layer, when the volume carries one (RFC 0011's layers: total,
 	// indirect).
 	// kStaticVertexLight: the vertex's baked light is the surface's lightmap.
-	const bool staticVertexLight = Term( kStaticVertexLight ) && !lightmapped;
+	const bool staticVertexLight = kStaticVertexLight && !lightmapped;
 	const bool meshDirect = Term( kMeshDirect ) && !lightmapped && !staticVertexLight &&
 	                        Term( kProbeVolume ) &&
 	                        ProbeGridRow( 5, 0 ).x >= 2.0 && !furnace;

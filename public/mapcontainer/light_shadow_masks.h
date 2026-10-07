@@ -109,7 +109,8 @@ inline LightShadowMaskRecord LightShadowMaskRecordAt( const void *pData, uint32_
 {
 	LightShadowMaskRecord record;
 	std::memcpy( &record,
-	    static_cast<const unsigned char *>( pData ) + kLightShadowMasksHeaderBytes + 16 * size_t( i ),
+	    static_cast<const unsigned char *>( pData ) + kLightShadowMasksHeaderBytes +
+	        16 * size_t( i ),
 	    16 );
 	return record;
 }

@@ -1959,6 +1959,35 @@ govern all of it.
   Video: "Soft Shadows (PCSS)", on in High, off in Low). Off gives every
   runtime shadow the hard 2x2 filter; baked masks are unaffected.
 
+**Emissive surfaces without LTC (goal, user direction, 2026-10-06).** With
+LTC area lights off by default, emitters are lit the Source 2 way:
+
+1. *Static emissive surfaces* (chamber signs, light panels, lit strips) are
+   baked. The emissive geometry is a light source in the Cycles bake, so its
+   diffuse light, soft falloff and shadows land in the lightmap (the map's
+   fixtures already are); the per-texel shadow masks cover the analytic
+   lights beside them. Their reflection on glossy surfaces comes from the
+   reflection probes, which capture the emissive surface itself;
+   parallax-corrected, distance-roughness probes (R50) give Source 2's
+   stretched, blurred highlight. Kept: the visible bright surface, its baked
+   glow and its probe reflection. Lost: only LTC's exact rectangular
+   specular, slight on rough Aperture materials.
+2. *Animated or changing screens* (elevator videos, monitors, flickering
+   signs) get one cheap stand-in light, or a few: a spot at the screen, aimed
+   outward, with a source radius about the screen's size so its penumbra
+   reads as a panel, in the clustered set, shadowed by the atlas (PCSS or
+   hard) for moving casters. Its colour follows the screen's average each
+   frame, from the video texture's smallest mip. The bake holds the screen's
+   neutral average light; the stand-in adds only the change (a signed or
+   tinted delta), so nothing is counted twice. This replaces the 2 x 4 LTC
+   tile lights with about one runtime light's cost.
+3. *Emission and bloom* carry the look: a strong emissive term and the
+   existing bloom chain read as a glowing panel more than the exact light
+   shape does.
+4. *LTC stays opt-in* (`r_core_area_lights 1`, `--area-lights`) for
+   showcase scenes where a large dynamic panel beside a glossy floor matters,
+   and for the lab oracles; it is compiled out on High.
+
 **Priority: Source 2 parity at Source 2 cost on High** (user direction,
 2026-10-06; ahead of other render-optimization slices; work order in
 AGENTS.md's render-quality priority, item 0). The surface program already

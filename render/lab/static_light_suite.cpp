@@ -4,7 +4,7 @@
 //			static props"): a static prop's baked per-vertex lighting (the
 //			static-prop color lump, VertexLitGeneric's STATIC_LIGHT) drawn by
 //			render.pass.world through the shared PBR mesh point with
-//			kSurfaceStaticVertexLight, as the game's captured dynamic meshes
+//			SurfaceVariant::staticVertexLight, as the game's captured dynamic meshes
 //			hand it over (the color mesh in the vertex color).
 //
 //			The fixture is one white quad under an orthographic view with no
@@ -105,8 +105,8 @@ std::optional<std::string> RunChecks(
 	baseDesc.format = Format::kRGBA8Srgb;
 	baseDesc.width = baseDesc.height = 1;
 	baseDesc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
-	const std::array<std::byte, 4> white = { std::byte{ 255 }, std::byte{ 255 }, std::byte{ 255 },
-	    std::byte{ 255 } };
+	const std::array<std::byte, 4> white = {
+	    std::byte{ 255 }, std::byte{ 255 }, std::byte{ 255 }, std::byte{ 255 } };
 	auto base = textures.Stage( "static_light/white", baseDesc, white );
 	if ( !base )
 		return "the white base fixture could not be staged";
@@ -198,7 +198,8 @@ std::optional<std::string> RunChecks(
 			{
 				const double measured =
 				    ( lit[i][c] - lit[0][c] ) / std::max( 1e-6, double( lit[top][c] - lit[0][c] ) );
-				const double expected = Decode( kLevels[i], linear ) / Decode( kLevels[top], linear );
+				const double expected =
+				    Decode( kLevels[i], linear ) / Decode( kLevels[top], linear );
 				if ( !std::isfinite( measured ) ||
 				     std::abs( measured - expected ) > 0.02 * expected + 2e-3 )
 					return false;

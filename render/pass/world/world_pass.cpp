@@ -23,6 +23,7 @@
 #include <array>
 #include <chrono>
 #include <cctype>
+#include <charconv>
 #include <cstddef>
 #include <cmath>
 #include <cstdio>
@@ -35,7 +36,9 @@
 #include <set>
 #include <mutex>
 #include <span>
+#include <string_view>
 #include <tuple>
+#include <unordered_map>
 
 namespace render::pass::world
 {
@@ -166,7 +169,7 @@ struct Resources
 	// kMaxDynamicMaterials retire behind the submitted token, as transient
 	// geometry does. Before 2026-10-05 every frame cleared the map, which
 	// re-resolved each model material once per frame.
-	std::map<std::string, Material> dynamicMaterials;
+	std::unordered_map<std::string, Material> dynamicMaterials;
 	std::uint64_t dynamicFrame = 0;
 	// A world stage's depth-and-normal prepass (the screen passes' input): a
 	// single-sample resolver of its own (its layouts, so its groups, differ
@@ -337,19 +340,37 @@ foundation::Expected<Claimed, std::string> MapWorldMaterial( const WorldMaterial
 
 std::string MaterialSnapshotKey( const WorldMaterial &source )
 {
+	// Length-prefixed fields, so no two inputs share a key. Built in one
+	// reserved string: it runs for every dynamic draw.
+	std::size_t size = source.name.size() + source.shader.size() + 64;
+	for ( const auto *values : { &source.variables, &source.defaults } )
+		for ( const auto &[name, value] : *values )
+			size += name.size() + value.size() + 16;
+	for ( const auto &[name, handle] : source.textures )
+		size += name.size() + 32;
 	std::string key;
-	auto append = [&]( const std::string &value )
+	key.reserve( size );
+	auto number = [&]( long long value )
 	{
-		key += std::to_string( value.size() ) + ":" + value;
+		char digits[24];
+		const auto end = std::to_chars( digits, digits + sizeof( digits ), value ).ptr;
+		key.append( digits, end );
+	};
+	auto append = [&]( std::string_view value )
+	{
+		number( static_cast<long long>( value.size() ) );
+		key += ':';
+		key += value;
 	};
 	append( source.name );
 	append( source.shader );
-	key += source.mesh ? "M" : "W";
-	key += source.translucent ? "T" : "O";
-	key += source.hasProxy ? "P" : "-";
+	key += source.mesh ? 'M' : 'W';
+	key += source.translucent ? 'T' : 'O';
+	key += source.hasProxy ? 'P' : '-';
 	for ( const auto *values : { &source.variables, &source.defaults } )
 	{
-		key += std::to_string( values->size() ) + ":";
+		number( static_cast<long long>( values->size() ) );
+		key += ':';
 		for ( const auto &[name, value] : *values )
 		{
 			append( name );
@@ -359,7 +380,10 @@ std::string MaterialSnapshotKey( const WorldMaterial &source )
 	for ( const auto &[name, handle] : source.textures )
 	{
 		append( name );
-		append( std::to_string( handle ) );
+		// The handle as its decimal text, length-prefixed (as before).
+		char digits[24];
+		const auto end = std::to_chars( digits, digits + sizeof( digits ), handle ).ptr;
+		append( std::string_view( digits, std::size_t( end - digits ) ) );
 	}
 	return key;
 }
@@ -620,12 +644,34 @@ struct WorldPass::State
 	std::shared_ptr<const std::vector<std::vector<SurfaceFootprintBounds>>> modelFootprintBounds;
 	std::uint64_t generation = 0;
 	std::uint32_t nextSerial = 1;
+	// MapWorldMaterial of a dynamic draw's material, and its claim as last
+	// decided for the world's stage and reflection flags (the claim is a pure
+	// function of the mapping and those flags).
+	using MappedMaterial = foundation::Expected<Claimed, std::string>;
+	struct MappedEntry
+	{
+		MappedMaterial material;
+		bool claimStage = false;
+		bool claimReflection = false;
+		std::string claimError; // empty: claimed
+		bool requiresDepthAlpha = false;
+	};
+	// A queued view's dynamic draws, with each draw's snapshot key and mapping
+	// decided once when the view queued; shared, so recording a slot (and
+	// recording it again for a capture) never copies the draws' geometry.
+	struct QueuedDynamic
+	{
+		std::vector<WorldView::DynamicDraw> draws;
+		std::vector<std::string> keys;
+		std::vector<std::shared_ptr<const MappedEntry>> mapped;
+	};
 	struct Queued
 	{
 		std::uint32_t serial = 0;
 		std::uint64_t generation = 0; // the world the view was queued against
 		std::uint64_t recordedStream = 0;
-		WorldView view;
+		WorldView view; // its dynamicDraws moved into `dynamic`
+		std::shared_ptr<const QueuedDynamic> dynamic;
 	};
 	std::size_t OpaqueBatchSize(
 	    std::span<const std::uint32_t> tags, std::uint64_t streamEpoch ) const;
@@ -637,14 +683,13 @@ struct WorldPass::State
 	// Host frames with a recorded slot, newest last.
 	std::deque<std::uint64_t> recordedFrames;
 	WorldStats stats;
-	// MapWorldMaterial of each dynamic draw's material, by MaterialSnapshotKey
-	// (every input of the mapping). The claim (main thread) and the record
-	// (render sequence) both read it; entries are immutable, so a cleared
-	// table leaves borrowers their entry.
-	using MappedMaterial = foundation::Expected<Claimed, std::string>;
+	// MappedEntry of each dynamic draw's material, by MaterialSnapshotKey
+	// (every input of the mapping). Entries are immutable, so a cleared table
+	// leaves borrowers their entry.
 	std::mutex mappedLock;
-	std::map<std::string, std::shared_ptr<const MappedMaterial>> mapped;
-	std::shared_ptr<const MappedMaterial> Mapped( const WorldMaterial &source, std::string &key );
+	std::unordered_map<std::string, std::shared_ptr<const MappedEntry>> mapped;
+	std::shared_ptr<const MappedEntry> Mapped(
+	    const WorldMaterial &source, bool stage, bool reflection, std::string &key );
 	// A world stage's lighting as it changes (SetStageLightmap,
 	// SetStageProbeVolume, SetStageChange), with revisions that rise with each.
 	// The total page: `stageLightmap` as of `stageLightmapBaseRevision`
@@ -1295,31 +1340,30 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 	// A successful tag promises that the core draws this snapshot. Refuse
 	// unsupported inputs before publishing a slot or allocating GPU resources;
 	// claimed inputs that later lose a texture still fail on the render sequence.
+	std::shared_ptr<State::QueuedDynamic> dynamic;
+	if ( !view.dynamicDraws.empty() )
+	{
+		dynamic = std::make_shared<State::QueuedDynamic>();
+		dynamic->keys.reserve( view.dynamicDraws.size() );
+		dynamic->mapped.reserve( view.dynamicDraws.size() );
+	}
+	const bool stage = s.world->stage != nullptr;
+	const bool reflection = stage && s.world->stage->reflection.has_value();
 	for ( const WorldView::DynamicDraw &draw : view.dynamicDraws )
 	{
 		std::string key;
-		const auto entry = s.Mapped( draw.material, key );
-		const State::MappedMaterial &mapped = *entry;
+		const auto entry = s.Mapped( draw.material, stage, reflection, key );
 		std::string why;
-		if ( !mapped )
-			why = mapped.Error();
-		else
-		{
-			bool requiresDepthAlpha = false;
-			auto claim = draw.material.mesh
-			                 ? material::ClaimForMesh( mapped.Value().desc,
-			                       s.world->stage && s.world->stage->reflection.has_value(),
-			                       s.world->stage != nullptr )
-			                 : material::ClaimForDrawing( mapped.Value().desc,
-			                       s.world->stage != nullptr, &requiresDepthAlpha,
-			                       s.world->stage && s.world->stage->reflection.has_value() );
-			if ( !claim )
-				why = claim.Error();
-			else if ( requiresDepthAlpha &&
-			          ( view.depthAlphaHandle <= 0 || !std::isfinite( view.depthAlphaRange ) ||
-			              view.depthAlphaRange <= 0.0f ) )
-				why = "$depthblend needs a captured depth-alpha texture and positive range";
-		}
+		if ( !entry->material )
+			why = entry->material.Error();
+		else if ( !entry->claimError.empty() )
+			why = entry->claimError;
+		else if ( entry->requiresDepthAlpha &&
+		          ( view.depthAlphaHandle <= 0 || !std::isfinite( view.depthAlphaRange ) ||
+		              view.depthAlphaRange <= 0.0f ) )
+			why = "$depthblend needs a captured depth-alpha texture and positive range";
+		dynamic->keys.push_back( std::move( key ) );
+		dynamic->mapped.push_back( entry );
 		if ( !why.empty() )
 		{
 			s.Refuse( "material " + draw.material.name + ": " + why );
@@ -1368,7 +1412,12 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 	s.nextSerial = ( s.nextSerial + 1 ) & kWorldSerialMask;
 	if ( s.nextSerial == 0 )
 		s.nextSerial = 1;
-	s.views.push_back( { serial, s.generation, 0, std::move( view ) } );
+	if ( dynamic )
+	{
+		dynamic->draws = std::move( view.dynamicDraws );
+		view.dynamicDraws.clear();
+	}
+	s.views.push_back( { serial, s.generation, 0, std::move( view ), std::move( dynamic ) } );
 	++s.stats.viewsQueued;
 	return kWorldTag | serial;
 }
@@ -1381,22 +1430,37 @@ std::size_t WorldPass::OpaqueBatchSize(
 	return s.OpaqueBatchSize( tags, streamEpoch );
 }
 
-std::shared_ptr<const WorldPass::State::MappedMaterial> WorldPass::State::Mapped(
-    const WorldMaterial &source, std::string &key )
+std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
+    const WorldMaterial &source, bool stage, bool reflection, std::string &key )
 {
 	// Bounded: snapshot values that change every frame would otherwise grow it.
 	constexpr std::size_t kMaxMapped = 4096;
 	key = MaterialSnapshotKey( source );
+	std::shared_ptr<const MappedEntry> found;
 	{
 		std::lock_guard<std::mutex> guard( mappedLock );
-		if ( auto found = mapped.find( key ); found != mapped.end() )
-			return found->second;
+		if ( auto at = mapped.find( key ); at != mapped.end() )
+			found = at->second;
 	}
-	auto entry = std::make_shared<const MappedMaterial>( MapWorldMaterial( source ) );
+	if ( found && found->claimStage == stage && found->claimReflection == reflection )
+		return found;
+	auto entry = std::make_shared<MappedEntry>( MappedEntry{
+	    found ? found->material : MapWorldMaterial( source ), stage, reflection, {}, false } );
+	if ( entry->material )
+	{
+		const material::MaterialDesc &desc = entry->material.Value().desc;
+		auto claim = source.mesh ? material::ClaimForMesh( desc, reflection, stage )
+		                         : material::ClaimForDrawing(
+		                               desc, stage, &entry->requiresDepthAlpha, reflection );
+		if ( !claim )
+			entry->claimError = claim.Error();
+	}
 	std::lock_guard<std::mutex> guard( mappedLock );
 	if ( mapped.size() >= kMaxMapped )
 		mapped.clear();
-	return mapped.emplace( key, entry ).first->second;
+	auto &slot = mapped[key];
+	slot = std::move( entry );
+	return slot;
 }
 
 std::size_t WorldPass::State::OpaqueBatchSize(
@@ -1416,9 +1480,10 @@ std::size_t WorldPass::State::OpaqueBatchSize(
 		{
 			for ( const auto &entry : *queue )
 			{
+				// A view with dynamic draws never batches.
 				if ( entry.serial == serial && entry.generation == s.generation &&
 				     ( queue == &s.views || !streamEpoch || entry.recordedStream == streamEpoch ) )
-					return &entry.view;
+					return entry.dynamic ? nullptr : &entry.view;
 			}
 		}
 		return nullptr;
@@ -1823,6 +1888,8 @@ void WorldPass::RecordBatch(
 	std::shared_ptr<const std::vector<std::vector<SurfaceFootprintBounds>>> modelFootprintBounds;
 	std::uint64_t generation = 0;
 	WorldView view;
+	// The slot's dynamic draws, shared with the queue (dynamic views never batch).
+	std::shared_ptr<const State::QueuedDynamic> queuedDynamic;
 	bool found = false;
 	bool earlierWorld = false; // the slot's view was queued against an earlier world
 	{
@@ -1837,6 +1904,7 @@ void WorldPass::RecordBatch(
 		{
 			const std::uint32_t serial = tags[cohortIndex] & kWorldSerialMask;
 			WorldView cohort;
+			std::shared_ptr<const State::QueuedDynamic> cohortDynamic;
 			found = false;
 			// A slot recorded again (the same stream for a capture) draws the
 			// cohort it drew the first time; one of an earlier world draws nothing
@@ -1856,6 +1924,7 @@ void WorldPass::RecordBatch(
 					found = kept->generation == s.generation;
 					earlierWorld = !found;
 					cohort = kept->view;
+					cohortDynamic = kept->dynamic;
 				}
 			}
 			// World views are issued in main-thread stream order. Dynamic tickets
@@ -1868,11 +1937,10 @@ void WorldPass::RecordBatch(
 				if ( queued.serial == serial )
 				{
 					recordingFrame = queued.view.hostFrame;
-					dynamic = !queued.view.dynamicDraws.empty();
+					dynamic = queued.dynamic != nullptr;
 				}
 			}
-			while ( !again && !dynamic && !s.views.empty() &&
-			        s.views.front().view.dynamicDraws.empty() &&
+			while ( !again && !dynamic && !s.views.empty() && !s.views.front().dynamic &&
 			        IssuedBefore( s.views.front().serial, serial ) )
 			{
 				s.Drop( s.views.front(), recordingFrame );
@@ -1890,6 +1958,7 @@ void WorldPass::RecordBatch(
 				found = queued->generation == s.generation;
 				earlierWorld = !found;
 				cohort = queued->view;
+				cohortDynamic = queued->dynamic;
 				if ( cohort.hostFrame != 0 &&
 				     ( s.recordedFrames.empty() || s.recordedFrames.back() != cohort.hostFrame ) )
 				{
@@ -1912,7 +1981,10 @@ void WorldPass::RecordBatch(
 			staticCohorts.insert( staticCohorts.end(), cohort.staticInstances.size(), cohortIndex );
 			posedCohorts.insert( posedCohorts.end(), cohort.posedModels.size(), cohortIndex );
 			if ( cohortIndex == 0 )
+			{
 				view = std::move( cohort );
+				queuedDynamic = std::move( cohortDynamic );
+			}
 			else
 			{
 				view.staticInstances.insert( view.staticInstances.end(),
@@ -3055,16 +3127,16 @@ void WorldPass::RecordBatch(
 		const std::uint64_t layout = m.program.request.frameLayout.value;
 		if ( framesWritten[layout] )
 			return &r.frameGroups[layout];
-		const std::optional<material::GroupRequest> request =
-		    m.resolver->FrameGroup( m.program, terms );
-		if ( !request )
-		{
-			note( "a frame group was not resolved" );
-			return nullptr;
-		}
 		Group &group = r.frameGroups[layout];
 		if ( !group.group.IsValid() )
 		{
+			const std::optional<material::GroupRequest> request =
+			    m.resolver->FrameGroup( m.program, terms );
+			if ( !request )
+			{
+				note( "a frame group was not resolved" );
+				return nullptr;
+			}
 			std::string why;
 			if ( !buildGroup( *request, {}, group, &why ) )
 			{
@@ -3076,9 +3148,17 @@ void WorldPass::RecordBatch(
 		}
 		else if ( !framesWritten[layout] )
 		{
+			// The built group keeps its textures and storage; only the terms change.
+			const std::optional<std::vector<std::byte>> constants =
+			    m.resolver->FrameConstants( m.program, terms );
+			if ( !constants )
+			{
+				note( "a frame group was not resolved" );
+				return nullptr;
+			}
 			encoder.TransitionBuffer(
 			    group.constants.id, ResourceUsage::kUniform, ResourceUsage::kCopyDestination );
-			encoder.WriteBuffer( group.constants.id, 0, request->constants );
+			encoder.WriteBuffer( group.constants.id, 0, *constants );
 			encoder.TransitionBuffer(
 			    group.constants.id, ResourceUsage::kCopyDestination, ResourceUsage::kUniform );
 			framesWritten[layout] = true;
@@ -5350,11 +5430,13 @@ void WorldPass::RecordBatch(
 	// Draw groups holding one draw's model lighting: built per draw and
 	// retired with the frame, never cached.
 	std::deque<Group> litDrawGroups;
-	for ( const WorldView::DynamicDraw &draw : view.dynamicDraws )
+	const std::size_t dynamicCount = queuedDynamic ? queuedDynamic->draws.size() : 0;
+	for ( std::size_t dynamicIndex = 0; dynamicIndex < dynamicCount; ++dynamicIndex )
 	{
-		std::string key;
-		const auto entry = s.Mapped( draw.material, key );
-		const State::MappedMaterial &mapped = *entry;
+		const WorldView::DynamicDraw &draw = queuedDynamic->draws[dynamicIndex];
+		// The mapping and key decided when the view queued.
+		const std::string &key = queuedDynamic->keys[dynamicIndex];
+		const State::MappedMaterial &mapped = queuedDynamic->mapped[dynamicIndex]->material;
 		if ( !mapped || draw.vertices.empty() || draw.indices.empty() ||
 		     draw.indices.size() % 3 != 0 ||
 		     std::any_of( draw.indices.begin(), draw.indices.end(),
@@ -5433,8 +5515,7 @@ void WorldPass::RecordBatch(
 		PipelineId pipeline = m->program.request.pipeline;
 		if ( draw.staticVertexLight )
 		{
-			auto variant = m->resolver->VariantPipeline(
-			    m->program, material::kSurfaceStaticVertexLight, 0 );
+			auto variant = m->resolver->StaticVertexLightPipeline( m->program );
 			if ( !variant )
 			{
 				// The buffers above retire with the frame.

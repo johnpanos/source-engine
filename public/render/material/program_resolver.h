@@ -177,6 +177,10 @@ public:
 	// variant of it: the prepass's kSurfaceDepthNormal, the SSR targets).
 	foundation::Expected<device::PipelineId, std::string> VariantPipeline(
 	    const ResolvedProgram &program, std::uint32_t add, std::uint32_t remove );
+	// A resolved program's static vertex light variant (a static prop's baked
+	// per-vertex lighting, SurfaceVariant::staticVertexLight).
+	foundation::Expected<device::PipelineId, std::string> StaticVertexLightPipeline(
+	    const ResolvedProgram &program );
 	// The one surface program every point is drawn through (its layouts for
 	// the view group, SurfaceProgram::ViewGroup).
 	SurfaceProgram &Program() const;
@@ -195,6 +199,11 @@ public:
 	// The frame group a resolved program reads, for these terms; nullopt when
 	// it reads none.
 	std::optional<GroupRequest> FrameGroup(
+	    const ResolvedProgram &program, const FrameTerms &terms ) const;
+	// FrameGroup's constants alone (its GroupRequest::constants), for a
+	// frame group already built whose terms change: no texture names or
+	// storage bytes are copied.
+	std::optional<std::vector<std::byte>> FrameConstants(
 	    const ResolvedProgram &program, const FrameTerms &terms ) const;
 
 	// The editor's preview of any material (Hammer's textured view). By

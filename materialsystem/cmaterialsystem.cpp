@@ -509,7 +509,7 @@ void CMaterialSystem::CleanUpErrorMaterial()
 //-----------------------------------------------------------------------------
 // Constructor
 //-----------------------------------------------------------------------------
-CMaterialSystem::CMaterialSystem()
+CMaterialSystem::CMaterialSystem() : m_CoreMaterialDefaults( k_eDictCompareTypeCaseSensitive )
 {
 	m_nWindowResizeRequestedSerial.store( 0, std::memory_order_relaxed );
 	m_nWindowResizeExecutingSerial.store( 0, std::memory_order_relaxed );
@@ -1255,6 +1255,7 @@ void CMaterialSystem::Shutdown( )
 		material->DeleteIfUnreferenced();
 	}
 	m_CoreNeutralMaterials.RemoveAll();
+	m_CoreMaterialDefaults.RemoveAll();
 
 	m_HardwareRenderContext.Shutdown();
 
@@ -3084,15 +3085,35 @@ const char *CMaterialSystem::FindCoreMaterialDefault( const char *shader, const 
 	// Draw capture runs inside a legacy shader draw. Only the gather-time
 	// CoreNeutralMaterial call may initialize shaders; this lookup cannot
 	// enter InitParams and replace the active shader's state/spew callback.
+	// Frozen-path: core progress (RFC 0016) - the answer is cached per
+	// published neutral material, whose variables are immutable; the render
+	// core's capture asked this per variable of every draw (6 % of the
+	// render thread on intro4).
+	char name[512];
+	V_snprintf( name, sizeof( name ), "%s\n%s", key, shader );
 	MaterialLock_t lock = Lock();
-	const int found = m_CoreNeutralMaterials.Find( shader );
 	const char *value = NULL;
-	if ( found != m_CoreNeutralMaterials.InvalidIndex() )
+	const int cached = m_CoreMaterialDefaults.Find( name );
+	if ( cached != m_CoreMaterialDefaults.InvalidIndex() )
 	{
-		bool hasVariable = false;
-		IMaterialVar *variable = m_CoreNeutralMaterials[found]->FindVar( key, &hasVariable, false );
-		if ( hasVariable && variable && variable->IsDefined() )
-			value = variable->GetStringValue();
+		const CoreMaterialDefault_t &entry = m_CoreMaterialDefaults[cached];
+		value = entry.m_bDefined ? entry.m_Value.Get() : NULL;
+	}
+	else
+	{
+		const int found = m_CoreNeutralMaterials.Find( shader );
+		if ( found != m_CoreNeutralMaterials.InvalidIndex() )
+		{
+			bool hasVariable = false;
+			IMaterialVar *variable =
+			    m_CoreNeutralMaterials[found]->FindVar( key, &hasVariable, false );
+			CoreMaterialDefault_t entry;
+			entry.m_bDefined = hasVariable && variable && variable->IsDefined();
+			if ( entry.m_bDefined )
+				entry.m_Value = variable->GetStringValue();
+			const int added = m_CoreMaterialDefaults.Insert( name, entry );
+			value = entry.m_bDefined ? m_CoreMaterialDefaults[added].m_Value.Get() : NULL;
+		}
 	}
 	Unlock( lock );
 	return value;

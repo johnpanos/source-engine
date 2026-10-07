@@ -177,6 +177,51 @@ inline void ClosestPoint( const Rect &rect, const float p[3], float out[3] )
 	return reach < kMaxReach ? reach : kMaxReach;
 }
 
+// A stand-in for an animated screen's area light where runtime area lights
+// (LTC) are off (RFC 0016's emissive surfaces without LTC, item 2; static
+// emitters are baked and get none): one inverse-square spot per
+// emitting face at the rectangle's centre, aimed along the face's normal,
+// with the light's far-field power (color L A kPointEquivalentScale), a
+// Lambertian cone (the spot ramp from cos 1 to cos 0 with exponent 1 is
+// cos theta), a source radius of the rectangle's equivalent disc (so its
+// shadow's penumbra reads as the panel) and the light's reach.
+struct StandIn
+{
+	float position[3] = {};
+	float direction[3] = {};
+	float color[3] = {};
+	float sourceRadius = 0.0f;
+	float reach = 0.0f;
+};
+
+// The stand-ins of `light` (one, or two for a two-sided rectangle, the
+// second facing back); returns how many it wrote to `out`.
+inline int StandIns( const AreaLight &light, StandIn out[2] )
+{
+	const float area = Area( light.rect );
+	if ( !( area > 0.0f ) || !( light.reach > 0.0f ) )
+		return 0;
+	float normal[3];
+	detail::Cross( light.rect.halfU, light.rect.halfV, normal );
+	const float length = detail::Length( normal );
+	if ( !( length > 0.0f ) )
+		return 0;
+	const int count = light.rect.twoSided ? 2 : 1;
+	for ( int side = 0; side < count; ++side )
+	{
+		StandIn &s = out[side];
+		for ( int k = 0; k < 3; ++k )
+		{
+			s.direction[k] = ( side ? -normal[k] : normal[k] ) / length;
+			s.position[k] = light.rect.center[k];
+			s.color[k] = light.radiance[k] * area * kPointEquivalentScale;
+		}
+		s.sourceRadius = std::sqrt( area / kPi );
+		s.reach = light.reach;
+	}
+	return count;
+}
+
 // The window at distance d from the rectangle (1 at the rectangle, 0 at reach).
 [[nodiscard]] inline float Window( float distance, float reach )
 {

@@ -5245,7 +5245,7 @@ bool CEmptyMesh::EmitToCoreQueue()
 		out.color[3] = raw[15];
 		// Frozen-path: core progress (R91 baked-colour static props) - a static
 		// prop's baked lighting (its color mesh) is the core vertex's color;
-		// the core's kSurfaceStaticVertexLight decodes it as STATIC_LIGHT does.
+		// the core's SurfaceVariant::staticVertexLight decodes it as STATIC_LIGHT does.
 		float staticLight[3];
 		if ( staticColorMesh && staticColorMesh->StaticColor( i, staticLight ) )
 		{

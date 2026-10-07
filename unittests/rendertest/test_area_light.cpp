@@ -706,6 +706,39 @@ int main()
 		    "the view test is asked only until the budget is filled" );
 	}
 
+	// Stand-ins (RFC 0016's emissive surfaces without LTC): one spot per
+	// face with the light's far-field power, a Lambertian cone and its reach.
+	{
+		area_light::AreaLight light;
+		light.rect.center[2] = 0.0f;
+		light.rect.halfU[0] = 4.0f;
+		light.rect.halfV[1] = 3.0f;
+		light.radiance[0] = light.radiance[1] = light.radiance[2] = 2.0f;
+		light.reach = area_light::Reach( light.rect, light.radiance );
+		area_light::StandIn standIns[2];
+		Check( area_light::StandIns( light, standIns ) == 1 && standIns[0].direction[2] == 1.0f,
+		    "a one-sided light has one stand-in along its front" );
+		// Far on axis: the stand-in's inverse-square light C (100 / d)^2
+		// equals the rectangle's exact irradiance.
+		const float d = 200.0f;
+		const float p[3] = { 0.0f, 0.0f, d };
+		const float n[3] = { 0.0f, 0.0f, -1.0f };
+		float exact[3];
+		area_light::IrradianceAt( light, p, n, exact );
+		const float window = area_light::Window( d, light.reach );
+		const float standIn = standIns[0].color[0] * ( 100.0f / d ) * ( 100.0f / d ) * window;
+		Check(
+		    Near( standIn, exact[0], 0.01 ), "the stand-in carries the light's far-field power" );
+		Check( Near( standIns[0].sourceRadius, std::sqrt( 48.0f / area_light::kPi ), 1e-4 ) &&
+		           standIns[0].reach == light.reach,
+		    "the stand-in's source is the panel's equivalent disc, its reach the light's" );
+		light.rect.twoSided = true;
+		Check( area_light::StandIns( light, standIns ) == 2 && standIns[1].direction[2] == -1.0f,
+		    "a two-sided light has a second stand-in facing back" );
+		light.rect.halfU[0] = 0.0f;
+		Check( area_light::StandIns( light, standIns ) == 0, "a degenerate light has none" );
+	}
+
 	if ( kSeeded )
 	{
 		std::fprintf( stderr, "%lu seeded rejection(s)\n", g_rejected );

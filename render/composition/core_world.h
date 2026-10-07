@@ -704,6 +704,12 @@ private:
 	std::atomic<std::uint64_t> m_ShadowTilesMoving{ 0 }; // tiles movers were drawn in
 	// Shadowed lights a view's atlas plan left without tiles (view thread).
 	std::atomic<std::uint64_t> m_ShadowLightsUnshadowed{ 0 };
+	// Views' lights by baked shadow mask (LSMK): masked alone, masked with a
+	// mover in reach, and without a mask.
+	std::atomic<std::uint64_t> m_MaskedLights{ 0 };
+	std::atomic<std::uint64_t> m_MaskedMoverLights{ 0 };
+	std::atomic<std::uint64_t> m_UnmaskedLights{ 0 };
+	std::atomic<std::uint64_t> m_UnmaskedWorldLights{ 0 }; // of which world lights
 	const resources::MeshEntry *BoxCasterMesh();
 	std::vector<Atlas> m_Atlases;
 	std::size_t m_AtlasNext = 0;

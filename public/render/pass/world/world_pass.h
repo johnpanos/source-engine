@@ -585,7 +585,7 @@ struct WorldView
 		// lights (a plain map); the neutral block when absent.
 		std::optional<material::ModelLighting> lighting;
 		// A static prop: its vertices' color is its baked lighting (the
-		// static-prop color lump), drawn by kSurfaceStaticVertexLight.
+		// static-prop color lump), drawn by SurfaceVariant::staticVertexLight.
 		bool staticVertexLight = false;
 	};
 	std::vector<DynamicDraw> dynamicDraws;

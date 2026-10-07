@@ -861,6 +861,18 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::ResolveMesh(
 	return resolved;
 }
 
+foundation::Expected<device::PipelineId, std::string> ProgramResolver::StaticVertexLightPipeline(
+    const ResolvedProgram &program )
+{
+	auto pipeline =
+	    m_State->lightmapped->Program().StaticVertexLightPipeline( program.request.pipeline );
+	if ( !pipeline )
+		return foundation::MakeUnexpected(
+		    "the static vertex light variant of " + program.name +
+		    " was refused (a world-vertex point of this resolver only)" );
+	return pipeline.Value();
+}
+
 foundation::Expected<device::PipelineId, std::string> ProgramResolver::VariantPipeline(
     const ResolvedProgram &program, std::uint32_t add, std::uint32_t remove )
 {
@@ -1009,51 +1021,69 @@ std::optional<std::string> FrameInputError( const ResolvedProgram &program, cons
 	return std::nullopt;
 }
 
+namespace
+{
+
+// The SurfaceFrame block of a program's frame terms.
+SurfaceFrame PackSurfaceFrame( const ResolvedProgram &program, const FrameTerms &terms )
+{
+	SurfaceFrame frame;
+	std::copy_n( terms.motionCurrentToClip, 16, frame.motionCurrentToClip );
+	std::copy_n( terms.motionPreviousToClip, 16, frame.motionPreviousToClip );
+	std::copy_n( terms.motionExtent, 4, frame.motionExtent );
+	std::memcpy( frame.clipPlanes, terms.clipPlanes, sizeof( frame.clipPlanes ) );
+	frame.light[0] = terms.lightmapScale;
+	frame.light[1] = terms.outputScale;
+	frame.light[2] = terms.encodeOutput ? 1.0f : 0.0f;
+	std::copy( terms.fogColor, terms.fogColor + 3, frame.fogColor );
+	if ( program.fogToBlack )
+		std::fill_n( frame.fogColor, 3, 0.0f );
+	frame.fogColor[3] = terms.fogType;
+	std::copy( terms.fogParams, terms.fogParams + 4, frame.fogParams );
+	frame.fogMisc[0] = terms.fogEyeZ;
+	frame.light[3] = terms.specular ? 1.0f : 0.0f;
+	std::copy( terms.eye, terms.eye + 3, frame.eye );
+	frame.eye[3] = terms.envmapScale;
+	frame.fogMisc[1] = terms.ssbumpNormalized ? 1.0f : 0.0f;
+	const std::size_t areas =
+	    std::min<std::size_t>( terms.areas.size(), std::size_t( kSurfaceMaxAreaLights ) );
+	frame.areaCount[0] = float( areas );
+	std::copy( terms.sunDirection, terms.sunDirection + 4, frame.sunDirection );
+	std::copy( terms.sunColor, terms.sunColor + 4, frame.sunColor );
+	std::copy( terms.sunShadow, terms.sunShadow + 4, frame.sunShadow );
+	frame.water[0] = terms.time;
+	std::memcpy( frame.foliage, terms.foliage, sizeof( frame.foliage ) );
+	frame.water[1] = terms.waterReflectTintScale;
+	frame.water[2] = terms.viewRight[0];
+	frame.water[3] = terms.viewRight[1];
+	std::copy( terms.viewport, terms.viewport + 4, frame.viewport );
+	std::copy( terms.areas.begin(), terms.areas.begin() + std::ptrdiff_t( areas ), frame.areas );
+	return frame;
+}
+
+} // namespace
+
 std::optional<GroupRequest> ProgramResolver::FrameGroup(
     const ResolvedProgram &program, const FrameTerms &terms ) const
 {
 	const State &s = *m_State;
-	if ( !program.request.frameLayout.IsValid() )
+	if ( !program.request.frameLayout.IsValid() || FrameInputError( program, terms ) ||
+	     program.request.frameLayout != s.lightmapped->FrameLayout() )
 		return std::nullopt;
-	if ( FrameInputError( program, terms ) )
+	return s.lightmapped->Program().FrameGroup(
+	    PackSurfaceFrame( program, terms ), terms.splitSumTable, terms.ltcTable, terms.map );
+}
+
+std::optional<std::vector<std::byte>> ProgramResolver::FrameConstants(
+    const ResolvedProgram &program, const FrameTerms &terms ) const
+{
+	const State &s = *m_State;
+	if ( !program.request.frameLayout.IsValid() || FrameInputError( program, terms ) ||
+	     program.request.frameLayout != s.lightmapped->FrameLayout() )
 		return std::nullopt;
-	if ( program.request.frameLayout == s.lightmapped->FrameLayout() )
-	{
-		SurfaceFrame frame;
-		std::copy_n( terms.motionCurrentToClip, 16, frame.motionCurrentToClip );
-		std::copy_n( terms.motionPreviousToClip, 16, frame.motionPreviousToClip );
-		std::copy_n( terms.motionExtent, 4, frame.motionExtent );
-		std::memcpy( frame.clipPlanes, terms.clipPlanes, sizeof( frame.clipPlanes ) );
-		frame.light[0] = terms.lightmapScale;
-		frame.light[1] = terms.outputScale;
-		frame.light[2] = terms.encodeOutput ? 1.0f : 0.0f;
-		std::copy( terms.fogColor, terms.fogColor + 3, frame.fogColor );
-		if ( program.fogToBlack )
-			std::fill_n( frame.fogColor, 3, 0.0f );
-		frame.fogColor[3] = terms.fogType;
-		std::copy( terms.fogParams, terms.fogParams + 4, frame.fogParams );
-		frame.fogMisc[0] = terms.fogEyeZ;
-		frame.light[3] = terms.specular ? 1.0f : 0.0f;
-		std::copy( terms.eye, terms.eye + 3, frame.eye );
-		frame.eye[3] = terms.envmapScale;
-		frame.fogMisc[1] = terms.ssbumpNormalized ? 1.0f : 0.0f;
-		const std::size_t areas =
-		    std::min<std::size_t>( terms.areas.size(), std::size_t( kSurfaceMaxAreaLights ) );
-		frame.areaCount[0] = float( areas );
-		std::copy( terms.sunDirection, terms.sunDirection + 4, frame.sunDirection );
-		std::copy( terms.sunColor, terms.sunColor + 4, frame.sunColor );
-		std::copy( terms.sunShadow, terms.sunShadow + 4, frame.sunShadow );
-		frame.water[0] = terms.time;
-		std::memcpy( frame.foliage, terms.foliage, sizeof( frame.foliage ) );
-		frame.water[1] = terms.waterReflectTintScale;
-		frame.water[2] = terms.viewRight[0];
-		frame.water[3] = terms.viewRight[1];
-		std::copy( terms.viewport, terms.viewport + 4, frame.viewport );
-		std::copy( terms.areas.begin(), terms.areas.begin() + std::ptrdiff_t( areas ), frame.areas );
-		return s.lightmapped->Program().FrameGroup(
-		    frame, terms.splitSumTable, terms.ltcTable, terms.map );
-	}
-	return std::nullopt;
+	const SurfaceFrame frame = PackSurfaceFrame( program, terms );
+	const auto bytes = std::as_bytes( std::span( &frame, 1 ) );
+	return std::vector<std::byte>( bytes.begin(), bytes.end() );
 }
 
 } // namespace render::material

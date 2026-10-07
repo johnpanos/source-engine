@@ -340,12 +340,14 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	    { ShaderStage::kFragment, 5, alphaCoverage ? 1u : 0u },
 	    { ShaderStage::kFragment, 6, variant.cable ? 1u : 0u },
 	    { ShaderStage::kFragment, 7, variant.decalModulate ? 1u : 0u },
-	    { ShaderStage::kFragment, 8, variant.shadowDepth ? 1u : 0u } };
-	// The model vertex reads the terms too (the vertexlit point's lighting).
+	    { ShaderStage::kFragment, 8, variant.shadowDepth ? 1u : 0u },
+	    { ShaderStage::kFragment, 9, variant.staticVertexLight ? 1u : 0u } };
+	// The model vertex reads the terms too (the vertexlit point's lighting),
+	// the world vertex a static prop's baked vertex light.
 	if ( model )
-	{
 		constants.push_back( { ShaderStage::kVertex, 0, variant.terms } );
-	}
+	if ( variant.layout == SurfaceVertexLayout::kWorld )
+		constants.push_back( { ShaderStage::kVertex, 9, variant.staticVertexLight ? 1u : 0u } );
 	if ( variant.layout != SurfaceVertexLayout::kFlat )
 		constants.push_back( { ShaderStage::kVertex, 1, variant.treeSwayMode } );
 	shaderlib::AppendDebugConstants( debug, ShaderStage::kFragment, constants );
@@ -476,7 +478,7 @@ std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
 	char line[512];
 	std::snprintf( line, sizeof( line ),
 	    "%s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
-	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u",
+	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u %u",
 	    kVariantKeyTag, unsigned( m_ColorFormat ), unsigned( m_DepthFormat ), m_SampleCount,
 	    unsigned( v.blend ), unsigned( v.alphaWrite ), v.terms, v.detailMode, unsigned( v.layout ),
 	    unsigned( v.ignoreDepth ), unsigned( d.stencil.enabled ), unsigned( d.stencil.compare ),
@@ -488,7 +490,7 @@ std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
 	    std::bit_cast<std::uint32_t>( d.depthBiasSlope ), unsigned( v.portalMask ),
 	    unsigned( v.temporal ), v.materialFeatures, v.viewFeatures, v.treeSwayMode,
 	    unsigned( v.alphaToCoverage ), unsigned( v.decalModulate ), unsigned( v.cable ),
-	    unsigned( v.shadowDepth ), unsigned( v.instanced ) );
+	    unsigned( v.shadowDepth ), unsigned( v.instanced ), unsigned( v.staticVertexLight ) );
 	return line;
 }
 
@@ -498,14 +500,14 @@ std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
 	for ( const std::string &key : keys )
 	{
 		char tag[16] = {};
-		unsigned f[35] = {};
+		unsigned f[36] = {};
 		if ( std::sscanf( key.c_str(),
 		         "%15s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
-		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u",
+		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u %u",
 		         tag, &f[0], &f[1], &f[2], &f[3], &f[4], &f[5], &f[6], &f[7], &f[8], &f[9], &f[10],
 		         &f[11], &f[12], &f[13], &f[14], &f[15], &f[16], &f[17], &f[18], &f[19], &f[20],
 		         &f[21], &f[22], &f[23], &f[24], &f[25], &f[26], &f[27], &f[28], &f[29], &f[30],
-		         &f[31], &f[32], &f[33], &f[34] ) != 36 ||
+		         &f[31], &f[32], &f[33], &f[34], &f[35] ) != 37 ||
 		     std::strcmp( tag, kVariantKeyTag ) != 0 )
 			continue;
 		if ( f[0] != unsigned( m_ColorFormat ) || f[1] != unsigned( m_DepthFormat ) ||
@@ -545,6 +547,7 @@ std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
 		v.cable = f[32] != 0;
 		v.shadowDepth = f[33] != 0;
 		v.instanced = f[34] != 0;
+		v.staticVertexLight = f[35] != 0;
 		if ( Pipeline( v ) )
 			++created;
 	}
@@ -603,6 +606,17 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::VariantPipeline(
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	SurfaceVariant variant = found->second;
 	variant.terms = ( variant.terms | add ) & ~remove;
+	return Pipeline( variant );
+}
+
+foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::StaticVertexLightPipeline(
+    PipelineId shipped )
+{
+	const auto found = m_Shipped.find( shipped.value );
+	if ( found == m_Shipped.end() || found->second.layout != SurfaceVertexLayout::kWorld )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	SurfaceVariant variant = found->second;
+	variant.staticVertexLight = true;
 	return Pipeline( variant );
 }
 
