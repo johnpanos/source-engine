@@ -30,8 +30,12 @@ import map_scene  # noqa: E402
 import pbrt_blender  # noqa: E402
 
 # A ratio of two same-seed bakes, so their noise is correlated; each group is
-# one pair.
-SAMPLES = 64
+# one pair. Baked SUPERSAMPLE times finer per axis and averaged down
+# (light_shadow_masks.area_visibility): Cycles bakes a texel at one point, so
+# without it a hard edge is all or nothing per texel (stair-steps). SAMPLES
+# per sub-texel keeps 64 per texel.
+SUPERSAMPLE = 2
+SAMPLES = 16
 BAKE_TILE = 1024
 
 
@@ -119,7 +123,7 @@ def bake_light_masks(merged, scene, path, size, render):
     # where it stopped; it is keyed by the groups' lights and the size.
     checkpoint = path.with_name(path.name + ".partial.npz")
     key = json.dumps([[light["source"], light_id] for light, light_id in zip(candidates, ids)] +
-                     [size, SAMPLES])
+                     [size, SAMPLES, SUPERSAMPLE])
     done = set()
     if checkpoint.is_file():
         saved = np.load(checkpoint)
@@ -139,8 +143,9 @@ def bake_light_masks(merged, scene, path, size, render):
                 for obj in keep:
                     if obj.type == "LIGHT":
                         obj.data.use_shadow = shadows
+                fine = size * SUPERSAMPLE
                 image = bpy.data.images.new("PbrtLightMask%d%d" % (light_id, shadows),
-                                            width=size, height=size, alpha=True,
+                                            width=fine, height=fine, alpha=True,
                                             float_buffer=True)
                 for material in {slot.material for slot in merged.material_slots}:
                     target = material.node_tree.nodes["BakeTarget"]
@@ -148,20 +153,18 @@ def bake_light_masks(merged, scene, path, size, render):
                     material.node_tree.nodes.active = target
                 announce("light mask group %d/%d %s" % (light_id, len(lamps),
                                                         "shadowed" if shadows else "unshadowed"),
-                         size)
+                         fine)
                 with pbrt_blender.direct_only_light_paths():
                     bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT"})
                 planes.append(np.array(image.pixels[:], dtype=np.float32)
-                              .reshape(size, size, 4)[..., :3].mean(axis=2))
+                              .reshape(fine, fine, 4)[..., :3].mean(axis=2))
                 bpy.data.images.remove(image)
             for obj in keep:
                 if obj.type == "LIGHT":
                     obj.data.use_shadow = True
-            shadowed, open_light = planes
-            lit = open_light > 1e-6
-            visibility = np.where(lit, np.clip(shadowed / np.maximum(open_light, 1e-6), 0.0, 1.0),
-                                  1.0)
-            top.add(light_id, np.where(lit, open_light, 0.0), visibility)
+            open_light, visibility = light_shadow_masks.area_visibility(
+                planes[0], planes[1], SUPERSAMPLE)
+            top.add(light_id, np.where(open_light > 1e-6, open_light, 0.0), visibility)
             done.add(light_id)
             np.savez(str(checkpoint.with_suffix("")), key=key, light=top.light,
                      visibility=top.visibility, ids=top.ids, done=sorted(done))
@@ -188,7 +191,7 @@ def bake_light_masks(merged, scene, path, size, render):
                         for light, light_id in zip(candidates, ids) if light_id is not None],
             "without_id": [light["source"] for light, light_id in zip(candidates, ids)
                            if light_id is None],
-            "groups": len(lamps), "samples": SAMPLES,
+            "groups": len(lamps), "samples": SAMPLES, "supersample": SUPERSAMPLE,
             "exr_sha256": sha256(path), "ids_exr_sha256": sha256(id_path)}
 
 
@@ -234,7 +237,8 @@ def main(arguments):
     render.cycles.use_auto_tile = True
     render.cycles.tile_size = BAKE_TILE
     render.render.bake.use_clear = True
-    render.render.bake.margin = max(1, args.margin_texels // 2)
+    # In the supersampled bake's texels.
+    render.render.bake.margin = max(1, args.margin_texels // 2) * SUPERSAMPLE
     render.render.bake.use_pass_color = False
     render.render.bake.use_pass_direct = True
     render.render.bake.use_pass_indirect = False

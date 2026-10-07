@@ -77,26 +77,64 @@ class EncodingTests(unittest.TestCase):
             lsmk.build(self.records, self.visibility[..., :3], self.ids)
 
 
-    def test_stationary_lights_leave_the_masks(self):
-        records = [{"origin": [0, 0, 0], "id": 1, "reach_units": 9000.0},   # a sun shaft
-                   {"origin": [9, 9, 9], "id": 2, "reach_units": 300.0},
-                   {"origin": [5, 5, 5], "id": 3, "reach_units": 8000.0},   # shares group 3
-                   {"origin": [7, 7, 7], "id": 3, "reach_units": 200.0}]
-        ids = np.array([[[1, 2, 3, 0]]])
-        vis = np.array([[[0.0, 0.5, 0.25, 1.0]]])
-        kept, out_ids, out_vis, stationary = lsmk.without_stationary(records, ids, vis, 5000.0)
-        self.assertEqual([i for _, i in kept], [2, 3])
-        self.assertEqual(len(stationary), 2)
-        # Light 1's channel is cleared; group 3 keeps a light, so it stays.
-        self.assertEqual(out_ids.tolist(), [[[0, 2, 3, 0]]])
-        self.assertEqual(out_vis.tolist(), [[[1.0, 0.5, 0.25, 1.0]]])
+def bilinear(image, y, x):
+    y0, x0 = np.floor(y).astype(int), np.floor(x).astype(int)
+    fy, fx = y - y0, x - x0
 
-    def test_no_threshold_keeps_every_light(self):
-        records = [{"origin": [0, 0, 0], "id": 1, "reach_units": 9000.0}]
-        kept, ids, _, stationary = lsmk.without_stationary(records, np.ones((1, 1, 4), int),
-                                                        np.ones((1, 1, 4)), None)
-        self.assertEqual(len(kept), 1)
-        self.assertEqual(stationary, [])
+    def at(r, c):
+        return image[np.clip(r, 0, image.shape[0] - 1), np.clip(c, 0, image.shape[1] - 1)]
+    return (at(y0, x0) * (1 - fy) * (1 - fx) + at(y0, x0 + 1) * (1 - fy) * fx +
+            at(y0 + 1, x0) * fy * (1 - fx) + at(y0 + 1, x0 + 1) * fy * fx)
+
+
+class AreaVisibilityTests(unittest.TestCase):
+    """A hard shadow edge at a slope: point-sampled once per texel (Cycles'
+    bake) the runtime's bilinear reconstruction puts the 0.5 contour on a
+    staircase; baked at a finer grid and averaged per texel it lies near the
+    true line."""
+
+    SLOPE, OFFSET, SIZE = 0.37, 10.3, 48
+
+    def point_sampled(self, factor):
+        n = self.SIZE * factor
+        r, c = np.mgrid[0:n, 0:n].astype(float)
+        # Sample at each fine texel's centre, in coarse texel units.
+        y, x = (r + 0.5) / factor, (c + 0.5) / factor
+        return (y < self.SLOPE * x + self.OFFSET).astype(float)
+
+    def contour_error(self, visibility):
+        errors = []
+        for x in np.linspace(8, 40, 97):
+            ys = np.linspace(2, 40, 3801)
+            v = bilinear(visibility, ys - 0.5, np.full_like(ys, x - 0.5))
+            crossing = ys[np.argmin(np.abs(v - 0.5))]
+            errors.append(abs(crossing - (self.SLOPE * x + self.OFFSET)))
+        return max(errors)
+
+    def test_supersampled_edge_is_near_the_line(self):
+        fine = self.point_sampled(lsmk_bake_supersample())
+        unshadowed = np.ones_like(fine)
+        _, visibility = lsmk.area_visibility(fine, unshadowed, lsmk_bake_supersample())
+        self.assertLess(self.contour_error(visibility), 0.3)
+
+    def test_point_sampled_edge_stair_steps(self):
+        # The negative control: one sample per texel, as before supersampling.
+        self.assertGreater(self.contour_error(self.point_sampled(1)), 0.4)
+
+    def test_unlit_texels_are_visible(self):
+        _, visibility = lsmk.area_visibility(np.zeros((4, 4)), np.zeros((4, 4)), 2)
+        self.assertTrue((visibility == 1.0).all())
+
+    def test_rejects_planes_not_a_multiple(self):
+        with self.assertRaises(lsmk.MaskError):
+            lsmk.area_visibility(np.zeros((5, 4)), np.zeros((5, 4)), 2)
+
+
+def lsmk_bake_supersample():
+    # light_mask_bake.py runs inside Blender; its factor is read from source.
+    import re
+    source = (Path(__file__).resolve().parents[1] / "light_mask_bake.py").read_text()
+    return int(re.search(r"^SUPERSAMPLE = (\d+)", source, re.M).group(1))
 
 if __name__ == "__main__":
     unittest.main()

@@ -158,9 +158,6 @@ def main():
                              "--coverage-exr and --lsmk-out)")
     parser.add_argument("--lsmk-out", type=Path,
                         help="write the LSMK lump (light_shadow_masks.py) of --light-masks")
-    parser.add_argument("--stationary-min-reach-units", type=float,
-                        help="lights reaching at least this far keep runtime shadow maps "
-                             "(Source 2 stationary lights) instead of baked masks")
     parser.add_argument("--layer", action="append", default=[], metavar="ROLE=EXR",
                         help="separated-light layer (direct, indirect) and its denoised EXR")
     parser.add_argument("--layer-directional", action="append", default=[],
@@ -265,8 +262,7 @@ def main():
             raise ValueError("--light-masks needs --coverage-exr and --lsmk-out")
         import light_shadow_masks
         lump, report = light_shadow_masks.pack(args.light_masks, args.coverage_exr,
-                                               args.lighting_stage,
-                                               args.stationary_min_reach_units)
+                                               args.lighting_stage)
         temporary = args.lsmk_out.with_name(args.lsmk_out.name + ".tmp")
         temporary.write_bytes(lump)
         os.replace(temporary, args.lsmk_out)
