@@ -16,6 +16,7 @@
 #include "render/device/device.h"
 #include "render/pass/lights/cluster_pass.h"
 #include "render/frame/debug_controls.h"
+#include "render/graph/scene_color.h"
 #include "render/pass/world/world_pass.h"
 #include "render/resources/texture_cache.h"
 #include "texturecontainer/texture_image.h"
@@ -155,6 +156,23 @@ std::optional<std::string> CreateLabDevice( bool validate, std::atomic<std::uint
 // --debug-force-metalness, --debug-legacy n. False when the option is not
 // one of them or its value does not parse; render.frame validates the rest.
 bool ParseDebugOption( const std::string &option, const char *value, frame::DebugControls &debug );
+
+// The composition's scene-color capture, for the lab: each capture records
+// render.graph's scene-color copy and keeps its resources until the device
+// is idle at destruction.
+class LabSceneColorCapture final : public pass::world::IWorldSceneColorCapture
+{
+public:
+	explicit LabSceneColorCapture( device::IRenderDevice2 &device ) : m_Device( device ) {}
+	~LabSceneColorCapture() override;
+	std::optional<pass::world::WorldSceneColor> Capture( device::IRenderDevice2 &device,
+	    device::CommandEncoder &encoder, device::TextureId source,
+	    const device::TextureDesc &sourceDesc, std::uint64_t ) override;
+
+private:
+	device::IRenderDevice2 &m_Device;
+	std::vector<graph::InlineGraphResources> m_Captures;
+};
 
 } // namespace render::lab
 

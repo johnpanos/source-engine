@@ -28,6 +28,7 @@
 #include "render/device/encoder.h"
 #include "render/device/resources.h"
 #include "render/material/surface_program.h"
+#include "render/sprite_card.h"
 
 #include <cstdint>
 #include <optional>
@@ -259,7 +260,8 @@ enum class CoreMeshKind : std::uint8_t
 	kStencilClear,
 	kLightmappedSurface, // moving brushes and proxy-selected indicator panels
 	kCable,              // gameplay-expanded rope ribbons with captured vertex illumination
-	kScreenEffect        // the engine bloom chain (render.pass.post consumes it by name)
+	kScreenEffect,       // the engine bloom chain (render.pass.post consumes it by name)
+	kParticle // SpriteCard particle cards (render.sprite-card.v1), independent of other dynamic draws
 };
 struct CoreMeshDraw
 {
@@ -294,7 +296,18 @@ struct CoreMeshDraw
 	std::uint32_t lightCount = 0;
 	// A static prop's baked vertex lighting (its color mesh, STATIC_LIGHT)
 	// lights the draw; the core has no term for it yet and refuses it by name.
-	bool staticVertexLighting = false;
+	bool staticVertexLighting =
+	    false; // SpriteCard's card records, one per corner, in place of `vertices`
+	// (render.sprite-card.v1): `indices` index them. The matrices are the
+	// material system's model and view (D3D9 row-vector convention); the
+	// flags are the mesh format's spline sheet range (TEXCOORD4) and end
+	// normals (TEXCOORD6/7).
+	const sprite_card::Record *cards = nullptr;
+	std::uint32_t cardCount = 0;
+	float cardModel[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	float cardView[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	bool cardSplineRange = false;
+	bool cardSplineNormals = false;
 };
 
 // What records a slot's pass (the frontend's, bound by the composition root).

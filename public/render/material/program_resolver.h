@@ -31,6 +31,7 @@
 #include "render/material/surface_program.h"
 #include "render/material/vmt_import.h"
 #include "render/shaderlib/debug_view.h"
+#include "render/sprite_card.h"
 
 #include <memory>
 #include <optional>
@@ -244,6 +245,11 @@ bool SupportsOpaqueBatch( const MaterialDesc &material, bool mesh );
 // The mesh point's exact-variable claim without making a pipeline.
 foundation::Expected<device::BlendMode, std::string> ClaimForMesh( const MaterialDesc &material,
     bool nativeReflectionProbes = false, bool sceneColorAvailable = false );
+
+// A SpriteCard material's card constants (render.sprite-card.v1), which the
+// unlit point's claim owns; nullopt for any other material or one whose
+// values do not fit the schema.
+std::optional<sprite_card::Frame> SpriteCardTermsFor( const MaterialDesc &material );
 
 } // namespace render::material
 

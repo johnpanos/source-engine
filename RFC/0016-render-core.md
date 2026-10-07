@@ -2632,6 +2632,71 @@ is not allowed.
 | Decode | `render.family.unlit` sky checks on Vulkan and GL, and `render.family.unlit.seeded-sky-no-rgbs-decode` | the claim names its base and decode; an RGBS image's plateaus are rgb × a × 8 and its middle filters premultiplied texels; the no-decode control fails |
 | Product | a Portal map with a sky (`escape_02`) under `r_core_world 1` | the sky's pixels are the core's (no hatch, zero sky draws dropped); faces match a decoded reference of their images within tolerance |
 
+#### Particles (decision, 2026-10-07)
+
+Particles reach the backend as material-system dynamic meshes, drawn by the
+particle library's render operators (`particles/builtin_particle_render_ops.cpp`).
+A SpriteCard material gets *card records*: one record per corner with the
+particle's center, the frame's sheet rectangles (TEXCOORD0/1), frame blend,
+rotation, radius and yaw (TEXCOORD2), the corner id (TEXCOORD3) and the
+second sequence (TEXCOORD4..7). Portal 2's spline cards (`$splinetype`:
+ropes and trails) carry Catmull-Rom control points instead. SpriteCard's
+vertex shader builds the corners; the frozen native backend builds them on
+the CPU (`ExpandSpriteCardVertex`). Any other material (Refract warps,
+UnlitGeneric sprites) gets quads the operator already expanded. The
+[baseline census](0016-progress.md#particles-on-the-core-baseline-and-decisions-2026-10-07)
+records what reaches the core today.
+
+The owners, settled before code:
+
+- **Hand-off: the existing mesh handoff**, with its own kind,
+  `CoreMeshKind::kParticle`, so particles do not wait on the experimental
+  `r_core_dynamic_draws` switch. No particle-specific contract or pass:
+  claimed draws are ordinary `WorldView::DynamicDraw`s at their stream slot,
+  sorted by the particle library as before.
+- **Corner expansion: one definition in the core**,
+  `render.material`'s `sprite_card.h`, ported from the native backend's CPU
+  expansion. The frontend hands the core the card records and the draw's
+  card constants (size limits, orientation, view) as values; the core builds
+  the corners. The native backend calls the same definition, and its copy is
+  deleted. The expansion runs on the CPU in this slice, where it runs today.
+  Under RFC 0003's placement rule a vertex-shader expansion is the
+  candidate GPU placement; its measurement is owed and has no result yet
+  (no frame-time measurement in this slice, user direction 2026-10-07).
+- **Shading: a point of the shared surface program.** SpriteCard is the
+  unlit point with sprite-card terms in its material block: the second
+  frame's coordinates in the vertex's lightmap-uv slot and the frame blend
+  in its lightmap offset (both unused by the unlit point), `$overbrightfactor`
+  as the radiance scale, `$addself`, `$mod2x` and `$depthblend` through the
+  unlit point's existing depth-feathering input. There is no particle family.
+  Blending follows `spritecard.cpp`: `$mod2x` is `kModulate2x`, `$addself` and
+  `$addoverblend` are `kPremultiplied`, `$additive` is `kAlphaAdditive`, else
+  `kAlpha`. `$dualsequence`, `$maxlumframeblend*`, `$extractgreenalpha`,
+  `$addbasetexture2`, `$distancealpha` and colour ramps are refused by name
+  until a claimed material needs them.
+- **Warp particles: the Refract point.** It reads `$vertexcolor`,
+  `$vertexalpha` and `$vertexcolormodulate`; the vertex alpha scales the warp
+  through the existing scene-colour capture, so a fading particle's
+  refraction fades with it.
+- **Simulation stays where it is.** RFC 0003 owns its placement; this cohort
+  is drawing only.
+- **Lighting.** SpriteCard has no lighting term in Source, so its particles
+  are emitters: radiance is the texture times `$overbrightfactor` times the
+  vertex colour, in the scene's linear radiance. A lit particle material
+  (none in the census) has no claimant and is refused by name; its lighting
+  term would be the probe volume's irradiance at the particle, decided when
+  one is claimed. No radiance is invented.
+
+The native backend's SpriteCard pixel math (`demo_dyn_tex.frag`, textured
+mode 3) stays while `r_core_world 0` draws with it, and is deleted when the
+core is the only path (K9).
+
+| Check | Runs as | Passes when |
+| --- | --- | --- |
+| Lab | `render_lab suite particles` | analytic checks of corner expansion, additive, alpha, `$mod2x` and `$addself` blending, vertex colour × alpha, frame blend, depth feathering and warp refraction scaled by vertex alpha, each with a seeded defect that fails it |
+| Census | the particle census over `sp_a1_intro4`, `sp_a2_laser_intro`, `sp_a2_laser_over_goo`, `sp_a2_fizzler_intro` and `mp_coop_multifling_1` | no particle draw dropped without a named refusal; each remaining refusal recorded with its reason |
+| Product | matched game and `render_lab` frames of a fizzler, a portal opening and closing, sparks, goo bubbles and a co-op fling trail, exposure pinned | visual review against the legacy captures |
+
 #### Post and screen effects (amended 2026-10-05, user direction)
 
 The engine's bloom and colour correction (`DoEnginePostProcessing`:

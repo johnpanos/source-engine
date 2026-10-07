@@ -63,6 +63,12 @@ bool IsSprite( const MaterialDesc &material )
 	return material.legacyShader == "sprite_dx9";
 }
 
+// SpriteCard's particle cards (render.sprite-card.v1).
+bool IsSpriteCard( const MaterialDesc &material )
+{
+	return material.legacyShader == "spritecard_dx8";
+}
+
 // The Sky shader's faces (render.pass.sky); HDR selects its encodings.
 bool IsSky( const MaterialDesc &material )
 {
@@ -487,13 +493,13 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 	if ( material.family == "unlit" || material.family == "cable" ||
 	     material.family == "decal-modulate" )
 	{
-		const UnlitClaim claim = material.family == "cable" ? ClaimCable( *block )
-		                         : material.family == "decal-modulate"
-		                             ? ClaimDecalModulate( *block )
-		                         : IsSprite( material ) ? ClaimSprite( *block )
-		                         : IsSky( material )
-		                             ? ClaimSky( *block, material.legacyShader == "sky_hdr_dx9" )
-		                             : ClaimUnlit( *block );
+		const UnlitClaim claim =
+		    material.family == "cable"            ? ClaimCable( *block )
+		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
+		    : IsSprite( material )                ? ClaimSprite( *block )
+		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
+		    : IsSky( material ) ? ClaimSky( *block, material.legacyShader == "sky_hdr_dx9" )
+		                        : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		if ( requiresDepthAlpha )
@@ -600,7 +606,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	if ( !block )
 		return foundation::MakeUnexpected( why );
 	ResolvedProgram out;
-	out.twoSided = IsSprite( material ) || detail::ReadFlag( *block, "nocull" );
+	out.twoSided =
+	    IsSprite( material ) || IsSpriteCard( material ) || detail::ReadFlag( *block, "nocull" );
 	if ( material.family == "depth" || material.family == "portal-mask" )
 	{
 		if ( auto unread = DepthClaim( *block, material.family == "portal-mask" ) )
@@ -661,14 +668,14 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	if ( material.family == "unlit" || material.family == "cable" ||
 	     material.family == "decal-modulate" )
 	{
-		const UnlitClaim claim = material.family == "cable" ? ClaimCable( *block )
-		                         : material.family == "decal-modulate"
-		                             ? ClaimDecalModulate( *block )
-		                         : IsSprite( material ) ? ClaimSprite( *block )
-		                         : IsSky( material )
-		                             ? ClaimSky( *block, material.legacyShader == "sky_hdr_dx9" )
-		                         : s.mesh ? ClaimUnlitMesh( *block )
-		                                  : ClaimUnlit( *block );
+		const UnlitClaim claim =
+		    material.family == "cable"            ? ClaimCable( *block )
+		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
+		    : IsSprite( material )                ? ClaimSprite( *block )
+		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
+		    : IsSky( material ) ? ClaimSky( *block, material.legacyShader == "sky_hdr_dx9" )
+		    : s.mesh            ? ClaimUnlitMesh( *block )
+		                        : ClaimUnlit( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		SurfaceTextures textures;
@@ -1127,6 +1134,17 @@ std::optional<std::vector<std::byte>> ProgramResolver::FrameConstants(
 	const SurfaceFrame frame = PackSurfaceFrame( program, terms );
 	const auto bytes = std::as_bytes( std::span( &frame, 1 ) );
 	return std::vector<std::byte>( bytes.begin(), bytes.end() );
+}
+
+std::optional<sprite_card::Frame> SpriteCardTermsFor( const MaterialDesc &material )
+{
+	if ( !IsSpriteCard( material ) )
+		return std::nullopt;
+	std::string why;
+	const std::optional<ParameterBlock> block = BlockFor( material, &why );
+	if ( !block )
+		return std::nullopt;
+	return SpriteCardTerms( *block );
 }
 
 } // namespace render::material

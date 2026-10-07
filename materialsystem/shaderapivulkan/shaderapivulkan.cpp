@@ -40,6 +40,7 @@
 #include "vulkan_world_mesh_upload.h"
 #include "render/light_set.h"
 #include "render/direct_light_selection.h"
+#include "render/sprite_card.h"
 #include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
 #include "vtf/vtf.h"
 #include "pixelwriter.h"
@@ -4796,309 +4797,64 @@ static void NoteEmitParallelCheck( bool equal, unsigned chunks )
 static const float *MonitorTexture2Rows();
 static const float *ShadowJitter();
 
-// SpriteCard (spritecard_vsxx.fxc) and Portal 2's spline cards
-// (splinecard_vsxx.fxc) build each particle's corners in the vertex shader from
-// a center, the corner id and the particle's radius, rotation and yaw. The
-// native pipelines transform positions by cModelViewProj only, so the corners
-// are built here, on the draw's constants, into model-space positions.
+// Frozen-path: core progress (RFC 0016 K8 particles) - SpriteCard and Portal 2's
+// spline cards build their corners from card records; render.sprite-card.v1
+// (render/sprite_card.h) is the one definition, shared with the render core.
+// The native pipelines transform positions by cModelViewProj only, so the
+// corners are built here, on the draw's constants, into model-space positions.
 struct SpriteCardFrame
 {
-	float model[16];
-	float modelView[16];
-	float invModel[9]; // world to model rotation part (inverse of model's 3x3)
-	float eye[3];      // world space
-	float sizeParms[4];
-	float sizeParms2[4];
-	int orientation;
-	bool spline;
-	bool splineRange; // TEXCOORD4 holds the sheet range and TEXCOORD5 the end color
-	bool animBlend;   // spritecard_ps2x ANIMBLEND: blends TEXCOORD1's frame in
-	float addSelf;    // ADDSELF's weight (c0.z), or < 0 without the combo
+	render::sprite_card::Frame card;
+	float addSelf; // ADDSELF's weight (c0.z), or < 0 without the combo
 };
-
-static void SpriteCardMat3Inverse( const float *m4, float *inv )
-{
-	// The 3x3 of a row-vector matrix (rows 0..2, columns 0..2).
-	const float a = m4[0], b = m4[1], c = m4[2];
-	const float d = m4[4], e = m4[5], f = m4[6];
-	const float g = m4[8], h = m4[9], i = m4[10];
-	const float det = a * ( e * i - f * h ) - b * ( d * i - f * g ) + c * ( d * h - e * g );
-	const float r = fabsf( det ) > 1e-20f ? 1.0f / det : 0.0f;
-	inv[0] = ( e * i - f * h ) * r;
-	inv[1] = ( c * h - b * i ) * r;
-	inv[2] = ( b * f - c * e ) * r;
-	inv[3] = ( f * g - d * i ) * r;
-	inv[4] = ( a * i - c * g ) * r;
-	inv[5] = ( c * d - a * f ) * r;
-	inv[6] = ( d * h - e * g ) * r;
-	inv[7] = ( b * g - a * h ) * r;
-	inv[8] = ( a * e - b * d ) * r;
-}
 
 static void SpriteCardBuildFrame( SpriteCardFrame &f, const CEmptyMesh &vertices )
 {
-	memcpy( f.model, ModelMatrix(), sizeof( f.model ) );
-	const float *view = ViewMatrix();
-	for ( int i = 0; i < 4; ++i )
-		for ( int j = 0; j < 4; ++j )
-		{
-			float sum = 0.0f;
-			for ( int k = 0; k < 4; ++k )
-				sum += f.model[i * 4 + k] * view[k * 4 + j];
-			f.modelView[i * 4 + j] = sum;
-		}
-	SpriteCardMat3Inverse( f.model, f.invModel );
-	// The eye is where the view takes to its origin: e * R + t = 0 with R
-	// orthonormal, e_j = -sum_k t_k R[j][k] (cEyePos).
-	for ( int j = 0; j < 3; ++j )
-		f.eye[j] = -( view[12] * view[j * 4] + view[13] * view[j * 4 + 1] +
-		              view[14] * view[j * 4 + 2] );
-	memcpy( f.sizeParms, VsConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_8 ), sizeof( f.sizeParms ) );
-	memcpy( f.sizeParms2, VsConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_9 ), sizeof( f.sizeParms2 ) );
-	f.orientation = g_VertexShaderDynamicIndex % 3;
-	f.spline = ( g_CurrentSpriteCard & kSpriteCardSpline ) != 0;
-	f.splineRange = vertices.WideTexCoordSize( 4 ) >= 4;
+	render::sprite_card::Frame &card = f.card;
+	memcpy( card.model, ModelMatrix(), sizeof( card.model ) );
+	memcpy( card.view, ViewMatrix(), sizeof( card.view ) );
+	const float *size = VsConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_8 );
+	const float *far = VsConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_9 );
+	card.sizes = { size[0], size[1], size[2], size[3], far[0], far[1] };
+	card.orientation = g_VertexShaderDynamicIndex % 3;
+	const bool spline = ( g_CurrentSpriteCard & kSpriteCardSpline ) != 0;
+	card.kind = spline ? render::sprite_card::Kind::kSpline : render::sprite_card::Kind::kSprite;
+	card.splineRange = vertices.WideTexCoordSize( 4 ) >= 4;
 	// splinecard_vs20 has no orientation combo (it faces the camera); SpriteCard
 	// declares the end normals (TEXCOORD6/7) only for $orientation 3, which
 	// CS:GO's splinecard orients the card by.
-	if ( f.spline )
-		f.orientation =
+	if ( spline )
+		card.orientation =
 		    ( vertices.WideTexCoordSize( 6 ) >= 3 && vertices.WideTexCoordSize( 7 ) >= 3 ) ? 3 : 0;
-	f.animBlend = ( g_CurrentSpriteCard & kSpriteCardAnimBlend ) != 0;
+	card.animBlend = ( g_CurrentSpriteCard & kSpriteCardAnimBlend ) != 0;
+	render::sprite_card::Prepare( card );
 	f.addSelf = ( g_CurrentSpriteCard & kSpriteCardAddSelf ) ? g_psConstants[0][2] : -1.0f;
 }
 
-// spritecard_ps2x's inputs past the first frame, for kTexturedModeSpriteCard:
-// the second frame's coordinate in the lightmap-uv slots (8, 9), the frame
-// blend in slot 10 and ADDSELF as 1 + weight (0 without it) in slot 11.
-static void SpriteCardPixelInputs( const SpriteCardFrame &f, const float *tc1, const float *corner,
-    float blend, float *out )
+// One corner of a card in kTexturedModeSpriteCard's record: model-space
+// position, uv, the record's color (gamma RGB, which the pipeline decodes,
+// and linear alpha), the second frame's coordinate in the lightmap-uv slots
+// (8, 9), the frame blend in slot 10 and ADDSELF as 1 + weight (0 without it)
+// in slot 11.
+static void ExpandCardVertex( const SpriteCardFrame &f, const float *position,
+    const unsigned char *bgra, const float *wide, float *out )
 {
-	if ( f.animBlend && tc1 && corner )
-	{
-		out[8] = tc1[2] + ( tc1[0] - tc1[2] ) * corner[0];
-		out[9] = tc1[3] + ( tc1[1] - tc1[3] ) * corner[1];
-		out[10] = blend;
-	}
-	else
-	{
-		out[8] = out[6];
-		out[9] = out[7];
-		out[10] = 0.0f;
-	}
+	render::sprite_card::Record record;
+	memcpy( record.position, position, sizeof( record.position ) );
+	memcpy( record.bgra, bgra, sizeof( record.bgra ) );
+	memcpy( record.texCoords, wide, sizeof( record.texCoords ) );
+	const render::sprite_card::Corner corner = render::sprite_card::Expand( f.card, record );
+	memcpy( out, corner.position, sizeof( corner.position ) );
+	out[3] = corner.color[0];
+	out[4] = corner.color[1];
+	out[5] = corner.color[2];
+	out[17] = corner.color[3];
+	out[6] = corner.uv[0];
+	out[7] = corner.uv[1];
+	out[8] = corner.uv2[0];
+	out[9] = corner.uv2[1];
+	out[10] = corner.blend;
 	out[11] = f.addSelf >= 0.0f ? 1.0f + f.addSelf : 0.0f;
-}
-
-static void SpriteCardModelToWorld( const SpriteCardFrame &f, const float *p, float *out )
-{
-	for ( int j = 0; j < 3; ++j )
-		out[j] = p[0] * f.model[j] + p[1] * f.model[4 + j] + p[2] * f.model[8 + j] + f.model[12 + j];
-}
-
-static void SpriteCardWorldToModel( const SpriteCardFrame &f, const float *w, float *out )
-{
-	const float d[3] = { w[0] - f.model[12], w[1] - f.model[13], w[2] - f.model[14] };
-	for ( int j = 0; j < 3; ++j )
-		out[j] = d[0] * f.invModel[j] + d[1] * f.invModel[3 + j] + d[2] * f.invModel[6 + j];
-}
-
-static float SpriteCardGammaToLinear( float c )
-{
-	return powf( std::max( c, 0.0f ), 2.2f );
-}
-
-static float SpriteCardLinearToGamma( float c )
-{
-	return powf( std::max( c, 0.0f ), 1.0f / 2.2f );
-}
-
-// One corner of a sprite card: model-space position, uv, and the color the
-// record carries (gamma RGB, which the pipeline decodes, and linear alpha).
-static void ExpandSpriteCardVertex( const SpriteCardFrame &f, const float *center,
-    const unsigned char *bgra, const float *tc, float *out )
-{
-	const float *tc0 = tc;
-	const float *parms = tc + 8; // frame blend, rotation, radius, yaw
-	const float *corner = tc + 12;
-	const float cosYaw = cosf( parms[3] ), sinYaw = sinf( parms[3] );
-	const float cosRot = cosf( parms[1] ), sinRot = sinf( parms[1] );
-	const float ix = 2.0f * corner[0] - 1.0f, iy = 2.0f * corner[1] - 1.0f;
-	const float x1 = ix * cosRot + iy * sinRot;
-	const float y1 = cosRot * iy - sinRot * ix;
-
-	float world[3];
-	SpriteCardModelToWorld( f, center, world );
-	const float v2p[3] = { world[0] - f.eye[0], world[1] - f.eye[1], world[2] - f.eye[2] };
-	const float l = sqrtf( v2p[0] * v2p[0] + v2p[1] * v2p[1] + v2p[2] * v2p[2] );
-	float rad = std::max( parms[2], f.sizeParms[0] * l );
-	float tint = 1.0f;
-	if ( rad > f.sizeParms[2] * l )
-	{
-		if ( rad > f.sizeParms[3] * l )
-		{
-			tint = 0.0f;
-			rad = 0.0f;
-		}
-		else
-		{
-			const float range = f.sizeParms[3] * l - f.sizeParms[2] * l;
-			tint *= range > 0.0f ? 1.0f - ( rad - f.sizeParms[2] * l ) / range : 0.0f;
-		}
-	}
-	const float farScale =
-	    1.0f - std::min( 1.0f, std::max( 0.0f, ( l - f.sizeParms2[0] ) * f.sizeParms2[1] ) );
-	tint *= farScale;
-	if ( farScale <= 0.0f )
-		rad = 0.0f;
-	rad = std::min( rad, f.sizeParms[1] * l );
-
-	float pos[3];
-	if ( f.orientation == 0 )
-	{
-		// Screen aligned: displaced in view space, which the model-view's
-		// (orthonormal) rows take back to model space.
-		const float disp[3] = { -x1 * cosYaw, y1, x1 * sinYaw };
-		for ( int j = 0; j < 3; ++j )
-			pos[j] = center[j] + rad * ( disp[0] * f.modelView[j * 4] +
-			                             disp[1] * f.modelView[j * 4 + 1] +
-			                             disp[2] * f.modelView[j * 4 + 2] );
-	}
-	else if ( f.orientation == 1 )
-	{
-		// Z aligned: turns about world z to face the eye.
-		if ( l > rad / 2.0f )
-		{
-			float right[3] = { -v2p[1], v2p[0], 0.0f };
-			const float length = sqrtf( right[0] * right[0] + right[1] * right[1] );
-			if ( length > 0.0f )
-			{
-				right[0] /= length;
-				right[1] /= length;
-			}
-			const float rx = right[0] * cosYaw + right[1] * sinYaw;
-			const float ry = right[1] * cosYaw - right[0] * sinYaw;
-			world[0] += x1 * rad * rx;
-			world[1] += x1 * rad * ry;
-			world[2] += y1 * rad;
-			if ( l < rad * 2.0f )
-			{
-				const float t = std::min( 1.0f, std::max( 0.0f, ( l - rad / 2.0f ) / ( rad / 2.0f ) ) );
-				tint *= t * t * ( 3.0f - 2.0f * t );
-			}
-		}
-		SpriteCardWorldToModel( f, world, pos );
-	}
-	else
-	{
-		// Parallel to the ground, in model space, at the unclamped radius.
-		pos[0] = center[0] + parms[2] * y1;
-		pos[1] = center[1] + parms[2] * x1;
-		pos[2] = center[2];
-	}
-
-	memcpy( out, pos, sizeof( pos ) );
-	const float gammaTint = SpriteCardLinearToGamma( tint );
-	out[3] = bgra[2] / 255.0f * gammaTint;
-	out[4] = bgra[1] / 255.0f * gammaTint;
-	out[5] = bgra[0] / 255.0f * gammaTint;
-	out[17] = bgra[3] / 255.0f * tint;
-	out[6] = tc0[2] + ( tc0[0] - tc0[2] ) * corner[0];
-	out[7] = tc0[3] + ( tc0[1] - tc0[3] ) * corner[1];
-	SpriteCardPixelInputs( f, tc + 4, corner, parms[0], out );
-}
-
-static void SpriteCardCatmullRom( const float *a, const float *b, const float *c, const float *d,
-    float t, int n, float *out )
-{
-	for ( int k = 0; k < n; ++k )
-		out[k] = b[k] + 0.5f * t *
-		                    ( c[k] - a[k] +
-		                        t * ( 2.0f * a[k] - 5.0f * b[k] + 4.0f * c[k] - d[k] +
-		                                t * ( -a[k] + 3.0f * b[k] - 3.0f * c[k] + d[k] ) ) );
-}
-
-static void SpriteCardCatmullRomTangent( const float *a, const float *b, const float *c,
-    const float *d, float t, float *out )
-{
-	for ( int k = 0; k < 3; ++k )
-		out[k] = 0.5f * ( c[k] - a[k] +
-		                  t * ( 2.0f * a[k] - 5.0f * b[k] + 4.0f * c[k] - d[k] +
-		                          t * ( 3.0f * b[k] - a[k] - 3.0f * c[k] + d[k] ) ) +
-		                  t * ( 2.0f * a[k] - 5.0f * b[k] + 4.0f * c[k] - d[k] +
-		                          2.0f * ( t * ( 3.0f * b[k] - a[k] - 3.0f * c[k] + d[k] ) ) ) );
-}
-
-// One vertex of a spline card (a rope segment or a sprite trail): POSITION is
-// ( t along the segment, v, side ), TEXCOORD0..3 the Catmull-Rom points
-// ( xyz, width ). Portal 2 trails and ropes add the sheet range (TEXCOORD4) and
-// the end point's color (TEXCOORD5), and with $orientation 3 the particle
-// normals at the segment's ends (TEXCOORD6/7).
-static void ExpandSplineCardVertex( const SpriteCardFrame &f, const float *parms,
-    const unsigned char *bgra, const float *tc, float *out )
-{
-	const float t = parms[0], v = parms[1], side = parms[2];
-	float posrad[4];
-	SpriteCardCatmullRom( tc, tc + 4, tc + 8, tc + 12, t, 4, posrad );
-	float v2p[3] = { 0.0f, 0.0f, 1.0f };
-	if ( f.orientation == 0 )
-	{
-		for ( int k = 0; k < 3; ++k )
-			v2p[k] = posrad[k] - f.eye[k];
-	}
-	else if ( f.orientation == 3 )
-	{
-		const float *normal0 = tc + 24;
-		const float *normal1 = tc + 28;
-		for ( int k = 0; k < 3; ++k )
-			v2p[k] = normal0[k] + ( normal1[k] - normal0[k] ) * t;
-	}
-	float tangent[3];
-	SpriteCardCatmullRomTangent( tc, tc + 4, tc + 8, tc + 12, t, tangent );
-	const float tl = sqrtf( tangent[0] * tangent[0] + tangent[1] * tangent[1] + tangent[2] * tangent[2] );
-	if ( tl > 0.0f )
-	{
-		for ( float &component : tangent )
-			component /= tl;
-	}
-	float ofs[3] = { v2p[1] * tangent[2] - v2p[2] * tangent[1], v2p[2] * tangent[0] - v2p[0] * tangent[2],
-	    v2p[0] * tangent[1] - v2p[1] * tangent[0] };
-	const float ol = sqrtf( ofs[0] * ofs[0] + ofs[1] * ofs[1] + ofs[2] * ofs[2] );
-	if ( ol > 0.0f )
-	{
-		for ( float &component : ofs )
-			component /= ol;
-	}
-	float world[3];
-	for ( int k = 0; k < 3; ++k )
-		world[k] = posrad[k] + ofs[k] * ( posrad[3] * ( side - 0.5f ) );
-	SpriteCardWorldToModel( f, world, out );
-
-	float rgba[4] = { bgra[2] / 255.0f, bgra[1] / 255.0f, bgra[0] / 255.0f, bgra[3] / 255.0f };
-	if ( f.splineRange )
-	{
-		const float *range = tc + 16;
-		const float *endColor = tc + 20;
-		out[6] = range[2] + ( range[0] - range[2] ) * side;
-		out[7] = range[1] + ( range[3] - range[1] ) * v;
-		for ( int k = 0; k < 3; ++k )
-		{
-			const float c1 = SpriteCardGammaToLinear( rgba[k] );
-			const float c2 = SpriteCardGammaToLinear( endColor[k] );
-			rgba[k] = SpriteCardLinearToGamma( c1 + ( c2 - c1 ) * t );
-		}
-		rgba[3] = rgba[3] + ( endColor[3] - rgba[3] ) * t;
-	}
-	else
-	{
-		out[6] = 1.0f - side;
-		out[7] = v;
-	}
-	out[3] = rgba[0];
-	out[4] = rgba[1];
-	out[5] = rgba[2];
-	out[17] = rgba[3];
-	// A spline card's frame coordinates come from its sheet range, not TEXCOORD1.
-	SpriteCardPixelInputs( f, nullptr, nullptr, 0.0f, out );
 }
 
 static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
@@ -5134,6 +4890,10 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 		         ( !V_stricmp( shader, "screenspace_general" ) ||
 		             !V_stricmp( shader, "screenspace_general_dx9" ) ) ) )
 			return CoreMeshKind::kScreenEffect;
+		// Frozen-path: core progress (RFC 0016 K8 particles) - SpriteCard's
+		// card records to the core's sprite card point.
+		if ( !V_stricmp( shader, "Spritecard" ) || !V_stricmp( shader, "Spritecard_DX8" ) )
+			return CoreMeshKind::kParticle;
 		if ( !V_stricmp( shader, "Refract" ) || !V_stricmp( shader, "Refract_DX90" ) )
 			return CoreMeshKind::kTransmission;
 		// Frozen-path: core progress (RFC 0016 surface model) - P2:CE's PBR
@@ -5363,14 +5123,30 @@ bool CEmptyMesh::EmitToCoreQueue()
 	}
 	if ( !valid || triangles.empty() )
 		return false;
-	std::vector<render::material::SurfaceWorldVertex> vertices( source.m_numVerts );
+	// Frozen-path: core progress (RFC 0016 K8 particles) - a SpriteCard draw's
+	// card records go to the core as they are; render.sprite-card.v1 builds
+	// the corners there with the claimed material's card terms.
+	const bool cardDraw =
+	    CoreMeshKindFor( g_pBoundMaterial ) == render::legacy::CoreMeshKind::kParticle;
+	if ( cardDraw && !source.HasWideTexCoords() )
+		return false;
+	std::vector<render::sprite_card::Record> cards( cardDraw ? source.m_numVerts : 0 );
+	for ( std::size_t i = 0; i < cards.size(); ++i )
+	{
+		const unsigned char *raw = source.m_vertexData.data() + i * source.RecordStride();
+		memcpy( cards[i].position, raw, sizeof( cards[i].position ) );
+		memcpy( cards[i].bgra, raw + 12, sizeof( cards[i].bgra ) );
+		memcpy(
+		    cards[i].texCoords, source.WideTexCoords( int( i ) ), sizeof( cards[i].texCoords ) );
+	}
+	std::vector<render::material::SurfaceWorldVertex> vertices( cardDraw ? 0 : source.m_numVerts );
 	const bool meshShader = !V_stricmp( g_pBoundMaterial->GetShaderName(), "VertexLitGeneric" );
 	const CEmptyMesh *staticColorMesh = !meshShader         ? nullptr
 	                                    : source.HasColorMesh() ? &source
 	                                    : HasColorMesh()        ? this
 	                                                            : nullptr;
 	const bool brushTangents = ( source.m_format & VERTEX_TANGENT_S ) != 0;
-	for ( int i = 0; i < source.m_numVerts; ++i )
+	for ( int i = 0; i < int( vertices.size() ); ++i )
 	{
 		const unsigned char *raw =
 		    source.m_vertexData.data() + std::size_t( i ) * source.RecordStride();
@@ -5471,6 +5247,16 @@ bool CEmptyMesh::EmitToCoreQueue()
 	draw.variableCount = variables.size();
 	draw.vertices = vertices.data();
 	draw.vertexCount = vertices.size();
+	if ( cardDraw )
+	{
+		draw.cards = cards.data();
+		draw.cardCount = cards.size();
+		memcpy( draw.cardModel, ModelMatrix(), sizeof( draw.cardModel ) );
+		memcpy( draw.cardView, ViewMatrix(), sizeof( draw.cardView ) );
+		draw.cardSplineRange = source.WideTexCoordSize( 4 ) >= 4;
+		draw.cardSplineNormals =
+		    source.WideTexCoordSize( 6 ) >= 3 && source.WideTexCoordSize( 7 ) >= 3;
+	}
 	draw.indices = triangles.data();
 	draw.indexCount = triangles.size();
 	// Frozen-path: hand the core the material system's one-based handle,
@@ -5479,12 +5265,15 @@ bool CEmptyMesh::EmitToCoreQueue()
 	draw.capturedLightmap = true;
 	// Frozen-path: capture the existing ordered soft-particle depth-copy input;
 	// the core owns fading, and never samples the writable depth attachment.
+	// UnlitGeneric binds the copy at sampler 10; SpriteCard binds it at
+	// sampler 2 (TEXTURE_FRAME_BUFFER_FULL_DEPTH).
+	const int depthSampler = cardDraw ? SHADER_SAMPLER2 : SHADER_SAMPLER10;
 	bool depthBlendFound = false;
 	IMaterialVar *depthBlend = g_pBoundMaterial->FindVar( "$depthblend", &depthBlendFound, false );
 	if ( depthBlendFound && depthBlend->GetIntValue() != 0 &&
-	     ( g_CurrentEnabledSamplers & ( 1u << SHADER_SAMPLER10 ) ) )
+	     ( g_CurrentEnabledSamplers & ( 1u << depthSampler ) ) )
 	{
-		draw.depthAlphaHandle = g_boundSamplerHandles[SHADER_SAMPLER10] + 1;
+		draw.depthAlphaHandle = g_boundSamplerHandles[depthSampler] + 1;
 		draw.depthAlphaRange = g_Fog.destAlphaDepthRange;
 	}
 	draw.viewport = { float( g_Viewport.m_nTopLeftX ), float( g_Viewport.m_nTopLeftY ),
@@ -6119,11 +5908,7 @@ void CEmptyMesh::EmitToNativeQueue()
 		out[7] = uv[1];
 		if ( spriteCard )
 		{
-			const float *wide = vertices.WideTexCoords( v );
-			if ( spriteFrame.spline )
-				ExpandSplineCardVertex( spriteFrame, pos, base + 12, wide, out );
-			else
-				ExpandSpriteCardVertex( spriteFrame, pos, base + 12, wide, out );
+			ExpandCardVertex( spriteFrame, pos, base + 12, vertices.WideTexCoords( v ), out );
 		}
 	};
 
@@ -10011,7 +9796,11 @@ void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
 		DropDraw( "draw dropped: wireframe fill mode without fillModeNonSolid" );
 		NoteDroppedMaterial();
 	}
-	else if ( g_CurrentLegacyProgram < 0 && !NativeRefractMaterialSupported( g_pBoundMaterial ) )
+	// Frozen-path: core progress (RFC 0016 K8 particles) - the native pipeline's
+	// Refract limits do not apply to a core-only frame, whose draws the core
+	// claims or refuses by name (the warp particles' $vertexcolormodulate).
+	else if ( g_CurrentLegacyProgram < 0 && !g_VulkanContext.CoreOnlyQueue() &&
+	          !NativeRefractMaterialSupported( g_pBoundMaterial ) )
 	{
 		DropDraw( "draw dropped: Refract_DX90 material needs an unsupported feature or texture" );
 		NoteDroppedMaterial();

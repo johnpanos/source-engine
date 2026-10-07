@@ -12246,3 +12246,171 @@ particles, which belong to the particle cohort.
 - Glass cohort closed for world/model Refract on retail and baked maps; open:
   frame time, the warp particles (particle cohort), and a scene-color capture
   in `render_lab`'s map renderer for matched glass frames.
+
+## Particles on the core: baseline and decisions (2026-10-07)
+
+RFC 0016 K8/K9 particle cohort, row R91. The design decisions are recorded in
+[RFC 0016's particle subsection](0016-render-core.md#particles-decision-2026-10-07).
+
+**Observed: the call path.** The particle library's render operators
+(`particles/builtin_particle_render_ops.cpp`) build material-system dynamic
+meshes. A SpriteCard material gets card records (`RenderSpriteCard`: center,
+frame rectangles in TEXCOORD0/1, blend/rotation/radius/yaw in TEXCOORD2, the
+corner id in TEXCOORD3, the second sequence in TEXCOORD4..7); a `$splinetype`
+card gets Catmull-Rom control points (`RenderSpriteTrailSpriteCard`, the rope
+operator). Other materials get quads the operator expands on the CPU. The
+native backend expands cards on the CPU (`ExpandSpriteCardVertex`,
+`ExpandSplineCardVertex`) and shades them in `demo_dyn_tex.frag` textured
+mode 3 (frame blend, `$overbrightfactor`, `$addself`, `$mod2x`, DEPTHBLEND).
+Under `r_core_world 1` (the `./play_p2` default) the backend's core-only
+queue rejects every legacy shader draw. `CoreMeshKindFor` gives SpriteCard
+`kSurface`, which reaches the core only with the experimental
+`r_core_dynamic_draws 1`, so **no SpriteCard particle is drawn in the
+product today**.
+
+**Observed: the static inventory.** `quality/materials/portal2-all-claims.json`
+holds 143 SpriteCard VMTs, all unsupported (`shader SpriteCard maps to no
+family the model draws (legacy)`). Their keys: 55 `$splinetype`, 30
+`$orientation 3`, 66 `$depthblend` (26 enabled), 40 `$overbrightfactor`, 21
+`$addself`, 22 `$blendframes`, 6 `$dualsequence` with `$maxlumframeblend*`,
+2 `$mod2x`, 2 `$addoverblend`, 3 `$distancealpha`. Eight particle Refract
+VMTs are unsupported on `$vertexalpha` (also unread: `$vertexcolor`,
+`$vertexcolormodulate`, `$forcerefract`, `$nofog`).
+
+**Observed: the runtime census.** A scratch driver boots each map headless
+(`portal_boot.py`, native Vulkan, `r_core_world 1`, `r_core_world_strict 0`,
+`r_core_dynamic_draws 1` so refusals are named) at revision `9defa9120`, spawns
+21 effects with `ent_create info_particle_system` (sparks, cleanser edges,
+portal-close flash, gel and case bubbles, both fling trails, dissolve glow,
+water wash, the GLaDOS stream, rain, smoke, steam, fire, confetti, laser
+cutter sparks, paint) and reads `r_core_world_stats` and the backend's
+per-screenshot drop census. `particle_test_start` does not work for this: the
+server reads its own `particle_test_file`, which the console does not set.
+
+| Map | Core refusals (materials / draws) | Backend drops: SpriteCard | Backend drops: Refract warps |
+| --- | --- | --- | --- |
+| `sp_a1_intro4` | 25 / 1,839 | 2,723 | 666 |
+| `sp_a2_laser_intro` | 25 / 1,821 | 2,601 | 632 |
+| `sp_a2_laser_over_goo` | 25 / 1,276 | 1,925 | 481 |
+| `sp_a2_fizzler_intro` | 28 / 1,858 | 2,737 | 669 |
+| `mp_coop_multifling_1` (one player) | 30 / 1,798 | 2,641 | 671 |
+
+Every SpriteCard refusal has one reason, `shader Spritecard maps to no family
+the model draws (legacy)`. The backend counts more SpriteCard drops than the
+core counts refusals; hypothesis, not checked: draws issued outside the
+core-only queue (before the map's core load or after the legacy HUD slot) are
+dropped by the backend without reaching the core.
+
+**Observed: warp particles never reach the core.** The six warp materials
+(`warp2_warp`, `warp_ripple2`, `warp_rain`, `toxic_slime_warp`,
+`coop/trail_fling_warp`, `water/water_beam_01_warp_alpha`) are dropped by
+`CShaderAPIVulkan::RenderPass` before any mesh emit, because
+`NativeRefractMaterialSupported` refuses `$vertexcolormodulate`. That check
+belongs to the native pipeline, yet it also runs in core-only frames, so the
+core sees no draw and names no refusal. A temporary print in
+`EmitToNativeQueue` (reverted) showed no warp draw entering it.
+
+## Particles on the core: SpriteCard cards and warp particles drawn (2026-10-07)
+
+What landed, by the decisions above:
+
+- **`render.sprite-card.v1`** (`public/render/sprite_card.h`, `render.contracts`,
+  header-only): the corners of sprite and spline cards from their records.
+  The frozen native backend now calls it (`ExpandCardVertex`), and its own
+  copies (`ExpandSpriteCardVertex`, `ExpandSplineCardVertex` and the
+  Catmull-Rom helpers) are deleted. Equivalence with the deleted code: a
+  scratch harness compiled the deleted functions from `git show 9defa9120`
+  beside the header and compared 20,000 random corners (sprite and spline
+  cards, orientations 0-3, rotated and translated model matrices, frame blend
+  on and off): 0 differed in any bit.
+- **Hand-off**: `CoreMeshKind::kParticle` for `Spritecard`; the frontend
+  passes the card records, the D3D model and view matrices and the two mesh
+  format facts (`CoreMeshDraw::cards`), not converted vertices. The world
+  pass expands them in `QueueView` with the claimed material's card terms
+  (`material::SpriteCardTermsFor`), after every claim check, into ordinary
+  dynamic-draw vertices. Card records for any other material are refused by
+  name. The depth copy is read at SpriteCard's sampler 2
+  (`TEXTURE_FRAME_BUFFER_FULL_DEPTH`), UnlitGeneric's at sampler 10.
+- **Claim** (`ClaimSpriteCard`, `render.material`): `spritecard_dx8` maps to
+  the unlit family with SpriteCard's parameters and defaults; blending per
+  `spritecard.cpp`; the alpha test GREATER 0.01 without `$addself`; additive
+  cards fog to black; `$color`, `$alpha`, `$alphatest` and the `$selfillum`
+  flag are inert (`spritecard_ps2x` never reads them). `$minsize`,
+  `$maxsize`, `$maxdistance` and `$farfadeinterval` moved from metadata rows
+  ("read by the particle system") to unlit key rows: SpriteCard's vertex
+  stage reads them, and so does the core's expansion.
+- **Shading** (`surface_program.glsl`): `SpriteCardSurface` on the unlit
+  point (`meshModes.y`), and the unlit point's depth fade is one function,
+  `DepthBlendFade`, shared by UnlitGeneric particles and cards.
+- **Warp particles** (`ClaimRefract`): `$vertexcolor`, `$vertexalpha`,
+  `$vertexcolormodulate` and `$nofog` (inert on the scene snapshot) are
+  claimed; `$forcerefract` is metadata. The vertex alpha scales the warp and
+  the weight of the warped, tinted scene; the vertex color tints it. A
+  negative `$refractamount` is accepted (Portal 2's water beams use -.6).
+  This tree's `refract_ps2x.fxc` predates Portal 2's COLORMODULATE combo, so
+  these semantics are the RFC decision, not a port.
+- **Frontend**: `CShaderAPIVulkan::RenderPass` no longer applies the native
+  pipeline's Refract limits to a core-only frame; the core claims or refuses
+  those draws by name.
+
+**`render_lab suite particles`** (new, `render/lab/particles_suite.cpp`):
+27 checks, 0 failed, Vulkan validation silent (seven corner-geometry
+checks; alpha, additive, `$addself` and `$mod2x` blending with frame blend,
+overbright and record color, each with the background untouched outside the
+card; depth feathering; four refusals by name; three warp checks). Sensitivity:
+6 of 6 seeded programs detected (frame blend, card vertex color, `$addself`,
+`$mod2x` neutral, depth feathering, warp vertex alpha). Manifest rows
+`render.lab.particles` and `render.lab.particles.sensitivity` pass through
+`conformance.py`. The existing `softparticle` (64) and `sprite` (41) suites pass.
+
+**Game census** (`tools/quality/particle_census.py`, same maps and effects as
+the baseline, product default `r_core_dynamic_draws 0`):
+
+
+| Map | Core refusals of particle materials (materials / draws) | Backend drops: SpriteCard | Backend drops: Refract warps |
+| --- | --- | --- | --- |
+| `sp_a1_intro4` | 4 / 376 | 601 | 0 |
+| `sp_a2_laser_intro` | 4 / 436 | 679 | 0 |
+| `sp_a2_laser_over_goo` | 4 / 129 | 225 | 0 |
+| `sp_a2_fizzler_intro` | 4 / 235 | 357 | 0 |
+| `mp_coop_multifling_1` | 4 / 265 | 456 | 0 |
+
+Baseline (same effects): 25-30 refused materials and 1,276-1,858 refusals
+per map, 1,925-2,737 SpriteCard and 481-671 warp draws dropped. Draw counts
+vary run to run with the particle simulation. The four remaining refusals,
+each a named gap with retail semantics this tree's SpriteCard lacks:
+`particle/sparks/sparks` (`$distancealpha`),
+`particle/vistasmokev1_add_nearcull` (`$dualsequence`),
+`particle/vistasmokev1/vistasmokev1` (`$vertexfogamount`) and
+`particle/fire_explosion_1/fire_explosion_1` (`$powerfunction`). They are
+not treated as inert: retail Portal 2's SpriteCard declares them.
+Static inventory (`material_claim_inventory.py --scope all`, not committed:
+the checked-in inventory is being regenerated by a concurrent session):
+SpriteCard 129 of 143 claimed, 14 unsupported (`$cropfactor` 3,
+`$distancealpha` 3, `$vertexfogamount` 3, `$dualsequence` 3,
+`$powerfunction` 1, `$vertexcolormodulate` 1); Refract 34 of 37.
+
+**Game captures** (`sp_a1_intro4`, `host_framerate 0.015`,
+`mat_force_tonemap_scale 1`, core `r_core_world 1` against legacy
+`r_core_world 0`, effects at (200, 272, 40) in front of the x = 256 wall):
+- fire and smoke (`br_fire_line`, `human_cleanser`): drawn by the core with
+  the legacy look; shapes differ only by the random simulation;
+- sparks (`impact_physics_sparks`, `sparks_generic_random`): streaks match;
+  the glow's center is whiter and more saturated on the core than legacy's
+  cyan-tinted halo (the overbright glow in the linear HDR target before the
+  tone map) — the one visible difference to review;
+- goo bubbles and the co-op fling trail (warp materials): the core now warps
+  the scene behind them (the indicator dots are visibly displaced), where
+  legacy drew nothing because its native Refract check dropped them;
+- fizzler edge and portal-close flash: small streaks on both, similar.
+
+**Not done**:
+- matched `render_lab` frames of the in-game effects: the lab has analytic
+  card and warp checks but no particle system or captured particle draws to
+  replay, so no lab frame shows the same effect;
+- the portal open/close capture: `portal_place` did not put a portal in the
+  captured view;
+- the remaining refusals listed above, each a named gap;
+- the native SpriteCard pixel math (`demo_dyn_tex.frag` textured mode 3)
+  stays while `r_core_world 0` uses it (K9);
+- no frame-time measurement (user direction for this slice).

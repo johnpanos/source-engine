@@ -487,4 +487,26 @@ std::vector<std::byte> ByteTexel( int r, int g, int b, int a )
 	return { std::byte( r ), std::byte( g ), std::byte( b ), std::byte( a ) };
 }
 
+LabSceneColorCapture::~LabSceneColorCapture()
+{
+	(void)m_Device.WaitIdle();
+	for ( graph::InlineGraphResources &capture : m_Captures )
+		capture.Release( m_Device, device::CompletionToken() );
+}
+
+std::optional<pass::world::WorldSceneColor> LabSceneColorCapture::Capture(
+    device::IRenderDevice2 &device, device::CommandEncoder &encoder, device::TextureId source,
+    const device::TextureDesc &sourceDesc, std::uint64_t )
+{
+	if ( &device != &m_Device )
+		return std::nullopt;
+	auto captured = graph::RecordSceneColor( device, encoder, source, sourceDesc );
+	if ( !captured )
+		return std::nullopt;
+	graph::RecordedSceneColor value = std::move( captured ).Value();
+	pass::world::WorldSceneColor result{ value.texture, value.desc };
+	m_Captures.push_back( std::move( value.resources ) );
+	return result;
+}
+
 } // namespace render::lab

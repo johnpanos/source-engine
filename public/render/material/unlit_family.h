@@ -39,6 +39,7 @@
 #include "render/shaderlib/debug_view.h"
 #include "render/material/parameter_block.h"
 #include "render/material/surface_program.h"
+#include "render/sprite_card.h"
 
 #include <cstdint>
 #include <memory>
@@ -87,6 +88,15 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block );
 // Already-expanded Sprite_DX9 quads. The frontend owns orientation and glow
 // visibility; this point owns render-mode blending, color and depth behavior.
 UnlitClaim ClaimSprite( const ParameterBlock &block );
+// SpriteCard's particle cards (RFC 0016 K8): the unlit point with the card
+// terms (frame blend, $overbrightfactor, $addself, $mod2x, depth feathering)
+// and spritecard.cpp's blend state. Its pixel combos beyond those are refused
+// by name.
+UnlitClaim ClaimSpriteCard( const ParameterBlock &block );
+// The card constants render.sprite-card.v1 expands a claimed SpriteCard's
+// records with: size limits, far fade, kind, orientation and frame blend. The
+// caller supplies the matrices and the mesh's format facts.
+sprite_card::Frame SpriteCardTerms( const ParameterBlock &block );
 // DecalModulate: undecoded multiplicative texture, alpha > 0, fog to neutral.
 // The caller supplies decal depth bias and captured culling; destination alpha stays intact.
 UnlitClaim ClaimDecalModulate( const ParameterBlock &block );

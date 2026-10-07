@@ -31,10 +31,11 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 	// (scene color, or a base texture read at the warped screen position) have
 	// no base coordinates for a transform to move.
 	const bool local = detail::ReadFlag( block, "localrefract" );
-	constexpr std::array<std::string_view, 16> kClaimed = { "model", "translucent", "basetexture",
+	constexpr std::array<std::string_view, 20> kClaimed = { "model", "translucent", "basetexture",
 	    "normalmap", "refractamount", "refracttint", "bluramount", "fadeoutonsilhouette", "envmap",
 	    "envmaptint", "envmapcontrast", "envmapsaturation", "refracttinttexture", "nocull",
-	    "bumptransform", "bumpframe" };
+	    "bumptransform", "bumpframe", "vertexcolor", "vertexalpha", "vertexcolormodulate",
+	    "nofog" };
 	constexpr std::array<std::string_view, 17> kLocalClaimed = { "model", "translucent",
 	    "basetexture", "normalmap", "refractamount", "refracttint", "bluramount", "envmap",
 	    "envmaptint", "envmapcontrast", "envmapsaturation", "basetexturetransform", "localrefract",
@@ -79,7 +80,9 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 	const float amount = detail::ReadParameter( block, "refractamount" );
 	const float blur = detail::ReadParameter( block, "bluramount" );
 	const float contrast = detail::ReadParameter( block, "envmapcontrast" );
-	if ( !std::isfinite( amount ) || amount < 0.0f || amount > 2.0f || !std::isfinite( blur ) ||
+	// A negative amount warps the other way (refract_ps2x multiplies the
+	// normal's offset by it): Portal 2's water beams use -.6.
+	if ( !std::isfinite( amount ) || amount < -2.0f || amount > 2.0f || !std::isfinite( blur ) ||
 	     blur < 0.0f || !std::isfinite( contrast ) || contrast < 0.0f || contrast > 1.0f )
 	{
 		claim.reason = "invalid Refract amount, blur or envmap contrast";
@@ -116,6 +119,22 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 	claim.tintTexture = detail::TextureBound( block, "refracttinttexture" );
 	claim.constants.meshModes[2] = claim.tintTexture ? 1.0f : 0.0f;
 	claim.constants.meshProbeColor[0] = contrast;
+	// Vertex color (warp particles): flags.x tints the refraction by the
+	// vertex color, state.w scales the warp and its tint by the vertex alpha;
+	// state.y decodes the gamma vertex color per vertex.
+	const bool modulate = detail::ReadFlag( block, "vertexcolormodulate" );
+	const bool vertexColor = modulate || detail::ReadFlag( block, "vertexcolor" );
+	const bool vertexAlpha = modulate || detail::ReadFlag( block, "vertexalpha" );
+	// The scene snapshot is already fogged; $nofog only matters for a base
+	// texture's own radiance, which the screen-space point fogs.
+	if ( detail::ReadFlag( block, "nofog" ) && claim.baseTexture )
+	{
+		claim.reason = "$nofog on a Refract base texture is not drawn";
+		return claim;
+	}
+	claim.constants.flags[0] = vertexColor ? 1.0f : 0.0f;
+	claim.constants.state[1] = vertexColor ? 1.0f : 0.0f;
+	claim.constants.state[3] = vertexAlpha ? 1.0f : 0.0f;
 	for ( int c = 0; c < 3; ++c )
 	{
 		const float tint = detail::ReadParameter( block, "refracttint", c );

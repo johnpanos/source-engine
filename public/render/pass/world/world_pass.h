@@ -57,6 +57,7 @@
 #include "render/projected_light.h"
 #include "render/resources/mip_feedback.h"
 #include "render/shadow_tile.h"
+#include "render/sprite_card.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -598,6 +599,18 @@ struct WorldView
 		// A static prop: its vertices' color is its baked lighting (the
 		// static-prop color lump), drawn by SurfaceVariant::staticVertexLight.
 		bool staticVertexLight = false;
+		// SpriteCard's card records (render.sprite-card.v1), one per corner,
+		// in place of vertices: the pass expands them with the claimed
+		// material's card terms when the view queues, into world-space
+		// vertices indexed by `indices`. The matrices are the material
+		// system's (D3D9 row-vector convention); the two flags are facts of
+		// the mesh's format (a spline card's sheet range in TEXCOORD4 and its
+		// end normals in TEXCOORD6/7).
+		std::vector<sprite_card::Record> cards;
+		float cardModel[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+		float cardView[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+		bool cardSplineRange = false;
+		bool cardSplineNormals = false;
 	};
 	std::vector<DynamicDraw> dynamicDraws;
 	// Captured ordered depth-copy input for soft particles; one-based importer

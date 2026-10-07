@@ -12722,6 +12722,74 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.particles",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K8 particles: render.sprite-card.v1's corners against hand-worked geometry (screen-aligned, following a turned view, z-aligned, ground-parallel, $maxsize clamp, size fade, a spline card's midpoint and width); SpriteCard cards through render.pass.world's dynamic draws on the unlit point against spritecard_ps2x's analytic color for alpha, additive, $addself (premultiplied) and $mod2x (2 src dst toward the neutral .5) blending with the frame blend, $overbrightfactor and the record's color and alpha, each with the background untouched outside the card; $depthblend's feathering against a captured depth copy; $dualsequence, $maxlumframeblend, card records for another shader and $depthblend without a depth copy refused by name; warp particles on the Refract point over a captured scene, where the vertex alpha scales the warp and its weight and the vertex color tints it. No validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "particles",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 27,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/particles_suite.cpp",
+        "public/render/sprite_card.h",
+        "render/material/unlit_family.cpp",
+        "render/material/refract_family.cpp",
+        "render/material/vmt_mapping.cpp",
+        "render/material/program_resolver.cpp",
+        "render/pass/world/world_pass.cpp",
+        "render/material/families/surface_program.glsl",
+        "render/lab/lab_support.cpp",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.particles.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "RFC 0016 K8 particles, seeded programs (particles_defects_spv.h, built from surface.frag): the frame blend ignored, the card's vertex color ignored, $addself ignored, $mod2x's neutral moved to 0, the depth feathering ignored and the warp's vertex alpha ignored each fail the checks they break; the control passes.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "particles",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 7,
+      "timeout_seconds": 900,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/particles_suite.cpp",
+        "render/material/families/surface_program.glsl",
+        "render/material/families/surface.frag",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.view-state",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

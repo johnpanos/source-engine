@@ -39,6 +39,10 @@ constexpr VmtShaderRow kShaders[] = {
     { "sprite_dx9", "unlit",
         "sprites: an unlit textured quad whose orientation and render mode are parameters "
         "(sprite_vs20/sprite_ps20b)" },
+    { "spritecard_dx8", "unlit",
+        "particle cards: the unlit point with SpriteCard's terms (frame blend, "
+        "$overbrightfactor, $addself, $mod2x, depth feathering); render.sprite-card.v1 "
+        "builds the corners from the card records (spritecard_vsxx/splinecard_vsxx)" },
     { "sky_hdr_dx9", "unlit",
         "the 2D sky box's faces (Sky, render.pass.sky): an unlit textured quad whose base is an "
         "HDR encoding ($hdrcompressedtexture RGBS times 8, sky_hdr_compressed_rgbs_ps2x)" },
@@ -241,6 +245,29 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "unlit", "$spriterendermode", "spriterendermode", ValueKind::kInt, "0" },
     { "unlit", "$nosrgb", "nosrgb", ValueKind::kBool, "0" },
     { "unlit", "$ignorevertexcolors", "ignorevertexcolors", ValueKind::kBool, "1" },
+    // SpriteCard (spritecard.cpp's parameters and defaults; RFC 0016 K8 particles).
+    { "unlit", "$orientation", "orientation", ValueKind::kInt, "0" },
+    { "unlit", "$splinetype", "splinetype", ValueKind::kInt, "0" },
+    { "unlit", "$overbrightfactor", "overbrightfactor", ValueKind::kFloat, "1" },
+    { "unlit", "$addself", "addself", ValueKind::kFloat, "0" },
+    { "unlit", "$addbasetexture2", "addbasetexture2", ValueKind::kFloat, "0" },
+    { "unlit", "$addoverblend", "addoverblend", ValueKind::kBool, "0" },
+    { "unlit", "$mod2x", "mod2x", ValueKind::kBool, "0" },
+    { "unlit", "$blendframes", "blendframes", ValueKind::kBool, "1" },
+    { "unlit", "$dualsequence", "dualsequence", ValueKind::kInt, "0" },
+    { "unlit", "$sequence_blend_mode", "sequence_blend_mode", ValueKind::kInt, "0" },
+    { "unlit", "$maxlumframeblend1", "maxlumframeblend1", ValueKind::kInt, "0" },
+    { "unlit", "$maxlumframeblend2", "maxlumframeblend2", ValueKind::kInt, "0" },
+    { "unlit", "$ramptexture", "ramptexture", ValueKind::kTexture, "" },
+    { "unlit", "$zoomanimateseq2", "zoomanimateseq2", ValueKind::kFloat, "1" },
+    { "unlit", "$extractgreenalpha", "extractgreenalpha", ValueKind::kInt, "0" },
+    { "unlit", "$useinstancing", "useinstancing", ValueKind::kBool, "1" },
+    { "unlit", "$minsize", "minsize", ValueKind::kFloat, "0" },
+    { "unlit", "$maxsize", "maxsize", ValueKind::kFloat, "20" },
+    { "unlit", "$startfadesize", "startfadesize", ValueKind::kFloat, "10" },
+    { "unlit", "$endfadesize", "endfadesize", ValueKind::kFloat, "20" },
+    { "unlit", "$maxdistance", "maxdistance", ValueKind::kFloat, "100000" },
+    { "unlit", "$farfadeinterval", "farfadeinterval", ValueKind::kFloat, "400" },
 };
 
 // The water family's keys (not legacy-derived: Water reads none of the
@@ -329,6 +356,14 @@ constexpr VmtKeyRow kRefractKeys[] = {
     // normal map's $bumpframe (the mesh handoff binds that frame's handle).
     { "refract", "$bumptransform", "bumptransform", ValueKind::kTransform, "" },
     { "refract", "$bumpframe", "bumpframe", ValueKind::kInt, "0" },
+    // Warp particles (RFC 0016 K8 particles): the vertex color tints the
+    // refracted scene and the vertex alpha scales the warp and its tint, so a
+    // fading particle's refraction fades with it. $vertexcolormodulate is
+    // Portal 2's switch for both (refract_dx9_helper.cpp's COLORMODULATE).
+    { "refract", "$vertexcolor", "vertexcolor", ValueKind::kBool, "0" },
+    { "refract", "$vertexalpha", "vertexalpha", ValueKind::kBool, "0" },
+    { "refract", "$vertexcolormodulate", "vertexcolormodulate", ValueKind::kBool, "0" },
+    { "refract", "$nofog", "nofog", ValueKind::kBool, "0" },
 };
 
 constexpr VmtMetadataRow kMetadata[] = {
@@ -439,6 +474,10 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$envmapconstrast", "misspelled; VertexLitGeneric declares $envmapcontrast", "vertexlit" },
     { "$envampsaturation", "misspelled; VertexLitGeneric declares $envmapsaturation", "vertexlit" },
     { "$dudvmap", "Refract_DX90 samples $normalmap, not $dudvmap", "refract" },
+    { "$forcerefract",
+        "the client refreshes the refraction texture before the draw; the core "
+        "captures the view's scene color for every Refract draw",
+        "refract" },
     { "$dudvframe", "the frame of $dudvmap, which Refract_DX90 does not sample", "refract" },
     { "$scale", "Refract_DX90 has no $scale shader parameter", "refract" },
     { "$normalmapalphaenvmapmask", "Refract_DX90 always uses normal alpha for reflection",
@@ -467,10 +506,6 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$temp", "material-proxy scratch value, not a shader parameter", "unlit" },
     { "$surfaceprop_override", "physics surface properties" },
     { "$detailtype", "the detail-sprite set vbsp places on the surface" },
-    { "$minsize", "particle size limits read by the particle system" },
-    { "$maxsize", "particle size limits read by the particle system" },
-    { "$maxdistance", "particle distance limit read by the particle system" },
-    { "$farfadeinterval", "particle fade read by the particle system" },
     { "$reflectentities", "water: the client's reflection view draws entities" },
     { "$reflectskyboxonly", "water: the client's reflection view draws only the sky box" },
     { "$reflectonlymarkedentities",

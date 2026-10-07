@@ -667,6 +667,8 @@ struct WorldPass::State
 		bool claimReflection = false;
 		std::string claimError; // empty: claimed
 		bool requiresDepthAlpha = false;
+		// A claimed SpriteCard's card terms (render.sprite-card.v1).
+		std::optional<sprite_card::Frame> cardTerms;
 	};
 	// A queued view's dynamic draws, with each draw's snapshot key and mapping
 	// decided once when the view queued; shared, so recording a slot (and
@@ -1311,6 +1313,49 @@ void WorldPass::NoteRefusal( std::string reason )
 	s.Refuse( std::move( reason ) );
 }
 
+namespace
+{
+
+// A dynamic draw's SpriteCard records as world-space vertices: each corner
+// from render.sprite-card.v1 with the material's card terms, its position
+// through the card's model matrix, the frame's coordinate as the base uv, the
+// next frame's in the lightmap-uv slot and the blend in the lightmap offset
+// (surface_program.glsl's SpriteCardSurface reads them there).
+void ExpandCards( sprite_card::Frame frame, WorldView::DynamicDraw &draw )
+{
+	std::copy_n( draw.cardModel, 16, frame.model );
+	std::copy_n( draw.cardView, 16, frame.view );
+	frame.splineRange = draw.cardSplineRange;
+	// splinecard_vs20 faces the camera; Portal 2's spline cards with end
+	// normals (TEXCOORD6/7) turn toward them.
+	if ( frame.kind == sprite_card::Kind::kSpline )
+		frame.orientation = draw.cardSplineNormals ? 3 : 0;
+	sprite_card::Prepare( frame );
+	draw.vertices.resize( draw.cards.size() );
+	for ( std::size_t i = 0; i < draw.cards.size(); ++i )
+	{
+		const sprite_card::Corner corner = sprite_card::Expand( frame, draw.cards[i] );
+		WorldVertex &vertex = draw.vertices[i];
+		vertex = {};
+		for ( int j = 0; j < 3; ++j )
+			vertex.position[j] = corner.position[0] * frame.model[j] +
+			                     corner.position[1] * frame.model[4 + j] +
+			                     corner.position[2] * frame.model[8 + j] + frame.model[12 + j];
+		vertex.uv[0] = corner.uv[0];
+		vertex.uv[1] = corner.uv[1];
+		vertex.lightmapUv[0] = corner.uv2[0];
+		vertex.lightmapUv[1] = corner.uv2[1];
+		vertex.lightmapOffset = corner.blend;
+		for ( int c = 0; c < 4; ++c )
+			vertex.color[c] =
+			    std::uint8_t( std::clamp( corner.color[c], 0.0f, 1.0f ) * 255.0f + 0.5f );
+	}
+	draw.cards.clear();
+	draw.cards.shrink_to_fit();
+}
+
+} // namespace
+
 std::uint32_t WorldPass::QueueView( WorldView view )
 {
 	State &s = *m_State;
@@ -1360,7 +1405,7 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 	}
 	const bool stage = s.world->stage != nullptr;
 	const bool reflection = s.world->reflection.has_value();
-	for ( const WorldView::DynamicDraw &draw : view.dynamicDraws )
+	for ( WorldView::DynamicDraw &draw : view.dynamicDraws )
 	{
 		std::string key;
 		const auto entry = s.Mapped( draw.material, stage, reflection, key );
@@ -1369,10 +1414,14 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 			why = entry->material.Error();
 		else if ( !entry->claimError.empty() )
 			why = entry->claimError;
+		else if ( !draw.cards.empty() && !entry->cardTerms )
+			why = "card records for a material that is not a SpriteCard";
 		else if ( entry->requiresDepthAlpha &&
 		          ( view.depthAlphaHandle <= 0 || !std::isfinite( view.depthAlphaRange ) ||
 		              view.depthAlphaRange <= 0.0f ) )
 			why = "$depthblend needs a captured depth-alpha texture and positive range";
+		if ( why.empty() && !draw.cards.empty() )
+			ExpandCards( *entry->cardTerms, draw );
 		dynamic->keys.push_back( std::move( key ) );
 		dynamic->mapped.push_back( entry );
 		if ( !why.empty() )
@@ -1456,7 +1505,7 @@ std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
 	if ( found && found->claimStage == stage && found->claimReflection == reflection )
 		return found;
 	auto entry = std::make_shared<MappedEntry>( MappedEntry{
-	    found ? found->material : MapWorldMaterial( source ), stage, reflection, {}, false } );
+	    found ? found->material : MapWorldMaterial( source ), stage, reflection, {}, false, {} } );
 	if ( entry->material )
 	{
 		const material::MaterialDesc &desc = entry->material.Value().desc;
@@ -1466,6 +1515,8 @@ std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
 		                               desc, stage, &entry->requiresDepthAlpha, reflection );
 		if ( !claim )
 			entry->claimError = claim.Error();
+		else
+			entry->cardTerms = material::SpriteCardTermsFor( desc );
 	}
 	std::lock_guard<std::mutex> guard( mappedLock );
 	if ( mapped.size() >= kMaxMapped )

@@ -2632,8 +2632,10 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		return m_Output.QueuePost( draw );
 	if ( !AcceptsMeshes() && draw.kind == legacy::CoreMeshKind::kSurface )
 		return 0;
-	if ( !draw.name || !draw.shader || !draw.vertices || !draw.indices || !draw.vertexCount ||
-	     !draw.indexCount || ( draw.variableCount && !draw.variables ) )
+	const bool cards = draw.kind == legacy::CoreMeshKind::kParticle && draw.cards;
+	if ( !draw.name || !draw.shader || !draw.indices || !draw.indexCount ||
+	     ( cards ? !draw.cardCount : !draw.vertices || !draw.vertexCount ) ||
+	     ( draw.variableCount && !draw.variables ) )
 		return 0;
 	// A static prop's baked vertex lighting reaches the core in its
 	// vertices' color, for the mesh point alone (VertexLitGeneric).
@@ -2678,7 +2680,16 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		if ( variable.textureHandle )
 			geometry.material.textures.emplace_back( variable.key, variable.textureHandle );
 	}
-	geometry.vertices.assign( draw.vertices, draw.vertices + draw.vertexCount );
+	if ( cards )
+	{
+		geometry.cards.assign( draw.cards, draw.cards + draw.cardCount );
+		std::copy_n( draw.cardModel, 16, geometry.cardModel );
+		std::copy_n( draw.cardView, 16, geometry.cardView );
+		geometry.cardSplineRange = draw.cardSplineRange;
+		geometry.cardSplineNormals = draw.cardSplineNormals;
+	}
+	else
+		geometry.vertices.assign( draw.vertices, draw.vertices + draw.vertexCount );
 	geometry.indices.assign( draw.indices, draw.indices + draw.indexCount );
 	geometry.lightmapPage = draw.lightmapPage;
 	geometry.capturedLightmap = draw.capturedLightmap;

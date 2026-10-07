@@ -85,35 +85,6 @@ public:
 	}
 };
 
-class LabSceneColorCapture final : public IWorldSceneColorCapture
-{
-public:
-	explicit LabSceneColorCapture( IRenderDevice2 &device ) : m_Device( device ) {}
-	~LabSceneColorCapture() override
-	{
-		(void)m_Device.WaitIdle();
-		for ( graph::InlineGraphResources &capture : m_Captures )
-			capture.Release( m_Device, CompletionToken() );
-	}
-	std::optional<WorldSceneColor> Capture( IRenderDevice2 &device, CommandEncoder &encoder,
-	    TextureId source, const TextureDesc &sourceDesc, std::uint64_t ) override
-	{
-		if ( &device != &m_Device )
-			return std::nullopt;
-		auto captured = graph::RecordSceneColor( device, encoder, source, sourceDesc );
-		if ( !captured )
-			return std::nullopt;
-		graph::RecordedSceneColor value = std::move( captured ).Value();
-		WorldSceneColor result{ value.texture, value.desc };
-		m_Captures.push_back( std::move( value.resources ) );
-		return result;
-	}
-
-private:
-	IRenderDevice2 &m_Device;
-	std::vector<graph::InlineGraphResources> m_Captures;
-};
-
 WorldData MeshWorld( bool blended = false )
 {
 	WorldData world;

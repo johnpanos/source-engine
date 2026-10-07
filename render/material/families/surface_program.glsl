@@ -717,7 +717,15 @@ void RefractSurface()
 	const vec3 mapped = bump.rgb * 2.0 - 1.0;
 	const bool local = material.transmission.z > 1.5;
 	const vec2 unwarped = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
-	const vec2 warped = unwarped + mapped.xy * bump.a * material.transmission.x;
+	// Warp particles: the vertex alpha scales the warp and its tint (state.w),
+	// so a fading particle's refraction fades with it; the vertex color tints
+	// the refracted scene (flags.x).
+#ifdef SEEDED_WARP_VERTEX_ALPHA_IGNORED
+	const float vertexAlpha = 1.0;
+#else
+	const float vertexAlpha = material.state.w != 0.0 ? color.a : 1.0;
+#endif
+	const vec2 warped = unwarped + mapped.xy * bump.a * material.transmission.x * vertexAlpha;
 	vec3 behind = local ? vec3( 0.0 ) : RefractSceneColor( warped );
 	if ( !local && material.transmission.y > 0.5 )
 	{
@@ -743,8 +751,10 @@ void RefractSurface()
 	const vec4 baseSource = vec4( baseUv, 0.0, 1.0 );
 	const vec2 localUv = vec2(
 	    dot( baseSource, material.baseTransform[0] ), dot( baseSource, material.baseTransform[1] ) );
+	if ( material.flags.x != 0.0 )
+		refractTint *= color.rgb;
 	vec3 result = local ? LocalRefractColor( mapped, localUv )
-	                    : mix( RefractSceneColor( unwarped ), behind * refractTint, fade );
+	                    : mix( RefractSceneColor( unwarped ), behind * refractTint, fade * vertexAlpha );
 	const float alpha = material.meshModes.y > 0.5 ? 1.0 : bump.a;
 	// Authored images contain material radiance. A scene snapshot is already
 	// exposed and fogged, so it must not receive those transforms a second time.
@@ -1708,6 +1718,103 @@ void PbrSurface( out float coverage )
 	outColor = EncodeOutput( composed );
 }
 
+// Source's DepthFeathering for the unlit point's $depthblend
+// (surfaceControls.z): the opaque scene's depth from the view's captured
+// depth-alpha copy against this pixel's, over the $depthblendscale distance
+// (surfaceControls.w). Depth saturates beyond the legacy range; the fade
+// keeps visibility there.
+float DepthBlendFade()
+{
+#ifdef SEEDED_DEPTH_BLEND_IGNORED
+	return 1.0;
+#else
+#ifdef SEEDED_DEPTH_TEXTURE_EXTENT
+	const vec2 screenUv =
+	    gl_FragCoord.xy / vec2( textureSize( sampler2D( sceneColorTexture, sceneColorSampler ), 0 ) );
+#elif defined( SEEDED_DEPTH_VIEWPORT_EXTENT )
+	const vec2 screenUv = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
+#else
+	// The legacy depth copy can resample the view into a different-sized
+	// texture. FSR/nested viewports occupy a subregion of the source attachment.
+	const vec2 screenUv = gl_FragCoord.xy * clusterView.depthAlpha.yz;
+#endif
+	const float sceneDepth =
+	    texture( sampler2D( sceneColorTexture, sceneColorSampler ), screenUv ).a;
+	const float range = clusterView.depthAlpha.x;
+	const float spriteDepth = fogDepth.x / range;
+#ifdef SEEDED_DEPTH_RANGE_IGNORED
+	const float blendRange = 1.0;
+#else
+	const float blendRange = range;
+#endif
+	const float fade = abs( sceneDepth - spriteDepth ) * blendRange / material.surfaceControls.w;
+	return clamp( max( smoothstep( 0.75, 1.0, sceneDepth ), fade ), 0.0, 1.0 );
+#endif
+}
+
+// SpriteCard's cards (render.sprite-card.v1; spritecard_ps2x): the frame
+// blended with the next (its coordinate in the lightmap-uv slot, the blend in
+// the lightmap offset), times $overbrightfactor (surfaceControls.y), then
+// either premultiplied by alpha and brightened by $addself's weight times
+// itself (meshModes.z) before the vertex color, or times the vertex color and
+// alpha. $mod2x (meshModes.w) writes a dimensionless factor toward the
+// blend's neutral 0.5, as the decal-modulate point does: no exposure, fog
+// or output encoding. Card radiance is emitted: SpriteCard has no lighting.
+void SpriteCardSurface()
+{
+	const vec4 frame0 = LegacyBaseSample();
+#ifdef SEEDED_CARD_FRAME_BLEND_IGNORED
+	const vec4 frame1 = frame0;
+#else
+	const vec4 frame1 = texture( sampler2D( baseTexture, baseSampler ), lightmapUv );
+#endif
+	vec4 blended = mix( frame0, frame1, lightmapOffset );
+	float vertexAlpha = color.a;
+	if ( material.surfaceControls.z > 0.5 )
+		vertexAlpha *= DepthBlendFade();
+	if ( material.meshModes.w > 0.5 )
+	{
+#ifdef SEEDED_CARD_MOD2X_NEUTRAL_ZERO
+		const vec3 neutral = vec3( 0.0 );
+#else
+		const vec3 neutral = vec3( 0.5 );
+#endif
+		// The factor in its stored encoding, as the frame buffer's blend
+		// read it; the base sampler decodes sRGB.
+		const vec3 factor = LinearToSrgb( blended.rgb );
+		const float alpha = blended.a * vertexAlpha;
+		TestCutoutAlpha( alpha, material.flags.y != 0.0 );
+		if ( kShadowDepth )
+			return;
+		outColor = vec4( clamp( mix( neutral, mix( neutral, factor, color.rgb ), alpha ), 0.0, 1.0 ),
+		    alpha );
+		return;
+	}
+	blended.rgb *= material.surfaceControls.y;
+	if ( material.meshModes.z != 0.0 )
+	{
+		blended.a *= vertexAlpha;
+		TestCutoutAlpha( blended.a, material.flags.y != 0.0 );
+		if ( kShadowDepth )
+			return;
+		blended.rgb *= blended.a;
+#ifndef SEEDED_CARD_ADDSELF_IGNORED
+		blended.rgb += material.surfaceControls.y * material.meshModes.z * vertexAlpha * blended.rgb;
+#endif
+		outColor = Output( blended.rgb * color.rgb, blended.a );
+		return;
+	}
+	const float alpha = blended.a * vertexAlpha;
+	TestCutoutAlpha( alpha, material.flags.y != 0.0 );
+	if ( kShadowDepth )
+		return;
+#ifdef SEEDED_CARD_VERTEX_COLOR_IGNORED
+	outColor = Output( blended.rgb, alpha );
+#else
+	outColor = Output( blended.rgb * color.rgb, alpha );
+#endif
+}
+
 // The vertexlit point: the vertexlit_and_unlit_generic port's DIFFUSELIGHTING
 // path, the vertex lighting mixing the ambient cube and the lights, so no
 // light term is separable; the furnace takes albedo 1 under a uniform
@@ -1967,12 +2074,17 @@ void main()
 		VertexLitSurface();
 		return;
 	}
+	if ( Term( kUnlit ) && material.meshModes.y > 0.5 )
+	{
+		SpriteCardSurface();
+		return;
+	}
 	const bool bumpmap = Term( kBumpmap | kSsbump );
 	const bool ssbump = Term( kSsbump );
 	const bool diffuseBumpmap = bumpmap && Term( kDiffuseBumpmap );
 	const bool lightingOne = Term( kUnlit );
 
-	const vec4 base = LegacyBaseSample();
+	vec4 base = LegacyBaseSample();
 	// GetBaseTextureAndNormal: the bump map is read at the base coordinates;
 	// with only $normalmapalphaenvmapmask its texels are used undecoded, as
 	// the port does.
@@ -2014,35 +2126,7 @@ void main()
 		if ( material.state.w != 0.0 )
 			alpha *= color.a;
 		if ( material.surfaceControls.z > 0.5 )
-#ifndef SEEDED_DEPTH_BLEND_IGNORED
-		{
-			#ifdef SEEDED_DEPTH_TEXTURE_EXTENT
-			const vec2 screenUv = gl_FragCoord.xy /
-			    vec2( textureSize( sampler2D( sceneColorTexture, sceneColorSampler ), 0 ) );
-#elif defined( SEEDED_DEPTH_VIEWPORT_EXTENT )
-			const vec2 screenUv = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
-#else
-			// The legacy depth copy can resample the view into a different-sized
-			// texture. FSR/nested viewports occupy a subregion of the source attachment.
-			const vec2 screenUv = gl_FragCoord.xy * clusterView.depthAlpha.yz;
-#endif
-			const float sceneDepth = texture(
-			    sampler2D( sceneColorTexture, sceneColorSampler ), screenUv ).a;
-			const float range = clusterView.depthAlpha.x;
-			const float spriteDepth = fogDepth.x / range;
-#ifdef SEEDED_DEPTH_RANGE_IGNORED
-			const float blendRange = 1.0;
-#else
-			const float blendRange = range;
-#endif
-			float fade = abs( sceneDepth - spriteDepth ) * blendRange / material.surfaceControls.w;
-			// Depth saturates beyond the legacy range; preserve visibility there.
-			fade = max( smoothstep( 0.75, 1.0, sceneDepth ), fade );
-			alpha *= clamp( fade, 0.0, 1.0 );
-		}
-#else
-		{}
-#endif
+			alpha *= DepthBlendFade();
 	}
 	else if ( material.flags.x != 0.0 )
 	{

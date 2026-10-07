@@ -487,6 +487,21 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_DEPTH_TEXTURE_EXTENT",)),
         ("kSoftParticleViewportExtent", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_DEPTH_VIEWPORT_EXTENT",)))),
+    "particles_defects_spv.h": ("render::lab::spirv",
+        "render_lab's particle suite's seeded programs (render.lab.particles sensitivity, "
+        "RFC 0016 K8 particles)", (
+        ("kCardFrameBlendIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_CARD_FRAME_BLEND_IGNORED",)),
+        ("kCardVertexColorIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_CARD_VERTEX_COLOR_IGNORED",)),
+        ("kCardAddSelfIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_CARD_ADDSELF_IGNORED",)),
+        ("kCardMod2xNeutralZero", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_CARD_MOD2X_NEUTRAL_ZERO",)),
+        ("kCardDepthBlendIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_DEPTH_BLEND_IGNORED",)),
+        ("kWarpVertexAlphaIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_WARP_VERTEX_ALPHA_IGNORED",)))),
     "selfillum_defects_spv.h": ("render::lab::spirv",
         "render_lab's self-illumination suite's seeded programs (render.lab.selfillum "
         "sensitivity, RFC 0016 surface model emission term)", (
