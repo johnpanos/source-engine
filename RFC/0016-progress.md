@@ -12207,3 +12207,17 @@ Retail Source BSPs carry no RPRB, so every material reading `env_cubemap`
   core applies the dielectric Fresnel coating.
 - Open: the crack highlight strength (visual review), `$additive` Refract,
   warp particles, frame time.
+
+## K12 glass cohort, fourth slice: `$additive` on Refract is inert (2026-10-06)
+
+`refract_dx9_helper.cpp` sets no blend from `$additive` (only `$masked`
+blends); the flag changes the material system's sort order alone. It is now a
+named no-effect key for the Refract family, so `stasis_chamber_glass_02`
+claims. The checked-in inventories are regenerated and verify:
+`portal2-all-claims.json` 3,738 VMTs, unsupported 489 → 481, and
+`portal2-model-claims.json` unsupported 41 → 33 (the seven `$nocull`
+fracture panes of the third slice and the stasis glass). The user chose the
+core's Fresnel crack reflections over legacy's full cubemap glints
+(2026-10-06). Remaining Refract gaps: animated normal frames (`$bumpframe`,
+`$dudvframe`; the viewfinder HUD and the neurotoxin tube) and the warp
+particles, which belong to the particle cohort.

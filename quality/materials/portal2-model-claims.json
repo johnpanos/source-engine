@@ -52,9 +52,9 @@
     "refract": {
       "dynamically_unresolved": 1,
       "statically_supported": 0,
-      "supported_with_requirements": 12,
+      "supported_with_requirements": 20,
       "total": 21,
-      "unsupported": 8
+      "unsupported": 0
     },
     "unlitgeneric": {
       "dynamically_unresolved": 0,
@@ -101,11 +101,9 @@
     "shader Portal maps to no family the model draws (legacy)": 7,
     "shader PortalStaticOverlay maps to no family the model draws (legacy)": 3,
     "shader wireframe maps to no family the model draws (legacy)": 1,
-    "the model does not read $additive": 1,
     "the model does not read $alphatesttocoverage": 1,
     "the model does not read $flashlightnolambert": 3,
     "the model does not read $fresnelreflection": 1,
-    "the model does not read $nocull": 7,
     "the model does not read $rimboost": 1,
     "the model does not read $selfillum_envmapmask_alpha": 1,
     "the model does not read /*": 2,
@@ -39499,34 +39497,43 @@
       ]
     },
     "materials/models/props_destruction/glass_fracture_192x128_b_normal.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "linear_scene_color": true,
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "refract",
-      "gap": "the model does not read $nocull",
       "input_sha256": "7c7fbd68246896740b652b214a542dba76b035903a447a04370088134b7f3a4f",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -39534,23 +39541,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nocull"
-      ],
       "shader": "refract",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nocull"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -39558,34 +39559,43 @@
       ]
     },
     "materials/models/props_destruction/glass_fracture_192x224_d_normal.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "linear_scene_color": true,
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "refract",
-      "gap": "the model does not read $nocull",
       "input_sha256": "8622fe16e0c8bd6d1e763a82022cd44503e1d28221bdaafc0ff05296ea3667da",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -39593,23 +39603,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nocull"
-      ],
       "shader": "refract",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nocull"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -39617,34 +39621,43 @@
       ]
     },
     "materials/models/props_destruction/glass_fracture_192x96_d_normal.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "linear_scene_color": true,
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "refract",
-      "gap": "the model does not read $nocull",
       "input_sha256": "6170011df67dccbba98c833859a04eab375dfb4f311273d4fee45d2cdbbf4092",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -39652,23 +39665,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nocull"
-      ],
       "shader": "refract",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nocull"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -39676,34 +39683,43 @@
       ]
     },
     "materials/models/props_destruction/glass_fracture_42x55_d_normal.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "linear_scene_color": true,
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "refract",
-      "gap": "the model does not read $nocull",
       "input_sha256": "73c7345a191aef9e37e3afb430a31a7d6ec36658506b227f462263657506d1d7",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -39711,23 +39727,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nocull"
-      ],
       "shader": "refract",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nocull"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -40044,34 +40054,43 @@
       ]
     },
     "materials/models/props_destruction/glass_fracture_e_normal.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "linear_scene_color": true,
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "refract",
-      "gap": "the model does not read $nocull",
       "input_sha256": "0f5a66c0ab4e3825ecefca4f9768bc0241dad5f83482202b59b9f640490b1bff",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -40079,23 +40098,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nocull"
-      ],
       "shader": "refract",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nocull"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -40103,34 +40116,43 @@
       ]
     },
     "materials/models/props_destruction/glass_fracture_f_normal.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "linear_scene_color": true,
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "refract",
-      "gap": "the model does not read $nocull",
       "input_sha256": "562fe46a2a6fce4dc440515cc1c875b5ed296fb2812f0f44fcbac7b7864f6c8f",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -40138,23 +40160,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nocull"
-      ],
       "shader": "refract",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nocull"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -40162,34 +40178,43 @@
       ]
     },
     "materials/models/props_destruction/glass_fracture_g_normal.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "linear_scene_color": true,
+            "native_reflection_probes": true
+          }
+        }
+      ],
       "family": "refract",
-      "gap": "the model does not read $nocull",
       "input_sha256": "8ca4936def2e73f605ec57259f8b7c5d15f26a56536ade2d2b661d132f50d1c3",
       "mesh_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -40197,23 +40222,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$nocull"
-      ],
       "shader": "refract",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$nocull"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $nocull",
+          "gap": "$envmap needs the stage's native reflection probes",
           "scene_inputs": {
             "world_stage": true
           }
@@ -63756,34 +63775,42 @@
       ]
     },
     "materials/models/props_underground/stasis_chamber_glass_02.vmt": {
-      "candidates": [],
+      "candidates": [
+        {
+          "blend": "opaque",
+          "geometry": "model_mesh",
+          "pass": "opaque",
+          "scene_inputs": {
+            "linear_scene_color": true
+          }
+        }
+      ],
       "family": "refract",
-      "gap": "the model does not read $additive",
       "input_sha256": "34cd651fe49b8805cacef774ff2a9ff52c9a75ff49b51bdb7a0ea34d304dc87b",
       "mesh_claims": [
         {
-          "gap": "the model does not read $additive",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $additive",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": false
           }
         },
         {
-          "gap": "the model does not read $additive",
+          "gap": "Refract needs the view's linear scene color",
           "scene_inputs": {
             "linear_scene_color": false,
             "native_reflection_probes": true
           }
         },
         {
-          "gap": "the model does not read $additive",
+          "claim": "opaque",
           "scene_inputs": {
             "linear_scene_color": true,
             "native_reflection_probes": true
@@ -63791,23 +63818,17 @@
         }
       ],
       "proxies": [],
-      "refusal_features": [
-        "parameter:$additive"
-      ],
       "shader": "refract",
-      "status": "unsupported",
-      "unmapped_keys": [
-        "$additive"
-      ],
+      "status": "supported_with_requirements",
       "world_claims": [
         {
-          "gap": "the model does not read $additive",
+          "gap": "family refract has no program yet",
           "scene_inputs": {
             "world_stage": false
           }
         },
         {
-          "gap": "the model does not read $additive",
+          "gap": "family refract has no program yet",
           "scene_inputs": {
             "world_stage": true
           }
@@ -69362,7 +69383,7 @@
     "core_only_declared": true,
     "id": "portal2-linux-native-vulkan-high-v1",
     "path": "quality/product_profiles/portal2-linux-native-vulkan-high.json",
-    "sha256": "8e4cdf65da678ececa4c476bc60c56a16edff50e343e4acd8b8b88ded7cc90d8",
+    "sha256": "a2a6cca9da70e55af929f4983a978e82513c7f23623242a38829a029eae57f03",
     "vmt_conditions": {
       "dx": 95,
       "gpu": 3,
@@ -69397,14 +69418,6 @@
       "refused_materials": 2,
       "unmapped_materials": 0
     },
-    "parameter:$additive": {
-      "examples": [
-        "materials/models/props_underground/stasis_chamber_glass_02.vmt"
-      ],
-      "first_refusals": 1,
-      "refused_materials": 1,
-      "unmapped_materials": 1
-    },
     "parameter:$alphatesttocoverage": {
       "examples": [
         "materials/models/props_underground/railing_underground.vmt"
@@ -69438,16 +69451,6 @@
       "first_refusals": 1,
       "refused_materials": 1,
       "unmapped_materials": 0
-    },
-    "parameter:$nocull": {
-      "examples": [
-        "materials/models/props_destruction/glass_fracture_192x128_b_normal.vmt",
-        "materials/models/props_destruction/glass_fracture_192x224_d_normal.vmt",
-        "materials/models/props_destruction/glass_fracture_192x96_d_normal.vmt"
-      ],
-      "first_refusals": 7,
-      "refused_materials": 7,
-      "unmapped_materials": 7
     },
     "parameter:$rimboost": {
       "examples": [
@@ -69528,8 +69531,8 @@
   "status_counts": {
     "dynamically_unresolved": 44,
     "statically_supported": 848,
-    "supported_with_requirements": 232,
-    "unsupported": 41
+    "supported_with_requirements": 240,
+    "unsupported": 33
   },
   "total": 1165
 }

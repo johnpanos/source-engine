@@ -435,6 +435,10 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$normalmapalphaenvmapmask", "Refract_DX90 always uses normal alpha for reflection",
         "refract" },
     { "$envmaplightscale", "Refract_DX90 has no $envmaplightscale shader parameter", "refract" },
+    { "$additive",
+        "Refract_DX90 sets no blend from it (refract_dx9_helper.cpp blends only $masked); the "
+        "flag changes the material system's sort order alone",
+        "refract" },
     { "$ignore_alpha_modulation",
         "Refract is already translucent; this material-system flag only affects classification",
         "refract" },
