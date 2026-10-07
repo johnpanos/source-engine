@@ -466,6 +466,15 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_RPRB_WRONG_LAYER",)),
         ("kReflectionProbesBaseMipIgnored", LAB + "/reflection_probes_check.comp",
          DEVICE_OPTIONS + ("-DSEEDED_RPRB_BASE_MIP_IGNORED",)))),
+    "specular_aa_check_spv.h": ("render::lab::spirv",
+        "render_lab's geometric specular AA filter and negative controls", (
+        ("kSpecularAaCheck", LAB + "/specular_aa_check.comp", DEVICE_OPTIONS),
+        ("kSpecularAaDisabled", LAB + "/specular_aa_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_SPECULAR_AA_DISABLED",)),
+        ("kSpecularAaBiased", LAB + "/specular_aa_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_SPECULAR_AA_BIASED",)),
+        ("kSpecularAaNoThreshold", LAB + "/specular_aa_check.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_SPECULAR_AA_NO_THRESHOLD",)))),
     "tree_sway_check_spv.h": ("render::lab::spirv",
         "render_lab's shared foliage deformation and negative controls", (
         ("kTreeSwayCheck", LAB + "/tree_sway_check.comp", DEVICE_OPTIONS),

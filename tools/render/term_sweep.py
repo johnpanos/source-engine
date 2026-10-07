@@ -57,7 +57,10 @@ sys.path.insert(0, str(ROOT / "tools/quality"))
 # they are swept too, and report no difference where they draw nothing.
 TERMS = ["clustered", "sun", "area", "projected", "baked", "probes", "ibl", "ssr", "ao",
          "specular_occlusion", "emission", "volumetric", "shadow_visibility", "directional",
-         "normal_map", "bounce", "soft_shadows"]
+         "normal_map", "bounce", "soft_shadows", "specular_aa"]
+# Settings that are profile ConVars, not debug terms: name: (ConVar, off, on).
+# specular_aa is RFC 0012 A2's filter (render.pbr-specular-aa.v1).
+CONVAR_TERMS = {"specular_aa": ("r_core_specular_aa", "0", "1")}
 DEMO = ROOT / "quality/fixtures/demos/sp_a1_intro4_relit.dem"
 VIEW_COUNT = 6
 
@@ -117,11 +120,15 @@ def console_script(terms, views=None, compile_frames=150, measure_frames=240,
         steps += ["unpause", "setpos %.1f %.1f %.1f" % (x, y, z),
                   "setang %.1f %.1f 0" % (pitch, yaw), "wait 60", "setpause", "wait 30"]
         for name, value in settings(terms):
+            convar = CONVAR_TERMS.get(name)
             # A lone comma names no term (the parser skips empty names).
-            steps += ["cl_render_debug_term %s" % ( value or "," ),
+            steps += ["%s %s" % convar[:2] if convar else
+                      "cl_render_debug_term %s" % ( value or "," ),
                       "wait %d" % compile_frames, "echo %s.BEGIN.%d.%s" % (MARK, v, name),
                       "wait %d" % measure_frames, "echo %s.SHOT.%d.%s" % (MARK, v, name),
                       "screenshot", "wait 20", "echo %s.END.%d.%s" % (MARK, v, name)]
+            if convar:
+                steps.append("%s %s" % (convar[0], convar[2]))
     steps += ["cl_render_debug_term ,", "echo %s.DONE" % MARK, "quit"]
     lines = []
     for index, step in enumerate(steps):
@@ -346,7 +353,10 @@ def selftest():
     lines = console_script(["probes"])
     failures += not any("cl_render_debug_term probes" in line for line in lines)
     failures += lines[-1] != "ts_step0"
-    print("CONFORMANCE %d %d" % (5, failures))
+    lines = console_script(["specular_aa"], views=[(0, 0, 0, 0, 0)])
+    failures += not (any("r_core_specular_aa 0" in line for line in lines) and
+                     any("r_core_specular_aa 1" in line for line in lines))
+    print("CONFORMANCE %d %d" % (6, failures))
     return 1 if failures else 0
 
 

@@ -391,6 +391,37 @@ runtime path.
   upward without derivatives (fails identity and reference), and the filter
   applied to only one roughness consumer (fails prediction).
 
+**A2 progress (2026-10-06, first slice, render core only).** Installed:
+
+- the owner `public/render/pbr_specular_aa.h` (version 1, screen variance
+  0.15, threshold 0.2) and its GPU copy
+  `render/shaders/common/pbr_specular_aa.glsl`;
+- the surface program's pbr point (world and model, every variant) filters
+  the one roughness after normal mapping, so every lobe, the split-sum
+  lookup, probe mip, specular occlusion and the SSR target read it. It is
+  view feature `kSurfaceViewSpecularAa` (a specialization constant),
+  selected by `r_core_specular_aa` (default 1);
+- `render.pbr-specular-aa` (12 checks: owner against an independent double
+  formula, GLSL against owner over 256 cases, bitwise identity at zero
+  derivatives, widening, threshold) and its sensitivity row (disabled,
+  biased and unclamped kernels each fail their clause), both passing through
+  the shared runner on Linux native Vulkan (Radeon 8060S);
+- `tools/render/term_sweep.py --terms specular_aa`: on `sp_a1_intro4_relit`
+  at 1920x1080 over five demo views, filter off against on: 0.02 ms core
+  view (within the run's +-0.23 ms drift), mean dE 0.07, p95 0.6, 0.04 % of
+  pixels over 2.3, concentrated on perforated panels, tile grout and curved
+  glossy trim.
+
+The other lab suites are unchanged by it: debug-views, lighting-controls and
+shadow-receiver-perf fail identically with the filter compiled out (a
+pre-existing failure in the shared tree), and the rest pass.
+
+Open: the shimmer and supersampled-reference oracles under camera motion, the
+one-consumer negative provider, the clear coat's own filter, the frozen
+native backend's `world_pbr`/`model_pbr` copies (not changed, by RFC 0016's
+binding rules), VGPR/occupancy and the resolution sweep on the 8060S and RTX
+3070, and Fold7 and Apple runs.
+
 ### A3: Multisampled target policy
 
 - Scene depth under MSAA (glass `sceneDepthValid` true at 4x, with a

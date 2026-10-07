@@ -51,6 +51,7 @@
 #include "../../shaders/common/color_encoding.glsl"
 #include "../../shaders/common/debug_view.glsl"
 #include "../../shaders/common/pbr_brdf.glsl"
+#include "../../shaders/common/pbr_specular_aa.glsl"
 #include "../../shaders/common/ltc.glsl"
 #include "../../shaders/common/runtime_light.glsl"
 #include "../../shaders/common/shadow_sample.glsl"
@@ -82,6 +83,7 @@ const uint kViewAreas = 4u;
 const uint kViewClipPlanes = 8u;
 const uint kViewSoftShadows = 16u;
 const uint kViewProbeBounce = 32u;
+const uint kViewSpecularAa = 64u;
 
 bool MaterialFeature( uint feature, bool uniformValue )
 {
@@ -851,7 +853,7 @@ void PbrSurface( out float coverage )
 	const float meshRoughness = Term( kPhongExponentTexture ) && material.pbrFactors.w <= 0.0
 	                                ? sqrt( 2.0 / ( exponent + 2.0 ) )
 	                                : mrao.g;
-	const float roughness =
+	const float authoredRoughness =
 	    max( kDebugForceRoughness >= 0.0 ? kDebugForceRoughness : meshRoughness, 0.02 );
 	const float occlusion = DebugTermOn( kDebugTermAo ) ? clamp( mrao.b, 0.0, 1.0 ) : 1.0;
 	if ( Term( kRsm ) )
@@ -909,6 +911,12 @@ void PbrSurface( out float coverage )
 		directSpecularMask = 1.0 - directSpecularMask;
 	if ( material.meshModes.y > 0.5 && material.envSaturation.a > 0.5 )
 		probeSpecularMask = 1.0 - probeSpecularMask;
+	// render.pbr-specular-aa.v1 (RFC 0012 A2): the final shading normal's
+	// screen change widens the one roughness every lobe, the split-sum
+	// lookup, probe mip and SSR read below.
+	const float roughness = ViewFeature( kViewSpecularAa )
+	                            ? SpecularAaRoughness( authoredRoughness, dFdx( normal ), dFdy( normal ) )
+	                            : authoredRoughness;
 	const float normalDotView = max( dot( normal, view ), 0.0 );
 	if ( Term( kDepthNormal ) )
 	{
