@@ -8,6 +8,9 @@
 //
 //   uint ReflectionProbesWord( uint index )   a 32-bit word of the probe buffer
 //                                             (mapcontainer::WriteReflectionProbeBuffer)
+//   uvec4 ReflectionProbesVec4( uint index )  optional, under REFLECTION_PROBES_VEC4:
+//                                             16-byte element `index` of the same buffer
+//                                             (record fields in one load)
 //   vec4 ReflectionProbesRadianceFetch( vec3 direction, float layer, float lod )
 //                                             the BC6H radiance cube array, trilinear
 //                                             (textureLod of a samplerCubeArray), sampled
@@ -103,12 +106,20 @@ const vec3 kReflectionProbeWeightPalette[6] = vec3[6]( vec3( 1.0, 0.0, 0.0 ),
 
 vec4 ReflectionProbeRecord( int rank, int field )
 {
+#ifdef REFLECTION_PROBES_VEC4
+	// One 16-byte load: records start at word 16 and are 20 words, so every
+	// field is 16-byte aligned (vec4 index 4 + rank * 5 + field).
+	return uintBitsToFloat( ReflectionProbesVec4(
+	    kReflectionProbeProbesWord / 4u + uint( rank ) * ( kReflectionProbeRecordWords / 4u ) +
+	    uint( field ) ) );
+#else
 	uint at = kReflectionProbeProbesWord + uint( rank ) * kReflectionProbeRecordWords +
 	          uint( field ) * 4u;
 	return vec4( uintBitsToFloat( ReflectionProbesWord( at ) ),
 	    uintBitsToFloat( ReflectionProbesWord( at + 1u ) ),
 	    uintBitsToFloat( ReflectionProbesWord( at + 2u ) ),
 	    uintBitsToFloat( ReflectionProbesWord( at + 3u ) ) );
+#endif
 }
 
 // The direction a cube array is read along: the world direction. The seeded

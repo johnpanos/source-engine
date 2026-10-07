@@ -241,6 +241,17 @@ uint ReflectionProbesWord( uint index )
 	return reflectionProbeWords[index];
 }
 
+// The same buffer as 16-byte elements, so a probe record field is one load.
+layout( std430, set = 0, binding = 13 ) readonly buffer ReflectionProbeBufferVec4
+{
+	uvec4 reflectionProbeVec4s[];
+};
+#define REFLECTION_PROBES_VEC4
+uvec4 ReflectionProbesVec4( uint index )
+{
+	return reflectionProbeVec4s[index];
+}
+
 vec4 ReflectionProbesRadianceFetch( vec3 direction, float layer, float lod )
 {
 	return textureLod( samplerCubeArray( reflectionProbes, reflectionProbesSampler ),

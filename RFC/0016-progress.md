@@ -12101,3 +12101,7 @@ the run's first-use shader compiles. No gate closes.
 ## RPRB candidate grid covers the world bounds (2026-10-06, user request)
 
 `reflection_probe_set.py`'s candidate grid now spans the world bounds instead of the probes' extent, so no surface falls outside it (where every probe rank was a candidate). `sp_a1_intro4_relit` regridded: candidates per pixel mean 46.8 → 8.0 (median 14 → 6, max 23). Warm 4K intro4 demo on the RTX 3070 (soft shadows and probe bounce off): 44.6/45.3 → 45.9/46.0 fps, GPU p50 17.9 → 17.0 ms. Term sweep after the fix (core view saved / mean ΔE): clustered lights 7.1 ms / 4.03, reflection probes 4.7 ms / 0.71, shadow visibility 4.0 ms / 12.6, projected 0.7 ms / 1.26. The three `PlacementTest` failures predate this change.
+
+## Probe record fields in one 16-byte load (2026-10-06, user request)
+
+`reflection_probes.glsl` reads a probe record field through an optional `ReflectionProbesVec4` adapter (`REFLECTION_PROBES_VEC4`): records start at word 16 and are 20 words, so every field is 16-byte aligned. The core's surface program aliases its probe buffer (binding 13) as `uvec4[]`; the lab check and the frozen backend keep the word path. Warm 4K intro4 demo on the RTX 3070, interleaved: before 45.8 fps, GPU p50 17.95 ms; after 45.8 fps, GPU p50 17.68 ms (a second after-run was cold, with pipeline compiles: GPU p50 17.47, its fps not comparable). The gain is about 0.3 ms, at the edge of run-to-run noise.
