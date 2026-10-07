@@ -327,26 +327,27 @@ ShadowMaskTexels ShadowMaskFetch( vec2 uv )
 	return m;
 }
 
-// Light `id`'s baked visibility, or -1 where a texel with weight does not
-// hold it (the light is not among that texel's four: its runtime shadow).
+// Light `id`'s baked visibility: the bilinear blend over the texels that hold
+// it, renormalized, so a neighbour where the light is not among the four (a
+// fifth light outranked it there) does not drop the whole pixel to the
+// runtime shadow, which a static light without a mover near has none of.
+// -1 only where no texel with weight holds it.
 float ShadowMaskVisibility( ShadowMaskTexels m, uint id )
 {
 	float visibility = 0.0;
+	float held = 0.0;
 	for ( int t = 0; t < 4; ++t )
 	{
 		if ( m.weight[t] <= 0.0 )
 			continue;
-		bool found = false;
 		for ( int k = 0; k < 4; ++k )
 			if ( ( m.texel[t][k] >> 8u ) == id )
 			{
 				visibility += m.weight[t] * float( m.texel[t][k] & 255u ) / 255.0;
-				found = true;
+				held += m.weight[t];
 			}
-		if ( !found )
-			return -1.0;
 	}
-	return visibility;
+	return held > 0.0 ? visibility / held : -1.0;
 }
 
 layout( location = 0 ) in vec2 baseUv;

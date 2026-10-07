@@ -17,7 +17,10 @@
 //			- a mover sphere on some paths: each pixel dark where its path to
 //			  the light passes within the sphere grown by the light's source
 //			  radius, else lit (an analytic oracle per pixel, a band at the
-//			  boundary left out).
+//			  boundary left out);
+//			- a mask two of whose interior texels hold another light (a fifth
+//			  light outranked this one there): lit, as the mask alone; the
+//			  texels that hold the light carry it, never the dark tile.
 //			The seeded program that ignores the movers' spheres (every point
 //			of a light with a mover reads the tile) must fail the far case.
 //
@@ -73,14 +76,19 @@ std::vector<std::byte> HalfPage( float value )
 	return out;
 }
 
-std::vector<std::byte> MaskPage()
+std::vector<std::byte> MaskPage( bool holes = false )
 {
-	// Channel 0: the light's id with visibility 255; the others empty.
+	// Channel 0: the light's id with visibility 255; the others empty. With
+	// `holes`, two interior texels on the diagonal hold another light
+	// instead, as where a fifth light outranks this one; every 2x2 the
+	// shader blends still holds this light in at least two texels.
 	std::vector<std::byte> out;
 	for ( int i = 0; i < 16; ++i )
 		for ( int k = 0; k < 4; ++k )
 		{
-			const std::uint16_t value = k == 0 ? std::uint16_t( ( kMaskId << 8 ) | 255u ) : 0;
+			const bool hole = holes && i % 4 == i / 4 && ( i % 4 == 1 || i % 4 == 2 );
+			const std::uint32_t id = hole ? kMaskId + 1u : kMaskId;
+			const std::uint16_t value = k == 0 ? std::uint16_t( ( id << 8 ) | 255u ) : 0;
 			const auto *bytes = reinterpret_cast<const std::byte *>( &value );
 			out.insert( out.end(), bytes, bytes + 2 );
 		}
@@ -112,6 +120,7 @@ struct Case
 {
 	int maskId = int( kMaskId );
 	bool mover = false;
+	const char *mask = "sm/mask";
 	std::uint32_t bits = material::kSurfaceMoversEverywhere;
 	float sphere[4] = {};
 };
@@ -166,6 +175,7 @@ std::optional<std::string> Prepare( Lab &lab, std::span<const std::uint32_t> mod
 	bool staged = lab.textures.Stage( "sm/page", page, HalfPage( 0.0f ) ).HasValue() &&
 	              lab.textures.Stage( "sm/gradient", page, HalfPage( 0.0f ) ).HasValue() &&
 	              lab.textures.Stage( "sm/mask", mask, MaskPage() ).HasValue() &&
+	              lab.textures.Stage( "sm/mask-holes", mask, MaskPage( true ) ).HasValue() &&
 	              StageConstant( lab.textures, "sm/base", Format::kRGBA8Srgb,
 	                  ByteTexel( 255, 255, 255, 255 ) );
 	const material::PbrSplitSumTable table = material::SplitSumTable();
@@ -283,7 +293,7 @@ std::optional<std::string> Render( Lab &lab, const Case &c, CanvasImage &image )
 	     !lab.groups.Set( viewGroup, viewRequest ) ||
 	     !lab.groups.Set( frameGroup, lab.program->FrameGroup( frame, "sm/splitsum" ) ) ||
 	     !lab.groups.Set( drawGroup,
-	         lab.program->DrawGroup( "sm/page", {}, {}, "sm/gradient", {}, "sm/mask" ) ) )
+	         lab.program->DrawGroup( "sm/page", {}, {}, "sm/gradient", {}, c.mask ) ) )
 		return std::string( "a group was refused" );
 	if ( auto why = lab.canvas->Render( lab.textures, lab.groups, {}, { 0, 0, 0, 1 }, nullptr ) )
 		return why;
@@ -373,14 +383,19 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		near.sphere[1] = 0.0f;
 		near.sphere[2] = 75.0f;
 		near.sphere[3] = 18.0f;
-		CanvasImage maskImage, noMaskImage, everywhereImage, farImage, nearImage;
+		// Half the texels hold another light: the mask's texels that hold
+		// this one carry it, never the tile (dark here).
+		Case holes;
+		holes.mask = "sm/mask-holes";
+		CanvasImage maskImage, noMaskImage, everywhereImage, farImage, nearImage, holesImage;
 		for ( auto [c, image] : { std::pair{ &maskOnly, &maskImage },
+		          std::pair{ &holes, &holesImage },
 		          std::pair{ &noMask, &noMaskImage }, std::pair{ &everywhere, &everywhereImage },
 		          std::pair{ &far, &farImage }, std::pair{ &near, &nearImage } } )
 			if ( auto why = Render( lab, *c, *image ) )
 				return why;
 		std::uint32_t covered = 0, maskLit = 0, noMaskDark = 0, everywhereDark = 0, farSame = 0,
-		              nearRight = 0, nearDark = 0, nearLit = 0, nearJudged = 0;
+		              nearRight = 0, nearDark = 0, nearLit = 0, nearJudged = 0, holesLit = 0;
 		for ( std::uint32_t py = 0; py < kSize; ++py )
 			for ( std::uint32_t px = 0; px < kSize; ++px )
 			{
@@ -394,6 +409,7 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 					return image.At( px, py )[1] <= 0.02f * lit;
 				};
 				maskLit += lit > 1e-3f;
+				holesLit += std::fabs( holesImage.At( px, py )[1] - lit ) <= 1e-3f * lit + 1e-6f;
 				noMaskDark += dark( noMaskImage );
 				everywhereDark += dark( everywhereImage );
 				farSame += std::fabs( farImage.At( px, py )[1] - lit ) <= 1e-3f * lit + 1e-6f;
@@ -421,6 +437,8 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		    std::to_string( covered ) + " pixels" );
 		results.That(
 		    all( maskLit ), "shadow-mask.mask-alone-lit", std::to_string( maskLit ) + of );
+		results.That( all( holesLit ), "shadow-mask.texels-without-the-light-take-their-neighbours",
+		    std::to_string( holesLit ) + of );
 		results.That(
 		    all( noMaskDark ), "shadow-mask.tile-shadows", std::to_string( noMaskDark ) + of );
 		results.That( all( everywhereDark ), "shadow-mask.mover-everywhere-reads-the-tile",
