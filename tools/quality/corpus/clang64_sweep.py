@@ -605,7 +605,12 @@ def cmd_setup(args):
         env = waf_env(config)
         argv = configure_argv(config)
         print("setup %s: %s" % (config["name"], shlex.join(argv)), flush=True)
-        for step in (argv, [sys.executable, "./waf", "clangdb"]):
+        steps = [argv, [sys.executable, "./waf", "clangdb"]]
+        # The render core's generated SPIR-V headers (spv/*.h) that recorded
+        # compiles include; every tree but the dedicated one builds them.
+        if config["name"] != "dedicated":
+            steps.append([sys.executable, "./waf", "build", "--targets=render_spv"])
+        for step in steps:
             proc = subprocess.run(step, cwd=ROOT, env=env, capture_output=True, text=True,
                                   check=False)
             if proc.returncode != 0:
