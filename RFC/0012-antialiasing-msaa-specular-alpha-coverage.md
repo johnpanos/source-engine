@@ -416,7 +416,34 @@ The other lab suites are unchanged by it: debug-views, lighting-controls and
 shadow-receiver-perf fail identically with the filter compiled out (a
 pre-existing failure in the shared tree), and the rest pass.
 
-Open: the shimmer and supersampled-reference oracles under camera motion, the
+Shimmer in motion (2026-10-06, `tools/render/shimmer_sweep.py`, 8060S):
+`sp_a1_intro4_relit` at 1920x1080, four demo views, 12 noclip strafe steps of
+0.25 units, fixed exposure (`mat_dynamic_tonemapping 0`,
+`mat_force_tonemap_scale 1`), the filter on and off captured at each paused
+pose in one session; a 3840x2160 run box-downsampled as the reference.
+Result: **no measurable shimmer reduction.**
+
+- On the filter's footprint (0.9-18 % of pixels per view), on and off differ
+  by 0.0001-0.0003 linear luminance. Frame-to-frame change, on over off, is
+  0.993-1.006 per view; the declared shimmer clause (<= 0.9) fails.
+- Against the reference, both settings are within 0.3 % of each other
+  (1.0024): the reference is a separate boot, and its scene-state difference
+  (about 0.005 mean error) is an order of magnitude above the filter's
+  effect, so it cannot judge this slice.
+- Energy: +0.06 % (limit 1 %), passes.
+- Method notes: separate boots for on and off differed by 2-3 % in mean
+  luminance, and auto-exposure shifted whole frames; both are removed above.
+
+So, at version 1's constants and these views, geometric specular AA is
+correct and nearly free but does not reduce the motion artifacts measured
+here. Next: the RFC's controlled lab fixture (a high-frequency normal-mapped
+plane and bumpy sphere at low roughness) to see whether the filter acts where
+aliasing is known to exist, and whether the remaining in-game sparkle comes
+from another source (normal-map minification without variance-aware mips
+(R66), probe or lightmap sampling). The constants stay at version 1 until
+that oracle sets them.
+
+Open: the lab shimmer and supersampled-reference oracles, the
 one-consumer negative provider, the clear coat's own filter, the frozen
 native backend's `world_pbr`/`model_pbr` copies (not changed, by RFC 0016's
 binding rules), VGPR/occupancy and the resolution sweep on the 8060S and RTX
