@@ -11920,3 +11920,29 @@ p50 11.35 / 11.56, p99 33.22 / 33.02 ms; B 100.8 / 101.4 fps, p50 9.16 /
 frames GPU-bound). A snapshot-churn count showed 3 % of dynamic material
 lookups miss (portal stencil holes, emitter lights); the per-draw key
 itself remains. No gate closes.
+
+### RTX 3070 at 4K after the CPU rounds (2026-10-06, user request)
+
+Bazzite box (RTX 3070, NVIDIA proprietary driver), fullscreen 3840×2160
+on the GNOME desktop compositor, intro4 demo, LSMK map in both arms; A =
+the binaries from before item 1, B = `89c78b3ef` (`~/box_run4k.sh`, which
+swaps `~/binsets/{A,B}` in). Interleaved ABBA, playback window as
+`demo_frames.py` selects it:
+
+| run | fps | interval p50 / p90 / p99 | render-thread CPU p50 | GPU p50 / p99 | GPU-bound |
+| --- | --- | --- | --- | --- | --- |
+| A1 | 25.8 | 37.42 / 50.44 / 92.70 | 13.98 | 34.98 / 88.29 | 1276 of 1334 |
+| B1 (first run of new binaries: cold pipeline cache) | 14.9 | 36.00 / 54.28 / 468.08 | 7.48 | 34.17 / 90.53 | 1240 of 1297 |
+| B2 | 26.1 | 36.06 / 48.86 / 92.90 | 8.49 | 33.88 / 91.84 | 1329 of 1377 |
+| A2 | 25.6 | 37.25 / 49.85 / 97.12 | 13.00 | 35.21 / 85.70 | 1274 of 1324 |
+
+At 4K the 3070 is GPU-bound in 96 % of frames: the CPU work fell from
+13.0–14.0 to 7.5–8.5 ms, the frame by about 1.2 ms. Per-pass GPU timers
+(one B run, `cl_render_debug_gpu_timers`, mean of 23 frames): core world
+view 34.4 ms, of which world surfaces (`world / pbr`) 23.1, posed models
+3.7, static models 2.3, dynamic PBR 1.7, refraction 1.6 (1.3 of it the
+scene-colour capture); shadow tiles, cutout shadows and cluster assignment
+together under 0.7, the depth prepass 0.07. World surface shading is the
+4K frame; the directive's step 3 (VGPRs, spills, occupancy of the world
+PBR pipeline on this GPU) and step 4 (its register peak) are next. No gate
+closes.
