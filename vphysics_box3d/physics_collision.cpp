@@ -1342,6 +1342,32 @@ void CPhysicsCollisionBox3D::VCollideLoad( vcollide_t *pOutput, int solidCount, 
 	// Same on-disk layout the IVP provider reads: each solid is length-prefixed
 	// and the trailing bytes are the authored keyvalue text.
 	memset( pOutput, 0, sizeof( *pOutput ) );
+
+	// A collision layout neither provider reads (P2:CE writes VPHY 0x0101)
+	// refuses the whole model, as the IVP provider does: no collision model,
+	// rather than solids that silently never collide.
+	for ( int i = 0, scan = 0; i < solidCount && !swap; i++ )
+	{
+		int solidSize = 0;
+		if ( scan + (int)sizeof( int ) > bufferSize )
+			break;
+		memcpy( &solidSize, pBuffer + scan, sizeof( int ) );
+		scan += sizeof( int );
+		if ( solidSize < 0 || solidSize > bufferSize - scan )
+			break;
+		const int version = LegacyCollideVersion( pBuffer + scan, solidSize );
+		if ( version != 0 && version != kLegacyCollideVersion )
+		{
+			Warning( "vphysics_box3d: collision model version 0x%04x is not supported (expected "
+			         "0x%04x)\n",
+			    version, kLegacyCollideVersion );
+			pOutput->pKeyValues = new char[1];
+			pOutput->pKeyValues[0] = 0;
+			return;
+		}
+		scan += solidSize;
+	}
+
 	pOutput->solidCount = solidCount;
 	pOutput->solids = new CPhysCollide *[solidCount];
 

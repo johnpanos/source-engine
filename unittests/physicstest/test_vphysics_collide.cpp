@@ -660,6 +660,34 @@ void TestSerialization( const vcollide_t *pFixture )
 		s_pCollision->DestroyCollide( pWedgeCollide );
 	}
 
+	// A collision layout the decoder does not read (P2:CE writes VPHY 0x0101)
+	// loads as no collision model instead of being walked as IVP ledges.
+	int boxSize = WriteSize( pBox );
+	if ( boxSize > 8 )
+	{
+		for ( int version = 0x0100; version <= 0x0101; version++ )
+		{
+			CUtlVector<char> file;
+			file.SetCount( (int)sizeof( int ) + boxSize + 1 );
+			memcpy( file.Base(), &boxSize, sizeof( int ) );
+			s_pCollision->CollideWrite( file.Base() + sizeof( int ), pBox, false );
+			short stored = (short)version;
+			memcpy( file.Base() + sizeof( int ) + 4, &stored, sizeof( stored ) );
+			file[file.Count() - 1] = 0;
+			vcollide_t loaded;
+			s_pCollision->VCollideLoad( &loaded, 1, file.Base(), file.Count() );
+			const bool solid = loaded.solidCount == 1 && loaded.solids[0] != NULL;
+			if ( version == 0x0100 )
+				Check( TIER_BOOT, "collide.vcollide-version-current", solid, "solids %d",
+				    loaded.solidCount );
+			else
+				Check( TIER_BOOT, "collide.vcollide-version-unknown-refused", !solid, "solids %d",
+				    loaded.solidCount );
+			s_pCollision->VCollideUnload( &loaded );
+		}
+	}
+	s_pCollision->DestroyCollide( pBox );
+
 	// Authored model data rewrites losslessly with its authored structure.
 	if ( pFixture && pFixture->solidCount > 0 && pFixture->solids[0] )
 		CheckSerialization( "fixture", pFixture->solids[0], true );

@@ -155,6 +155,14 @@ bool DecodeTree( const CReader &reader, int node, int depth, LegacyCollide_t *pO
 }
 }
 
+int LegacyCollideVersion( const char *pBuffer, int size )
+{
+	CReader header( pBuffer, size );
+	if ( !pBuffer || !header.Has( 0, 8 ) || header.Int( 0 ) != kVPhysicsId )
+		return 0;
+	return (unsigned short)header.Short( 4 );
+}
+
 bool DecodeLegacyCollide( const char *pBuffer, int size, LegacyCollide_t *pOut )
 {
 	pOut->convexes.RemoveAll();
@@ -170,7 +178,10 @@ bool DecodeLegacyCollide( const char *pBuffer, int size, LegacyCollide_t *pOut )
 	if ( header.Int( 0 ) == kVPhysicsId )
 	{
 		// Only compact polygon surfaces are defined for this format.
-		if ( !header.Has( 0, kHeaderSize ) || header.Short( 6 ) != 0 )
+		// Version 0x0100 is the only layout IVP wrote; P2:CE (Strata) writes
+		// 0x0101, whose compact surface moves byte_size and the ledge tree.
+		if ( !header.Has( 0, kHeaderSize ) || header.Short( 4 ) != kLegacyCollideVersion ||
+		     header.Short( 6 ) != 0 )
 			return false;
 		surfaceSize = header.Int( 8 );
 		pOut->orthoAreas = Vector( header.Float( 12 ), header.Float( 16 ), header.Float( 20 ) );
@@ -200,7 +211,6 @@ bool DecodeLegacyCollide( const char *pBuffer, int size, LegacyCollide_t *pOut )
 //-----------------------------------------------------------------------------
 namespace
 {
-const int kVPhysicsVersion = 0x100;
 const int kMaxLedgeTriangles = ( 1 << 12 ) - 1;	// tri_index / pierce_index bits
 
 // One terminal ledge ready to write: IVP-wound triangles over the points
@@ -526,7 +536,7 @@ int EncodeLegacyCollide( const LegacyCollide_t &collide, int vcollideIndex, char
 
 	CWriter header( pDest, swap );
 	header.Int( 0, kVPhysicsId );
-	header.Short( 4, (short)kVPhysicsVersion );
+	header.Short( 4, (short)kLegacyCollideVersion );
 	header.Short( 6, 0 );	// COLLIDE_POLY
 	header.Int( 8, surfaceSize );
 	header.Vec( 12, collide.orthoAreas );

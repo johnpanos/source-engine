@@ -1630,6 +1630,33 @@ void CPhysicsCollision::VCollideLoad( vcollide_t *pOutput, int solidCount, const
 	memset( pOutput, 0, sizeof(*pOutput) );
 	int position = 0;
 
+	// Refuse a collision layout this decoder does not read (P2:CE writes
+	// version 0x0101) before IVP walks its ledge tree: the model loads with no
+	// collision model instead of crashing.
+	for ( int i = 0, scan = 0; i < solidCount; i++ )
+	{
+		int size;
+		if ( scan + (int)sizeof( int ) > bufferSize )
+			break;
+		memcpy( &size, pBuffer + scan, sizeof( int ) );
+		scan += sizeof( int );
+		physcollideheader_t header;
+		if ( size < (int)sizeof( header ) || scan + size > bufferSize )
+			break;
+		memcpy( &header, pBuffer + scan, sizeof( header ) );
+		if ( !swap && header.vphysicsID == VPHYSICS_COLLISION_ID &&
+		     header.version != VPHYSICS_COLLISION_VERSION )
+		{
+			Warning(
+			    "VCollideLoad: collision model version 0x%04x is not supported (expected 0x%04x)\n",
+			    (unsigned short)header.version, VPHYSICS_COLLISION_VERSION );
+			pOutput->pKeyValues = new char[1];
+			pOutput->pKeyValues[0] = 0;
+			return;
+		}
+		scan += size;
+	}
+
 	pOutput->solidCount = solidCount;
 	pOutput->solids = new CPhysCollide *[solidCount];
 

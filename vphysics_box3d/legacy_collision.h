@@ -37,6 +37,11 @@ struct LegacyCollide_t
 // unknown, byte-swapped, or malformed buffer; never reads outside the buffer.
 bool DecodeLegacyCollide( const char *pBuffer, int size, LegacyCollide_t *pOut );
 
+// The VPHY version of a solid with the VPHYSICS header, 0 for a headerless
+// (bare IVP surface) solid. Only 0x0100 decodes; P2:CE (Strata) writes 0x0101.
+int LegacyCollideVersion( const char *pBuffer, int size );
+const int kLegacyCollideVersion = 0x0100;
+
 // Encodes a solid in the same format (header, compact surface, ledge tree,
 // terminal ledges with edge topology and pierce triangles) so tools and IVP
 // can read it back. Triangles are re-oriented to IVP's winding; a single
