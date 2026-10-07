@@ -5136,8 +5136,10 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 			return CoreMeshKind::kScreenEffect;
 		if ( !V_stricmp( shader, "Refract" ) || !V_stricmp( shader, "Refract_DX90" ) )
 			return CoreMeshKind::kTransmission;
+		// Frozen-path: core progress (RFC 0016 surface model) - P2:CE's PBR
+		// model surfaces (a Workshop view model, props) to the core's pbr point.
 		if ( !V_stricmp( shader, "VertexLitGeneric" ) ||
-		     !V_stricmp( shader, "VertexLitGeneric_DX9" ) )
+		     !V_stricmp( shader, "VertexLitGeneric_DX9" ) || !V_stricmp( shader, "PBR" ) )
 			return CoreMeshKind::kModelSurface;
 		if ( !V_stricmp( shader, "PortalRefract" ) || !V_stricmp( shader, "PortalRefract_dx9" ) )
 		{
@@ -5489,7 +5491,8 @@ bool CEmptyMesh::EmitToCoreQueue()
 	    float( g_Viewport.m_nWidth ), float( g_Viewport.m_nHeight ), g_Viewport.m_flMinZ,
 	    g_Viewport.m_flMaxZ };
 	draw.mesh = !V_stricmp( draw.shader, "VertexLitGeneric" ) ||
-	            !V_stricmp( draw.shader, "Refract" ) || !V_stricmp( draw.shader, "Refract_DX90" );
+	            !V_stricmp( draw.shader, "Refract" ) || !V_stricmp( draw.shader, "Refract_DX90" ) ||
+	            !V_stricmp( draw.shader, "PBR" );
 	// Frozen-path: hand a mesh point Source's model lighting at the draw (the
 	// ambient cube and enabled lights studiorender set), as values.
 	if ( draw.mesh )

@@ -26,11 +26,18 @@ using namespace render::device;
 using detail::ReadParameter;
 
 // The parameters the family draws, and $fallbackmaterial, which only other
-// profiles read.
-constexpr std::array<std::string_view, 18> kClaimed = { "basetexture", "mraotexture", "bumpmap",
+// profiles read. $envmap is env_cubemap, the view's reflection probes, which
+// the point always reads (the resolver refuses a named cube). The P2:CE keys (vmt_mapping.cpp's kPbrCompatKeys) follow;
+// the parallax settings and $blendtintbymraoalpha are claimed because they
+// are inert while $parallax is off and no $color2 is set (both refused).
+constexpr std::array<std::string_view, 34> kClaimed = { "envmap", "basetexture", "mraotexture", "bumpmap",
     "emissiontexture", "emissionscale", "emissiononesided", "emissioncameraonly", "emissioncone",
     "emissionconeinner", "emissionconeouter", "emissionconeexponent", "alphatest",
-    "alphatestreference", "fallbackmaterial", "transmission", "ior", "thickness", "translucent" };
+    "alphatestreference", "fallbackmaterial", "transmission", "ior", "thickness", "translucent",
+    "mraoscale", "envmaptint", "envmaplightscale", "basetexturetransform", "parallax",
+    "parallaxdepth", "parallaxcenter", "parallaxdither", "parallaxscale",
+    "blendtintbymraoalpha", "basetexturetransform2", "mraoscale2", "envmaptint2", "nocull",
+    "srgbtint" };
 
 bool TextureBound( const ParameterBlock &block, std::string_view name )
 {
@@ -62,6 +69,44 @@ PbrClaim ClaimPbr( const ParameterBlock &block, bool sceneColorAvailable )
 		claim.reason = "PBRMetalRough needs $basetexture and $mraotexture";
 		return claim;
 	}
+	if ( detail::ReadFlag( block, "parallax" ) )
+	{
+		claim.reason = "$parallax (parallax occlusion mapping) is not drawn by the core";
+		return claim;
+	}
+	// P2:CE's MRAO scale and probe tint: finite and nonnegative per channel.
+	for ( int c = 0; c < 3; ++c )
+	{
+		const float scale = ReadParameter( block, "mraoscale", c );
+		const float tint = ReadParameter( block, "envmaptint", c );
+		if ( !std::isfinite( scale ) || scale < 0.0f || !std::isfinite( tint ) || tint < 0.0f )
+		{
+			claim.reason = "$mraoscale and $envmaptint need finite nonnegative values";
+			return claim;
+		}
+		claim.constants.mraoScale[c] = scale;
+		claim.constants.envSaturation[c] = detail::SourceGammaToLinear( tint );
+		const float baseTint = ReadParameter( block, "srgbtint", c );
+		if ( !std::isfinite( baseTint ) || baseTint < 0.0f )
+		{
+			claim.reason = "$srgbtint needs finite nonnegative values";
+			return claim;
+		}
+		claim.constants.tint[c] = detail::SourceGammaToLinear( baseTint );
+	}
+	const float lightScale = ReadParameter( block, "envmaplightscale" );
+	if ( !std::isfinite( lightScale ) || lightScale < 0.0f || lightScale > 1.0f )
+	{
+		claim.reason = "$envmaplightscale needs a [0, 1] weight";
+		return claim;
+	}
+	// Portal 2's light-scaled reflection with its default range [0 1], as the
+	// lightmapped and vertexlit points read it.
+	claim.constants.envLightScale[0] = 0.0f;
+	claim.constants.envLightScale[1] = 1.0f;
+	claim.constants.envLightScale[2] = lightScale;
+	for ( std::size_t i = 0; i < 8; ++i )
+		claim.constants.baseTransform[i] = ReadParameter( block, "basetexturetransform", i );
 	claim.normalMap = TextureBound( block, "bumpmap" );
 	claim.emission = TextureBound( block, "emissiontexture" );
 	const bool oneSidedEmission = detail::ReadFlag( block, "emissiononesided" );

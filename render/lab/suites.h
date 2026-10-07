@@ -80,7 +80,11 @@ int RunStaticLightSuite( int argc, char **argv );
 int RunShaderStatsSuite( int argc, char **argv );
 int RunShadowMaskSuite( int argc, char **argv );
 int RunSoftParticleSuite( int argc, char **argv );
+// render.lab.particles (RFC 0016 K8): SpriteCard cards and warp particles.
+int RunParticlesSuite( int argc, char **argv );
 int RunSelfIllumSuite( int argc, char **argv );
+// render.lab.pbr-compat (RFC 0016 surface model): P2:CE PBR on the pbr point.
+int RunPbrCompatSuite( int argc, char **argv );
 int RunViewStateSuite( int argc, char **argv );
 int RunGpuSubmissionSuite( int argc, char **argv );
 int RunModelSelectionSuite( int argc, char **argv );

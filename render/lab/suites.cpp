@@ -72,10 +72,14 @@ int RunSuite( int argc, char **argv )
 		return RunShaderStatsSuite( argc - 1, argv + 1 );
 	if ( name == "shadow-mask" )
 		return RunShadowMaskSuite( argc - 1, argv + 1 );
+	if ( name == "particles" )
+		return RunParticlesSuite( argc - 1, argv + 1 );
 	if ( name == "softparticle" )
 		return RunSoftParticleSuite( argc - 1, argv + 1 );
 	if ( name == "selfillum" )
 		return RunSelfIllumSuite( argc - 1, argv + 1 );
+	if ( name == "pbr-compat" )
+		return RunPbrCompatSuite( argc - 1, argv + 1 );
 	if ( name == "view-state" )
 		return RunViewStateSuite( argc - 1, argv + 1 );
 	if ( name == "gpu-submission" )

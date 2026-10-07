@@ -335,8 +335,18 @@ std::optional<ParameterBlock> BlockFor(
 			(void)block.SetTexture( value.parameter, device::TextureId( 1 ) );
 			continue;
 		}
+		// The pbr point reflects the view's probes: a named cube would be
+		// ignored, so only env_cubemap (P2:CE's "nearest cubemap") is read.
+		if ( material.family == "pbr" && value.parameter == "envmap" &&
+		     value.text != "env_cubemap" )
+		{
+			*why = "the pbr point reflects the view's probes, not the named cube " + value.text +
+			       " ($envmap)";
+			return std::nullopt;
+		}
 		if ( ( material.family == "vertexlit" || material.family == "unlit" ||
-		         ( ( material.family == "refract" || material.family == "lightmapped" ) &&
+		         ( ( material.family == "refract" || material.family == "lightmapped" ||
+		               material.family == "pbr" ) &&
 		             value.text == "env_cubemap" ) ) &&
 		     value.parameter == "envmap" )
 		{
@@ -460,7 +470,9 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		*requiresDepthAlpha = false;
 	std::string why;
 	const std::optional<ParameterBlock> block =
-	    BlockFor( material, &why, material.family == "lightmapped" && nativeReflectionProbes );
+	    BlockFor( material, &why,
+	        ( material.family == "lightmapped" || material.family == "pbr" ) &&
+	            nativeReflectionProbes );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
 	if ( material.family == "depth" || material.family == "portal-mask" )
@@ -583,7 +595,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	State &s = *m_State;
 	std::string why;
 	const std::optional<ParameterBlock> block = BlockFor( material, &why,
-	    ( s.mesh || material.family == "lightmapped" ) &&
+	    ( s.mesh || material.family == "lightmapped" || material.family == "pbr" ) &&
 	        ( s.sceneTerms & kSurfaceReflectionProbes ) != 0 );
 	if ( !block )
 		return foundation::MakeUnexpected( why );

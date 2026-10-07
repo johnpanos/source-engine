@@ -496,6 +496,11 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_BRIGHTNESS_IGNORED",)),
         ("kSurfaceSelfIllumMaskIgnored", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_MASK_IGNORED",)))),
+    "pbr_compat_defects_spv.h": ("render::lab::spirv",
+        "render_lab's P2:CE PBR compatibility suite's seeded programs (render.lab.pbr-compat "
+        "sensitivity, RFC 0016 surface model)", (
+        ("kSurfacePbrMraoScaleIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_PBR_MRAO_SCALE_IGNORED",)),)),
     "debug_view_defects_spv.h": ("render::lab::spirv",
         "render_lab's debug-view suite's seeded programs (render.debug-views sensitivity, "
         "RFC 0014)", (

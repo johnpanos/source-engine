@@ -164,8 +164,11 @@ struct SurfaceConstants
 	// premultiplied texels, sky_hdr_compressed_rgbs_ps2x); its scale is
 	// surfaceControls.y. Neutral (0) for every other point.
 	float baseDecode[4] = {};
+	// The pbr point's per-channel scale of its MRAO texture sample (P2:CE's
+	// $mraoscale); [1 1 1] is the texture unchanged.
+	float mraoScale[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
 };
-static_assert( sizeof( SurfaceConstants ) == 576 );
+static_assert( sizeof( SurfaceConstants ) == 592 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).

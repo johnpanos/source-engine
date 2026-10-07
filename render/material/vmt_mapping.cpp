@@ -52,6 +52,9 @@ constexpr VmtShaderRow kShaders[] = {
     { "pbrmetalrough", "pbr",
         "RFC 0007 metalness/roughness materials, drawn natively by world_pbr and model_pbr; "
         "the schema is render/pbr_material_schema.h" },
+    { "pbr", "pbr",
+        "P2:CE (Strata) PBR materials: the same metalness/roughness/AO model and MRAO channel "
+        "order as PBRMetalRough; their own keys are interpreted by kPbrCompatKeys" },
     { "water", "water",
         "water surfaces: Portal 2's Water shader (water_ps2x's expensive path: flowing normal "
         "maps, the flowing sludge layer, lightmapped water fog and a fresnel reflection of the "
@@ -454,6 +457,9 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$bottommaterial", "water: the material seen from below" },
     { "$underwateroverlay", "water: the screen overlay drawn under water" },
     { "$nodecal", "decals are not applied (the decal system)" },
+    { "$model",
+        "P2:CE PBR's model/brush switch; the core takes the geometry kind from the draw",
+        "pbr" },
     { "$nofullbright", "mat_fullbright ignores the material" },
     { "$no_fullbright", "mat_fullbright ignores the material" },
     { "$nobasetexture", "procedural video supplies its texture after material initialization",
@@ -490,6 +496,36 @@ constexpr VmtMetadataRow kMetadata[] = {
 #include "legacy_shaders.inc"
 
 constexpr std::string_view kPbrFamily = "pbr";
+
+// P2:CE (Strata) PBR keys beside RFC 0007's schema, read by the pbr family
+// (pbr_family.cpp). $mraoscale multiplies the MRAO texture per channel;
+// $envmaptint tints the probe reflection (Source gamma, as VertexLitGeneric's
+// native probe); $envmaplightscale is Portal 2's light-scaled reflection;
+// $basetexturetransform moves every texture's coordinate; $srgbtint tints the
+// base color; $nocull draws both faces. Parallax and
+// $blendtintbymraoalpha are inert unless enabled (parallax) or given a
+// $color2, which the family refuses by name.
+constexpr VmtKeyRow kPbrCompatKeys[] = {
+    { kPbrFamily, "$mraoscale", "mraoscale", ValueKind::kFloat3, "[1 1 1]" },
+    { kPbrFamily, "$envmaptint", "envmaptint", ValueKind::kFloat3, "[1 1 1]" },
+    { kPbrFamily, "$envmaplightscale", "envmaplightscale", ValueKind::kFloat, "0" },
+    { kPbrFamily, "$basetexturetransform", "basetexturetransform", ValueKind::kTransform, "" },
+    { kPbrFamily, "$parallax", "parallax", ValueKind::kBool, "0" },
+    { kPbrFamily, "$parallaxdepth", "parallaxdepth", ValueKind::kFloat, "0.025" },
+    { kPbrFamily, "$parallaxcenter", "parallaxcenter", ValueKind::kFloat, "0.5" },
+    { kPbrFamily, "$parallaxdither", "parallaxdither", ValueKind::kBool, "0" },
+    { kPbrFamily, "$parallaxscale", "parallaxscale", ValueKind::kFloat, "1" },
+    { kPbrFamily, "$blendtintbymraoalpha", "blendtintbymraoalpha", ValueKind::kBool, "0" },
+    // P2:CE's default PBR includes (materials/dev/l2_default_pbr.vmt) set the
+    // second blend layer's settings; they apply only to $basetexture2, which
+    // the family refuses, so alone they are inert.
+    { kPbrFamily, "$basetexturetransform2", "basetexturetransform2", ValueKind::kTransform, "" },
+    { kPbrFamily, "$mraoscale2", "mraoscale2", ValueKind::kFloat3, "[1 1 1]" },
+    { kPbrFamily, "$envmaptint2", "envmaptint2", ValueKind::kFloat3, "[1 1 1]" },
+    { kPbrFamily, "$nocull", "nocull", ValueKind::kBool, "0" },
+    // A base-color tint authored in sRGB (Source gamma here, as $color).
+    { kPbrFamily, "$srgbtint", "srgbtint", ValueKind::kFloat3, "[1 1 1]" },
+};
 
 ValueKind PbrKind( pbr::ParameterKind kind )
 {
@@ -535,6 +571,8 @@ std::vector<VmtKeyRow> BuildKeyRows()
 		rows.push_back( { kPbrFamily, key, key.substr( 1 ), PbrKind( spec.kind ),
 		    spec.defaultValue ? std::string_view( spec.defaultValue ) : std::string_view() } );
 	}
+	for ( const VmtKeyRow &row : kPbrCompatKeys )
+		rows.push_back( row );
 	return rows;
 }
 

@@ -12658,6 +12658,70 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.pbr-compat",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "P2:CE (Strata) PBR materials on the core's pbr point (RFC 0016 surface model): the importer maps P2:CE's keys through the pbr family's claim ($mraoscale the MRAO multiplier, $envmaptint the probe tint and $srgbtint the base tint in Source gamma, $envmaplightscale Portal 2's light-scaled reflection, $basetexturetransform the coordinate transform; P2:CE's default and layer-2 settings claimed; env_cubemap needs the stage's probes; a named cube, $parallax, out-of-range values, $color2 and unread keys refused by name; unset keys are the identity), and a lit quad through render.pass.world draws an MRAO texel under $mraoscale as the pre-scaled texel, visibly different from the unscaled one, with [1 1 1] bitwise the key unset.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "pbr-compat",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 20,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/pbr_compat_suite.cpp",
+        "render/material/pbr_family.cpp",
+        "render/material/vmt_mapping.cpp",
+        "render/material/program_resolver.cpp",
+        "render/material/families/surface_program.glsl",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.pbr-compat.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R96",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "render.lab.pbr-compat's seeded program (pbr_compat_defects_spv.h, built from surface.frag): the MRAO sample left unscaled fails the scaled-texel and scale-visible checks; the control passes.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "pbr-compat",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 2,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/pbr_compat_suite.cpp",
+        "render/material/families/surface_program.glsl",
+        "render/material/families/surface.frag",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.view-state",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

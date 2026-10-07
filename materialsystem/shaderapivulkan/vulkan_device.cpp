@@ -4286,6 +4286,11 @@ int CVulkanContext::CreateManagedTexture( int width, int height, VkFormat format
 		case VK_FORMAT_BC3_UNORM_BLOCK:
 			srgbAlias = VK_FORMAT_BC3_SRGB_BLOCK;
 			break;
+		// Frozen-path: core progress - P2:CE's VTF 7.6 BC7 textures (base
+		// colors are sampled through the sRGB view, as BC1-BC3).
+		case VK_FORMAT_BC7_UNORM_BLOCK:
+			srgbAlias = VK_FORMAT_BC7_SRGB_BLOCK;
+			break;
 		default:
 			break;
 		}
@@ -7416,6 +7421,8 @@ render::device::Format PortFormat( VkFormat format )
 		return render::device::Format::kBC2Unorm;
 	case VK_FORMAT_BC3_UNORM_BLOCK:
 		return render::device::Format::kBC3Unorm;
+	case VK_FORMAT_BC7_UNORM_BLOCK:
+		return render::device::Format::kBC7Unorm;
 	case VK_FORMAT_R16G16B16A16_UNORM:
 		return render::device::Format::kRGBA16Unorm;
 	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
@@ -7445,6 +7452,8 @@ static render::device::Format SrgbPortFormat( render::device::Format format )
 		return Format::kBC2Srgb;
 	case Format::kBC3Unorm:
 		return Format::kBC3Srgb;
+	case Format::kBC7Unorm:
+		return Format::kBC7Srgb;
 	default:
 		return Format::kUnknown;
 	}

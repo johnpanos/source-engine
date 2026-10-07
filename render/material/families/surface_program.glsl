@@ -873,9 +873,18 @@ void PbrSurface( out float coverage )
 		base = mix( baseSample.rgb, tinted, baseSample.a );
 	}
 	const bool unlitMesh = MaterialFeature( kMaterialUnlitMesh, material.meshModes.w > 0.5 );
+	// With an MRAO texture, mraoScale scales its sample per channel (P2:CE's
+	// $mraoscale; [1 1 1] by default); without one pbrFactors is the value.
+#ifndef SEEDED_PBR_MRAO_SCALE_IGNORED
+	const vec3 mrao = Term( kMraoTexture )
+	                      ? texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb *
+	                            material.mraoScale.rgb
+	                      : material.pbrFactors.rgb;
+#else
 	const vec3 mrao = Term( kMraoTexture )
 	                      ? texture( sampler2D( mraoTexture, mraoSampler ), uv ).rgb
 	                      : material.pbrFactors.rgb;
+#endif
 	const float metalness =
 	    kDebugForceMetalness >= 0.0 ? kDebugForceMetalness : clamp( mrao.r, 0.0, 1.0 );
 	const vec4 exponentSample = Term( kPhongExponentTexture )

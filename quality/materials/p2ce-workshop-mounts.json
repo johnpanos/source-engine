@@ -27,6 +27,15 @@
       "why": "Personality-core models and eye materials"
     },
     {
+      "id": "3592898497",
+      "title": "Retextured PBR Portal Gun",
+      "include": [
+        "materials/",
+        "models/"
+      ],
+      "why": "2K PBR portal gun (chosen over Bonnie's 3519554320): VTF 7.6 BC7 textures read through texturecontainer vtf_decompress; its P2:CE PBR materials draw on the core's pbr point (render.lab.pbr-compat)"
+    },
+    {
       "id": "3405845056",
       "title": "Higher Resolution Indicator Lights",
       "include": [
@@ -60,11 +69,6 @@
       "id": "3683114202",
       "title": "Core Transfer: Re-Enhanced (V1.00)",
       "reason": "its PBR materials need textures from ApertureVR (pbr/aperturevr/plastic_wall) and P2:CE base content (pbr/metal/black_tiles_128)"
-    },
-    {
-      "id": "3592898497",
-      "title": "Retextured PBR Portal Gun",
-      "reason": "its VTF 7.6 BC7 textures load (texturecontainer vtf_decompress, IMAGE_FORMAT_BC7, the 7.6 sRGB flag), but its materials use P2:CE's PBR shader, which the render core does not map to its pbr family (only PBRMetalRough), so the core drops the gun; $envmaptint, $mraoscale and $blendtintbymraoalpha need a lab-proven interpretation first (2026-10-07)"
     },
     {
       "id": "3699530917",
