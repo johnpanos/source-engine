@@ -500,11 +500,11 @@ def options(opt):
 		dest='RENDER_BACKEND',
 		help='linked renderer; auto selects native-vulkan for 64-bit Linux, Android and iOS clients '
 			'and legacy otherwise; vulkan uses the DXVK compatibility provider [default: %default]')
-	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal'], default='null',
+	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal', 'd3d12'], default='null',
 		dest='RENDER_CORE_DEVICE',
 		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
 			'names another; vulkan needs the native Vulkan backend, gl and gles need --render-core-gl, '
-			'metal an Apple target [default: %default]')
+			'metal an Apple target, d3d12 a Windows target [default: %default]')
 	grp.add_option('--render-core-features', default='legacy-stream,present',
 		dest='RENDER_CORE_FEATURES',
 		help='RFC 0016 render core: the frame features a client composes, in order [default: %default]')
@@ -1201,6 +1201,19 @@ def configure_render_core(conf):
 		conf.env.FRAMEWORK_METAL = ['Metal', 'Foundation']
 	if conf.options.RENDER_CORE_DEVICE == 'metal' and not conf.env.RENDER_CORE_METAL:
 		conf.fatal('--render-core-device=metal needs an Apple target (--apple-sdk)')
+	# The Direct3D 12 adapter (RFC 0024) builds on every Windows target. It
+	# imports the pinned DXC (dxcompiler.dll, installed beside the executable;
+	# tools/render/d3d12_lane.py fetches and verifies the pin).
+	conf.env.RENDER_CORE_D3D12 = bool(conf.env.RENDER_CORE and conf.env.DEST_OS == 'win32')
+	if conf.env.RENDER_CORE_D3D12:
+		dxc = os.path.join(conf.path.abspath(), 'dependencies', 'shader-toolchain', 'dxc-windows',
+			'lib', 'x64')
+		if not os.path.isfile(os.path.join(dxc, 'dxcompiler.lib')):
+			conf.fatal('the D3D12 adapter needs the pinned DXC: python3 tools/render/d3d12_lane.py build')
+		conf.env.LIB_D3D12 = ['dxcompiler', 'd3d12', 'dxgi', 'dxguid']
+		conf.env.LIBPATH_D3D12 = [dxc]
+	if conf.options.RENDER_CORE_DEVICE == 'd3d12' and not conf.env.RENDER_CORE_D3D12:
+		conf.fatal('--render-core-device=d3d12 needs a Windows target')
 	conf.env.RENDER_CORE_DEVICE = conf.options.RENDER_CORE_DEVICE
 	conf.env.RENDER_CORE_FEATURES = conf.options.RENDER_CORE_FEATURES
 	conf.env.RENDER_CORE_FALLBACKS = conf.options.RENDER_CORE_FALLBACKS
@@ -1218,7 +1231,8 @@ def configure_render_core(conf):
 		conf.msg('Render core device adapters', ', '.join(['null'] +
 			(['vulkan'] if conf.env.RENDER_CORE_VULKAN else []) +
 			(['gl'] if conf.env.RENDER_CORE_GL else []) +
-			(['metal'] if conf.env.RENDER_CORE_METAL else [])))
+			(['metal'] if conf.env.RENDER_CORE_METAL else []) +
+			(['d3d12'] if conf.env.RENDER_CORE_D3D12 else [])))
 		# In the root environment, before any subproject derives its own:
 		# the generated SPIR-V headers' tools must exist before any project builds.
 		conf.recurse('render/shaders')

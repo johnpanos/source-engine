@@ -598,6 +598,16 @@ MSL_GENERATED = {
     _name.replace("_glsl.h", "_msl.h"): (_spec[0].replace("::glsl", "::msl"),) + _spec[1:]
     for _name, _spec in GLSL_GENERATED.items()}
 
+# HLSL headers (render.device.d3d12, RFC 0024): every GLSL_GENERATED header's
+# twin for the Direct3D 12 adapter, <stem>_hlsl.h in the namespace's ::hlsl
+# sibling, with the same array names. shader_artifacts.hlsl_compile owns the
+# artifacts' form; a row that does not translate or compile with the pinned
+# DXC is left out of the header and the store (named in a comment), and its
+# pipelines are refused on a Direct3D 12 device by name.
+HLSL_GENERATED = {
+    _name.replace("_glsl.h", "_hlsl.h"): (_spec[0].replace("::glsl", "::hlsl"),) + _spec[1:]
+    for _name, _spec in GLSL_GENERATED.items()}
+
 # The core artifact store's table (public/render/shaderlib/core_artifacts.h):
 # every CORE_PROGRAM_HEADERS row in both formats with its reflection, written
 # by tools/render/shader_artifacts.py store_header.
@@ -607,7 +617,7 @@ STORE_HEADER = "core_artifact_table.h"
 # GLSL_GENERATED's and the store's).
 GENERATED_NAMES = tuple(sorted({n for _, _, names in REGENERATORS for n in names} |
                                set(GENERATED) | set(GLSL_GENERATED) | set(GLES_GENERATED) |
-                               set(MSL_GENERATED) | {STORE_HEADER}))
+                               set(MSL_GENERATED) | set(HLSL_GENERATED) | {STORE_HEADER}))
 
 
 def generated_rows():
@@ -648,16 +658,20 @@ def render_generated(header, words_of):
 
 
 def render_glsl(header, text_of):
-    """The text of a GLSL_GENERATED, GLES_GENERATED or MSL_GENERATED header;
-    text_of(array) gives each array's GLSL 4.50 (GLSL ES 3.10, MSL), or None
-    for a row left out."""
+    """The text of a GLSL_GENERATED, GLES_GENERATED, MSL_GENERATED or
+    HLSL_GENERATED header; text_of(array) gives each array's GLSL 4.50 (GLSL
+    ES 3.10, MSL, HLSL), or None for a row left out."""
     es = header in GLES_GENERATED
     msl = header in MSL_GENERATED
-    table = GLES_GENERATED if es else MSL_GENERATED if msl else GLSL_GENERATED
+    hlsl = header in HLSL_GENERATED
+    table = (GLES_GENERATED if es else MSL_GENERATED if msl else HLSL_GENERATED if hlsl
+             else GLSL_GENERATED)
     namespace, purpose, rows = table[header]
-    language = "GLSL ES 3.10" if es else "MSL 3.0" if msl else "GLSL 4.50"
-    missing = "(RFC 0022)" if es else "(render.device.metal)"
-    delimiter = "msl" if msl else "glsl"
+    language = ("GLSL ES 3.10" if es else "MSL 3.0" if msl else "HLSL 6.6" if hlsl
+                else "GLSL 4.50")
+    missing = ("(RFC 0022)" if es else "(render.device.d3d12)" if hlsl
+               else "(render.device.metal)")
+    delimiter = "msl" if msl else "hlsl" if hlsl else "glsl"
     guard = "GENERATED_GLSL_" + re.sub(r"[^A-Z0-9]", "_", header.upper())
     out = ["//========= Copyright Valve Corporation, All rights reserved. ============//\n",
            "//\n",
@@ -785,6 +799,57 @@ def debug_identity_problem(path, pin):
     if actual == expected:
         return None
     return "%s reports %r; the pin is %r" % (path, actual, expected)
+
+
+@functools.lru_cache(maxsize=None)
+def dxc_release(kind):
+    """The extracted pinned DXC release of kind ("linux" or "windows",
+    quality/toolchain/dxc.json), fetched and verified on first use."""
+    pin = json.loads((ROOT / "quality" / "toolchain" / "dxc.json").read_text())
+    entry = pin["archives"][kind]
+    toolchain = ROOT / "dependencies" / "shader-toolchain"
+    archive = toolchain / "archives" / entry["archive"]
+    if not archive.exists():
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        result = subprocess.run(["gh", "release", "download", pin["release"], "-R",
+                                 pin["repository"], "-p", entry["archive"], "-D",
+                                 str(archive.parent)], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ToolchainError("download %s: %s" % (entry["archive"], result.stderr.strip()))
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    if digest != entry["sha256"]:
+        raise ToolchainError("%s: sha256 %s is not the pin %s" % (archive, digest, entry["sha256"]))
+    target = toolchain / entry["directory"]
+    stamp = target / ".pin"
+    if not stamp.is_file() or stamp.read_text() != digest:
+        shutil.rmtree(target, ignore_errors=True)
+        target.mkdir(parents=True)
+        if entry["archive"].endswith(".zip"):
+            import zipfile
+            with zipfile.ZipFile(archive) as z:
+                for info in z.infolist():
+                    name = info.filename.replace("\\", "/")  # the release zip uses backslashes
+                    if name.endswith("/"):
+                        continue
+                    out = target / name
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    out.write_bytes(z.read(info))
+        else:
+            subprocess.run(["tar", "-xzf", str(archive), "-C", str(target)], check=True)
+        stamp.write_text(digest)
+    return target
+
+
+def dxc():
+    """The pinned Linux DXC executable (it finds its libdxcompiler.so through
+    LD_LIBRARY_PATH, which run_dxc sets)."""
+    return dxc_release("linux") / "bin" / "dxc"
+
+
+def run_dxc(arguments):
+    """Runs the pinned Linux DXC; the CompletedProcess."""
+    env = dict(os.environ, LD_LIBRARY_PATH=str(dxc_release("linux") / "lib"))
+    return subprocess.run([str(dxc()), *arguments], capture_output=True, text=True, env=env)
 
 
 @functools.lru_cache(maxsize=None)
@@ -1045,6 +1110,7 @@ def seed_copies(seeded_root, generated_dir, root=ROOT):
         # compile the former, the store's users read the latter.
         if not name.endswith("_index.h") and name not in GLSL_GENERATED and \
                 name not in GLES_GENERATED and name not in MSL_GENERATED and \
+                name not in HLSL_GENERATED and \
                 name != STORE_HEADER:
             seeded[name] = flip_one_byte(Path(generated_dir) / name)
     return seeded

@@ -555,7 +555,14 @@ CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
 	return group;
 }
 
-Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
+namespace
+{
+
+// The case drawn into a width x height target, `frames` times, each draw
+// between two port timestamps written to *timestamps (2 x frames ticks) when
+// it is non-null. The readback holds the top-left kSize x kSize region.
+Drawn DrawCaseAt( device::IRenderDevice2 &device, const CaseDraw &draw, std::uint32_t width,
+    std::uint32_t height, std::uint32_t frames, std::vector<std::uint64_t> *timestamps )
 {
 	Drawn drawn;
 	using device::ResourceUsage;
@@ -592,7 +599,8 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 
 	device::TextureDesc colorDesc;
 	colorDesc.format = device::Format::kRGBA8Srgb;
-	colorDesc.width = colorDesc.height = kSize;
+	colorDesc.width = width;
+	colorDesc.height = height;
 	colorDesc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
 	device::BufferDesc verticesDesc;
 	verticesDesc.size = draw.vertices.size();
@@ -601,10 +609,17 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 	readbackDesc.size = kSize * kSize * 4;
 	readbackDesc.usages = { ResourceUsage::kCopyDestination };
 	readbackDesc.memory = device::MemoryKind::kReadback;
+	device::BufferDesc timesDesc;
+	timesDesc.size = std::max<std::uint64_t>( std::uint64_t( frames ) * 16, 16 );
+	timesDesc.usages = { ResourceUsage::kCopyDestination };
+	timesDesc.memory = device::MemoryKind::kReadback;
 	device::TextureId color;
 	device::BufferId vertices;
 	device::BufferId readback;
+	device::BufferId times;
 	keep( device.CreateTexture( colorDesc ), color );
+	if ( timestamps )
+		keep( device.CreateBuffer( timesDesc ), times );
 	keep( device.CreateBuffer( verticesDesc ), vertices );
 	keep( device.CreateBuffer( readbackDesc ), readback );
 
@@ -722,6 +737,10 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 		    import( "vertices", vertices, verticesDesc, ResourceUsage::kVertex );
 		const graph::ResourceRef readbackRef =
 		    import( "readback", readback, readbackDesc, ResourceUsage::kCopyDestination );
+		const graph::ResourceRef timesRef = timestamps
+		                                        ? import( "times", times, timesDesc,
+		                                              ResourceUsage::kCopyDestination )
+		                                        : graph::ResourceRef();
 		const graph::ResourceRef colorRef = builder.ImportTexture(
 		    "color", color, colorDesc, ResourceUsage::kUndefined, ResourceUsage::kCopySource );
 		for ( GroupResources &resources : groups )
@@ -820,6 +839,8 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 					pass.Read( ref, ResourceUsage::kSampled );
 			}
 			pass.Write( colorRef, ResourceUsage::kColorAttachment );
+			if ( timestamps )
+				pass.Write( timesRef, ResourceUsage::kCopyDestination );
 			pass.Execute(
 			    [&]( graph::RecordContext &context )
 			    {
@@ -832,20 +853,28 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 				    const device::ColorAttachment attachments[] = { attachment };
 				    device::RenderingDesc rendering;
 				    rendering.colors = attachments;
-				    rendering.width = rendering.height = kSize;
-				    encoder.BeginRendering( rendering );
-				    encoder.SetViewport(
-				        { 0.0f, 0.0f, float( kSize ), float( kSize ), 0.0f, 1.0f } );
-				    encoder.SetPipeline( draw.pipeline );
-				    for ( std::size_t g = 0; g < groups.size(); ++g )
-					    encoder.SetBindGroup( draw.groups[g].role, groups[g].group );
-				    encoder.SetVertexBuffer( 0, context.Buffer( verticesRef ) );
+				    rendering.width = width;
+				    rendering.height = height;
 				    const std::array<float, 16> toClip = CaseToClip();
-				    encoder.SetDrawConstants( 0, draw.drawConstants.empty()
-				                                     ? std::as_bytes( std::span( toClip ) )
-				                                     : draw.drawConstants );
-				    encoder.Draw( draw.vertexCount );
-				    encoder.EndRendering();
+				    for ( std::uint32_t frame = 0; frame < frames; ++frame )
+				    {
+					    if ( timestamps )
+						    encoder.WriteTimestamp( context.Buffer( timesRef ), frame * 16 );
+					    encoder.BeginRendering( rendering );
+					    encoder.SetViewport(
+					        { 0.0f, 0.0f, float( width ), float( height ), 0.0f, 1.0f } );
+					    encoder.SetPipeline( draw.pipeline );
+					    for ( std::size_t g = 0; g < groups.size(); ++g )
+						    encoder.SetBindGroup( draw.groups[g].role, groups[g].group );
+					    encoder.SetVertexBuffer( 0, context.Buffer( verticesRef ) );
+					    encoder.SetDrawConstants( 0, draw.drawConstants.empty()
+					                                     ? std::as_bytes( std::span( toClip ) )
+					                                     : draw.drawConstants );
+					    encoder.Draw( draw.vertexCount );
+					    encoder.EndRendering();
+					    if ( timestamps )
+						    encoder.WriteTimestamp( context.Buffer( timesRef ), frame * 16 + 8 );
+				    }
 			    } );
 		}
 		builder.AddPass( "readback", graph::PassKind::kCopy )
@@ -870,6 +899,15 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 				               .ReadBuffer( readback, 0,
 				                   std::as_writable_bytes( std::span<std::uint8_t>( drawn.rgba ) ) )
 				               .HasValue();
+				if ( timestamps )
+				{
+					timestamps->resize( std::size_t( frames ) * 2 );
+					drawn.ok = drawn.ok &&
+					           device
+					               .ReadBuffer( times, 0,
+					                   std::as_writable_bytes( std::span( *timestamps ) ) )
+					               .HasValue();
+				}
 			}
 		}
 	}
@@ -881,6 +919,49 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 	for ( device::ResourceId id : owned )
 		(void)device.Release( id, device::CompletionToken() );
 	(void)device.Poll();
+	return drawn;
+}
+
+} // namespace
+
+Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
+{
+	Drawn drawn = DrawCaseAt( device, draw, kSize, kSize, 1, nullptr );
+	// RENDER_FAMILY_SWEEP=<frames> (RFC 0016 optimization resolution sweep;
+	// RFC 0024 X5): the same case is also drawn full-frame at 720p, 1080p,
+	// 1440p and 4K, <frames> times each, every draw between two port
+	// timestamps. One SWEEP line per resolution: the GPU median and p95 per
+	// draw (ms) and the CPU time to record and submit the whole run. Needs
+	// kTimestamps; it judges nothing.
+	const char *sweep = std::getenv( "RENDER_FAMILY_SWEEP" );
+	const int frames = sweep ? std::atoi( sweep ) : 0;
+	if ( frames <= 0 || !drawn.ok ||
+	     !device.Facts().capabilities.Has( device::Capability::kTimestamps ) )
+		return drawn;
+	static int s_Case = 0;
+	const int index = s_Case++;
+	const std::uint32_t sizes[][2] = { { 1280, 720 }, { 1920, 1080 }, { 2560, 1440 }, { 3840, 2160 } };
+	for ( const auto &size : sizes )
+	{
+		std::vector<std::uint64_t> ticks;
+		const auto started = std::chrono::steady_clock::now();
+		const Drawn timed =
+		    DrawCaseAt( device, draw, size[0], size[1], std::uint32_t( frames ), &ticks );
+		const double cpu =
+		    std::chrono::duration<double, std::milli>( std::chrono::steady_clock::now() - started )
+		        .count();
+		if ( !timed.ok )
+			continue;
+		std::vector<double> ms;
+		for ( int frame = 0; frame < frames; ++frame )
+			ms.push_back( double( ticks[frame * 2 + 1] - ticks[frame * 2] ) *
+			              device.Facts().timestampPeriodNs * 1e-6 );
+		std::sort( ms.begin(), ms.end() );
+		std::printf( "SWEEP %s case %d %ux%u frames %d gpu_median_ms %.4f gpu_p95_ms %.4f "
+		             "cpu_run_ms %.2f\n",
+		    std::string( device.Facts().diagnosticBackend ).c_str(), index, size[0], size[1],
+		    frames, ms[ms.size() / 2], ms[std::min( ms.size() - 1, ms.size() * 95 / 100 )], cpu );
+	}
 	return drawn;
 }
 

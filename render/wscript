@@ -51,6 +51,8 @@ def modules(env):
 		adapters.append('device/gl')
 	if env.RENDER_CORE_METAL:
 		adapters.append('device/metal')
+	if env.RENDER_CORE_D3D12:
+		adapters.append('device/d3d12')
 	return PORTABLE + adapters
 
 def options(opt):

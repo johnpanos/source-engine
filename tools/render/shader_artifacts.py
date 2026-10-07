@@ -489,6 +489,61 @@ def cross_compile(spirv, stage, es=False):
 
 
 # ---------------------------------------------------------------------------
+# HLSL (render.device.d3d12, RFC 0024)
+
+# The Direct3D 12 adapter's contract with the HLSL artifacts
+# (render/device/d3d12/pipelines.cpp):
+# - SPIR-V binding (set s, binding b) is HLSL register b of its class (b
+#   constant buffer, t sampled texture, s sampler, u storage buffer or
+#   texture) in space s; storage buffers are UAVs (RWByteAddressBuffer).
+# - The draw constants (the push-constant block, renamed GL_DRAW_CONSTANTS_BLOCK
+#   as gl_names does) are root constants at register(b0, space15); SPIRV-Cross's
+#   base vertex and instance block is at register(b1, space15).
+# - Each specialization constant is a SPIRV_CROSS_CONSTANT_ID_<id> macro with
+#   one line "// render.device.d3d12 specialization <id> <type>" before the text.
+# - Vertex inputs are TEXCOORD<location>.
+# Every artifact must compile with the pinned DXC (Linux release) at shader
+# model 6.6; the adapter compiles it with the pinned DXC library.
+HLSL_DRAW_CONSTANTS = "register(b0, space15)"
+HLSL_VERTEX_INFO = "register(b1, space15)"
+HLSL_SPECIALIZATION = "// render.device.d3d12 specialization"
+HLSL_PROFILES = {".vert": "vs_6_6", ".frag": "ps_6_6", ".comp": "cs_6_6"}
+
+
+def hlsl_compile(spirv, profile=None):
+    """The HLSL artifact of a SPIR-V module (see above); with profile, it is
+    also compiled with the pinned DXC, whose failure is an ArtifactError."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "module.spv"
+        path.write_bytes(rename(spirv, gl_names(spirv)))
+        reflection = json.loads(run([st.spirv_cross(), str(path), "--reflect"],
+                                    "spirv-cross --reflect").stdout)
+        text = run([st.spirv_cross(), str(path), "--hlsl", "--shader-model", "66",
+                    "--hlsl-force-storage-buffer-as-uav",
+                    "--hlsl-support-nonzero-basevertex-baseinstance"],
+                   "spirv-cross --hlsl").stdout
+        if reflection.get("push_constants"):
+            text, bound = re.subn(r"^cbuffer %s\b(?!\s*:)" % GL_DRAW_CONSTANTS_BLOCK,
+                                  "cbuffer %s : %s" % (GL_DRAW_CONSTANTS_BLOCK,
+                                                       HLSL_DRAW_CONSTANTS), text, flags=re.M)
+            if bound != 1:
+                raise ArtifactError("SPIRV-Cross wrote the draw constants in an unexpected form")
+        text = re.sub(r"^cbuffer SPIRV_Cross_VertexInfo\b(?!\s*:)",
+                      "cbuffer SPIRV_Cross_VertexInfo : %s" % HLSL_VERTEX_INFO, text, flags=re.M)
+        text = "".join("%s %d %s\n" % (HLSL_SPECIALIZATION, c["id"], c["type"])
+                       for c in reflection.get("specialization_constants", [])) + text
+        if profile:
+            source = Path(tmp) / "module.hlsl"
+            source.write_text(text)
+            result = st.run_dxc(["-T", profile, "-E", "main", "-Fo",
+                                 str(Path(tmp) / "module.dxil"), str(source)])
+            if result.returncode != 0:
+                raise ArtifactError("the pinned DXC rejects the HLSL: %s"
+                                    % (result.stdout + result.stderr).strip()[-1500:])
+    return text
+
+
+# ---------------------------------------------------------------------------
 # Metal Shading Language (render.device.metal)
 
 # The Metal adapter's contract with the MSL artifacts (render/device/metal):
@@ -871,9 +926,9 @@ def write_headers(units, words, out_dir, root=ROOT):
         words[array] = future.result()
     for header in st.GENERATED:
         written[header] = st.render_generated(header, lambda array: words[array])
-    glsl, es_missing, msl_missing = glsl_headers(words, root)
+    glsl, es_missing, msl_missing, hlsl_missing = glsl_headers(words, root)
     written.update(glsl)
-    written[st.STORE_HEADER] = store_header(words, es_missing, msl_missing)
+    written[st.STORE_HEADER] = store_header(words, es_missing, msl_missing, hlsl_missing)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, text in written.items():
@@ -942,7 +997,7 @@ def reflect_port(spirv):
     return bindings, push
 
 
-def store_header(words, es_missing=None, msl_missing=None):
+def store_header(words, es_missing=None, msl_missing=None, hlsl_missing=None):
     """spv/core_artifact_table.h: the artifact store's table (public/render/
     shaderlib/core_artifacts.h), one entry per core program row and format:
     source, stage, format, code (the generated SPIR-V, GLSL 4.50 and, for the
@@ -955,7 +1010,8 @@ def store_header(words, es_missing=None, msl_missing=None):
     for header in st.CORE_PROGRAM_HEADERS:
         namespace, _, rows = st.GENERATED[header]
         includes += [header, header.replace("_spv.h", "_glsl.h"),
-                     header.replace("_spv.h", "_gles.h"), header.replace("_spv.h", "_msl.h")]
+                     header.replace("_spv.h", "_gles.h"), header.replace("_spv.h", "_msl.h"),
+                     header.replace("_spv.h", "_hlsl.h")]
         for array, source, _ in rows:
             spirv = bytes_of(words[array])
             reflected, push = reflect_port(spirv)
@@ -977,7 +1033,8 @@ def store_header(words, es_missing=None, msl_missing=None):
                            % (source, stage, glsl_namespace, array, glsl_namespace, array, span,
                               push))
             for missing, suffix, enum in ((es_missing, "gles", "kGlslEs310"),
-                                          (msl_missing, "msl", "kMsl")):
+                                          (msl_missing, "msl", "kMsl"),
+                                          (hlsl_missing, "hlsl", "kHlsl")):
                 if array in (missing or {}):
                     continue
                 text_namespace = namespace.replace("::spirv", "::" + suffix)
@@ -1012,9 +1069,9 @@ def store_header(words, es_missing=None, msl_missing=None):
 
 
 def glsl_headers(words, root=ROOT):
-    """({name: text} of the GLSL_GENERATED, GLES_GENERATED and MSL_GENERATED
-    headers, {array: reason} of the rows with no ES artifact, the same of the
-    rows with no MSL artifact): each row's SPIR-V (its artifact when the row is
+    """({name: text} of the GLSL_GENERATED, GLES_GENERATED, MSL_GENERATED and
+    HLSL_GENERATED headers, {array: reason} of the rows with no ES artifact,
+    the same of the rows with no MSL artifact and of those with no HLSL one): each row's SPIR-V (its artifact when the row is
     a unit or a GENERATED row, else compiled here) through cross_compile in
     both dialects and metal_compile. A GLSL 4.50 failure fails the build; an
     ES or MSL failure leaves the row out of its header and the store."""
@@ -1043,10 +1100,17 @@ def glsl_headers(words, root=ROOT):
         except ArtifactError as error:
             return None, str(error)
 
+    def hlsl_text_of(row):
+        try:
+            return hlsl_compile(spirv_of(row), HLSL_PROFILES[Path(row[1]).suffix]), None
+        except (ArtifactError, st.ToolchainError) as error:
+            return None, str(error)
+
     with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as pool:
         texts = dict(zip((row[0] for row in rows), pool.map(text_of, rows)))
         es_results = dict(zip((row[0] for row in rows), pool.map(es_text_of, rows)))
         msl_results = dict(zip((row[0] for row in rows), pool.map(msl_text_of, rows)))
+        hlsl_results = dict(zip((row[0] for row in rows), pool.map(hlsl_text_of, rows)))
     headers = {header: st.render_glsl(header, lambda array: texts[array])
                for header in st.GLSL_GENERATED}
     headers.update({header: st.render_glsl(header, lambda array: es_results[array][0])
@@ -1056,7 +1120,11 @@ def glsl_headers(words, root=ROOT):
     es_missing = {array: reason for array, (text, reason) in es_results.items() if text is None}
     msl_missing = {array: reason for array, (text, reason) in msl_results.items()
                    if text is None}
-    return headers, es_missing, msl_missing
+    headers.update({header: st.render_glsl(header, lambda array: hlsl_results[array][0])
+                    for header in st.HLSL_GENERATED})
+    hlsl_missing = {array: reason for array, (text, reason) in hlsl_results.items()
+                    if text is None}
+    return headers, es_missing, msl_missing, hlsl_missing
 
 
 def generate_headers(out_dir, root=ROOT):

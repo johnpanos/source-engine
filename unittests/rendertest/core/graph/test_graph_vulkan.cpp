@@ -16,11 +16,22 @@
 //			included) the run must report no message; without the layer that
 //			clause prints SKIP and certifies nothing.
 //
+//			Built with RENDERTEST_GRAPH_D3D12 it is render.graph.v1.d3d12 (RFC
+//			0024 X3): the same graphs on render.device.d3d12 under Wine with
+//			vkd3d-proton (tools/render/d3d12_lane.py), with the D3D12 debug
+//			layer in place of the Khronos layer.
+//
 //=============================================================================//
 
 #include "graph_fixtures.h"
 #include "jobsystem/parallel_executor.h"
+#if defined( RENDERTEST_GRAPH_D3D12 )
+#include "render/device/d3d12/provider.h"
+#define RG_ADAPTER "d3d12"
+#else
 #include "render/device/vulkan/provider.h"
+#define RG_ADAPTER "vulkan"
+#endif
 #include "render/graph/scene_color.h"
 #include "render/graph/validate.h"
 #include "testing/checks.h"
@@ -40,7 +51,11 @@ using namespace render;
 using namespace render::graph;
 using device::ResourceUsage;
 namespace fixtures = rendertest::graph;
+#if defined( RENDERTEST_GRAPH_D3D12 )
+namespace d3d12 = render::device::d3d12;
+#else
 namespace vulkan = render::device::vulkan;
+#endif
 
 bool Wait( device::IRenderDevice2 &device, device::CompletionToken token )
 {
@@ -104,7 +119,7 @@ void SceneColorCapture(
 	readbackDesc.memory = device::MemoryKind::kReadback;
 	readbackDesc.usages = { ResourceUsage::kCopyDestination };
 	const auto readbackResult = device.CreateBuffer( readbackDesc );
-	if ( !checks.That( readbackResult.HasValue(), "G11.vulkan-readback-created" ) )
+	if ( !checks.That( readbackResult.HasValue(), "G11." RG_ADAPTER "-readback-created" ) )
 		return;
 	const device::BufferId readbackId = readbackResult.Value();
 	GraphBuilder builder;
@@ -130,7 +145,7 @@ void SceneColorCapture(
 		        context.Encoder().EndRendering();
 	        } );
 	const auto snapshot = CaptureSceneColor( builder, scene );
-	if ( !checks.That( snapshot.has_value(), "G11.vulkan-scene-color-captured" ) )
+	if ( !checks.That( snapshot.has_value(), "G11." RG_ADAPTER "-scene-color-captured" ) )
 		return;
 	builder.AddPass( "transmission-consumer", PassKind::kRender )
 	    .Read( *snapshot, ResourceUsage::kSampled )
@@ -146,7 +161,7 @@ void SceneColorCapture(
 		            context.Texture( *snapshot ), context.Buffer( readback ), { 0, 0, 0, 4, 4 } );
 	        } );
 	auto graph = CompileGraph( std::move( builder ) );
-	if ( !checks.That( graph.HasValue(), "G11.vulkan-capture-compiles" ) )
+	if ( !checks.That( graph.HasValue(), "G11." RG_ADAPTER "-capture-compiles" ) )
 		return;
 	SerialGraphExecutor executor;
 	auto result = executor.Execute( graph.Value(), device );
@@ -158,11 +173,11 @@ void SceneColorCapture(
 		std::printf( "%s", graph.Value().trace.ToString().c_str() );
 	}
 	if ( !checks.That(
-	         result && Wait( device, result.Value().token ), "G11.vulkan-capture-completes" ) )
+	         result && Wait( device, result.Value().token ), "G11." RG_ADAPTER "-capture-completes" ) )
 		return;
 	std::array<std::byte, 64> pixels{};
 	if ( checks.That( device.ReadBuffer( readbackId, 0, pixels ).HasValue(),
-	         "G11.vulkan-capture-readback" ) )
+	         "G11." RG_ADAPTER "-capture-readback" ) )
 	{
 		bool matches = true;
 		for ( std::size_t pixel = 0; pixel < 16; ++pixel )
@@ -171,7 +186,7 @@ void SceneColorCapture(
 			    std::byte{ 51 }, std::byte{ 102 }, std::byte{ 153 }, std::byte{ 255 } };
 			matches &= std::equal( expected.begin(), expected.end(), pixels.begin() + pixel * 4 );
 		}
-		checks.That( matches, "G11.vulkan-snapshot-preserves-scene-pixels" );
+		checks.That( matches, "G11." RG_ADAPTER "-snapshot-preserves-scene-pixels" );
 	}
 	(void)device.Release( readbackId, result.Value().token );
 }
@@ -181,18 +196,29 @@ void SceneColorCapture(
 int main()
 {
 	testing::Checks checks;
-	const bool layer = vulkan::ValidationLayerAvailable();
 	std::atomic<std::uint64_t> messages{ 0 };
+#if defined( RENDERTEST_GRAPH_D3D12 )
+	const bool layer = true; // the debug layer counts its own messages
+	d3d12::D3d12AdapterOptions options;
+	options.validation = true;
+	options.validationCounter = &messages;
+#else
+	const bool layer = vulkan::ValidationLayerAvailable();
 	vulkan::VulkanAdapterOptions options;
 	options.validation = layer;
 	options.validationCounter = &messages;
 	if ( const char *adapter = std::getenv( "RENDER_VK_ADAPTER" ) )
 		options.adapterIndex = std::atoi( adapter );
+#endif
 	int compiled = 0, clean = 0, serialRan = 0, pooledRan = 0;
 	std::uint64_t reused = 0, encoders = 0;
 	{
+#if defined( RENDERTEST_GRAPH_D3D12 )
+		auto created = d3d12::Create( options );
+#else
 		auto created = vulkan::Create( options );
-		if ( !checks.That( created.HasValue(), "device.a-vulkan-device-is-created" ) )
+#endif
+		if ( !checks.That( created.HasValue(), "device.a-" RG_ADAPTER "-device-is-created" ) )
 			return checks.Report();
 		std::unique_ptr<device::IRenderDevice2> device = std::move( created ).Value();
 		jobsystem::ParallelExecutor jobs( 4 );
@@ -235,15 +261,15 @@ int main()
 			}
 		}
 		std::printf(
-		    "INFO graph vulkan: %d graphs compiled; serial ran %d, pooled ran %d with %llu "
+		    "INFO graph " RG_ADAPTER ": %d graphs compiled; serial ran %d, pooled ran %d with %llu "
 		    "encoders and %llu pooled transients reused\n",
 		    compiled, serialRan, pooledRan, static_cast<unsigned long long>( encoders ),
 		    static_cast<unsigned long long>( reused ) );
 		checks.That( compiled > 900, "G7.most-random-graphs-compile" );
 		checks.Equal( clean, compiled, "G8.the-validator-accepts-every-compiled-graph" );
-		checks.Equal( serialRan, compiled, "G6.the-serial-executor-runs-every-graph-on-vulkan" );
-		checks.Equal( pooledRan, compiled, "G9.the-pooled-executor-runs-every-graph-on-vulkan" );
-		checks.That( reused > 0, "G10.the-pool-reuses-transients-on-vulkan" );
+		checks.Equal( serialRan, compiled, "G6.the-serial-executor-runs-every-graph-on-" RG_ADAPTER "" );
+		checks.Equal( pooledRan, compiled, "G9.the-pooled-executor-runs-every-graph-on-" RG_ADAPTER "" );
+		checks.That( reused > 0, "G10.the-pool-reuses-transients-on-" RG_ADAPTER "" );
 		SceneColorCapture( checks, *device, 1 );
 		SceneColorCapture( checks, *device, 4 );
 		// G12 on a real second queue (RFC 0016 S8): two-queue random graphs
@@ -251,7 +277,7 @@ int main()
 		// the compiled cross-queue waits, under synchronization validation.
 		const bool async = device->Facts().capabilities.Has( device::Capability::kAsyncCompute );
 		if ( !async )
-			std::printf( "SKIP G12.vulkan the device has no async compute queue\n" );
+			std::printf( "SKIP G12." RG_ADAPTER " the device has no async compute queue\n" );
 		else
 		{
 			int queueCompiled = 0, queueRan = 0, waited = 0, pooledQueueRan = 0;
@@ -299,22 +325,22 @@ int main()
 					(void)device->Release( id, device::CompletionToken() );
 				(void)device->Poll();
 			}
-			std::printf( "INFO graph vulkan two queues: %d graphs (%d with cross-queue waits), "
+			std::printf( "INFO graph " RG_ADAPTER " two queues: %d graphs (%d with cross-queue waits), "
 			             "%d ran in %llu submissions\n",
 			    queueCompiled, waited, queueRan,
 			    static_cast<unsigned long long>( queueEncoders ) );
-			checks.Equal( queueCompiled, kQueueGraphs, "G12.vulkan-every-two-queue-graph-compiles" );
+			checks.Equal( queueCompiled, kQueueGraphs, "G12." RG_ADAPTER "-every-two-queue-graph-compiles" );
 			checks.Equal( queueRan, queueCompiled,
-			    "G12.vulkan-every-two-queue-graph-runs-on-the-compute-and-graphics-queues" );
+			    "G12." RG_ADAPTER "-every-two-queue-graph-runs-on-the-compute-and-graphics-queues" );
 			checks.Equal( pooledQueueRan, queueCompiled,
-			    "G12.vulkan-the-pooled-executor-runs-every-two-queue-graph" );
-			std::printf( "INFO graph vulkan two queues: compute submissions serial %llu, pooled %llu\n",
+			    "G12." RG_ADAPTER "-the-pooled-executor-runs-every-two-queue-graph" );
+			std::printf( "INFO graph " RG_ADAPTER " two queues: compute submissions serial %llu, pooled %llu\n",
 			    static_cast<unsigned long long>( serialCompute ),
 			    static_cast<unsigned long long>( pooledCompute ) );
 			checks.That( serialCompute > 0 && pooledCompute == serialCompute,
-			    "G12.vulkan-the-pooled-executor-submits-the-serial-executors-compute-runs" );
+			    "G12." RG_ADAPTER "-the-pooled-executor-submits-the-serial-executors-compute-runs" );
 			checks.That( waited > kQueueGraphs / 4 && queueEncoders > std::uint64_t( queueRan ),
-			    "G12.vulkan-the-graphs-cross-queues-with-waits" );
+			    "G12." RG_ADAPTER "-the-graphs-cross-queues-with-waits" );
 		}
 		(void)device->WaitIdle();
 	}

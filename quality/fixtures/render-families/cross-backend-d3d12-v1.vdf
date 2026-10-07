@@ -1,0 +1,67 @@
+// RFC 0024 X3: the per-case cross-backend limits of the family pixel cases
+// on render.device.d3d12 (render.family.<family>.d3d12), judged against the
+// Vulkan frame of the same case recorded by render.family.<family> on the
+// same tree (RENDER_FAMILY_REFERENCE_DIR). Same rule as cross-backend-v1.vdf:
+// the limit is the port tolerance (2 levels); outliers are recorded only where
+// measured differences sit on hard shading edges, where DXC and the Vulkan
+// driver's compiler round a step differently. Measured 2026-10-07 (Wine 11,
+// vkd3d-proton GE-Proton11-5, Radeon 8060S): 46 of 51 cases within the port
+// tolerance (most byte-identical); five lightmapped bump/env-map cases differ
+// only at isolated pixels along the procedural pattern's discontinuity curves
+// (141-202 pixels, no shift: a one-pixel offset raises them tenfold), with
+// 606/423/485/543/482 channels over, recorded with about 1.25x headroom. A new
+// case needs a reviewed row here.
+"cross-backend-d3d12"
+{
+	"case" { "name" "a2-goo" "limit" "2" "outliers" "0" }
+	"case" { "name" "a2-goo-covering-sludge" "limit" "2" "outliers" "0" }
+	"case" { "name" "a3-goo-env-map" "limit" "2" "outliers" "0" }
+	"case" { "name" "blend-factor" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_alphatest" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_base" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_bump" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_bump_envmap_normalmapalpha" "limit" "2" "outliers" "608" }
+	"case" { "name" "family_lightmapped_bump_nodiffusebumplighting" "limit" "2" "outliers" "768" }
+	"case" { "name" "family_lightmapped_color" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_detail_additive_bump" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_detail_mod2x_tint" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_envmap_basealphaenvmapmask" "limit" "2" "outliers" "704" }
+	"case" { "name" "family_lightmapped_envmap_envmapmask_contrast_fresnel" "limit" "2" "outliers" "608" }
+	"case" { "name" "family_lightmapped_selfillum_tint" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_ssbump" "limit" "2" "outliers" "544" }
+	"case" { "name" "family_lightmapped_translucent_alpha" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_vertexalpha_only" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_vertexalpha_translucent" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_vertexcolor" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_vertexcolor_alpha" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_wvt_blend" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_wvt_bump2_transform" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_wvt_modulate" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_lightmapped_wvt_ssbump2" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_additive" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_alphatest" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_base_color" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_translucent_alpha" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_vertexcolor" "limit" "2" "outliers" "0" }
+	"case" { "name" "family_unlit_vertexcolor_alpha" "limit" "2" "outliers" "0" }
+	"case" { "name" "forced-fresnel" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_ambient" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_bumped" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_emissive" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_four_lights" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_lights" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_metal" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_model_transform" "limit" "2" "outliers" "0" }
+	"case" { "name" "pbr_skinned" "limit" "2" "outliers" "0" }
+	"case" { "name" "reflective-water" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_alpha_modulated" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_alphatest" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_ambient" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_directional_color" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_four_lights" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_halflambert" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_point" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_spot" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_translucent" "limit" "2" "outliers" "0" }
+	"case" { "name" "vertexlit_vertexcolor_ignored" "limit" "2" "outliers" "0" }
+}

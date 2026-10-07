@@ -33,7 +33,7 @@ using CreateDeviceFn = DeviceResult<std::unique_ptr<IRenderDevice2>> ( * )(
 
 struct DeviceProviderDescriptor
 {
-	std::string_view id; // "null", "vulkan", "gl", "gles"
+	std::string_view id; // "null", "vulkan", "gl", "gles", "d3d12"
 	CreateDeviceFn create = nullptr;
 };
 

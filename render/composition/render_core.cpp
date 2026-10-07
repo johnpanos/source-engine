@@ -26,6 +26,9 @@
 #if defined( RENDER_CORE_METAL )
 #include "render/device/metal/provider.h"
 #endif
+#if defined( RENDER_CORE_D3D12 )
+#include "render/device/d3d12/provider.h"
+#endif
 
 #include <cstdio>
 #include <cstring>
@@ -114,6 +117,9 @@ const render::device::DeviceProviderDescriptor *FindDevice( std::string_view nam
 #if defined( RENDER_CORE_METAL )
 	    &render::device::metal::Describe(), // RFC 0025
 #endif
+#if defined( RENDER_CORE_D3D12 )
+	    &render::device::d3d12::Describe(), // RFC 0024
+#endif
 	};
 	for ( const render::device::DeviceProviderDescriptor *descriptor : linked )
 	{
@@ -199,6 +205,15 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 		options.validation = request.validation;
 		options.allowed = allow( options.allowed );
 		return render::device::metal::Create( options );
+	}
+#endif
+#if defined( RENDER_CORE_D3D12 )
+	if ( descriptor.id == "d3d12" )
+	{
+		render::device::d3d12::D3d12AdapterOptions options;
+		options.validation = request.validation;
+		options.allowed = allow( options.allowed );
+		return render::device::d3d12::Create( options );
 	}
 #endif
 	return foundation::MakeUnexpected(

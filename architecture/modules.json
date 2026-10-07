@@ -647,6 +647,54 @@
         ]
       },
       {
+        "id": "render.bridge.sdl3-d3d12",
+        "kind": "backend",
+        "paths": [
+          "render/bridge/sdl3-d3d12/"
+        ],
+        "allowedEdges": [
+          "render.contracts",
+          "platform.sdl3.render-surface",
+          "render.device.d3d12"
+        ],
+        "externalHeaders": [
+          "SDL3/SDL.h",
+          "d3d12.h",
+          "dxgi1_6.h",
+          "windows.h"
+        ],
+        "uselib": [
+          "SDL3",
+          "D3D12"
+        ]
+      },
+      {
+        "id": "render.bridge.sdl3-d3d12.native-tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/rendertest/test_sdl3_d3d12_presentation.cpp"
+        ],
+        "allowedEdges": [
+          "platform.sdl3.render-surface",
+          "render.bridge.sdl3-d3d12",
+          "render.conformance-tests",
+          "render.contracts",
+          "render.device",
+          "render.device.d3d12",
+          "testing.contracts"
+        ],
+        "externalHeaders": [
+          "SDL3/SDL.h",
+          "SDL3/SDL_main.h",
+          "d3d12.h",
+          "dxgi1_6.h"
+        ],
+        "uselib": [
+          "SDL3",
+          "D3D12"
+        ]
+      },
+      {
         "id": "render.bridge.sdl3-vulkan.native-tests",
         "kind": "native-test",
         "paths": [
@@ -808,6 +856,28 @@
         ],
         "uselib": [
           "EGL"
+        ]
+      },
+      {
+        "id": "render.device.d3d12",
+        "paths": [
+          "public/render/device/d3d12/",
+          "render/device/d3d12/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.contracts",
+          "render.device"
+        ],
+        "kind": "backend",
+        "externalHeaders": [
+          "d3d12.h",
+          "dxgi1_6.h",
+          "dxcapi.h",
+          "windows.h"
+        ],
+        "uselib": [
+          "D3D12"
         ]
       },
       {
@@ -1325,6 +1395,7 @@
           "render.device.vulkan",
           "render.device.gl",
           "render.device.metal",
+          "render.device.d3d12",
           "render.pass.skinning",
           "render.graph",
           "render.shader-library",
@@ -1370,6 +1441,7 @@
           "render.device.vulkan",
           "render.device.gl",
           "render.device.metal",
+          "render.device.d3d12",
           "render.graph",
           "render.shader-library",
           "render.resources",
@@ -1863,6 +1935,12 @@
           "METAL"
         ]
       },
+      "render_device_d3d12": {
+        "allowedUse": [
+          "render_device",
+          "D3D12"
+        ]
+      },
       "render_graph": {
         "allowedUse": [
           "render_device",
@@ -2096,6 +2174,7 @@
           "render_device_vulkan",
           "render_device_gl",
           "render_device_metal",
+          "render_device_d3d12",
           "render_pass_skinning",
           "render_pass_debug",
           "mapcontainer",
@@ -2500,6 +2579,7 @@
             "render.device.vulkan",
             "render.device.gl",
             "render.device.metal",
+            "render.device.d3d12",
             "render.device.null"
           ]
         ],
@@ -2508,6 +2588,7 @@
             "render.device.vulkan",
             "render.device.gl",
             "render.device.metal",
+            "render.device.d3d12",
             "render.device.null"
           ]
         },
@@ -2532,6 +2613,8 @@
               "render.bridge.world-mesh-vulkan",
               "render.bridge.sdl3-vulkan",
               "render.bridge.sdl3-vulkan.native-tests",
+              "render.bridge.sdl3-d3d12",
+              "render.bridge.sdl3-d3d12.native-tests",
               "render.vulkan.native-tests",
               "render.shader-extension-contract",
               "render.shader-extension-host",
