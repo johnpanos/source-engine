@@ -620,6 +620,24 @@ private:
 	using DefaultsByKey = std::unordered_map<std::string, std::string, ViewHash, std::equal_to<>>;
 	std::mutex m_DefaultsLock;
 	std::unordered_map<std::string, DefaultsByKey, ViewHash, std::equal_to<>> m_MaterialDefaults;
+	// The same answers by the capture's string addresses (symbol-table names
+	// and shader names, stable for the process), each checked against its
+	// text: an address that now holds other text takes the lookup above.
+	struct DefaultByAddress
+	{
+		const std::string *shader = nullptr; // keys of m_MaterialDefaults and
+		const std::string *key = nullptr;    // its DefaultsByKey: stable nodes
+		const std::string *value = nullptr;
+	};
+	struct AddressPairHash
+	{
+		std::size_t operator()( const std::pair<const char *, const char *> &p ) const noexcept
+		{
+			return std::hash<const void *>{}( p.first ) * 31u ^ std::hash<const void *>{}( p.second );
+		}
+	};
+	std::unordered_map<std::pair<const char *, const char *>, DefaultByAddress, AddressPairHash>
+	    m_DefaultsByAddress;
 	pass::world::WorldPass m_Pass;
 	std::vector<std::pair<std::uint64_t, graph::InlineGraphResources>> m_SceneCaptures;
 	pass::debug::DebugOverlays m_Overlays;

@@ -11885,3 +11885,38 @@ copy per recorded slot, the snapshot key per dynamic draw, the driver's
 own cost (fewer binds and draws: S1–S3), legacy lightmap uploads and the
 capture's vertex conversion (the scene draw path removes it). No gate
 closes.
+
+### CPU round three: lightmaps the core never reads, redundant binds, the frame-sync wait (2026-10-06, user request)
+
+Wall-clock stack samples of every thread (`eu-stack`, 150 samples at 720p,
+waits included) showed the main thread blocked in
+`CMaterialSystem::EndFrame` 59 % of the time, waiting for the render
+thread, and the render thread never idle: 89 % working, 11 % in
+`WaitForSubmittedFrame` from `ForceHardwareSync` (`mat_frame_sync_enable`,
+D3D9's one-frame-ahead limit). With the sync off the demo ran 101.0 fps
+against 98–99: it costs about 2 % and buys a frame of input latency, so it
+stays on.
+
+- With the core's stage owning runtime lighting, a dlight, area-light or
+  occlusion change no longer rebuilds legacy lightmap pages: in that mode a
+  rebuild adds none of them (`R_BuildLightMapGuts`' coreOnly), so the page
+  came back identical; light styles still rebuild and probe-lit surfaces
+  rebuild themselves (Frozen-path: core progress). CPU lightmap building
+  and its uploads fell from 8 % of the render thread to under 1 %.
+- The Vulkan translator skips a pipeline bind that repeats the bound one,
+  keeps the bound sets across pipelines with the same layout and bind
+  point, marks a group dirty only when its slot's group changes, skips
+  repeated vertex and index buffer binds (reset after host work and per
+  encoder), and gathers a pass's groups once each. Device suites (1,300 +
+  21 + 24 checks) and the lab suites pass; the demo under `-vkvalidate`
+  reports only the one device-creation message the earlier build reports.
+- `CoreWorld::MaterialDefault` finds a capture's (shader, key) by their
+  addresses first, checked against the stored text.
+
+720p ABBA against the build before item 1: A 81.4 / 80.2 fps, interval
+p50 11.35 / 11.56, p99 33.22 / 33.02 ms; B 100.8 / 101.4 fps, p50 9.16 /
+9.19, p99 25.51 / 25.50 ms; render-thread CPU p50 10.40 / 10.54 → 6.89 /
+6.99 ms. At 720p the render thread and the GPU are now even (half the
+frames GPU-bound). A snapshot-churn count showed 3 % of dynamic material
+lookups miss (portal stencil holes, emitter lights); the per-draw key
+itself remains. No gate closes.

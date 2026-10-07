@@ -2564,19 +2564,33 @@ const char *CoreWorld::MaterialDefault( const char *shader, const char *key )
 	if ( !m_Host || !m_Host->materialDefault )
 		return nullptr;
 	std::lock_guard<std::mutex> guard( m_DefaultsLock );
+	const std::pair<const char *, const char *> address( shader, key );
+	if ( auto at = m_DefaultsByAddress.find( address ); at != m_DefaultsByAddress.end() &&
+	                                                    *at->second.shader == shader &&
+	                                                    *at->second.key == key )
+		return at->second.value->c_str();
 	auto byShader = m_MaterialDefaults.find( std::string_view( shader ) );
+	const std::string *found = nullptr;
 	if ( byShader != m_MaterialDefaults.end() )
 	{
-		auto found = byShader->second.find( std::string_view( key ) );
-		if ( found != byShader->second.end() )
-			return found->second.c_str();
+		auto value = byShader->second.find( std::string_view( key ) );
+		if ( value != byShader->second.end() )
+			found = &value->second;
 	}
-	const char *value = m_Host->materialDefault( shader, key );
-	if ( !value )
-		return nullptr;
-	if ( byShader == m_MaterialDefaults.end() )
-		byShader = m_MaterialDefaults.try_emplace( shader ).first;
-	return byShader->second.try_emplace( key, value ).first->second.c_str();
+	if ( !found )
+	{
+		const char *value = m_Host->materialDefault( shader, key );
+		if ( !value )
+			return nullptr;
+		if ( byShader == m_MaterialDefaults.end() )
+			byShader = m_MaterialDefaults.try_emplace( shader ).first;
+		found = &byShader->second.try_emplace( key, value ).first->second;
+	}
+	const auto keyEntry = byShader->second.find( std::string_view( key ) );
+	if ( m_DefaultsByAddress.size() >= 65536 )
+		m_DefaultsByAddress.clear(); // bounded if a caller's strings are transient
+	m_DefaultsByAddress[address] = { &byShader->first, &keyEntry->first, found };
+	return found->c_str();
 }
 
 std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )

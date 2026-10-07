@@ -2428,7 +2428,12 @@ void FASTCALL R_RenderDynamicLightmaps ( dlight_t *pLights, ICallQueue *pCallQue
 		bDLightChanged = AreaLights_IsDirty( surfID ) || DynamicOcclusion_IsDirty( surfID );
 	bool bOnlyUseLightStyles = false;
 
-	if( r_dynamic.GetInt() == 0 )
+	// Frozen-path: core progress (RFC 0016) - when the core's stage owns the
+	// runtime lighting, a rebuild adds no CPU dynamic, area, occlusion or
+	// projected light (R_BuildLightMapGuts' coreOnly), so a dlight change
+	// rebuilds a page identical to the current one: only light styles do.
+	// Probe-lit surfaces rebuild themselves (ApplyProbeLitSurface).
+	if ( r_dynamic.GetInt() == 0 || RenderCoreWorldDraw_StageOwnsRuntimeLighting() )
 	{
 		bOnlyUseLightStyles = true;
 		bDLightChanged = false;

@@ -834,6 +834,7 @@ public:
 		m_Pipeline = nullptr;
 		m_Groups.fill( 0 );
 		m_Viewport.reset();
+		ForgetBuffers();
 		for ( std::size_t i = 0; i < commands.size(); ++i )
 		{
 			if ( commands[i].op == Op::kNative )
@@ -1107,11 +1108,16 @@ private:
 		// Everything the pass's draws may write through bind groups, found
 		// ahead, since no barrier may sit inside the rendering.
 		std::vector<std::uint64_t> groups( m_Groups.begin(), m_Groups.end() );
+		// Each distinct group once: a bind repeating its slot's group adds none.
+		std::array<std::uint64_t, kMaxBindGroups> slots = m_Groups;
 		for ( std::size_t i = index + 1; i < commands.size() && commands[i].op != Op::kEndRendering;
 		    ++i )
 		{
-			if ( commands[i].op == Op::kSetBindGroup )
+			if ( commands[i].op == Op::kSetBindGroup && slots[commands[i].slot] != commands[i].a )
+			{
+				slots[commands[i].slot] = commands[i].a;
 				groups.push_back( commands[i].a );
+			}
 			// Timer chunks opened between draws only receive timestamps;
 			// the actual buffer copies occur in Finish. Hoist the transition
 			// out of rendering while retaining its previous-use dependency.
@@ -1322,29 +1328,53 @@ private:
 			break;
 		case Op::kSetPipeline:
 		{
-			m_Pipeline = &m_D.m_Pipelines.find( command.a )->second;
+			// The bound pipeline again changes nothing. A different one with the
+			// same layout at the same bind point keeps the bound sets (Vulkan's
+			// pipeline layout compatibility), so only a new layout rebinds them.
+			const PipelineRecord *next = &m_D.m_Pipelines.find( command.a )->second;
+			if ( next == m_Pipeline )
+				break;
+			const bool keepSets = m_Pipeline && m_Pipeline->kind == next->kind &&
+			                      m_Pipeline->pipelineLayout == next->pipelineLayout;
+			m_Pipeline = next;
 			vkCmdBindPipeline( m_Cmd,
 			    m_Pipeline->kind == PipelineKind::kCompute ? VK_PIPELINE_BIND_POINT_COMPUTE
 			                                               : VK_PIPELINE_BIND_POINT_GRAPHICS,
 			    m_Pipeline->pipeline );
-			m_GroupDirty.fill( true );
+			if ( !keepSets )
+				m_GroupDirty.fill( true );
 			break;
 		}
 		case Op::kSetBindGroup:
-			m_Groups[command.slot] = command.a;
-			m_GroupDirty[command.slot] = true;
+			// The group already in the slot stays bound (or stays pending).
+			if ( m_Groups[command.slot] != command.a )
+			{
+				m_Groups[command.slot] = command.a;
+				m_GroupDirty[command.slot] = true;
+			}
 			break;
 		case Op::kSetVertexBuffer:
 		{
+			if ( command.slot < m_VertexBound.size() && m_VertexBound[command.slot].valid &&
+			     m_VertexBound[command.slot].buffer == command.a &&
+			     m_VertexBound[command.slot].offset == command.offset )
+				break;
 			const VkBuffer buffer = m_D.LiveBuffer( command.a )->buffer;
 			const VkDeviceSize offset = command.offset;
 			vkCmdBindVertexBuffers( m_Cmd, command.slot, 1, &buffer, &offset );
+			if ( command.slot < m_VertexBound.size() )
+				m_VertexBound[command.slot] = { true, command.a, command.offset };
 			break;
 		}
 		case Op::kSetIndexBuffer:
+			if ( m_IndexBound.valid && m_IndexBound.buffer == command.a &&
+			     m_IndexBound.offset == command.offset && m_IndexFormat == command.indexFormat )
+				break;
 			vkCmdBindIndexBuffer( m_Cmd, m_D.LiveBuffer( command.a )->buffer, command.offset,
 			    command.indexFormat == IndexFormat::kUint16 ? VK_INDEX_TYPE_UINT16
 			                                                : VK_INDEX_TYPE_UINT32 );
+			m_IndexBound = { true, command.a, command.offset };
+			m_IndexFormat = command.indexFormat;
 			break;
 		case Op::kSetViewport:
 			m_Viewport = command.viewport;
@@ -1470,6 +1500,15 @@ private:
 		m_Groups.fill( 0 );
 		m_GroupDirty.fill( true );
 		m_Viewport.reset();
+		ForgetBuffers();
+	}
+
+	// Host work and a new encoder may bind their own buffers.
+	void ForgetBuffers()
+	{
+		for ( BoundBuffer &bound : m_VertexBound )
+			bound.valid = false;
+		m_IndexBound.valid = false;
 	}
 
 	struct PendingTimestamp
@@ -1496,6 +1535,17 @@ private:
 	const PipelineRecord *m_Pipeline = nullptr;
 	std::array<std::uint64_t, kMaxBindGroups> m_Groups{};
 	std::array<bool, kMaxBindGroups> m_GroupDirty{};
+	// The vertex and index buffers bound by this translation, to skip a bind
+	// that repeats them.
+	struct BoundBuffer
+	{
+		bool valid = false;
+		std::uint64_t buffer = 0;
+		std::uint64_t offset = 0;
+	};
+	std::array<BoundBuffer, 16> m_VertexBound{};
+	BoundBuffer m_IndexBound;
+	IndexFormat m_IndexFormat = IndexFormat::kUint16;
 	std::optional<Viewport> m_Viewport;
 	bool m_Rendering = false;
 	std::uint32_t m_Width = 0;
