@@ -7,6 +7,7 @@
     python3 tools/render/retirement_scans.py legacy-stream   [--root DIR] [--write]
     python3 tools/render/retirement_scans.py dead-code       [--root DIR]
     python3 tools/render/retirement_scans.py legacy-freeze   [--root DIR] [--write] [--rev REV]
+    python3 tools/render/retirement_scans.py legacy-backends [--root DIR] [--write] [--rev REV]
     python3 tools/render/retirement_scans.py sensitivity
 
   side-channels  K3 "Side channels gone": no first-party source names the
@@ -52,6 +53,15 @@
                  `--write --rev <your commit>` or check that the ratchet's
                  diff holds only your own items, so other sessions'
                  uncommitted work is never recorded under your commit.
+  legacy-backends  Legacy backend retirement (user decision, 2026-10-07: the
+                 legacy backends are deleted completely; RFC 0028). Each
+                 legacy backend directory (shaderapidx9, shaderapivulkan,
+                 shaderapiempty, stdshaders, togl, togles) has its files and
+                 total lines recorded exactly in
+                 tools/render/legacy_backends_ratchet.json. A new file or
+                 more lines fails; fewer must be recorded with --write in
+                 the change that deletes them. The goal passes only when
+                 every directory is gone, reported separately.
   sensitivity    seeded faults in private temporary trees must each be
                  rejected by the scan they target, and a clean tree accepted.
 
@@ -102,6 +112,11 @@ FREEZE_RATCHET = "tools/render/legacy_freeze_ratchet.json"
 # RFC 0016 binding rule 1: the frozen legacy render paths.
 FROZEN_DIRS = ("materialsystem/shaderapivulkan/", "materialsystem/shaderapidx9/",
                "materialsystem/stdshaders/")
+BACKENDS_SCHEMA = "render-legacy-backends-ratchet/v1"
+BACKENDS_RATCHET = "tools/render/legacy_backends_ratchet.json"
+LEGACY_BACKENDS = ("materialsystem/shaderapidx9/", "materialsystem/shaderapivulkan/",
+                   "materialsystem/shaderapiempty/", "materialsystem/stdshaders/", "togl/",
+                   "togles/")
 FROZEN_LIGHTING = ("engine/gl_lightmap.cpp", "engine/lightcache.cpp")
 STDSHADERS = "materialsystem/stdshaders/"
 STDSHADER_EXTENSIONS = {".cpp", ".h", ".fxc", ".vsh", ".psh", ".inc"}
@@ -395,12 +410,81 @@ def _check_freeze_against(path, current, checks):
     compare_set("switches", current["switches"], recorded.get("switches", []), "launch switch")
 
 
+def backends_snapshot(root):
+    out = {}
+    for path in all_files(root):
+        for backend in LEGACY_BACKENDS:
+            if path.startswith(backend):
+                entry = out.setdefault(backend.rstrip("/"), {"files": 0, "lines": 0})
+                entry["files"] += 1
+                entry["lines"] += read(root, path).count("\n")
+    return out
+
+
+def check_legacy_backends(root, checks, write=False, rev=None):
+    if rev:
+        with tempfile.TemporaryDirectory() as tmp:
+            wanted = [p for p in LEGACY_BACKENDS + (BACKENDS_RATCHET,)
+                      if subprocess.run(["git", "-C", str(root), "cat-file", "-e",
+                                         "%s:%s" % (rev, p.rstrip("/"))],
+                                        capture_output=True).returncode == 0]
+            archive = subprocess.run(["git", "-C", str(root), "archive", rev] + wanted,
+                                     capture_output=True, check=True).stdout
+            subprocess.run(["tar", "-x", "-C", tmp], input=archive, check=True)
+            current = backends_snapshot(Path(tmp))
+            if not write:
+                _check_backends_against(Path(tmp) / BACKENDS_RATCHET, current, checks)
+                return
+    else:
+        current = backends_snapshot(root)
+    path = Path(root) / BACKENDS_RATCHET
+    if write:
+        data = {"schema": BACKENDS_SCHEMA,
+                "note": "Legacy backend retirement ratchet (user decision 2026-10-07, RFC 0028): "
+                        "files and lines per legacy backend directory. Exact and shrink-only; "
+                        "record deletions with `retirement_scans.py legacy-backends --write`. "
+                        "The goal is an empty map.",
+                "backends": current}
+        path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+        print("legacy-backends: recorded %d backend(s), %d line(s)"
+              % (len(current), sum(e["lines"] for e in current.values())))
+    _check_backends_against(path, current, checks)
+
+
+def _check_backends_against(path, current, checks):
+    checks.check(path.exists(), "backends.ratchet-exists", "no %s" % BACKENDS_RATCHET)
+    if not path.exists():
+        return
+    data = json.loads(path.read_text())
+    checks.check(data.get("schema") == BACKENDS_SCHEMA, "backends.schema",
+                 "schema must be %s" % BACKENDS_SCHEMA)
+    recorded = data.get("backends", {})
+    grew, shrank = [], []
+    for name in sorted(set(current) | set(recorded)):
+        cur = current.get(name, {"files": 0, "lines": 0})
+        rec = recorded.get(name, {"files": 0, "lines": 0})
+        for key in ("files", "lines"):
+            if cur[key] > rec[key]:
+                grew.append("%s %s %d > %d" % (name, key, cur[key], rec[key]))
+            elif cur[key] < rec[key]:
+                shrank.append("%s %s %d < %d" % (name, key, cur[key], rec[key]))
+    for item in grew:
+        print("legacy-backends: grew: %s" % item)
+    for item in shrank:
+        print("legacy-backends: shrank, record it with --write: %s" % item)
+    checks.check(not grew, "backends.no-growth", "%d growth(s)" % len(grew))
+    checks.check(not shrank, "backends.exact", "%d unrecorded shrink(s)" % len(shrank))
+    print("INFO legacy-backends: %d backend(s), %d line(s) remain; the goal is 0"
+          % (len(current), sum(e["lines"] for e in current.values())))
+
+
 SCANS = {
     "side-channels": check_side_channels,
     "record-replay": check_record_replay,
     "legacy-stream": check_legacy_stream,
     "dead-code": check_dead_code,
     "legacy-freeze": check_legacy_freeze,
+    "legacy-backends": check_legacy_backends,
 }
 
 
@@ -436,6 +520,7 @@ def sensitivity():
         (base / "materialsystem" / "stdshaders" / "lightmappedgeneric_dx9.cpp").write_text("\n")
         clean = run_scan("legacy-stream", base, write=True)
         clean_freeze = run_scan("legacy-freeze", base, write=True)
+        run_scan("legacy-backends", base, write=True)
         for name in SCANS:
             result = run_scan(name, base)
             checks.check(result.failures == 0, "control.%s-passes-a-clean-tree" % name,
@@ -490,6 +575,16 @@ def sensitivity():
         seeded("legacy-shader-left", "dead-code",
                lambda t: ((t / LEGACY_SHADERS).mkdir(parents=True),
                           (t / LEGACY_SHADERS / "x.frag").write_text("\n")))
+        seeded("backends-new-file", "legacy-backends",
+               lambda t: (t / "materialsystem" / "shaderapivulkan" / "new.cpp").write_text("\n"))
+        seeded("backends-more-lines", "legacy-backends",
+               lambda t: (t / "materialsystem" / "stdshaders" / "lightmappedgeneric_dx9.cpp")
+               .write_text("\n\n\n"))
+        seeded("backends-new-backend", "legacy-backends",
+               lambda t: ((t / "togl").mkdir(), (t / "togl" / "x.cpp").write_text("\n")))
+        seeded("backends-unrecorded-deletion", "legacy-backends",
+               lambda t: (t / "materialsystem" / "stdshaders" / "lightmappedgeneric_dx9.cpp")
+               .unlink())
         checks.check(clean.failures == 0, "control.ratchet-write-passes", "")
         checks.check(clean_freeze.failures == 0, "control.freeze-write-passes", "")
 
@@ -521,13 +616,13 @@ def main(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scan", choices=sorted(SCANS) + ["sensitivity"])
     parser.add_argument("--root", type=Path, default=ROOT)
-    parser.add_argument("--rev", help="legacy-freeze: read the frozen paths from this git revision")
+    parser.add_argument("--rev", help="legacy-freeze, legacy-backends: read the paths from this git revision")
     parser.add_argument("--write", action="store_true",
-                        help="legacy-stream, legacy-freeze: record the current state")
+                        help="legacy-stream, legacy-freeze, legacy-backends: record the current state")
     args = parser.parse_args(argv)
     if args.scan == "sensitivity":
         checks = sensitivity()
-    elif args.scan == "legacy-freeze":
+    elif args.scan in ("legacy-freeze", "legacy-backends"):
         checks = run_scan(args.scan, args.root, write=args.write, rev=args.rev)
     elif args.scan == "legacy-stream":
         if args.rev:
@@ -535,7 +630,7 @@ def main(argv=None):
         checks = run_scan(args.scan, args.root, write=args.write)
     else:
         if args.write:
-            parser.error("--write applies to legacy-stream and legacy-freeze only")
+            parser.error("--write applies to legacy-stream, legacy-freeze and legacy-backends only")
         checks = run_scan(args.scan, args.root)
     return checks.report()
 

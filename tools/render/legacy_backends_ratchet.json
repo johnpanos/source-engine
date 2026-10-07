@@ -1,0 +1,30 @@
+{
+  "backends": {
+    "materialsystem/shaderapidx9": {
+      "files": 67,
+      "lines": 52428
+    },
+    "materialsystem/shaderapiempty": {
+      "files": 3,
+      "lines": 3083
+    },
+    "materialsystem/shaderapivulkan": {
+      "files": 233,
+      "lines": 48942
+    },
+    "materialsystem/stdshaders": {
+      "files": 1561,
+      "lines": 167303
+    },
+    "togl": {
+      "files": 16,
+      "lines": 27931
+    },
+    "togles": {
+      "files": 18,
+      "lines": 29780
+    }
+  },
+  "note": "Legacy backend retirement ratchet (user decision 2026-10-07, RFC 0028): files and lines per legacy backend directory. Exact and shrink-only; record deletions with `retirement_scans.py legacy-backends --write`. The goal is an empty map.",
+  "schema": "render-legacy-backends-ratchet/v1"
+}

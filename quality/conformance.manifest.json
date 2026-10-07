@@ -19511,6 +19511,33 @@
       "expect": "pass"
     },
     {
+      "id": "render.legacy-backends.ratchet",
+      "domain": "Q-ARCH",
+      "rfc": "0028",
+      "migration": "R91",
+      "contract": "tools/render/retirement_scans.py",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "Legacy backend retirement ratchet (user decision 2026-10-07: the legacy backends are deleted completely). Files and lines of shaderapidx9, shaderapivulkan, shaderapiempty, stdshaders, togl and togles are recorded exactly in tools/render/legacy_backends_ratchet.json; growth fails, deletions must be recorded. The goal is zero.",
+      "command": [
+        "{python}",
+        "tools/render/retirement_scans.py",
+        "legacy-backends"
+      ],
+      "sources": [
+        "tools/render/retirement_scans.py",
+        "tools/render/legacy_backends_ratchet.json",
+        "tools/quality/conformance_result.py"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 4,
+      "timeout_seconds": 300,
+      "requires": [
+        "executable:git"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.record-replay",
       "domain": "Q-ARCH",
       "rfc": "0016",

@@ -3,7 +3,8 @@
 - Status: Proposed (2026-10-07); nothing implemented, no gate passed.
 - Date: 2026-10-07
 - User direction (2026-10-07): "let's unrule it out, we should have DX9 the
-  same way we have the [D3D12] + metal ports". This lifts RFC 0016's
+  same way we have the 3DS + metal ports" (the PICA adapter of RFC 0026 in
+  the source-engine-3ds worktree, and RFC 0025). This lifts RFC 0016's
   exclusion of a native D3D9 adapter and of running mod shader DLL bytecode
   on the core.
 - Render architecture: [RFC 0016](0016-render-core.md) owns
@@ -16,7 +17,7 @@
   are the oracle, as for Vulkan (K1), OpenGL (K10), Direct3D 12
   ([RFC 0024](0024-direct3d12-device-adapter.md)) and Metal
   ([RFC 0025](0025-metal-device-adapter.md)).
-- Tracking: no ranked row. A sibling of R92, RFC 0024 and RFC 0025, and a
+- Tracking: no ranked row. A sibling of R92 and RFCs 0024, 0025 and 0026, and a
   provider for R97 (device switching). Ranking it is the user's decision.
 
 ## Why
@@ -83,10 +84,18 @@ candidate for deletion once the adapter and the frontend carry its users.
    its D3D9 constant and sampler registers bound directly. On every other
    adapter the missing-shader rule stays. No bytecode translation to other
    APIs is in scope.
-10. **Legacy backend retirement.** Once D9-5 passes, `shaderapidx9` and its
-    DXVK profiles move onto the core with this adapter, and the legacy
-    backend is deleted in that change (binding rule 3). ToGL's retirement
-    remains a separate decision about the SDL2 legacy profiles.
+10. **Legacy backend retirement.** User decision (2026-10-07): "we need to
+    get rid of the legacy backends fully". `shaderapidx9`, `shaderapivulkan`,
+    `shaderapiempty`, `materialsystem/stdshaders/`, ToGL and ToGLES are all
+    deleted; this supersedes the 2026-09-26 decision to keep ToGL for mod
+    shader DLLs, which run on this adapter instead (decision 9). Each is
+    deleted in the change whose core path replaces its last user (binding
+    rule 3). The ratchet `retirement_scans.py legacy-backends`
+    (`render.legacy-backends.ratchet`, ledger
+    `tools/render/legacy_backends_ratchet.json`) records each directory's
+    files and lines exactly: growth fails, deletions are recorded in the
+    deleting change, and the goal is an empty ledger (329,467 lines in six
+    directories at 2026-10-07).
 
 ## Gates
 

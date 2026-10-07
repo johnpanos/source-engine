@@ -207,8 +207,14 @@ platform acceptance.
     contracts, drop shims kept only for them, delete what the core
     replaces. Favor progress over preserving a frozen path; never put new
     work in the wrong place. This retires no backend or profile: D3D9 and
-    its DXVK profiles, ToGL and the others keep building and running. Each
-    such commit carries a `Frozen-path:` line.
+    its DXVK profiles, ToGL and the others keep building and running until
+    their replacement lands. Each such commit carries a `Frozen-path:` line.
+  - The legacy backends are deleted completely (user decision, 2026-10-07):
+    `shaderapidx9`, `shaderapivulkan`, `shaderapiempty`, `stdshaders`,
+    ToGL and ToGLES, under the shrink-only ratchet
+    `tools/render/retirement_scans.py legacy-backends` (RFC 0028
+    decision 10). A change that deletes legacy backend code records it with
+    `--write --rev <commit>`; nothing grows them.
   - New render work lands on the core in its owning module and is proven
     in `render_lab` before any integration.
   - The old copy is deleted in the change that replaces it.

@@ -859,9 +859,9 @@ measured for this RFC; measured numbers are quoted from their records.
   Metal ([RFC 0025](0025-metal-device-adapter.md)) and D3D9
   ([RFC 0028](0028-direct3d9-device-adapter.md), user direction 2026-10-07)
   have theirs.
-- Retiring ToGL. ToGL stays for mod shader DLLs on the SDL2 legacy profiles
-  (user decision, 2026-09-26). The OpenGL adapter runs the core, not D3D
-  bytecode.
+- Keeping any legacy backend. User decision (2026-10-07) reverses the
+  2026-09-26 decision to keep ToGL: every legacy backend is deleted, under
+  the ratchet in [RFC 0028](0028-direct3d9-device-adapter.md) decision 10.
 - Running D3D bytecode from mod shader DLLs on adapters other than D3D9
   (RFC 0028 runs it on the D3D9 adapter only)
   ([Mod shader DLLs](#mod-shader-dlls)).
