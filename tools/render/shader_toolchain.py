@@ -486,6 +486,12 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_TREE_HANGING_IGNORED",)),
         ("kTreeSwayRootIgnored", LAB + "/tree_sway_check.comp",
          DEVICE_OPTIONS + ("-DSEEDED_TREE_ROOT_IGNORED",)))),
+    "specular_aa_defects_spv.h": ("render::lab::spirv",
+        "render_lab specular AA image oracle sensitivity", (
+        ("kSurfaceSpecularAaDisabled", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SPECULAR_AA_DISABLED",)),
+        ("kSurfaceSpecularAaBiased", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_SPECULAR_AA_BIASED",)))),
     "softparticle_defects_spv.h": ("render::lab::spirv",
         "render_lab soft-particle depth fade sensitivity", (
         ("kSoftParticleFadeIgnored", FAMILIES + "/surface.frag",

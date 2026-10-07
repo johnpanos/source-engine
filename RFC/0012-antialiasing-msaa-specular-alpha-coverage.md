@@ -443,7 +443,40 @@ from another source (normal-map minification without variance-aware mips
 (R66), probe or lightmap sampling). The constants stay at version 1 until
 that oracle sets them.
 
-Open: the lab shimmer and supersampled-reference oracles, the
+Lab image oracle (2026-10-06, `render.pbr-specular-aa.image`, recorded
+known fail): `render_lab suite specular-aa-image` draws the pbr point on a
+bumpy metal plane (8-texel bumps up to about 25 degrees, normal mips
+box-filtered as stored bytes, as Source content has them) under one point
+light, from a grazing view strafed 16 steps of 0.5 units at 128x128,
+against a 4x4 supersampled render of the same poses, display-referred
+(Reinhard per sample, then the box filter; a first raw-HDR configuration
+was dropped because a few radiance peaks of several hundred dominated every
+mean). A flat plane is bit for bit the same with and without the filter
+(passes). With the filter, at version 1's constants:
+
+| Roughness | Shimmer on/off | Reference L1 on/off | Mean on / off / reference |
+| --- | --- | --- | --- |
+| 0.10 | 4.35 | 7.59 | 0.173 / 0.056 / 0.057 |
+| 0.25 | 1.53 | 1.75 | 0.280 / 0.239 / 0.226 |
+
+Without the filter, the mipmapped normals already match the reference's
+mean. A sweep of the constants (screen variance 0.15, 0.05, 0.02, 0.005 at
+threshold 0.2; 0.05/0.02; 0.01/0.01) only reduces the damage as the kernel
+shrinks; no setting beats off. The threshold never binds here.
+
+Interpretation (not yet tested): this RFC applies the kernel to the final
+shading normal after normal mapping. Screen derivatives of a high-frequency
+normal map are noisy per 2x2 quad, so the widened lobe itself flickers and
+brightens. Tokuyoshi and Kaplanyan's 2019 projected-space filter is defined
+on the geometric (interpolated) normal; normal-map detail belongs to normal
+variance (Toksvig-style, A4/R66, or a runtime estimate from the filtered
+normal's length). Proposed amendment, pending a curved-geometry fixture:
+derivatives of the interpolated normal only, plus a normal-variance term
+for the map. Until then the product filter (`r_core_specular_aa 1`) has no
+measured benefit in game and a measured cost on bumpy low-roughness metal
+in the lab.
+
+Open: the amendment above and its curved fixture, the
 one-consumer negative provider, the clear coat's own filter, the frozen
 native backend's `world_pbr`/`model_pbr` copies (not changed, by RFC 0016's
 binding rules), VGPR/occupancy and the resolution sweep on the 8060S and RTX

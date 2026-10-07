@@ -20,6 +20,8 @@ int RunSuite( int argc, char **argv )
 		return 2;
 	}
 	const std::string name = argv[0];
+	if ( name == "specular-aa-image" )
+		return RunSpecularAaImageSuite( argc - 1, argv + 1 );
 	if ( name == "specular-aa" )
 		return RunSpecularAaSuite( argc - 1, argv + 1 );
 	if ( name == "tree-sway" )

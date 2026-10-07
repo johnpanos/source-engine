@@ -11287,6 +11287,38 @@
       "expect": "pass"
     },
     {
+      "id": "render.pbr-specular-aa.image",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0012",
+      "migration": "R65",
+      "contract": "RFC/0012-antialiasing-msaa-specular-alpha-coverage.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "RFC 0012 A2's image oracles in render_lab (suite specular-aa-image --validate): the pbr point on a bumpy (8-texel bumps, box-filtered mips) metal plane at roughness 0.10 and 0.25 under one point light, a grazing view strafed 16 steps of 0.5 units, display-referred (Reinhard per sample), judged against a 4x4 supersampled render of the same poses: shimmer with the filter <= 0.9 x without, reference L1 with <= without, energy within 3 %; a flat plane bit for bit the same with and without. Recorded known fail at version 1 (2026-10-06): the filter on the post-normal-map normal raises shimmer 4.35x/1.53x and brightness 3x at r0.10; every smaller constant tried is also worse than off (RFC 0012 A2 progress).",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "specular-aa-image",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 10,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/specular_aa_image_suite.cpp",
+        "render/shaders/common/pbr_specular_aa.glsl",
+        "render/material/families/surface_program.glsl",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "fail",
+      "expected_divergence": "exit status 1"
+    },
+    {
       "id": "render.lighting-controls",
       "domain": "Q-PRESENTATION",
       "rfc": "0014",
