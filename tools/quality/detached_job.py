@@ -6,8 +6,10 @@
     python3 tools/quality/detached_job.py wait intro4-fast     # blocks; exits with the job's code
     python3 tools/quality/detached_job.py status intro4-fast   # one look, never blocks
 
-`start` launches a supervisor in its own session (setsid: closing the shell or
-killing a process group does not reach it), which runs the command as its child
+`start` launches a supervisor as a transient systemd user unit (its own
+cgroup: the job outlives the terminal or agent session that started it, whose
+cgroup is killed when it ends; `--no-systemd` or no systemd falls back to a
+new session only), which runs the command as its child
 with stdout and stderr in the job's log, and records in the job's state file
 (build/jobs/<name>.json): the command, both PIDs, the start time and, when the
 child ends, its exit code (a negative code is the signal that ended it) and the
@@ -29,6 +31,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -85,21 +88,39 @@ def cmd_start(args):
     command = args.command[1:] if args.command[0] == "--" else args.command
     write_state(state, {"name": args.name, "command": command, "cwd": os.getcwd(),
                         "log": str(log), "started": time.time()})
-    supervisor = subprocess.Popen(
-        [sys.executable, str(Path(__file__).resolve()), "_supervise", str(state), str(log)],
-        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        start_new_session=True)
+    supervise = [sys.executable, str(Path(__file__).resolve()), "_supervise", str(state),
+                 str(log)]
+    # Outside the launcher's cgroup: an agent or terminal session that ends
+    # kills its whole cgroup, setsid or not (2026-10-07: a map bake died with
+    # the session that started it). A transient systemd user unit has its
+    # own; without systemd the supervisor only gets its own session.
+    unit = None
+    if not args.no_systemd and shutil.which("systemd-run"):
+        unit = "detached-job-%s-%d" % (args.name, int(time.time()))
+        launcher = subprocess.run(
+            ["systemd-run", "--user", "--collect", "--quiet", "--unit", unit,
+             "--working-directory", os.getcwd()] + supervise,
+            stdin=subprocess.DEVNULL, capture_output=True, text=True)
+        if launcher.returncode != 0:
+            raise SystemExit("systemd-run failed: " + launcher.stderr.strip())
+        poll = lambda: None
+    else:
+        supervisor = subprocess.Popen(supervise, stdin=subprocess.DEVNULL,
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                      start_new_session=True)
+        poll = supervisor.poll
     # The supervisor records the child's PID; wait until it has (or died).
     deadline = time.time() + 30
     while time.time() < deadline:
         record = read_state(state) or {}
         if "pid" in record or "exit_code" in record:
             break
-        if supervisor.poll() is not None:
+        if poll() is not None:
             break
         time.sleep(0.1)
     record = read_state(state) or {}
-    print(json.dumps({"job": args.name, "supervisor_pid": supervisor.pid,
+    print(json.dumps({"job": args.name, "unit": unit,
+                      "supervisor_pid": record.get("supervisor_pid"),
                       "pid": record.get("pid"), "log": str(log), "state": str(state)}))
 
 
@@ -204,6 +225,8 @@ def main():
     sub = parser.add_subparsers(dest="action", required=True)
     start = sub.add_parser("start")
     start.add_argument("--name", required=True)
+    start.add_argument("--no-systemd", action="store_true",
+                       help="run the supervisor in its own session only (no systemd unit)")
     start.add_argument("command", nargs=argparse.REMAINDER)
     for action in ("wait", "status"):
         each = sub.add_parser(action)

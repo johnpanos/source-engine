@@ -54,7 +54,10 @@ class DetachedJobTest(unittest.TestCase):
         done = self.run_tool("wait", "lost")
         self.assertEqual(done.returncode, 125)
         self.assertIn("supervisor lost", done.stdout)
-        os.kill(job["pid"], signal.SIGKILL)
+        try:  # under systemd the unit's stop already ended the job
+            os.kill(job["pid"], signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
     def test_wait_timeout_leaves_the_job_running(self):
         job = self.start("slow", "import time; time.sleep(30)")
