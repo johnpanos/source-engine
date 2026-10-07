@@ -564,7 +564,13 @@ inline constexpr std::uint32_t kSurfaceViewAreas = 4u;
 // driver from testing depth early, is compiled out; only a view whose planes
 // are all zero (which never clip) may omit it.
 inline constexpr std::uint32_t kSurfaceViewClipPlanes = 8u;
-inline constexpr std::uint32_t kSurfaceAllViewFeatures = 15u;
+// Profile options compiled into a view's programs (specialization, not a
+// branch): soft shadows (PCSS; without it every shadow takes the hard 2x2
+// filter) and the probe volume's projected-light bounce. Both are off in
+// the product's defaults (r_core_shadow_pcss, r_core_probe_bounce).
+inline constexpr std::uint32_t kSurfaceViewSoftShadows = 16u;
+inline constexpr std::uint32_t kSurfaceViewProbeBounce = 32u;
+inline constexpr std::uint32_t kSurfaceAllViewFeatures = 63u;
 
 // The per-instance record of an instanced model point: FamilyDrawConstants
 // (object-to-clip, then object-to-world, row-major).

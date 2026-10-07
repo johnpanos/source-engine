@@ -127,10 +127,14 @@ ConVar r_core_world_gpu_submit( "r_core_world_gpu_submit", "0", FCVAR_ARCHIVE,
     "them against the view's world depth)." );
 ConVar r_core_shadow_movers( "r_core_shadow_movers", "1", FCVAR_ARCHIVE,
     "Render core: moving objects cast shadows over the cached static shadow tiles." );
-ConVar r_core_shadow_pcss( "r_core_shadow_pcss", "1", FCVAR_ARCHIVE,
-    "Render core: soft shadows (PCSS: penumbrae sized by each light's emitter). 0 gives every "
-    "runtime shadow the hard 2x2 filter, which is cheaper (Advanced Video: Soft Shadows "
-    "(PCSS)). Static lights with baked shadow masks use their masks either way." );
+ConVar r_core_shadow_pcss( "r_core_shadow_pcss", "0", FCVAR_ARCHIVE,
+    "Render core: soft shadows (PCSS: penumbrae sized by each light's emitter), compiled into "
+    "the shaders when 1. 0 (default) gives every runtime shadow the hard 2x2 filter, which is "
+    "much cheaper (Advanced Video: Soft Shadows (PCSS)). Static lights with baked shadow masks "
+    "use their masks either way." );
+ConVar r_core_probe_bounce( "r_core_probe_bounce", "0", FCVAR_ARCHIVE,
+    "Render core: the probe volume's projected-light bounce, compiled into the shaders when 1. "
+    "0 (default) leaves it out." );
 ConVar r_core_area_lights( "r_core_area_lights", "0", FCVAR_ARCHIVE,
     "Render core: runtime area lights (LTC) for the map's light fixtures and the frame's "
     "emitting surfaces. 0 (default, Source 2's lighting): fixtures light through the bake and "
@@ -463,7 +467,8 @@ void RenderCoreHost_BeginFrame()
 			    r_core_runtime_direct.GetInt(),
 			    RenderCoreWorldDraw_OnlyCore(), r_core_dynamic_draws.GetBool(),
 			    r_core_volumetric.GetInt(), r_core_ssr.GetInt(),
-			    r_core_world_gpu_submit.GetInt(), r_core_area_lights.GetInt() };
+			    r_core_world_gpu_submit.GetInt(), r_core_area_lights.GetInt(),
+			    r_core_probe_bounce.GetInt() };
 			host.world->SetQuality( quality );
 			host.world->BeginFrame();
 		}

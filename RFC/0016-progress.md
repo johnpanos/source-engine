@@ -12078,3 +12078,22 @@ Reading: the shadow filter is most of the runtime lights' cost (the soft
 filter alone 15.9 of 20.9 ms); the reflection probes cost 11 ms for a small
 visible contribution; the projected bounce costs 4.9 ms and changes no
 pixel on this map. No gate closes.
+
+### Soft shadows and probe bounce off by default, compiled out (2026-10-06, user direction)
+
+Following the term sweep: two view features compiled into the surface
+program as specialization constants, `kSurfaceViewSoftShadows` (PCSS;
+without it every runtime shadow takes the hard 2×2 filter) and
+`kSurfaceViewProbeBounce` (the probe volume's projected-light bounce),
+set per view from `WorldTarget::softShadows`/`probeBounce`, which follow
+`r_core_shadow_pcss` and the new `r_core_probe_bounce`. Both default to 0
+(ConVars, the High and Low presets, the product profile's declared-off
+terms); `tools/quality/render_flags.sh --soft-shadows` / `--probe-bounce`
+opt in, as does Advanced Video's Soft Shadows row. Direct surface-program
+users (render_lab) keep both on, so their oracles are unchanged: lab suites
+and the lighting menu test (453) pass.
+
+intro4 demo, RTX 3070, fullscreen 4K, first run of the new binaries (a
+cold pipeline cache): frame p50 36.1 → 20.0 ms, GPU p50 33.9 → 17.7 ms,
+render-thread CPU p50 7.4 ms; the mean (29.0 fps) and p99 (250 ms) carry
+the run's first-use shader compiles. No gate closes.

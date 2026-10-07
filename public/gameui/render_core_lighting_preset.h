@@ -24,7 +24,7 @@ struct RenderCoreLighting
 	int shadows = 2;          // r_core_shadow_quality: 0 off .. 3 high
 	int depthPrepass = 1;     // r_core_depth_prepass: 0/1
 	int shadowMovers = 1;     // r_core_shadow_movers: 0/1
-	int shadowPcss = 1;       // r_core_shadow_pcss: 0 hard shadows, 1 soft (PCSS)
+	int shadowPcss = 0;       // r_core_shadow_pcss: 0 hard shadows (default), 1 soft (PCSS)
 	int runtimeDirect = 1;    // r_core_runtime_direct: 0 baked direct light, 1 runtime
 	bool operator==( const RenderCoreLighting & ) const = default;
 };
@@ -137,7 +137,7 @@ inline constexpr RenderCoreLighting PresetLighting( RenderCoreLightingPreset pre
 		return RenderCoreLighting{ 0, 0, 1, 0, 0, 0 };
 	// GTAO off in High too (user direction, 2026-10-06: Source 2 lighting
 	// at Source 2 cost; the profile's declared-off terms).
-	return RenderCoreLighting{ 0, 3, 1, 1, 1, 1 };
+	return RenderCoreLighting{ 0, 3, 1, 1, 0, 1 }; // PCSS a user opt-in, compiled out
 }
 
 inline constexpr RenderCoreLightingPreset ClassifyPreset( const RenderCoreLighting &lighting )

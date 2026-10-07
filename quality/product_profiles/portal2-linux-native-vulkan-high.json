@@ -28,7 +28,8 @@
           "r_core_shadow_quality": "3",
           "r_core_depth_prepass": "1",
           "r_core_shadow_movers": "1",
-          "r_core_shadow_pcss": "1",
+          "r_core_shadow_pcss": "0",
+          "r_core_probe_bounce": "0",
           "r_core_runtime_direct": "1",
           "r_core_area_lights": "0",
           "r_core_ssr": "0",
@@ -41,7 +42,9 @@
           "terms": {
             "area-lights": "r_core_area_lights 0: LTC area lights compiled out (no view area lights, kViewAreas off); fixtures keep their emissive surfaces and baked light",
             "gtao": "r_core_ao_quality 0: kSurfaceAmbientOcclusion compiled out; material AO and the bake's occlusion remain",
-            "ssr": "r_core_ssr 0: the SSR targets' variant is not used; reflection probes alone"
+            "ssr": "r_core_ssr 0: the SSR targets' variant is not used; reflection probes alone",
+            "soft-shadows": "r_core_shadow_pcss 0: PCSS compiled out (kSurfaceViewSoftShadows); every runtime shadow takes the hard 2x2 filter; baked masks unchanged (term sweep: 15.9 ms at 4K, mean dE 0.92)",
+            "probe-bounce": "r_core_probe_bounce 0: the probe volume's projected-light bounce compiled out (kSurfaceViewProbeBounce; term sweep: 4.9 ms at 4K, no visible change on intro4)"
           }
         },
         "required_image_coverage": "RFC 0016 K11/K12 and R91: world, static and animated models, full shadows/material coverage, glass/water, decals, particles, beams, sky, post, UI and nested views; rejected or missing cohorts cannot pass."
@@ -61,6 +64,7 @@
           "r_core_shadow_quality": "0",
           "r_core_depth_prepass": "1",
           "r_core_shadow_movers": "0",
+          "r_core_probe_bounce": "0",
           "r_core_shadow_pcss": "0",
           "r_core_runtime_direct": "0",
           "r_core_area_lights": "0",

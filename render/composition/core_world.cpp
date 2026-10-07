@@ -2384,6 +2384,7 @@ void CoreWorld::SetQuality( const RenderCoreWorldQuality &quality )
 	m_VolumetricOn.store( quality.volumetric != 0, std::memory_order_relaxed );
 	m_SsrOn.store( quality.ssr != 0, std::memory_order_relaxed );
 	m_AreaLightsOn.store( quality.areaLights != 0, std::memory_order_relaxed );
+	m_ProbeBounce.store( quality.probeBounce != 0, std::memory_order_relaxed );
 	m_StageRuntimeDirect.store(
 	    quality.runtimeDirect != 0 && m_StageHasIndirect.load( std::memory_order_relaxed ),
 	    std::memory_order_relaxed );
@@ -3014,6 +3015,8 @@ void CoreWorld::RecordWorldBatch( std::span<const std::uint32_t> tags,
 	world.gpuOcclusion = gpuSubmission >= 2;
 	world.runtimeDirect = m_StageRuntimeDirect.load( std::memory_order_relaxed );
 	world.ambientOcclusionTerm = m_AoQuality.load( std::memory_order_relaxed ) > 0;
+	world.softShadows = m_ShadowPcss.load( std::memory_order_relaxed );
+	world.probeBounce = m_ProbeBounce.load( std::memory_order_relaxed );
 	world.outputScale = target.outputScale;
 	std::copy( target.eye, target.eye + 3, world.eye );
 	world.envmapScale = target.envmapScale;

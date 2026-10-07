@@ -40,6 +40,8 @@
 #                       default (user direction, 2026-10-06: Source 2's
 #                       lighting): fixtures light through the bake and reflect
 #                       through the probes
+#   --soft-shadows      soft shadows (PCSS) on (+r_core_shadow_pcss 1; off by default)
+#   --probe-bounce      the probe volume's projected bounce on (+r_core_probe_bounce 1)
 #   --hard-shadows      soft shadows (PCSS) off (+r_core_shadow_pcss 0; Advanced
 #                       Video: Soft Shadows (PCSS))
 #   --render-help       this list
@@ -73,6 +75,8 @@ render_flags_parse()
 			--baked-direct) runtime_direct=0 ;;
 			--area-lights) area_lights=1 ;;
 			--hard-shadows) RENDER_GAME_ARGS+=(+r_core_shadow_pcss 0) ;;
+			--soft-shadows) RENDER_GAME_ARGS+=(+r_core_shadow_pcss 1) ;;
+			--probe-bounce) RENDER_GAME_ARGS+=(+r_core_probe_bounce 1) ;;
 			--render-help) render_flags_usage; exit 0 ;;
 			*) break ;;
 		esac

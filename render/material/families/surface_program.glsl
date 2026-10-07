@@ -80,6 +80,8 @@ const uint kViewSun = 1u;
 const uint kViewProjectors = 2u;
 const uint kViewAreas = 4u;
 const uint kViewClipPlanes = 8u;
+const uint kViewSoftShadows = 16u;
+const uint kViewProbeBounce = 32u;
 
 bool MaterialFeature( uint feature, bool uniformValue )
 {
@@ -1031,7 +1033,7 @@ void PbrSurface( out float coverage )
 	}
 	// The projected lights' bounce, on every surface the volume covers.
 	if ( diffuseLobe && Term( kProbeBounce ) && Term( kProbeVolume ) && !furnace &&
-	     DebugTermOn( kDebugTermBounce ) &&
+	     DebugTermOn( kDebugTermBounce ) && ViewFeature( kViewProbeBounce ) &&
 	     DebugTermOn( kDebugTermProjected ) )
 	{
 		vec3 unused;
@@ -1091,7 +1093,7 @@ void PbrSurface( out float coverage )
 		gShadowHardOnly = clusterView.slices.w > 0.5;
 	// cl_render_debug_term soft_shadows: the hard filter everywhere, the soft
 	// one compiled out.
-	if ( !DebugTermOn( kDebugTermSoftShadows ) )
+	if ( !DebugTermOn( kDebugTermSoftShadows ) || !ViewFeature( kViewSoftShadows ) )
 		gShadowHardOnly = true;
 	if ( Term( kClustered ) && DebugTermOn( kDebugTermClustered ) && !furnace )
 	{

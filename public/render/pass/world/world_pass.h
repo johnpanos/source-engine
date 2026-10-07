@@ -426,6 +426,10 @@ struct WorldTarget
 	// compiled into the stage's programs; false compiles it out (the AO
 	// setting off). A change rebuilds the pass's programs, as runtimeDirect's.
 	bool ambientOcclusionTerm = true;
+	// Profile options compiled into the view's programs
+	// (material::kSurfaceViewSoftShadows, kSurfaceViewProbeBounce).
+	bool softShadows = true;
+	bool probeBounce = true;
 	// The device the slot records on (the legacy backend's); the pass's
 	// device objects live on it.
 	device::IRenderDevice2 *device = nullptr;

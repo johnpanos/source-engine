@@ -3116,6 +3116,10 @@ void WorldPass::RecordBatch(
 		         return value != 0.0f;
 	         } ) )
 		viewFeatures |= material::kSurfaceViewClipPlanes;
+	if ( target.softShadows )
+		viewFeatures |= material::kSurfaceViewSoftShadows;
+	if ( target.probeBounce )
+		viewFeatures |= material::kSurfaceViewProbeBounce;
 	std::map<std::uint64_t, bool> framesWritten;
 	auto frameGroupReady = [&]( const Resources::Material &m ) -> const Group *
 	{

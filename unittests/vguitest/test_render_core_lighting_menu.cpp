@@ -650,7 +650,7 @@ int main()
 	check( high == kProfileHigh, "High preset equals the profile's high settings" );
 	check( low.runtimeDirect == 0, "Low draws baked direct light" );
 	check( low.shadows == 0 && low.shadowMovers == 0, "Low has no shadow atlas" );
-	check( high.shadowPcss == 1, "High has soft shadows (PCSS)" );
+	check( high.shadowPcss == 0, "High leaves soft shadows (PCSS) to the user (compiled out)" );
 	check( high.runtimeDirect == 1, "High draws runtime direct light" );
 	check( gameui::ClassifyPreset( low ) == RenderCoreLightingPreset::kLow, "Low classifies" );
 	check( gameui::ClassifyPreset( high ) == RenderCoreLightingPreset::kHigh, "High classifies" );

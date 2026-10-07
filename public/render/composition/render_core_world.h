@@ -177,6 +177,11 @@ struct RenderCoreWorldQuality
 	// default, Source 2's model): a fixture's light is the bake's and its
 	// reflection the probes'; static lights shadow from their baked masks.
 	int areaLights = 0;
+	// Nonzero: the probe volume's projected-light bounce on surfaces it
+	// covers (compiled in). Zero (the default): compiled out; the term
+	// sweep measured 4.9 ms at 4K on an RTX 3070 for no visible change on
+	// intro4 (RFC/0016-progress.md).
+	int probeBounce = 0;
 };
 
 // The game's files as the core reads them (projector cookies,
