@@ -11946,3 +11946,36 @@ together under 0.7, the depth prepass 0.07. World surface shading is the
 4K frame; the directive's step 3 (VGPRs, spills, occupancy of the world
 PBR pipeline on this GPU) and step 4 (its register peak) are next. No gate
 closes.
+
+### Step 3: registers and occupancy of the PBR surface pipelines (2026-10-06, user request)
+
+`SOURCE_VK_PIPELINE_STATS=1` (new, diagnostic) enables
+`VK_KHR_pipeline_executable_properties` where the device has it, compiles
+every pipeline with captured statistics and logs one `[pipeline-stats]`
+line per executable: the pipeline's name, its fragment specialization
+constants (the variant), and the driver's statistics. Surface pipelines are
+now named by variant (`render.material.surface world pbr`, `... model pbr
+depth`, ...). Compiler diagnostics, not timings. Fragment stages over the
+intro4 demo's pipelines:
+
+| pipeline | RTX 3070 registers (min / median / max) | 8060S VGPRs (min / median / max) | 8060S instructions (median / max) | 8060S waves per SIMD (median) |
+| --- | --- | --- | --- | --- |
+| world pbr (84) | 63 / 128 / 168 | 72 / 144 / 192 | 6,120 / 10,746 | 10 |
+| model pbr (72) | 63 / 128 / 168 | 72 / 144 / 192 | 6,110 / 10,767 | 10 |
+| world / model pbr depth | 16 | 12 | about 105 | 32 |
+
+RADV reports no spills; NVIDIA's local-memory statistic is a constant
+placeholder, so its spills are unknown. On Ampere 128 registers allow 16 of
+48 warps per SM, 168 allow 12. Across the world pbr variants (8060S): the
+clustered term takes the median from 3,949 instructions and 72 VGPRs to
+6,135 and 144; the baked lightmap or runtime direct term takes VGPRs from
+120 to 192; the area-light view feature takes instructions to 10,348 (off
+by default and compiled out, so those variants are not drawn).
+
+Depth prepass coverage, RTX 3070 at 4K, per-pass timers on the same build:
+world surface shading 23.1 ms with `r_core_depth_prepass 1`, 34.6 ms with
+0. The prepass already removes the overdraw (opaque PBR surfaces draw with
+an equal test after it); the 23 ms is about one shading of each pixel by a
+6,000-instruction, 128–168-register shader. Step 4 is therefore the
+register peak and instruction count of the clustered light loop and the
+lightmap/runtime-direct path, not overdraw. No gate closes.

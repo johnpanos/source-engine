@@ -434,7 +434,19 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	desc.depthFormat = m_DepthFormat;
 	desc.sampleCount = m_SampleCount;
 	desc.raster.alphaToCoverage = alphaCoverage;
-	desc.debugName = "render.material.surface";
+	// The variant's kind in the name (captures, pipeline statistics, compile
+	// hitch logs): layout, then the PBR point and the pass it serves.
+	std::string debugName = std::string( "render.material.surface " ) +
+	                        ( variant.layout == SurfaceVertexLayout::kWorld     ? "world"
+	                            : variant.layout == SurfaceVertexLayout::kModel ? "model"
+	                                                                            : "flat" ) +
+	                        ( ( variant.terms & kSurfacePbr ) ? " pbr" : "" ) +
+	                        ( depthOnly   ? " depth"
+	                            : prepass ? " prepass"
+	                                      : "" ) +
+	                        ( variant.instanced ? " instanced" : "" ) +
+	                        ( variant.staticVertexLight ? " static-light" : "" );
+	desc.debugName = debugName;
 	if ( variant.shadowDepth )
 	{
 		desc.depthFormat = Format::kD32Float;

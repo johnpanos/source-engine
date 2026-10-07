@@ -22,6 +22,8 @@
 #include "fsr_features.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace render::device::vulkan
@@ -388,9 +390,44 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 	RequiredFeatures required;
 	required.Merge( *features, m_Adapter );
 
+	// Diagnostic pipeline statistics (m_PipelineStats), where the device has them.
+	VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR executableInfo{};
+	executableInfo.sType =
+	    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PIPELINE_EXECUTABLE_PROPERTIES_FEATURES_KHR;
+	m_PipelineStats = false;
+	if ( const char *wanted = std::getenv( "SOURCE_VK_PIPELINE_STATS" ); wanted && *wanted == '1' )
+	{
+		std::uint32_t count = 0;
+		vkEnumerateDeviceExtensionProperties( m_Adapter.physical, nullptr, &count, nullptr );
+		std::vector<VkExtensionProperties> available( count );
+		vkEnumerateDeviceExtensionProperties(
+		    m_Adapter.physical, nullptr, &count, available.data() );
+		const bool listed = std::any_of( available.begin(), available.end(),
+		    []( const VkExtensionProperties &e )
+		    {
+			    return std::strcmp( e.extensionName,
+			               VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME ) == 0;
+		    } );
+		VkPhysicalDevicePipelineExecutablePropertiesFeaturesKHR supported = executableInfo;
+		VkPhysicalDeviceFeatures2 query{};
+		query.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+		query.pNext = &supported;
+		if ( listed )
+			vkGetPhysicalDeviceFeatures2( m_Adapter.physical, &query );
+		if ( listed && supported.pipelineExecutableInfo )
+		{
+			extensions.push_back( VK_KHR_PIPELINE_EXECUTABLE_PROPERTIES_EXTENSION_NAME );
+			executableInfo.pipelineExecutableInfo = VK_TRUE;
+			executableInfo.pNext = features;
+			m_PipelineStats = true;
+		}
+		std::fprintf( stderr, "[pipeline-stats] %s\n",
+		    m_PipelineStats ? "enabled" : "unavailable on this device" );
+	}
+
 	VkDeviceCreateInfo info{};
 	info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	info.pNext = features;
+	info.pNext = m_PipelineStats ? static_cast<void *>( &executableInfo ) : features;
 	info.queueCreateInfoCount = queueCount;
 	info.pQueueCreateInfos = queues;
 	info.enabledExtensionCount = static_cast<std::uint32_t>( extensions.size() );
@@ -414,6 +451,14 @@ DeviceResult<void> VulkanDevice::CreateLogical()
 		return Fail( StatusOf( result ), op, result );
 	}
 
+	if ( m_PipelineStats )
+	{
+		m_GetExecutableProperties = reinterpret_cast<PFN_vkGetPipelineExecutablePropertiesKHR>(
+		    vkGetDeviceProcAddr( m_Device, "vkGetPipelineExecutablePropertiesKHR" ) );
+		m_GetExecutableStatistics = reinterpret_cast<PFN_vkGetPipelineExecutableStatisticsKHR>(
+		    vkGetDeviceProcAddr( m_Device, "vkGetPipelineExecutableStatisticsKHR" ) );
+		m_PipelineStats = m_GetExecutableProperties && m_GetExecutableStatistics;
+	}
 	m_Vk.cmdDrawIndexedIndirectCount = LoadDevice<PFN_vkCmdDrawIndexedIndirectCount>(
 	    m_Device, "vkCmdDrawIndexedIndirectCount", "vkCmdDrawIndexedIndirectCountKHR" );
 	m_Vk.cmdPipelineBarrier2 = LoadDevice<PFN_vkCmdPipelineBarrier2>(

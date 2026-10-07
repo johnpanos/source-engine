@@ -576,6 +576,8 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
 		info.stage = stages[0];
 		info.layout = record.pipelineLayout;
+		if ( m_PipelineStats )
+			info.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
 		result = vkCreateComputePipelines( m_Device,
 		    m_PipelineCache.load( std::memory_order_acquire ), 1, &info, nullptr, &record.pipeline );
 	}
@@ -712,6 +714,8 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		info.pColorBlendState = &blend;
 		info.pDynamicState = &dynamic;
 		info.layout = record.pipelineLayout;
+		if ( m_PipelineStats )
+			info.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
 		result = vkCreateGraphicsPipelines( m_Device,
 		    m_PipelineCache.load( std::memory_order_acquire ), 1, &info, nullptr, &record.pipeline );
 	}
@@ -735,10 +739,83 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 	}
 	Name( VK_OBJECT_TYPE_PIPELINE, reinterpret_cast<std::uint64_t>( record.pipeline ),
 	    desc.debugName );
+	if ( m_PipelineStats )
+	{
+		// The fragment stage's specialization (the variant), else none.
+		std::vector<std::uint32_t> ids, values;
+		for ( std::size_t i = 0; i < desc.stages.size(); ++i )
+			if ( desc.stages[i].stage == ShaderStage::kFragment )
+			{
+				for ( const VkSpecializationMapEntry &entry : specEntries[i] )
+					ids.push_back( entry.constantID );
+				values = specValues[i];
+			}
+		ReportPipelineStatistics( record.pipeline, desc.debugName, ids, values );
+	}
 	const PipelineId id{ m_Pipelines.NextId() };
 	m_Pipelines.emplace( id.value, std::move( record ) );
 	++m_ResourceActivity.created[std::size_t( ResourceKind::kPipeline )];
 	return id;
+}
+
+void VulkanDevice::ReportPipelineStatistics( VkPipeline pipeline, std::string_view name,
+    const std::vector<std::uint32_t> &fragmentSpecIds,
+    const std::vector<std::uint32_t> &fragmentSpecValues ) const
+{
+	VkPipelineInfoKHR info{};
+	info.sType = VK_STRUCTURE_TYPE_PIPELINE_INFO_KHR;
+	info.pipeline = pipeline;
+	std::uint32_t count = 0;
+	if ( m_GetExecutableProperties( m_Device, &info, &count, nullptr ) != VK_SUCCESS )
+		return;
+	std::vector<VkPipelineExecutablePropertiesKHR> executables( count );
+	for ( auto &executable : executables )
+		executable.sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_PROPERTIES_KHR;
+	if ( m_GetExecutableProperties( m_Device, &info, &count, executables.data() ) != VK_SUCCESS )
+		return;
+	std::string spec;
+	for ( std::size_t i = 0; i < fragmentSpecIds.size() && i < fragmentSpecValues.size(); ++i )
+		spec += ( spec.empty() ? "" : "," ) + std::to_string( fragmentSpecIds[i] ) + "=" +
+		        std::to_string( fragmentSpecValues[i] );
+	for ( std::uint32_t e = 0; e < count; ++e )
+	{
+		VkPipelineExecutableInfoKHR which{};
+		which.sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_INFO_KHR;
+		which.pipeline = pipeline;
+		which.executableIndex = e;
+		std::uint32_t statCount = 0;
+		if ( m_GetExecutableStatistics( m_Device, &which, &statCount, nullptr ) != VK_SUCCESS )
+			continue;
+		std::vector<VkPipelineExecutableStatisticKHR> stats( statCount );
+		for ( auto &stat : stats )
+			stat.sType = VK_STRUCTURE_TYPE_PIPELINE_EXECUTABLE_STATISTIC_KHR;
+		if ( m_GetExecutableStatistics( m_Device, &which, &statCount, stats.data() ) != VK_SUCCESS )
+			continue;
+		std::string line;
+		for ( const VkPipelineExecutableStatisticKHR &stat : stats )
+		{
+			line += "; ";
+			line += stat.name;
+			line += "=";
+			switch ( stat.format )
+			{
+			case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_BOOL32_KHR:
+				line += stat.value.b32 ? "true" : "false";
+				break;
+			case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_INT64_KHR:
+				line += std::to_string( stat.value.i64 );
+				break;
+			case VK_PIPELINE_EXECUTABLE_STATISTIC_FORMAT_UINT64_KHR:
+				line += std::to_string( stat.value.u64 );
+				break;
+			default:
+				line += std::to_string( stat.value.f64 );
+				break;
+			}
+		}
+		std::fprintf( stderr, "[pipeline-stats] %.*s | spec %s | %s%s\n", int( name.size() ),
+		    name.data(), spec.empty() ? "-" : spec.c_str(), executables[e].name, line.c_str() );
+	}
 }
 
 } // namespace render::device::vulkan

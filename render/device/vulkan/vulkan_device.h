@@ -799,6 +799,16 @@ private:
 	bool m_HostMode = false;
 	const char *m_FailureReason = nullptr;
 	bool m_FsrMixedFloatDot = false;
+	// Diagnostic (SOURCE_VK_PIPELINE_STATS=1): VK_KHR_pipeline_executable_
+	// properties enabled, every pipeline compiled with statistics captured, and
+	// each executable's statistics (registers, spills, ...) logged to stderr as
+	// one "[pipeline-stats]" line. Compiler diagnostics, not GPU timings.
+	bool m_PipelineStats = false;
+	PFN_vkGetPipelineExecutablePropertiesKHR m_GetExecutableProperties = nullptr;
+	PFN_vkGetPipelineExecutableStatisticsKHR m_GetExecutableStatistics = nullptr;
+	void ReportPipelineStatistics( VkPipeline pipeline, std::string_view name,
+	    const std::vector<std::uint32_t> &fragmentSpecIds,
+	    const std::vector<std::uint32_t> &fragmentSpecValues ) const;
 	HostDeviceInfo m_HostInfo;
 	std::shared_ptr<InstanceHandle> m_Instance; // destroyed last (and shared by a host instance)
 	AdapterChoice m_Adapter;
