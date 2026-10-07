@@ -516,14 +516,6 @@ int CNPC_Portal_FloorTurret::OnTakeDamage( const CTakeDamageInfo &info )
 		}
 	}
 
-#ifdef PORTAL2
-	// Portal 2 port: fire sets a living turret burning (see StartBurning()).
-	if ( m_lifeState == LIFE_ALIVE && ( info.GetDamageType() & DMG_BURN ) && m_flBurnExplodeTime == 0.0f )
-	{
-		StartBurning();
-	}
-#endif
-
 	return BaseClass::OnTakeDamage( info );
 }
 
@@ -639,7 +631,15 @@ bool CNPC_Portal_FloorTurret::PreThink( turretState_e state )
 	int iNewState = state;
 
 #ifdef PORTAL2
-	// Retail PreThink (server.so 0x97f950) networks whether the turret is in
+	// Retail PreThink (server.so 0x97f950): an ignited turret (FL_ONFIRE) starts
+	// its burn countdown and hands over to BurnThink.
+	if ( IsOnFire() )
+	{
+		StartBurning();
+		return false;
+	}
+
+	// Retail PreThink networks whether the turret is in
 	// its active (firing) state and complains when it is flung.
 	m_bIsFiring = ( state == TURRET_ACTIVE );
 #endif
@@ -1023,6 +1023,26 @@ void CNPC_Portal_FloorTurret::ActiveThink( void )
 	//Allow descended classes a chance to do something before the think function
 	if ( PreThink( TURRET_ACTIVE ) )
 		return;
+
+#ifdef PORTAL2
+	// Co-op (retail server.so 0x9806d0): with more than one known enemy, an
+	// enemy whose last known position is hidden is set aside for 4 seconds so
+	// the turret can take the other player.
+	CBaseEntity *pCurrentEnemy = GetEnemy();
+	if ( g_pGameRules->IsMultiplayer() && pCurrentEnemy && GetEnemies()->NumEnemies() > 1 )
+	{
+		trace_t tr;
+		UTIL_TraceLine( EyePosition(), m_vecEnemyLKP, MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
+		if ( g_debug_turret.GetBool() )
+		{
+			NDebugOverlay::Line( tr.startpos, tr.endpos, 255, 0, 0, true, -1.0f );
+		}
+		if ( ( tr.fraction < 1.0f || tr.allsolid || tr.startsolid ) && tr.m_pEnt != pCurrentEnemy )
+		{
+			RememberUnreachable( pCurrentEnemy, 4.0f );
+		}
+	}
+#endif
 
 	HackFindEnemy();
 
@@ -1933,20 +1953,22 @@ float CNPC_Portal_FloorTurret::GetFireConeZTolerance( void )
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Portal 2 port: starts the burn countdown. The retail entry point is
-//			not in the 2010 build; fire damage starts it here.
+// Purpose: Starts the burn countdown once the turret is on fire (retail
+//			PreThink, server.so 0x97f950): one start-burning line in four.
 //-----------------------------------------------------------------------------
 void CNPC_Portal_FloorTurret::StartBurning( void )
 {
-	float flMin = sv_portal_turret_min_burn_time.GetFloat();
-	float flMax = MAX( flMin, sv_portal_turret_max_burn_time.GetFloat() );
-	m_flBurnExplodeTime = gpGlobals->curtime + RandomFloat( flMin, flMax );
+	m_flBurnExplodeTime = gpGlobals->curtime + RandomFloat( sv_portal_turret_min_burn_time.GetFloat(),
+		sv_portal_turret_max_burn_time.GetFloat() );
 
-	TryEmitSound( PORTAL_TURRET_TALK_START_BURNING );
-	m_fNextTalk = gpGlobals->curtime + RandomFloat( 0.5f, 0.75f );
+	if ( RandomInt( 0, 3 ) == 0 )
+	{
+		TryEmitSound( PORTAL_TURRET_TALK_START_BURNING );
+		m_fNextTalk = gpGlobals->curtime + 1.0f;
+	}
 
 	SetThink( &CNPC_Portal_FloorTurret::BurnThink );
-	SetNextThink( gpGlobals->curtime );
+	SetNextThink( gpGlobals->curtime + 0.1f );
 }
 
 //-----------------------------------------------------------------------------
@@ -1956,13 +1978,15 @@ void CNPC_Portal_FloorTurret::BurnThink( void )
 {
 	if ( gpGlobals->curtime > m_flBurnExplodeTime )
 	{
+		// Retail BurnThink (server.so 0x97d460), explosion flags 0x569
 		ExplosionCreate( WorldSpaceCenter(), GetAbsAngles(), this, 1000, 500,
-			SF_ENVEXPLOSION_NODAMAGE | SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NODLIGHTS | SF_ENVEXPLOSION_NOSMOKE | SF_ENVEXPLOSION_SURFACEONLY,
+			SF_ENVEXPLOSION_NODAMAGE | SF_ENVEXPLOSION_NOSMOKE | SF_ENVEXPLOSION_NOSPARKS | SF_ENVEXPLOSION_NOSOUND |
+			SF_ENVEXPLOSION_NOFIREBALLSMOKE | SF_ENVEXPLOSION_NODLIGHTS,
 			0.0f, NULL, -1, NULL, CLASS_NONE );
 		UTIL_ScreenShake( WorldSpaceCenter(), 20.0f, 150.0f, 0.75f, 750.0f, SHAKE_START );
 
 		SetThink( &CNPC_FloorTurret::BreakThink );
-		SetNextThink( gpGlobals->curtime + 0.05f );
+		SetNextThink( gpGlobals->curtime );
 		StopSound( PORTAL_TURRET_TALK_BURNING );
 		return;
 	}
@@ -1974,7 +1998,7 @@ void CNPC_Portal_FloorTurret::BurnThink( void )
 	}
 
 	SetThink( &CNPC_Portal_FloorTurret::BurnThink );
-	SetNextThink( gpGlobals->curtime + 0.05f );
+	SetNextThink( gpGlobals->curtime + 0.1f );
 }
 
 //-----------------------------------------------------------------------------

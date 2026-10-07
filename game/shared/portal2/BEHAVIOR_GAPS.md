@@ -384,9 +384,7 @@ Newest last. Each entry names the build and the check that passed.
   networked; the client laser sight goes through portals with
   `C_PortalBeamHelper`, refreshed on muzzle motion or every 0.2 s
   (0xba9780). Headless `sp_a2_turret_intro` boots with 8 turrets; the new
-  behaviors are not checked at runtime. Open: PreThink's burning entry
-  (FL_ONFIRE → BurnThink) versus our DMG_BURN start, and ActiveThink's
-  multiplayer pre-trace.
+  behaviors are not checked at runtime.
 - 2026-10-07, G04 follow-up: `sv_portal_turret_shoot_through_portals_proximity`
   (36864, squared units) is checked by `CBaseCombatCharacter::FVisibleThroughPortal`
   (retail 0x7421c0 calls 0x97f3b0 on the linked portal): nothing is seen
@@ -396,3 +394,13 @@ Newest last. Each entry names the build and the check that passed.
   `sv_portal_turret_fire_cone_z_tolerance` on the Portal 2 turret, whose
   retail default is 45 (was an inferred 15, and unused). Retail burn time
   defaults are 1.0–1.5 s (ours had 3.0). Headless `sp_a2_turret_intro` boots.
+- 2026-10-07, G04 follow-up: burning starts as in retail PreThink: an
+  ignited turret (FL_ONFIRE) gets a 1.0–1.5 s countdown, a start-burning line
+  one time in four, and BurnThink at 0.1 s; fire damage alone no longer starts
+  it (retail OnTakeDamage 0x97d700 only handles the shot-at line). BurnThink
+  uses retail's 0.1 s period and explosion flags (0x569). Co-op: with more than
+  one known enemy, ActiveThink traces to the enemy's last known position and
+  calls `RememberUnreachable( enemy, 4 )` when it is hidden (0x9806d0;
+  `GetEnemies()` is vtable 0x86c, and +0x11 is the map's count). Headless
+  `sp_a2_turret_intro`: `ent_fire npc_portal_turret_floor ignite` burns and
+  removes all 8 turrets. The co-op path is not run.
