@@ -97,7 +97,8 @@ void TestFamiliesFromMapping( testing::Checks &checks )
 		names.push_back( family.name );
 	checks.That(
 	    names == std::vector<std::string>{ "lightmapped", "vertexlit", "unlit", "decal-modulate",
-	                 "cable", "pbr", "water", "refract", "depth", "portal-mask" },
+	                 "modulate", "cable", "pbr", "water", "refract", "depth", "portal-mask",
+	                 "energy" },
 	    "F1.the-mapping-defines-the-core-families-in-order" );
 	FamilyRegistry registry;
 	bool registered = true;
@@ -507,6 +508,14 @@ void TestTransforms( testing::Checks &checks )
 	auto unknown = MapVariables( "NoSuchShader", {}, context );
 	checks.That( !unknown && unknown.Error().status == ImportStatus::kUnknownShader,
 	    "X4.map-variables-reports-an-unknown-shader" );
+	// A key without '$' (or '%') is no shader parameter: the shifted pairs a
+	// "/* ... */" block leaves are metadata, not unmapped gaps.
+	auto commented = MapVariables( "VertexLitGeneric",
+	    { { "$basetexture", "a/b" }, { "/*", "$bumpmap" }, { "models\\a\\b_normal", "$phong" } },
+	    context );
+	checks.That( commented && commented.Value().unmapped.empty() &&
+	                 commented.Value().metadata.size() == 2,
+	    "X4.keys-without-a-dollar-are-metadata" );
 }
 
 int main()

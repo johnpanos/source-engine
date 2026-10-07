@@ -31,11 +31,16 @@ using detail::SourceGammaToLinear;
 // is read and has no effect: UnlitGeneric clears MATERIAL_VAR_SELFILLUM at
 // init (vertexlitgeneric_dx9_helper.cpp), since an unlit surface already is
 // its base color.
-constexpr std::array<std::string_view, 24> kClaimed = { "basetexture", "color", "alpha",
+// The SpriteCard and Sprite rows of the family's schema: UnlitGeneric
+// declares none of them, so an UnlitGeneric material that carries one draws
+// as if it did not.
+constexpr std::array<std::string_view, 39> kClaimed = { "orientation", "overbrightfactor",
+    "addself", "minsize", "startfadesize", "endfadesize", "maxdistance", "farfadeinterval",
+    "spriteorientation", "spriterendermode", "blendframes", "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "additive",
     "model", "nofog", "nocull", "texture2", "frame2", "texture2transform", "ignorez",
     "hdrcolorscale", "hdrbasetexture", "basetexturetransform", "decal", "frame", "depthblend",
-    "depthblendscale", "selfillum" };
+    "depthblendscale", "selfillum", "color2", "splinetype", "maxsize", "spriteorigin" };
 
 } // namespace
 
@@ -80,8 +85,18 @@ UnlitClaim ClaimUnlit( const ParameterBlock &block )
 	constants.surfaceControls[1] = ReadParameter( block, "hdrcolorscale" );
 	constants.surfaceControls[2] = claim.depthBlend ? 1.0f : 0.0f;
 	constants.surfaceControls[3] = depthScale;
+	// ComputeModulationColor: $color times $color2 (ApplyColor2Factor), then
+	// the shader's gamma-to-linear conversion of the product.
 	for ( int c = 0; c < 3; ++c )
-		constants.tint[c] = SourceGammaToLinear( ReadParameter( block, "color", c ) );
+	{
+		const float tint = ReadParameter( block, "color", c ) * ReadParameter( block, "color2", c );
+		if ( !std::isfinite( tint ) || tint < 0.0f )
+		{
+			claim.reason = "$color times $color2 must be finite and nonnegative";
+			return claim;
+		}
+		constants.tint[c] = SourceGammaToLinear( tint );
+	}
 	constants.tint[3] = ReadParameter( block, "alpha" );
 #if defined( RENDER_MATERIAL_UNLIT_SEEDED_IGNORE_VERTEX_COLOR )
 	constants.flags[0] = 0.0f;

@@ -12509,3 +12509,38 @@ Source samples an unbound sampler.
 texel is 0.5 x destination, not discarded; the cloak refusal). Inventory
 unsupported: 186 → 179 (this checkout's `render_lab`). `posed-model`'s Cable
 normal-texture check fails on another session's uncommitted Cable default.
+
+### K12: unread-key sweep, inert keys and UnlitGeneric $color2 (2026-10-07, user request)
+
+Seventh step of the unsupported-material sweep: every "does not read $key"
+refusal was checked against what the shader in this tree declares (its
+`SHADER_PARAM`s in `materialsystem/stdshaders`, the material-system flags
+in `shadersystem.cpp`, and BaseShader's standard parameters).
+
+- **Keys without `$` are metadata** (`vmt_import.cpp`, a diagnostic per
+  key): shaders look parameters up as `$name`. Two `ball_catcher` VMTs wrap
+  their parameters in `/* ... */`, which KeyValues does not read as a
+  comment; the shifted pairs set nothing a shader reads, as in the game.
+- **UnlitGeneric `$color2`** is ComputeModulationColor's factor: the tint is
+  GammaToLinear(`$color` x `$color2`), a negative product refused by name.
+- **Inert, declared by no shader that reads the material:** SpriteCard and
+  Sprite rows authored on UnlitGeneric materials (`$splinetype`,
+  `$maxsize`, `$overbrightfactor`, ...), and family-scoped metadata for
+  misspellings and keys of other shaders (`$vertexcolors`, `$rimboost`,
+  `$normalmapenvmapmask`, `$groupbame`, `$phong*` on LightmappedGeneric,
+  `$writez` on UnlitGeneric, `$nomip`, `$bump_force_on`, ...).
+- **Kept refused** (declared and read, or deliberately refused by an owning
+  slice): SpriteCard's `$distancealpha`, `$vertexfogamount`,
+  `$powerfunction`, `$cropfactor`, `$vertexcolormodulate`; Water's
+  `$reflect2dskybox`; `$flat` with vertex color (seven editor/debug
+  materials: needs a flat interpolant and the core's re-wound provoking
+  vertex), `$ignorez` on mesh points, UnlitGeneric `$allowalphatocoverage`
+  and `$linearwrite`, VertexLitGeneric `$flashlightnolambert` and
+  `$selfillum_envmapmask_alpha`, WorldVertexTransition `$seamless_scale`.
+
+Checks: `render.material.v2` X4 "keys without a dollar are metadata";
+`render.lab.posed-model` claims `$color2` and refuses its negative product by
+name. `render.material.v2`'s F1 family list now names `modulate` and
+`energy` (it had failed since the SolidEnergy commit); F2 still fails on
+another session's uncommitted PBR work. Inventory unsupported: 179 → 148
+(this checkout's `render_lab`).

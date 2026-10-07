@@ -1598,6 +1598,20 @@ std::optional<std::string> RunChecks(
 		results.That( cloaked && !material::ClaimForDrawing( cloaked.Value() ),
 		    "posed-model.modulate-refuses-cloak-pass" );
 	}
+	// UnlitGeneric's $color2 multiplies $color (ApplyColor2Factor); a negative
+	// product is refused by name.
+	{
+		const auto tinted = material::MapVariables(
+		    "UnlitGeneric", { { "$basetexture", "a/b" }, { "$color2", "[.5 .5 .5]" } }, {} );
+		const auto negative = material::MapVariables(
+		    "UnlitGeneric", { { "$basetexture", "a/b" }, { "$color2", "[-1 1 1]" } }, {} );
+		results.That( tinted && material::ClaimForDrawing( tinted.Value() ).HasValue(),
+		    "posed-model.unlit-color2-is-claimed" );
+		const auto refused = negative ? material::ClaimForDrawing( negative.Value() )
+		                              : foundation::MakeUnexpected( std::string() );
+		results.That( !refused && refused.Error().find( "$color2" ) != std::string::npos,
+		    "posed-model.unlit-negative-color2-is-refused-by-name" );
+	}
 	const auto unsupportedDecal = material::MapVariables(
 	    "DecalModulate", { { "$basetexture", "decal" }, { "$envmap", "cube" } }, {} );
 	results.That( unsupportedDecal && !material::ClaimForDrawing( unsupportedDecal.Value() ),

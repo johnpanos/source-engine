@@ -761,6 +761,15 @@ void MapValues( const VmtMappingTable &mapping, const VmtShaderRow *row, Materia
 				metadata = true;
 				desc.diagnostics.push_back( "numeric KeyValues residue " + key );
 			}
+			// A shader looks its parameters up as "$name" (and the material
+			// system's own keys start with '%'): a key without either, such
+			// as the pairs a "/* ... */" block leaves (KeyValues has no block
+			// comments), sets nothing a shader reads.
+			else if ( !metadata && !key.empty() && key[0] != '$' && key[0] != '%' )
+			{
+				metadata = true;
+				desc.diagnostics.push_back( "not a shader parameter (no '$') " + key );
+			}
 			if ( metadata )
 				desc.metadata.push_back( variable );
 			else if ( row )
