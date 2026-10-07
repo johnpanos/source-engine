@@ -33,18 +33,23 @@ layout( push_constant ) uniform Draw
 #ifdef SURFACE_INSTANCED
 // GPU-driven draws (SurfaceVariant::instanced): the same two matrices per
 // instance, as rows, from the per-instance buffer the indirect command's
-// first instance selects.
-layout( location = 8 ) in vec4 instanceToClip[4];
-layout( location = 12 ) in vec4 instanceWorld[4];
+// first instance selects. One attribute per row, not an array: GLSL ES has
+// no array vertex inputs (RFC 0022), and the locations are the same.
+layout( location = 8 ) in vec4 instanceToClip0;
+layout( location = 9 ) in vec4 instanceToClip1;
+layout( location = 10 ) in vec4 instanceToClip2;
+layout( location = 11 ) in vec4 instanceToClip3;
+layout( location = 12 ) in vec4 instanceWorld0;
+layout( location = 13 ) in vec4 instanceWorld1;
+layout( location = 14 ) in vec4 instanceWorld2;
+layout( location = 15 ) in vec4 instanceWorld3;
 mat4 DrawToClip()
 {
-	return transpose( mat4( instanceToClip[0], instanceToClip[1], instanceToClip[2],
-	    instanceToClip[3] ) );
+	return transpose( mat4( instanceToClip0, instanceToClip1, instanceToClip2, instanceToClip3 ) );
 }
 mat4 DrawWorld()
 {
-	return transpose( mat4( instanceWorld[0], instanceWorld[1], instanceWorld[2],
-	    instanceWorld[3] ) );
+	return transpose( mat4( instanceWorld0, instanceWorld1, instanceWorld2, instanceWorld3 ) );
 }
 #else
 mat4 DrawToClip()

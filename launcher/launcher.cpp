@@ -94,6 +94,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #if defined( LINKED_RENDER_CORE )
 #include "engine/render_core_binding.h"
 #include "render/composition/render_core.h"
+#include "render/composition/render_device_setting.h"
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 #include "render/device/vulkan/host_binding.h"
 #include "render/legacy/core_passes.h"
@@ -933,7 +934,34 @@ bool CSourceAppSystemGroup::Create()
 	if ( !CommandLine()->FindParm( "-norendercore" ) )
 	{
 		RenderCoreConfig config;
-		config.device = CommandLine()->ParmValue( "-render-device", RENDER_CORE_DEFAULT_DEVICE );
+		// -render-device, else the device the Video options saved, else the
+		// product profile's default (render_device_setting.h).
+		static char s_SavedDevice[16];
+		const char *savedDevice = RENDER_CORE_DEFAULT_DEVICE;
+		{
+			// An empty base directory (POSIX has no executable name here) is
+			// the working directory, as the file system takes it.
+			const char *base = GetBaseDirectory();
+			char path[MAX_PATH];
+			Q_snprintf( path, sizeof( path ), "%s%s%s/%s", base ? base : "",
+			    base && base[0] ? "/" : "",
+			    CommandLine()->ParmValue( "-game", DEFAULT_HL2_GAMEDIR ),
+			    render_device_setting::kFile );
+			if ( FILE *file = fopen( path, "rb" ) )
+			{
+				char text[64];
+				const size_t length = fread( text, 1, sizeof( text ), file );
+				fclose( file );
+				if ( const char *name = render_device_setting::Parse( text, length ) )
+				{
+					Q_strncpy( s_SavedDevice, name, sizeof( s_SavedDevice ) );
+					savedDevice = s_SavedDevice;
+				}
+				else
+					Warning( "%s names no render device; using %s\n", path, savedDevice );
+			}
+		}
+		config.device = CommandLine()->ParmValue( "-render-device", savedDevice );
 		config.features = CommandLine()->ParmValue( "-render-features", RENDER_CORE_FEATURES );
 		// RFC 0016 K10: the product profile's declared fallbacks and masked
 		// capabilities; every substitution is reported below.

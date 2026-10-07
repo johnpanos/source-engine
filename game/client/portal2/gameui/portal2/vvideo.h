@@ -61,6 +61,7 @@ public:
 
 	// Native menu smoke oracle: uses the same selection/apply path as the row.
 	bool CheckTemporalScale( int choice );
+	bool CheckRenderDevice( int choice );
 	gameui::GraphicsSettingsService &GraphicsSession() { return m_GraphicsSettings; }
 	bool ApplyHdrChanges() { return ApplyChanges(); }
 	void SetDefaults();
@@ -87,6 +88,7 @@ private:
 	void	SetPowerSavingsState();
 	void SetUIScaleState();
 	void SetTemporalScaleState();
+	void SetRenderDeviceState();
 
 private:
 	int					m_nNumResolutionModes;
@@ -102,6 +104,7 @@ private:
 	BaseModHybridButton		*m_drpSplitScreenDirection;
 	BaseModHybridButton *m_drpUIScale;
 	BaseModHybridButton *m_drpTemporalScale;
+	BaseModHybridButton *m_drpRenderDevice;
 	BaseModHybridButton		*m_btnAdvanced;
 	
 	bool	m_bDirtyValues;
@@ -116,6 +119,10 @@ private:
 	int		m_nPowerSavingsMode;
 	float m_flTemporalScale;
 	float m_flUIScale; // ui_scale; 0 follows the display's scale
+	// render_device_setting::kChoices: the saved choice (-1 none) and the
+	// one selected; it applies at the next launch.
+	int m_nSavedRenderDevice;
+	int m_nRenderDevice;
 
 	int		m_iCurrentResolutionWidth;
 	int		m_iCurrentResolutionHeight;

@@ -542,9 +542,8 @@ int main()
 			draw.groups.push_back( { device::BindGroupRole::kDraw, program.Value()->DrawLayout(),
 			    std::as_bytes( std::span( &lighting, 1 ) ), { &page, &white, &white, &white }, 1 } );
 			draw.groups.push_back( view );
-			draw.groups.push_back( { device::BindGroupRole::kFrame, program.Value()->FrameLayout(),
-			    std::as_bytes( std::span( &frame, 1 ) ),
-			    { &white, &white, &white, &white, &white, &white } } );
+			draw.groups.push_back( SurfaceFrameGroup( program.Value()->FrameLayout(),
+			    std::as_bytes( std::span( &frame, 1 ) ), &white, &white, &white, &white, &white ) );
 			draw.vertices = std::as_bytes( std::span( quad ) );
 			draw.vertexCount = std::uint32_t( quad.size() );
 			// The water point draws world vertices, so its push block is the whole

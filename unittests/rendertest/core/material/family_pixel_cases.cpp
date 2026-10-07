@@ -475,6 +475,33 @@ CaseTexture NeutralCaseTexture( render::device::Format format, bool cube )
 	return texture;
 }
 
+CaseGroup SurfaceFrameGroup( device::BindGroupLayoutId layout, std::span<const std::byte> constants,
+    const CaseTexture *atlas, const CaseTexture *grids, const CaseTexture *ltc,
+    const CaseTexture *probeAtlas, const CaseTexture *bounce )
+{
+	// No reflection probes: a two-cube array (the cube array the program
+	// reads, never indexed) and a probe buffer of count 0
+	// (SurfaceProgram's frame request).
+	static const CaseTexture kProbes = []
+	{
+		CaseTexture probes;
+		probes.width = probes.height = 1;
+		probes.clamp = probes.cube = probes.array = true;
+		probes.format = device::Format::kRGBA8Unorm;
+		probes.texels.assign( 12 * 4, 0 );
+		return probes;
+	}();
+	static const std::uint32_t kNoProbes[4] = {};
+	CaseGroup group;
+	group.role = device::BindGroupRole::kFrame;
+	group.layout = layout;
+	group.constants = constants;
+	group.textures = { atlas, grids, ltc, probeAtlas, &kProbes, bounce };
+	group.storage = { std::as_bytes( std::span( kNoProbes ) ) };
+	group.storageLast = true;
+	return group;
+}
+
 CaseGroup NeutralViewGroup( device::BindGroupLayoutId layout )
 {
 	// One froxel with no lights (SurfaceProgram::NeutralViewGroup).
@@ -590,6 +617,20 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 		// The constants, then each storage buffer, once, where constantsAfter
 		// places them.
 		bool constantsPlaced = false;
+		const auto addStorage = [&]
+		{
+			for ( std::span<const std::byte> bytes : request.storage )
+			{
+				device::BufferDesc desc;
+				desc.size = std::max<std::uint64_t>( bytes.size(), 4 );
+				desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
+				device::BufferId buffer;
+				keep( device.CreateBuffer( desc ), buffer );
+				resources.storageDescs.push_back( desc );
+				resources.storage.push_back( buffer );
+				entries.push_back( { binding++, buffer, 0, 0, {}, {} } );
+			}
+		};
 		const auto addConstants = [&]
 		{
 			if ( constantsPlaced )
@@ -604,17 +645,8 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 				entries.push_back(
 				    { binding++, resources.constants, 0, request.constants.size(), {}, {} } );
 			}
-			for ( std::span<const std::byte> bytes : request.storage )
-			{
-				device::BufferDesc desc;
-				desc.size = std::max<std::uint64_t>( bytes.size(), 4 );
-				desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kStorageRead };
-				device::BufferId buffer;
-				keep( device.CreateBuffer( desc ), buffer );
-				resources.storageDescs.push_back( desc );
-				resources.storage.push_back( buffer );
-				entries.push_back( { binding++, buffer, 0, 0, {}, {} } );
-			}
+			if ( !request.storageLast )
+				addStorage();
 		};
 		for ( std::size_t index = 0; index < request.textures.size(); ++index )
 		{
@@ -636,7 +668,7 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 				desc.depthOrLayers = 6;
 			}
 			if ( texture->array )
-				desc.depthOrLayers = 2;
+				desc.depthOrLayers = texture->cube ? 12 : 2;
 			desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
 			device::BufferDesc stagingDesc;
 			stagingDesc.size = texture->texels.size();
@@ -667,6 +699,8 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 		if ( !ok )
 			break;
 		addConstants();
+		if ( request.storageLast )
+			addStorage();
 		auto group = device.CreateBindGroup( { request.layout, entries } );
 		if ( !group )
 		{
@@ -758,7 +792,9 @@ Drawn DrawCase( device::IRenderDevice2 &device, const CaseDraw &draw )
 					    {
 						    const CaseTexture &texture = *draw.groups[g].textures[t];
 						    // A cube's faces follow one another in its texels.
-						    const std::uint32_t layers = texture.cube ? 6 : texture.array ? 2 : 1;
+						    const std::uint32_t layers = texture.cube ? ( texture.array ? 12 : 6 )
+						                                 : texture.array ? 2
+						                                                 : 1;
 						    const std::uint64_t faceBytes =
 						        texture.texels.size() / std::max<std::uint32_t>( layers, 1 );
 						    for ( std::uint32_t layer = 0; layer < layers; ++layer )

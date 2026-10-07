@@ -53,15 +53,15 @@ struct Fixture
 #if defined( RENDER_DEVICE_GL_ES )
 namespace text = rendertest::gles;
 constexpr gl::GlApiKind kApi = gl::GlApiKind::kEs31;
-constexpr ArtifactFormat kFormat = ArtifactFormat::kGlslEs310;
-constexpr const char *kName = "gles";
-constexpr EGLenum kEglApi = EGL_OPENGL_ES_API;
+[[maybe_unused]] constexpr ArtifactFormat kFormat = ArtifactFormat::kGlslEs310;
+[[maybe_unused]] constexpr const char *kName = "gles";
+[[maybe_unused]] constexpr EGLenum kEglApi = EGL_OPENGL_ES_API;
 #else
 namespace text = rendertest::glsl;
 constexpr gl::GlApiKind kApi = gl::GlApiKind::kDesktop45;
-constexpr ArtifactFormat kFormat = ArtifactFormat::kGlsl450;
-constexpr const char *kName = "gl";
-constexpr EGLenum kEglApi = EGL_OPENGL_API;
+[[maybe_unused]] constexpr ArtifactFormat kFormat = ArtifactFormat::kGlsl450;
+[[maybe_unused]] constexpr const char *kName = "gl";
+[[maybe_unused]] constexpr EGLenum kEglApi = EGL_OPENGL_API;
 #endif
 
 // The adapter's options for this build's dialect.

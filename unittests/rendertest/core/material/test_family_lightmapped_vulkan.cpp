@@ -289,9 +289,9 @@ int main()
 			    std::as_bytes( std::span( &lighting, 1 ) ), { testCase.lightmap, splitSum, splitSum, splitSum }, 1 } );
 			// The frame terms at their LDR defaults (the port's cases are LDR).
 			draw.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
-			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
-			    std::as_bytes( std::span( &kLdrFrame, 1 ) ),
-			    { splitSum, splitSum, splitSum, splitSum, splitSum, splitSum } } );
+			draw.groups.push_back( SurfaceFrameGroup( family.Value()->FrameLayout(),
+			    std::as_bytes( std::span( &kLdrFrame, 1 ) ), splitSum, splitSum, splitSum, splitSum,
+			    splitSum ) );
 			draw.vertices = surface ? std::as_bytes( std::span( surfaceQuad ) )
 			                        : std::as_bytes( std::span( flat ) );
 			draw.vertexCount = std::uint32_t( flat.size() );

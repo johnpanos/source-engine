@@ -19,6 +19,8 @@
 #include "render_stage_marks.h"
 
 #include "materialsystem/materialsystem_config.h"
+#include "render/composition/render_device_setting.h"
+#include "filesystem.h"
 
 #ifdef _X360
 #include "xbox/xbox_launch.h"
@@ -35,6 +37,29 @@ using namespace BaseModUI;
 #define VIDEO_RESOLUTION_COMMAND_PREFIX "_res"
 #define VIDEO_UISCALE_COMMAND_PREFIX "_uiscale"
 #define VIDEO_TEMPORALSCALE_COMMAND_PREFIX "_temporalscale"
+#define VIDEO_RENDERDEVICE_COMMAND_PREFIX "_renderdevice"
+
+// The saved render device (render_device_setting.h), or -1.
+static int ReadSavedRenderDevice()
+{
+	CUtlBuffer text( 0, 0, CUtlBuffer::TEXT_BUFFER );
+	if ( !g_pFullFileSystem ||
+	     !g_pFullFileSystem->ReadFile( render_device_setting::kFile, "MOD", text ) )
+		return -1;
+	const char *name = render_device_setting::Parse(
+	    static_cast<const char *>( text.Base() ), size_t( text.TellPut() ) );
+	return name ? render_device_setting::Find( name ) : -1;
+}
+
+static bool WriteSavedRenderDevice( int nChoice )
+{
+	if ( !g_pFullFileSystem || nChoice < 0 || nChoice >= render_device_setting::kChoiceCount )
+		return false;
+	CUtlBuffer text( 0, 0, CUtlBuffer::TEXT_BUFFER );
+	text.PutString( render_device_setting::kChoices[nChoice].name );
+	text.PutString( "\n" );
+	return g_pFullFileSystem->WriteFile( render_device_setting::kFile, "MOD", text );
+}
 
 static const float s_TemporalScales[] = { 0.0f, 1.0f, 2.0f / 3.0f, 1.0f / 1.7f, 0.5f };
 static const char *s_TemporalScaleNames[] = {
@@ -91,6 +116,9 @@ m_autodelete_pResourceLoadConditions( (KeyValues*) NULL )
 	m_drpSplitScreenDirection = NULL;
 	m_drpUIScale = NULL;
 	m_drpTemporalScale = NULL;
+	m_drpRenderDevice = NULL;
+	m_nSavedRenderDevice = ReadSavedRenderDevice();
+	m_nRenderDevice = m_nSavedRenderDevice;
 	m_flTemporalScale = 0.0f;
 	m_flUIScale = 0.0f;
 	m_btnAdvanced = NULL;
@@ -160,6 +188,7 @@ void Video::ApplySchemeSettings( vgui::IScheme *pScheme )
 	m_drpUIScale = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpUIScale" ) );
 	m_drpTemporalScale =
 	    dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpTemporalScale" ) );
+	m_drpRenderDevice = dynamic_cast<BaseModHybridButton *>( FindChildByName( "DrpRenderDevice" ) );
 
 	SetupState( false );
 
@@ -395,6 +424,7 @@ void Video::SetupState( bool bUseRecommendedSettings )
 	SetPowerSavingsState();
 	SetUIScaleState();
 	SetTemporalScaleState();
+	SetRenderDeviceState();
 }
 
 void Video::OnKeyCodePressed(KeyCode code)
@@ -545,6 +575,16 @@ void Video::OnCommand( const char *command )
 			m_flTemporalScale = s_TemporalScales[choice];
 			m_bDirtyValues = true;
 			SetTemporalScaleState();
+		}
+	}
+	else if ( StringHasPrefix( command, VIDEO_RENDERDEVICE_COMMAND_PREFIX ) )
+	{
+		const int choice = atoi( command + Q_strlen( VIDEO_RENDERDEVICE_COMMAND_PREFIX ) );
+		if ( choice >= 0 && choice < render_device_setting::kChoiceCount )
+		{
+			m_nRenderDevice = choice;
+			m_bDirtyValues = true;
+			SetRenderDeviceState();
 		}
 	}
 	else if ( !V_stricmp( command, "ShowHDR" ) )
@@ -979,6 +1019,17 @@ bool Video::ApplyChanges()
 #endif
 #endif
 
+		// The render device is chosen at launch (in-process switching is
+		// R97): saved here, it applies the next time the game starts.
+		if ( m_nRenderDevice >= 0 && m_nRenderDevice != m_nSavedRenderDevice )
+		{
+			if ( !WriteSavedRenderDevice( m_nRenderDevice ) )
+				return false;
+			m_nSavedRenderDevice = m_nRenderDevice;
+			Msg( "video render device: %s saved; it applies after a restart\n",
+			    render_device_setting::kChoices[m_nRenderDevice].name );
+		}
+
 		m_bDirtyValues = false;
 	}
 	return true;
@@ -1078,6 +1129,17 @@ void Video::SetTemporalScaleState()
 		if ( i == selected )
 			m_drpTemporalScale->SetCurrentSelection( text );
 	}
+}
+
+void Video::SetRenderDeviceState()
+{
+	if ( !m_drpRenderDevice )
+		return;
+	// No saved choice: the build's default device (RENDER_CORE_DEFAULT_DEVICE
+	// is the launcher's; a null default is shown as Vulkan, which draws the
+	// frame either way).
+	const int choice = m_nRenderDevice >= 0 ? m_nRenderDevice : 0;
+	m_drpRenderDevice->SetCurrentSelection( render_device_setting::kChoices[choice].label );
 }
 
 void Video::SetUIScaleState()
@@ -1194,12 +1256,27 @@ void Video::PreApplyControlSettings( KeyValues *pResourceData )
 	hdr->SetString( "fieldName", "BtnHDR" );
 	hdr->SetString( "labelText", "HDR" );
 	hdr->SetString( "command", "ShowHDR" );
-	hdr->SetString( "navUp", "DrpTemporalScale" );
+	// The render device row (render_device_setting.h), below the FSR row.
+	KeyValues *pDevice = pTemporal->MakeCopy();
+	pDevice->SetName( "DrpRenderDevice" );
+	pDevice->SetString( "fieldName", "DrpRenderDevice" );
+	pDevice->SetString( "labelText", "Render device (restart)" );
+	pDevice->SetString( "navUp", "DrpTemporalScale" );
+	KeyValues *pDeviceList = pDevice->FindKey( "list" );
+	pDeviceList->Clear();
+	for ( int i = 0; i < render_device_setting::kChoiceCount; ++i )
+		pDeviceList->SetString( render_device_setting::kChoices[i].label,
+		    CFmtStr( "%s%d", VIDEO_RENDERDEVICE_COMMAND_PREFIX, i ) );
+	pResourceData->AddSubKey( pDevice );
+	pTemporal->SetString( "navDown", "DrpRenderDevice" );
+	pAdvanced->SetString( "navUp", "DrpRenderDevice" );
+	MoveRowBelow( pTemporal, pDevice, pAdvanced );
+	hdr->SetString( "navUp", "DrpRenderDevice" );
 	hdr->SetString( "navDown", "BtnAdvanced" );
-	pTemporal->SetString( "navDown", "BtnHDR" );
+	pDevice->SetString( "navDown", "BtnHDR" );
 	pAdvanced->SetString( "navUp", "BtnHDR" );
 	pResourceData->AddSubKey( hdr );
-	const int nAdvancedY = MoveRowBelow( pTemporal, hdr, pAdvanced );
+	const int nAdvancedY = MoveRowBelow( pDevice, hdr, pAdvanced );
 
 	// The frame's size is in dialog tiles (Dialog.TileHeight, the same
 	// proportional units as the rows).
@@ -1238,6 +1315,36 @@ bool Video::CheckTemporalScale( int choice )
 	    int( m_drpTemporalScale->IsEnabled() ), m_drpTemporalScale->GetCurrentSelection(),
 	    m_GraphicsSettings.Applied().temporalScale );
 	return true;
+}
+
+bool Video::CheckRenderDevice( int choice )
+{
+	if ( !m_drpRenderDevice )
+		return false;
+	if ( choice >= 0 )
+	{
+		OnCommand( CFmtStr( "%s%d", VIDEO_RENDERDEVICE_COMMAND_PREFIX, choice ) );
+		if ( !ApplyChanges() )
+			return false;
+	}
+	Msg( "video render device: selected=%s, saved=%s\n", m_drpRenderDevice->GetCurrentSelection(),
+	    m_nSavedRenderDevice >= 0 ? render_device_setting::kChoices[m_nSavedRenderDevice].name
+	                              : "(none)" );
+	return true;
+}
+
+CON_COMMAND_F( ui_video_render_device,
+    "Open video settings; [0..2] selects and applies the render device row (Vulkan, OpenGL, "
+    "OpenGL ES)",
+    FCVAR_CHEAT )
+{
+	CBaseModPanel &panel = CBaseModPanel::GetSingleton();
+	Video *dialog = static_cast<Video *>( panel.GetWindow( WT_VIDEO ) );
+	if ( !dialog )
+		dialog = static_cast<Video *>(
+		    panel.OpenWindow( WT_VIDEO, panel.GetWindow( panel.GetActiveWindowType() ) ) );
+	if ( !dialog || !dialog->CheckRenderDevice( args.ArgC() > 1 ? atoi( args[1] ) : -1 ) )
+		Msg( "video render device: not laid out or apply failed; retry after a wait\n" );
 }
 
 CON_COMMAND_F( ui_show_video, "Open video settings; [0..4] selects and applies the FSR scale row",

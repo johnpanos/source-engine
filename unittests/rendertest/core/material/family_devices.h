@@ -15,6 +15,10 @@
 //			quality/fixtures/render-families/cross-backend-v1.vdf, never
 //			byte identity (AGENTS.md: no cross-backend pixel identity).
 //
+//			RENDERTEST_FAMILY_GLES, with either, selects the GL adapter's
+//			OpenGL ES 3.1 dialect (RFC 0022 E6) in place of OpenGL 4.5; the
+//			entry is named "gles" and the same fixtures and limits judge it.
+//
 //			Each device's debug or validation messages are counted, and with
 //			the layer or debug output available the run must report none.
 //

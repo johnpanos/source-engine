@@ -462,6 +462,18 @@ def cross_compile(spirv, stage, es=False):
             # mediump, which ES 3.1 lets a driver run at 16 bits.
             text = text.replace("precision mediump float;", "precision highp float;")
             text = text.replace("precision mediump int;", "precision highp int;")
+            if re.search(r"\b[iu]?samplerCubeArray\b", text):
+                # Cube arrays (D36) are core from ES 3.2's 320 es only; a 310 es
+                # program takes them from the extension the adapter claims
+                # kCubeArrays on. Without either it fails to compile, and the
+                # device lacks the capability anyway.
+                version_line, newline, rest = text.partition("\n")
+                text = (version_line + newline +
+                        "#if defined(GL_EXT_texture_cube_map_array)\n"
+                        "#extension GL_EXT_texture_cube_map_array : enable\n"
+                        "#elif defined(GL_OES_texture_cube_map_array)\n"
+                        "#extension GL_OES_texture_cube_map_array : enable\n"
+                        "#endif\n" + rest)
         text = mark_specialization(text, constants)
         text, bound = re.subn(r"layout\(std140\) uniform %s\b" % GL_DRAW_CONSTANTS_BLOCK,
                               "layout(binding = %d, std140) uniform %s"

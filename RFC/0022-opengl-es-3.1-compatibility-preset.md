@@ -125,13 +125,62 @@ or composition fails by name.
 
 | Gate | State |
 | --- | --- |
-| E0 Artifacts | done on Linux: every device fixture has an ES artifact; 48 of 49 core rows do, and `kBounceCompute` is named as left out |
+| E0 Artifacts | done on Linux: every device fixture has an ES artifact; 48 of 49 core rows do, and `kBounceCompute` is named as left out (restored 2026-10-06 after RPRB v8's cube array and the instanced vertex inputs had dropped the surface rows) |
 | E1 Port suite | passes on Mesa radeonsi and llvmpipe, including the CPU ring and an ES 3.1-only context; hosted CI not run |
 | E2 Sensitivity | passes: 8 of 8 bad adapters caught, each on its clause only |
 | E3 Core programs | passes for the 12 programs the GL suite lists; a sweep over every store row is open |
 | E4 Composition | the composition clauses pass on `"gles"`; `render_lab` is Vulkan-only, so its composition is open |
 | E5 Device | open: no Android ES run |
-| E6 Pixels | open: needs `render_lab` on the GL adapter |
+| E6 Pixels | partial (2026-10-06): the five core family suites pass on ES and every ES frame is within the recorded cross-backend limit of Vulkan (`render.family.<f>.cross-backend-gles`, with a seeded-origin negative control); `render_lab` scenes on GL/ES remain open |
+
+### 2026-10-06: family pixels on ES, and the render device as a video setting
+
+User request: test the render core fully on OpenGL and OpenGL ES and compare
+their frames with Vulkan; boot the game in all three modes, with the device
+a video setting in the UI. Linux desktop (radeonsi, Radeon 8060S), g++.
+
+- **Regressions found and fixed.** RPRB v8 (reflection probes as one cube
+  array) put `samplerCubeArray` in every surface program; it is reserved in
+  core `310 es`, so every surface row silently left the ES store and every
+  ES family pipeline failed. The ES artifact now enables
+  `GL_EXT_texture_cube_map_array` or `GL_OES_texture_cube_map_array`
+  (`tools/render/shader_artifacts.py`), the extensions the adapter already
+  claims `kCubeArrays` (D36) on. `surface_model_instanced.vert` had array
+  vertex inputs, which ES forbids; they are now one `vec4` per row at the
+  same locations, so the Vulkan vertex layout is unchanged. The same RPRB
+  change had also left the family suites' frame group binding a 2D view at
+  the cube-array binding 9 and nothing at binding 13, so every Vulkan
+  cross-backend row failed validation; `SurfaceFrameGroup` now supplies a
+  neutral cube array and a count-0 probe buffer.
+- **Family pixels on ES.** `RENDERTEST_FAMILY_GLES` selects the GL adapter's
+  ES dialect (the device's facts select the ES artifacts). New rows
+  `render.family.<f>.gles` and `render.family.<f>.cross-backend-gles` for
+  unlit, water, lightmapped, vertexlit and pbr, judged against the same port
+  fixtures and `cross-backend-v1.vdf` limits, plus
+  `render.family.unlit.cross-backend-gles.seeded-gl-lower-left`, which must
+  fail. ES matches Vulkan as closely as desktop GL does: worst channel 28
+  levels on the recorded PBR shading-edge case, within its outlier count.
+  `render.shader-artifacts.gles` passes again.
+- **Render device video setting.** `public/render/composition/render_device_setting.h`
+  owns the file (`<game>/cfg/render_device.txt`), the choices (vulkan, gl,
+  gles) and the parse (`render.device-setting`, 27 checks). The Portal 2
+  Video menu has a "Render device (restart)" row; Apply saves the choice,
+  and the launcher reads it before composing the core (`-render-device`
+  overrides it). Switching in-process is R97. `play_p2` trees now link the
+  GL adapter (`--render-core-gl`) and reconfigure an older tree once.
+- **Game boots** (`portal2_map_views.py`, `sp_a1_intro4_relit`, offscreen,
+  two cameras): `-render-device vulkan`, `gl` and `gles` each compose
+  (`Render core: device <name>`), load the world stage and pass. Against
+  the Vulkan run, GL and GLES frames differ by at most 1 level on one view
+  and in 106/162 channels on the other; a second Vulkan run differs from the
+  first in about 5,000 channels, so these are run-to-run noise. UI-driven:
+  the menu row saved `gl` and `gles`, and a relaunch with no argument
+  composed the saved device.
+- **What this does not show.** In the game, the legacy stream still draws
+  the frame through the native Vulkan backend; the GL/ES device runs the
+  core's stage passes. The product boot with GL presenting the frame stays
+  blocked on R91 and an SDL3–GL presentation bridge (K10 "Product boot"),
+  so the identical game frames are expected, not evidence of GL pixels.
 
 ### 2026-10-05: slice 1 (artifacts, context, shims and the port suite)
 

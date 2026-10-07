@@ -182,7 +182,15 @@ struct CaseGroup
 	// before its gradient page).
 	std::uint32_t constantsAfter = 0;
 	std::vector<std::span<const std::byte>> storage = {}; // read-only storage buffers
+	bool storageLast = false; // the storage buffers after every texture instead
 };
+
+// The surface program's frame group: its constants and the five textures at
+// bindings 1, 3, 5, 7 and 11, with no reflection probes (a neutral cube array
+// at binding 9, a probe buffer of count 0 at binding 13).
+CaseGroup SurfaceFrameGroup( render::device::BindGroupLayoutId layout,
+    std::span<const std::byte> constants, const CaseTexture *atlas, const CaseTexture *grids,
+    const CaseTexture *ltc, const CaseTexture *probeAtlas, const CaseTexture *bounce );
 
 // The surface program's view group of a view with no clustered lights
 // (SurfaceProgram::NeutralViewGroup), for a draw that reads none.

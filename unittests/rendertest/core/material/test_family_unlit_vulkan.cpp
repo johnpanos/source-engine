@@ -225,9 +225,9 @@ int main()
 			draw.groups.push_back( { device::BindGroupRole::kDraw, family.Value()->DrawLayout(),
 			    std::as_bytes( std::span( &lighting, 1 ) ), { &neutralSrgb, &neutral, &neutral, &neutral }, 1 } );
 			draw.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
-			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
-			    std::as_bytes( std::span( &frame, 1 ) ),
-			    { &neutral, &neutral, &neutral, &neutral, &neutral, &neutral } } );
+			draw.groups.push_back( SurfaceFrameGroup( family.Value()->FrameLayout(),
+			    std::as_bytes( std::span( &frame, 1 ) ), &neutral, &neutral, &neutral, &neutral,
+			    &neutral ) );
 			draw.vertices = std::as_bytes( std::span( quad ) );
 			draw.vertexCount = std::uint32_t( quad.size() );
 			std::copy( testCase.clear, testCase.clear + 4, draw.clear );
@@ -326,9 +326,9 @@ int main()
 					    family.Value()->DrawLayout(), std::as_bytes( std::span( &lighting, 1 ) ),
 					    { &neutralSrgb, &neutral, &neutral, &neutral }, 1 } );
 					sky.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
-					sky.groups.push_back( { device::BindGroupRole::kFrame,
-					    family.Value()->FrameLayout(), std::as_bytes( std::span( &frame, 1 ) ),
-					    { &neutral, &neutral, &neutral, &neutral, &neutral, &neutral } } );
+					sky.groups.push_back( SurfaceFrameGroup( family.Value()->FrameLayout(),
+					    std::as_bytes( std::span( &frame, 1 ) ), &neutral, &neutral, &neutral,
+					    &neutral, &neutral ) );
 					sky.vertices = std::as_bytes( std::span( quad ) );
 					sky.vertexCount = std::uint32_t( quad.size() );
 					const Drawn drawn = DrawCase( *device, sky );

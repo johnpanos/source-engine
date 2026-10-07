@@ -53,16 +53,25 @@ CaseDevices::CaseDevices( testing::Checks &checks )
 		gl::GlAdapterOptions options;
 		options.validation = true;
 		options.validationCounter = &m_GlMessages;
+#if defined( RENDERTEST_FAMILY_GLES )
+		// RFC 0022 E6: the adapter's OpenGL ES 3.1 dialect, which draws the
+		// GLSL ES 3.10 artifacts (the device's facts select them).
+		options.api = gl::GlApiKind::kEs31;
+		const char *const glName = "gles";
+#else
+		const char *const glName = "gl";
+#endif
 #if defined( RENDERTEST_FAMILY_SEEDED_GL_LOWER_LEFT )
 		// Sensitivity row: a GL adapter that keeps GL's own lower-left
 		// origin draws every case upside down against Vulkan.
 		options.sensitivity.lowerLeftOrigin = true;
 #endif
 		auto created = gl::Create( options );
-		if ( checks.That( created.HasValue(), "device.a-gl-device-is-created" ) )
+		if ( checks.That(
+		         created.HasValue(), std::string( "device.a-" ) + glName + "-device-is-created" ) )
 		{
 			m_GlDebug = true;
-			entries.push_back( { "gl", std::move( created ).Value() } );
+			entries.push_back( { glName, std::move( created ).Value() } );
 		}
 	}
 #endif

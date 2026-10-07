@@ -500,10 +500,10 @@ def options(opt):
 		dest='RENDER_BACKEND',
 		help='linked renderer; auto selects native-vulkan for 64-bit Linux, Android and iOS clients '
 			'and legacy otherwise; vulkan uses the DXVK compatibility provider [default: %default]')
-	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl'], default='null',
+	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles'], default='null',
 		dest='RENDER_CORE_DEVICE',
 		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
-			'names another; vulkan needs the native Vulkan backend, gl needs --render-core-gl [default: %default]')
+			'names another; vulkan needs the native Vulkan backend, gl and gles need --render-core-gl [default: %default]')
 	grp.add_option('--render-core-features', default='legacy-stream,present',
 		dest='RENDER_CORE_FEATURES',
 		help='RFC 0016 render core: the frame features a client composes, in order [default: %default]')
@@ -1193,8 +1193,8 @@ def configure_render_core(conf):
 			msg='Checking for EGL (render core OpenGL adapter)', mandatory=True)
 	if conf.options.RENDER_CORE_DEVICE == 'vulkan' and not conf.env.RENDER_CORE_VULKAN:
 		conf.fatal('--render-core-device=vulkan needs the native Vulkan backend (--render-backend=native-vulkan)')
-	if conf.options.RENDER_CORE_DEVICE == 'gl' and not conf.env.RENDER_CORE_GL:
-		conf.fatal('--render-core-device=gl needs --render-core-gl')
+	if conf.options.RENDER_CORE_DEVICE in ('gl', 'gles') and not conf.env.RENDER_CORE_GL:
+		conf.fatal('--render-core-device=%s needs --render-core-gl' % conf.options.RENDER_CORE_DEVICE)
 	if conf.env.RENDER_CORE:
 		conf.msg('Render core device adapters', ', '.join(['null'] +
 			(['vulkan'] if conf.env.RENDER_CORE_VULKAN else []) +

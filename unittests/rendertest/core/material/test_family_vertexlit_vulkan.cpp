@@ -330,9 +330,9 @@ int main()
 			draw.groups.push_back( { device::BindGroupRole::kDraw, lighting.layout,
 			    lighting.constants, { &neutralSrgb, &neutral, &neutral, &neutral }, 1 } );
 			draw.groups.push_back( NeutralViewGroup( family.Value()->ViewLayout() ) );
-			draw.groups.push_back( { device::BindGroupRole::kFrame, family.Value()->FrameLayout(),
-			    std::as_bytes( std::span( &frame, 1 ) ),
-			    { &neutral, &neutral, &neutral, &neutral, &neutral, &neutral } } );
+			draw.groups.push_back( SurfaceFrameGroup( family.Value()->FrameLayout(),
+			    std::as_bytes( std::span( &frame, 1 ) ), &neutral, &neutral, &neutral, &neutral,
+			    &neutral ) );
 			draw.vertices = std::as_bytes( std::span( quad ) );
 			draw.vertexCount = std::uint32_t( quad.size() );
 			draw.drawConstants = std::as_bytes( std::span( &drawConstants, 1 ) );
