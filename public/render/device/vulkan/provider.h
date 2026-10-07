@@ -40,6 +40,10 @@ struct VulkanAdapterOptions
 	// layer reports, including those at teardown, is also counted here. The
 	// counter must outlive the device.
 	std::atomic<std::uint64_t> *validationCounter = nullptr;
+	// Draw in render passes and framebuffers even where dynamic rendering is
+	// available: the path devices without it take (Vulkan 1.1, Adreno 730),
+	// run on any device as its evidence. SOURCE_VK_RENDER_PASSES=1 sets it.
+	bool renderPasses = false;
 
 	// Sensitivity fixtures only (render.device.v2.vulkan.sensitivity): each
 	// makes the adapter break one port rule the shared suite must catch.

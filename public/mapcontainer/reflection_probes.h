@@ -172,6 +172,12 @@ ReflectionProbesError ValidateReflectionProbes(
 ReflectionProbesError DecodeReflectionProbes( const void *pData, size_t size,
     std::vector<std::byte> *pOut, ReflectionProbesLayout *pLayout );
 const char *ReflectionProbesErrorName( ReflectionProbesError error ) noexcept;
+// Decodes BC6H radiance faces as the lump stores them (mip-major, then
+// slice), mips firstMip to mipCount - 1 of a faceSize cube with `slices`
+// faces per mip, to RGBA16F texels (alpha 1) in the same order: a device
+// without BC formats samples these. False when `size` does not hold them.
+bool DecodeReflectionProbeRadiance( const void *pBlocks, size_t size, uint32_t faceSize,
+    uint32_t firstMip, uint32_t mipCount, uint32_t slices, std::vector<std::byte> *pOut );
 
 // The cube arrays' subresource geometry, in the order the lump stores them:
 // mip-major, then probe (layer), then face. A face-mip is size x size, size =

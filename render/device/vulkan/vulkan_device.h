@@ -41,6 +41,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -203,6 +204,9 @@ struct AdapterChoice
 	bool drawIndirectCount = false;    // D31: Vulkan 1.2's drawIndirectCount
 	bool drawIndirectFirstInstance = false; // D30: nonzero firstInstance in records
 	bool memoryBudget = false; // VK_EXT_memory_budget was enabled for VMA
+	// Without dynamic rendering, read-only depth stores nothing through
+	// VK_EXT_load_store_op_none or VK_QCOM_render_pass_store_ops.
+	bool storeOpNone = false;
 	// dmabuf export of LINEAR images (external memory fd, dma_buf, DRM
 	// format modifiers): the adapter claims kExternalImages.
 	bool externalImages = false;
@@ -725,6 +729,8 @@ private:
 		VkCommandBuffer buffer = VK_NULL_HANDLE;
 		std::uint64_t value = 0;
 		std::vector<HostBuffer> staging;
+		// Render-pass fallback: the submission's framebuffers.
+		std::vector<VkFramebuffer> framebuffers;
 		std::vector<std::shared_ptr<ComputeInterop>> compute;
 		// D23: the submission's timestamps, reset at its start.
 		VkQueryPool queries = VK_NULL_HANDLE;
@@ -745,7 +751,30 @@ private:
 		DrawConstantCoverage constants; // D16
 	};
 
+public:
+	// One subpass's attachments for the render-pass fallback. A resolve's
+	// format is VK_FORMAT_UNDEFINED where its color has none.
+	struct RenderPassAttachment
+	{
+		VkFormat format = VK_FORMAT_UNDEFINED;
+		VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+		VkAttachmentLoadOp load = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		VkAttachmentStoreOp store = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+	};
+	struct RenderPassDesc
+	{
+		std::vector<RenderPassAttachment> colors;
+		std::vector<RenderPassAttachment> resolves; // empty, or one per color
+		std::optional<RenderPassAttachment> depth;
+		bool stencil = false; // the depth format has stencil
+	};
+	// The cached render pass for desc, or VK_NULL_HANDLE (any thread).
+	VkRenderPass RenderPassFor( const RenderPassDesc &desc );
+
+private:
 	// Logical device lifetime (rebuilt by Recover).
+	void ForceRenderPasses(); // VulkanAdapterOptions::renderPasses
 	DeviceResult<void> SelectHost();
 	DeviceResult<void> CreateLogical();
 	void DestroyLogical();
@@ -824,6 +853,13 @@ private:
 	// pipeline creation uses while set; the host owns, persists and destroys it.
 	std::atomic<VkPipelineCache> m_PipelineCache{ VK_NULL_HANDLE };
 	std::mutex m_QueueMutex; // the graphics queue's external synchronization
+	// Progressive enhancement for devices without dynamic rendering (Vulkan
+	// 1.1, Adreno 730): rendering passes and graphics pipelines use render
+	// passes, one per attachment description, kept for the device's life.
+	// Pipelines take a compatible one (formats and samples; a single
+	// subpass ignores resolves); passes the one with their load/store ops.
+	std::mutex m_RenderPassMutex;
+	std::map<std::vector<std::uint32_t>, VkRenderPass> m_RenderPasses;
 	MemoryAllocator m_Memory;
 	VkSemaphore m_Timeline = VK_NULL_HANDLE;
 	VkDescriptorSetLayout m_EmptySetLayout = VK_NULL_HANDLE;

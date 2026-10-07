@@ -8,6 +8,8 @@
 
 #include "vulkan_device.h"
 
+#include "texturecontainer/block_decode.h"
+
 #include <algorithm>
 #include <cstdint>
 #include <limits>
@@ -119,8 +121,20 @@ bool ValidLevels( const texturecontainer::TextureImage &image )
 } // namespace
 
 foundation::Expected<int, TextureImageUploadFailure> CreateManagedTextureImage(
-    CVulkanContext &context, const texturecontainer::TextureImage &image )
+    CVulkanContext &context, const texturecontainer::TextureImage &source )
 {
+	// Progressive enhancement: a device without the BC formats (Adreno 730)
+	// takes BC images decoded on the CPU, sampled as the blocks would be.
+	std::optional<texturecontainer::TextureImage> decoded;
+	if ( !context.SupportsBlockCompression() &&
+	     texturecontainer::DecodedBlockFormat( source.format ) )
+	{
+		decoded = texturecontainer::DecodeBlockImage( source );
+		if ( !decoded )
+			return foundation::MakeUnexpected( TextureImageUploadFailure{
+			    TextureImageUploadError::InvalidImage, "BC blocks do not fill the mip chain" } );
+	}
+	const texturecontainer::TextureImage &image = decoded ? *decoded : source;
 	const std::optional<VkFormat> format = VulkanFormat( image.format );
 	if ( !format )
 		return foundation::MakeUnexpected( TextureImageUploadFailure{

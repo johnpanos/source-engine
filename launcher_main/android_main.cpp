@@ -50,9 +50,9 @@ extern "C" int SDL_main( int, char ** )
 	// SDL_main runs on SDL's thread, not the Java thread that loaded tier0.
 	DeclareCurrentThreadIsMainThread();
 
-	// Rotation: every orientation the device and the user's rotation lock
-	// allow. A resizable SDL window requests FULL_USER from the activity.
-	SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight Portrait PortraitUpsideDown" );
+	// Rotation: landscape either way up, as the user's rotation lock allows
+	// (user direction, 2026-10-06). SDL requests USER_LANDSCAPE from it.
+	SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" );
 	// Fingers reach the game only as touch events: the client's touch controls
 	// (game/client/touch.cpp) and VGUI's finger handling. SDL's synthesized
 	// mouse would otherwise turn every look drag into a left click (+attack).

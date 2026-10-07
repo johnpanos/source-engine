@@ -300,7 +300,11 @@ void CVulkanContext::DescribeDevice( VkPhysicalDevice physical, uint32_t graphic
 	features.shaderClipDistance = m_clipPlanesSupported ? VK_TRUE : VK_FALSE;
 	// DXT textures upload as BC images and are decoded by the sampler, as D3D9
 	// samples them; without the feature the material system decompresses them.
-	m_blockCompression = supported.textureCompressionBC == VK_TRUE;
+	// SOURCE_VK_NO_BC=1: decompress DXT as a device without BC does (the
+	// Adreno 730's path, reproduced on a desktop).
+	const char *noBlocks = getenv( "SOURCE_VK_NO_BC" );
+	m_blockCompression =
+	    supported.textureCompressionBC == VK_TRUE && !( noBlocks && *noBlocks == '1' );
 	features.textureCompressionBC = supported.textureCompressionBC;
 	// A depth format with stencil, as D3D9 always creates one (D24S8): portal
 	// views are drawn with stencil recursion (SelectDepthStencilFormat).

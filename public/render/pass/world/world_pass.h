@@ -169,7 +169,10 @@ struct StageReflectionProbes
 	bool relight = false;
 	std::uint32_t baseMip = 0; // the first of `mips` that `radiance` holds (the probe buffer's word 7)
 	std::vector<std::uint32_t> buffer;
-	std::vector<std::byte> radiance;    // BC6H, count * 6 faces per mip
+	std::vector<std::byte> radiance; // `format`, count * 6 faces per mip
+	// BC6H as the lump stores it, or RGBA16F texels a device without the BC
+	// formats takes (the composition decodes them).
+	device::Format format = device::Format::kBC6HUfloat;
 	std::vector<std::byte> relightData; // RGBA16F albedo array, then normal array; empty without
 };
 

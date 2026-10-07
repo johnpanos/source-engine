@@ -858,6 +858,9 @@ public:
 	// D23: the submission's timestamps and the pool they are written to.
 	void SetQueries( VkQueryPool queries ) { m_Queries = queries; }
 
+	// The framebuffers this translation created, for its submission to own.
+	std::vector<VkFramebuffer> TakeFramebuffers() { return std::move( m_Framebuffers ); }
+
 	// Device writes become visible to the host (ReadBuffer) at completion.
 	void Finish()
 	{
@@ -1127,6 +1130,11 @@ private:
 		GroupAccesses( std::move( groups ) );
 
 		const RenderingPayload &attachments = *command.rendering;
+		if ( !m_D.m_Adapter.dynamicRendering )
+		{
+			BeginRenderPass( command, attachments );
+			return;
+		}
 		std::vector<VkRenderingAttachmentInfo> colors;
 		for ( const ColorAttachment &color : attachments.colors )
 		{
@@ -1185,6 +1193,116 @@ private:
 		info.pStencilAttachment =
 		    depthTexture && HasStencil( depthTexture->desc.format ) ? &stencil : nullptr;
 		m_D.m_Vk.cmdBeginRendering( m_Cmd, &info );
+		m_Width = command.width;
+		m_Height = command.height;
+		m_Rendering = true;
+		ApplyViewport( m_Width, m_Height );
+		const VkRect2D scissor{ { 0, 0 }, { command.width, command.height } };
+		vkCmdSetScissor( m_Cmd, 0, 1, &scissor );
+	}
+
+	// Progressive enhancement: the same pass as a render pass and a
+	// framebuffer on a device without dynamic rendering. Same attachments,
+	// layouts, ops and resolves; the framebuffer retires with the submission.
+	void BeginRenderPass( const Command &command, const RenderingPayload &attachments )
+	{
+		using Attachment = VulkanDevice::RenderPassAttachment;
+		auto load = []( LoadOp op )
+		{
+			return op == LoadOp::kLoad    ? VK_ATTACHMENT_LOAD_OP_LOAD
+			       : op == LoadOp::kClear ? VK_ATTACHMENT_LOAD_OP_CLEAR
+			                              : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		};
+		VulkanDevice::RenderPassDesc desc;
+		std::vector<VkImageView> views;
+		std::vector<VkImageView> resolveViews;
+		std::vector<VkClearValue> clears;
+		bool anyResolve = false;
+		for ( const ColorAttachment &color : attachments.colors )
+		{
+			const TextureRecord *texture = m_D.LiveTexture( color.texture.value );
+			Access( color.texture.value, true );
+			desc.colors.push_back( { ToVkFormat( texture->desc.format ),
+			    static_cast<VkSampleCountFlagBits>( texture->desc.sampleCount ), load( color.load ),
+			    color.store == StoreOp::kStore ? VK_ATTACHMENT_STORE_OP_STORE
+			                                   : VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL } );
+			views.push_back( texture->attachmentView );
+			VkClearValue clear{};
+			clear.color = { { color.clear.r, color.clear.g, color.clear.b, color.clear.a } };
+			clears.push_back( clear );
+			Attachment resolve;
+			if ( color.resolve.IsValid() )
+			{
+				const TextureRecord *target = m_D.LiveTexture( color.resolve.value );
+				Access( color.resolve.value, true );
+				resolve = { ToVkFormat( target->desc.format ), VK_SAMPLE_COUNT_1_BIT,
+				    VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_STORE,
+				    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+				resolveViews.push_back( target->attachmentView );
+				anyResolve = true;
+			}
+			desc.resolves.push_back( resolve );
+		}
+		if ( !anyResolve )
+			desc.resolves.clear();
+		for ( VkImageView view : resolveViews )
+		{
+			views.push_back( view );
+			clears.push_back( VkClearValue{} );
+		}
+		if ( const auto &attachment = attachments.depth )
+		{
+			const std::uint64_t id = attachment->texture.value;
+			const TextureRecord *texture = m_D.LiveTexture( id );
+			const bool readOnly = TrackOf( id ).usage == ResourceUsage::kDepthRead;
+			Access( id, !readOnly );
+			// Read-only depth stores nothing where the device can say so;
+			// else it stores what it read (no write in a read-only layout).
+			const VkAttachmentStoreOp store =
+			    readOnly ? ( m_D.m_Adapter.storeOpNone ? VK_ATTACHMENT_STORE_OP_NONE_EXT
+			                                           : VK_ATTACHMENT_STORE_OP_STORE )
+			    : attachment->store == StoreOp::kStore ? VK_ATTACHMENT_STORE_OP_STORE
+			                                           : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			desc.depth = Attachment{ ToVkFormat( texture->desc.format ),
+			    static_cast<VkSampleCountFlagBits>( texture->desc.sampleCount ),
+			    load( attachment->load ), store, ScopeOf( TrackOf( id ).usage ).layout };
+			desc.stencil = HasStencil( texture->desc.format );
+			views.push_back( texture->attachmentView );
+			VkClearValue clear{};
+			clear.depthStencil = { attachment->clearDepth, 0 };
+			clears.push_back( clear );
+		}
+		VkRenderPass pass = m_D.RenderPassFor( desc );
+		VkFramebuffer framebuffer = VK_NULL_HANDLE;
+		if ( pass != VK_NULL_HANDLE )
+		{
+			VkFramebufferCreateInfo info{};
+			info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+			info.renderPass = pass;
+			info.attachmentCount = static_cast<std::uint32_t>( views.size() );
+			info.pAttachments = views.data();
+			info.width = command.width;
+			info.height = command.height;
+			info.layers = 1;
+			if ( vkCreateFramebuffer( m_D.m_Device, &info, nullptr, &framebuffer ) != VK_SUCCESS )
+				framebuffer = VK_NULL_HANDLE;
+		}
+		if ( framebuffer == VK_NULL_HANDLE )
+		{
+			m_Failed = true;
+			return;
+		}
+		m_Framebuffers.push_back( framebuffer );
+		VkRenderPassBeginInfo begin{};
+		begin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		begin.renderPass = pass;
+		begin.framebuffer = framebuffer;
+		begin.renderArea = { { 0, 0 }, { command.width, command.height } };
+		begin.clearValueCount = static_cast<std::uint32_t>( clears.size() );
+		begin.pClearValues = clears.data();
+		vkCmdBeginRenderPass( m_Cmd, &begin, VK_SUBPASS_CONTENTS_INLINE );
+		m_RenderPass = true;
 		m_Width = command.width;
 		m_Height = command.height;
 		m_Rendering = true;
@@ -1323,7 +1441,11 @@ private:
 			BeginRendering( commands, index );
 			break;
 		case Op::kEndRendering:
-			m_D.m_Vk.cmdEndRendering( m_Cmd );
+			if ( m_RenderPass )
+				vkCmdEndRenderPass( m_Cmd );
+			else
+				m_D.m_Vk.cmdEndRendering( m_Cmd );
+			m_RenderPass = false;
 			m_Rendering = false;
 			break;
 		case Op::kSetPipeline:
@@ -1524,6 +1646,8 @@ private:
 	VkQueryPool m_Queries = VK_NULL_HANDLE;
 	std::uint32_t m_NextQuery = 0;
 	std::vector<PendingTimestamp> m_Timestamps;
+	std::vector<VkFramebuffer> m_Framebuffers;
+	bool m_RenderPass = false; // the open pass is a render pass (fallback)
 	// The host work being translated and its sections ([first, end) command
 	// ranges), for RunSection.
 	bool m_Failed = false;
@@ -1634,14 +1758,6 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 			return Fail( DeviceStatus::kInvalidHandle, op );
 		if ( !encoder->Complete() || !Validate( encoder->Commands(), states ) )
 			return Fail( DeviceStatus::kInvalidState, op );
-		// A host device without dynamic rendering records no rendering pass.
-		if ( !m_Adapter.dynamicRendering &&
-		     std::any_of( encoder->Commands().begin(), encoder->Commands().end(),
-		         []( const Command &command )
-		         {
-			         return command.op == Op::kBeginRendering;
-		         } ) )
-			return Fail( DeviceStatus::kUnsupported, op );
 		recorded.push_back( encoder );
 	}
 	// The host resumes after the submission, too.
@@ -1689,6 +1805,9 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	{
 		if ( result == VK_ERROR_DEVICE_LOST )
 			MarkLost();
+		for ( VkFramebuffer framebuffer : context.framebuffers )
+			vkDestroyFramebuffer( m_Device, framebuffer, nullptr );
+		context.framebuffers.clear();
 		if ( vkResetCommandPool( m_Device, context.pool, 0 ) == VK_SUCCESS )
 		{
 			( compute ? m_Compute.free : m_FreeContexts ).push_back( std::move( context ) );
@@ -1745,6 +1864,7 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 			break;
 		}
 	m_Translating = nullptr;
+	context.framebuffers = translator.TakeFramebuffers();
 	if ( !translated )
 	{
 		for ( VulkanEncoder *encoder : recorded )

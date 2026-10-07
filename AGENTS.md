@@ -1127,6 +1127,17 @@ Keep the table concise and link details below or from the domain progress file.
     stream retires, and no core drawing becomes a default on such a
     profile before then.
   - See the [record](RFC/0016-progress.md#vulkan-11-host-devices-the-galaxy-tab-s8-ultra-2026-09-29).
+  - Progressive enhancement (2026-10-06, user request): the port no longer
+    needs dynamic rendering. Without it, rendering passes and graphics
+    pipelines use cached `VkRenderPass`es and per-submission framebuffers
+    (`SOURCE_VK_RENDER_PASSES=1` forces the path on any device;
+    `render.device.v2.vulkan` 1,300 checks and `render.graph.v1.vulkan` pass
+    in both modes, validation silent). Without the BC formats, BC images are
+    decoded on the CPU (`content.block-decode`; `SOURCE_VK_NO_BC=1`), as are
+    the world stage's LMAP pages and RPRB probes. On the tablet the intro4
+    demo draws the BSP2 world stage on the core (248 of 248 batches), in
+    landscape. Open: matched game/lab images, frame time, and the frozen
+    backend's black WMSH world without `r_core_world` on that device.
 
 - R89/R91 GPU-driven submission: `planned` (2026-10-05, user direction).
   [RFC 0016 phases S0–S8](RFC/0016-render-core.md#gpu-driven-submission-plan-2026-10-05-user-direction):

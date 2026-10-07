@@ -15,7 +15,7 @@
     "render_provider": "native-vulkan",
     "support_scope": "Android build and packaging slice (R01/R03 cross-build probe, R29 groundwork). Not platform acceptance: device lifecycle, texture-format, performance and store checks are open.",
     "packaging": "APK from the pinned SDK build-tools (aapt2, d8, zipalign, apksigner); licensed Portal content is pushed separately to the app-specific external files directory",
-    "display": "Windowed fullscreen (+mat_windowed_fullscreen 1): every orientation the user's rotation lock allows; rotation and foldable display swaps resize the back buffer"
+    "display": "Windowed fullscreen (+mat_windowed_fullscreen 1): landscape either way up (user direction 2026-10-06); rotation and foldable display swaps resize the back buffer"
   },
   "android": {
     "application_id": "org.sourceengine.portal",

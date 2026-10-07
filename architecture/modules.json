@@ -173,6 +173,22 @@
         ]
       },
       {
+        "id": "content.block-decode",
+        "kind": "backend",
+        "paths": [
+          "texturecontainer/block_decode.cpp"
+        ],
+        "allowedEdges": [
+          "content.texture-contract"
+        ],
+        "externalHeaders": [
+          "bcdec.h"
+        ],
+        "uselib": [
+          "BCDEC"
+        ]
+      },
+      {
         "id": "content.vtf-container",
         "paths": ["public/texturecontainer/vtf_container.h", "texturecontainer/vtf/"],
         "allowedEdges": ["foundation"]
@@ -537,6 +553,7 @@
           "materialsystem/shaderapivulkan/vulkan_texture_image.cpp"
         ],
         "allowedEdges": [
+          "content.block-decode",
           "content.texture-contract",
           "render.vulkan.core"
         ],

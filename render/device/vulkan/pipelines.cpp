@@ -444,10 +444,6 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 	}
 	if ( desc.kind == PipelineKind::kGraphics )
 	{
-		// Graphics pipelines are built for dynamic rendering; a host device
-		// without it (Vulkan 1.1) builds compute pipelines only.
-		if ( !m_Adapter.dynamicRendering )
-			return Fail( DeviceStatus::kUnsupported, op );
 		if ( !PowerOfTwo( desc.sampleCount ) )
 			return Fail( DeviceStatus::kInvalidDescription, op );
 		if ( !( m_Facts.limits.sampleCounts & desc.sampleCount ) )
@@ -703,6 +699,25 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		VkGraphicsPipelineCreateInfo info{};
 		info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 		info.pNext = &rendering;
+		if ( !m_Adapter.dynamicRendering )
+		{
+			// Render-pass fallback: a compatible pass (formats and samples).
+			RenderPassDesc compatible;
+			const auto samples = static_cast<VkSampleCountFlagBits>( desc.sampleCount );
+			for ( VkFormat format : colorFormats )
+				compatible.colors.push_back( { format, samples, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+				    VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL } );
+			if ( desc.depthFormat != Format::kUnknown )
+			{
+				compatible.depth = RenderPassAttachment{ ToVkFormat( desc.depthFormat ), samples,
+				    VK_ATTACHMENT_LOAD_OP_DONT_CARE, VK_ATTACHMENT_STORE_OP_DONT_CARE,
+				    VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
+				compatible.stencil = HasStencil( desc.depthFormat );
+			}
+			info.pNext = nullptr;
+			info.renderPass = RenderPassFor( compatible );
+			info.subpass = 0;
+		}
 		info.stageCount = static_cast<std::uint32_t>( stages.size() );
 		info.pStages = stages.data();
 		info.pVertexInputState = &vertexInput;
@@ -716,8 +731,11 @@ DeviceResult<PipelineId> VulkanDevice::CreatePipeline( const PipelineDesc &desc 
 		info.layout = record.pipelineLayout;
 		if ( m_PipelineStats )
 			info.flags |= VK_PIPELINE_CREATE_CAPTURE_STATISTICS_BIT_KHR;
-		result = vkCreateGraphicsPipelines( m_Device,
-		    m_PipelineCache.load( std::memory_order_acquire ), 1, &info, nullptr, &record.pipeline );
+		result = !m_Adapter.dynamicRendering && info.renderPass == VK_NULL_HANDLE
+		             ? VK_ERROR_OUT_OF_HOST_MEMORY
+		             : vkCreateGraphicsPipelines( m_Device,
+		                   m_PipelineCache.load( std::memory_order_acquire ), 1, &info, nullptr,
+		                   &record.pipeline );
 	}
 	cleanup();
 	// A driver compile long enough to be a visible hitch when it lands

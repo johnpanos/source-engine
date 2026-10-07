@@ -95,6 +95,7 @@ DeviceResult<void> VulkanDevice::Initialize()
 		if ( !adapter )
 			return foundation::MakeUnexpected( adapter.Error() );
 		m_Adapter = std::move( adapter ).Value();
+		ForceRenderPasses();
 	}
 
 	vkGetPhysicalDeviceProperties( m_Adapter.physical, &m_Properties );
@@ -109,7 +110,10 @@ DeviceResult<void> VulkanDevice::Initialize()
 	m_Facts.capabilities = { Capability::kCompute, Capability::kStorageBuffers };
 	if ( m_Adapter.externalImages || m_Options.sensitivity.nullExternalImages )
 		m_Facts.capabilities.Add( Capability::kExternalImages );
-	if ( m_Adapter.textureCompressionBC )
+	// SOURCE_VK_NO_BC=1 withholds the BC formats from the port (the device
+	// keeps them for its host): evidence for devices without them (Adreno).
+	const char *noBlocks = std::getenv( "SOURCE_VK_NO_BC" );
+	if ( m_Adapter.textureCompressionBC && !( noBlocks && *noBlocks == '1' ) )
 		m_Facts.capabilities.Add( Capability::kTextureCompressionBC );
 	if ( m_Adapter.imageCubeArray )
 		m_Facts.capabilities.Add( Capability::kCubeArrays );
@@ -193,6 +197,7 @@ DeviceResult<void> VulkanDevice::SelectHost()
 		return foundation::MakeUnexpected( adapter.Error() );
 	}
 	m_Adapter = std::move( adapter ).Value();
+	ForceRenderPasses();
 	m_HostInfo.physical = m_Adapter.physical;
 	m_HostInfo.graphicsFamily = m_Adapter.queueFamily;
 	m_HostInfo.presentFamily = m_Adapter.presentFamily;
@@ -621,8 +626,13 @@ void VulkanDevice::DestroyLogical()
 			vkDestroyQueryPool( m_Device, context.queries, nullptr );
 		for ( HostBuffer &staging : context.staging )
 			DestroyHostBuffer( staging );
+		for ( VkFramebuffer framebuffer : context.framebuffers )
+			vkDestroyFramebuffer( m_Device, framebuffer, nullptr );
 	}
 	m_FreeContexts.clear();
+	for ( auto &[key, pass] : m_RenderPasses )
+		vkDestroyRenderPass( m_Device, pass, nullptr );
+	m_RenderPasses.clear();
 	m_InFlight.clear();
 	for ( auto *contexts : { &m_Compute.free } )
 		for ( CommandContext &context : *contexts )
@@ -705,6 +715,85 @@ std::uint64_t VulkanDevice::CompletedValue( QueueKind queue ) const
 	return m_Compute.completed.load();
 }
 
+VkRenderPass VulkanDevice::RenderPassFor( const RenderPassDesc &desc )
+{
+	std::vector<std::uint32_t> key;
+	auto describe = [&key]( const RenderPassAttachment &a )
+	{
+		key.insert( key.end(),
+		    { std::uint32_t( a.format ), std::uint32_t( a.samples ), std::uint32_t( a.load ),
+		        std::uint32_t( a.store ), std::uint32_t( a.layout ) } );
+	};
+	key.push_back( std::uint32_t( desc.colors.size() ) );
+	key.push_back( std::uint32_t( desc.resolves.size() ) );
+	key.push_back( desc.depth ? ( desc.stencil ? 2u : 1u ) : 0u );
+	for ( const RenderPassAttachment &a : desc.colors )
+		describe( a );
+	for ( const RenderPassAttachment &a : desc.resolves )
+		describe( a );
+	if ( desc.depth )
+		describe( *desc.depth );
+
+	std::lock_guard<std::mutex> lock( m_RenderPassMutex );
+	if ( auto found = m_RenderPasses.find( key ); found != m_RenderPasses.end() )
+		return found->second;
+
+	// Attachments: colors, the resolves in use, then depth. Each keeps its
+	// layout through the pass; the encoder's barriers precede it.
+	std::vector<VkAttachmentDescription> attachments;
+	auto add = [&attachments]( const RenderPassAttachment &a, bool stencil ) -> std::uint32_t
+	{
+		VkAttachmentDescription d{};
+		d.format = a.format;
+		d.samples = a.samples;
+		d.loadOp = a.load;
+		d.storeOp = a.store;
+		d.stencilLoadOp = stencil ? a.load : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		d.stencilStoreOp = stencil ? a.store : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		d.initialLayout = a.layout;
+		d.finalLayout = a.layout;
+		attachments.push_back( d );
+		return static_cast<std::uint32_t>( attachments.size() - 1 );
+	};
+	std::vector<VkAttachmentReference> colors;
+	for ( const RenderPassAttachment &a : desc.colors )
+		colors.push_back( { add( a, false ), a.layout } );
+	std::vector<VkAttachmentReference> resolves;
+	for ( const RenderPassAttachment &a : desc.resolves )
+		resolves.push_back(
+		    a.format == VK_FORMAT_UNDEFINED
+		        ? VkAttachmentReference{ VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED }
+		        : VkAttachmentReference{ add( a, false ), a.layout } );
+	VkAttachmentReference depth{ VK_ATTACHMENT_UNUSED, VK_IMAGE_LAYOUT_UNDEFINED };
+	if ( desc.depth )
+		depth = { add( *desc.depth, desc.stencil ), desc.depth->layout };
+
+	VkSubpassDescription subpass{};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = static_cast<std::uint32_t>( colors.size() );
+	subpass.pColorAttachments = colors.data();
+	subpass.pResolveAttachments = resolves.empty() ? nullptr : resolves.data();
+	subpass.pDepthStencilAttachment = desc.depth ? &depth : nullptr;
+	VkRenderPassCreateInfo info{};
+	info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	info.attachmentCount = static_cast<std::uint32_t>( attachments.size() );
+	info.pAttachments = attachments.data();
+	info.subpassCount = 1;
+	info.pSubpasses = &subpass;
+	VkRenderPass pass = VK_NULL_HANDLE;
+	if ( vkCreateRenderPass( m_Device, &info, nullptr, &pass ) != VK_SUCCESS )
+		return VK_NULL_HANDLE;
+	m_RenderPasses.emplace( std::move( key ), pass );
+	return pass;
+}
+
+void VulkanDevice::ForceRenderPasses()
+{
+	const char *wanted = std::getenv( "SOURCE_VK_RENDER_PASSES" );
+	if ( m_Options.renderPasses || ( wanted && *wanted == '1' ) )
+		m_Adapter.dynamicRendering = false;
+}
+
 bool VulkanDevice::IsComplete( CompletionToken token ) const
 {
 	if ( !token.NamesSubmission() || token.epoch < m_Epoch )
@@ -726,6 +815,9 @@ void VulkanDevice::RecycleCompleted()
 		for ( HostBuffer &staging : context.staging )
 			DestroyHostBuffer( staging );
 		context.staging.clear();
+		for ( VkFramebuffer framebuffer : context.framebuffers )
+			vkDestroyFramebuffer( m_Device, framebuffer, nullptr );
+		context.framebuffers.clear();
 		context.compute.clear();
 		if ( vkResetCommandPool( m_Device, context.pool, 0 ) == VK_SUCCESS )
 		{

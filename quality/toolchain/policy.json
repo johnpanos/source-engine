@@ -191,6 +191,10 @@
       "dialect": "cxx20",
       "rfc": "0008"
     },
+    "texture_block_decode": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
     "vulkan_texture_image": {
       "dialect": "cxx20",
       "rfc": "0008"

@@ -374,6 +374,58 @@ ReflectionProbesError ValidateReflectionProbes(
 	return ReflectionProbesError::Ok;
 }
 
+bool DecodeReflectionProbeRadiance( const void *pBlocks, size_t size, uint32_t faceSize,
+    uint32_t firstMip, uint32_t mipCount, uint32_t slices, std::vector<std::byte> *pOut )
+{
+	uint64_t blockBytes = 0, texelBytes = 0;
+	for ( uint32_t level = firstMip; level < mipCount; ++level )
+	{
+		const uint64_t mip = MipSize( faceSize, level );
+		if ( mip < 4 || mip % 4 != 0 )
+			return false;
+		blockBytes += uint64_t( slices ) * ( mip / 4 ) * ( mip / 4 ) * 16;
+		texelBytes += uint64_t( slices ) * mip * mip * 8;
+	}
+	if ( blockBytes != size )
+		return false;
+	try
+	{
+		pOut->assign( size_t( texelBytes ), std::byte{ 0 } );
+	}
+	catch ( ... )
+	{
+		return false;
+	}
+	const unsigned char *blocks = static_cast<const unsigned char *>( pBlocks );
+	unsigned char *radiance = reinterpret_cast<unsigned char *>( pOut->data() );
+	for ( uint32_t level = firstMip; level < mipCount; ++level )
+	{
+		const uint32_t mip = MipSize( faceSize, level );
+		const uint32_t across = mip / 4;
+		for ( uint32_t slice = 0; slice < slices; ++slice )
+			for ( uint32_t by = 0; by < across; ++by )
+				for ( uint32_t bx = 0; bx < across; ++bx )
+				{
+					float light[16 * 3];
+					bcdec_bc6h_float( blocks, light, 4 * 3, 0 );
+					blocks += 16;
+					for ( uint32_t t = 0; t < 16; ++t )
+					{
+						const uint32_t x = bx * 4 + t % 4;
+						const uint32_t y = by * 4 + t / 4;
+						unsigned char *texel =
+						    radiance + ( ( uint64_t( slice ) * mip + y ) * mip + x ) * 8;
+						const uint16_t halves[4] = { FloatToHalf( light[t * 3 + 0] ),
+						    FloatToHalf( light[t * 3 + 1] ), FloatToHalf( light[t * 3 + 2] ),
+						    0x3c00u };
+						std::memcpy( texel, halves, sizeof( halves ) );
+					}
+				}
+		radiance += uint64_t( slices ) * mip * mip * 8;
+	}
+	return true;
+}
+
 ReflectionProbesError DecodeReflectionProbes( const void *pData, size_t size,
     std::vector<std::byte> *pOut, ReflectionProbesLayout *pLayout )
 {

@@ -2383,10 +2383,13 @@ void WorldPass::RecordBatch(
 	auto stageMakeReflection = [&]( const StageReflectionProbes &probes ) -> bool
 	{
 		const CapabilitySet caps = device.Facts().capabilities;
-		if ( !caps.Has( Capability::kTextureCompressionBC ) ||
+		const bool blocks = probes.format == Format::kBC6HUfloat;
+		if ( ( blocks && !caps.Has( Capability::kTextureCompressionBC ) ) ||
 		     !caps.Has( Capability::kCubeArrays ) )
 		{
-			s.Fail( "the map's reflection probes need BC6H cube arrays, which the device lacks" );
+			s.Fail(
+			    blocks ? "the map's reflection probes need BC6H cube arrays, which the device lacks"
+			           : "the map's reflection probes need cube arrays, which the device lacks" );
 			return false;
 		}
 		if ( probes.count == 0 || probes.count > 256 || probes.mips == 0 || probes.face == 0 ||
@@ -2400,12 +2403,12 @@ void WorldPass::RecordBatch(
 		std::uint64_t total = 0;
 		for ( std::uint32_t mip = 0; mip < mips; ++mip )
 			total += std::uint64_t( probes.count ) * 6 *
-			         device::RegionBytes( Format::kBC6HUfloat, face >> mip, face >> mip );
+			         device::RegionBytes( probes.format, face >> mip, face >> mip );
 		if ( probes.radiance.size() != total )
 			return false;
 		TextureDesc desc;
 		desc.dimension = TextureDimension::kCube;
-		desc.format = Format::kBC6HUfloat;
+		desc.format = probes.format;
 		desc.width = desc.height = face;
 		// Two cubes at least: one probe's six layers would be a plain cube, not
 		// the cube array the program reads (the second cube is never indexed).
@@ -2429,7 +2432,7 @@ void WorldPass::RecordBatch(
 		for ( std::uint32_t mip = 0; mip < mips; ++mip )
 		{
 			const std::uint32_t size = face >> mip;
-			const std::uint64_t faceBytes = device::RegionBytes( Format::kBC6HUfloat, size, size );
+			const std::uint64_t faceBytes = device::RegionBytes( probes.format, size, size );
 			for ( std::uint32_t layer = 0; layer < 6 * probes.count; ++layer )
 			{
 				TextureBufferCopy copy;

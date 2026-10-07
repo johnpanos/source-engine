@@ -86,17 +86,16 @@ bool HasDeviceExtension( const std::vector<VkExtensionProperties> &extensions, c
 	return false;
 }
 
-// Why a physical device cannot serve the port, or its choice. The port's own
-// device needs Vulkan 1.2 and dynamic rendering. A host device (host mode)
-// may be Vulkan 1.1 with the timeline and synchronization2 extensions and may
-// lack dynamic rendering: the legacy backend draws in render passes of its
-// own (Adreno 730 on Samsung's Vulkan 1.1 driver, 2026-09-29).
-DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical, bool host )
+// Why a physical device cannot serve the port, or its choice. Any device is
+// Vulkan 1.1 or later with timeline semaphores and synchronization2. Dynamic
+// rendering is an enhancement: without it the port draws in render passes
+// and framebuffers of its own (Adreno 730 on Samsung's Vulkan 1.1 driver).
+DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical )
 {
 	const DeviceOperation op = DeviceOperation::kCreateDevice;
 	VkPhysicalDeviceProperties properties{};
 	vkGetPhysicalDeviceProperties( physical, &properties );
-	if ( properties.apiVersion < ( host ? VK_API_VERSION_1_1 : VK_API_VERSION_1_2 ) )
+	if ( properties.apiVersion < VK_API_VERSION_1_1 )
 		return Fail( DeviceStatus::kUnsupported, op );
 	if ( properties.limits.maxBoundDescriptorSets < kMaxBindGroups )
 		return Fail( DeviceStatus::kUnsupported, op );
@@ -150,8 +149,6 @@ DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical, bool host )
 		choice.extensions.push_back( VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME );
 		renderingExtension =
 		    HasDeviceExtension( extensions, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME );
-		if ( !renderingExtension && !host )
-			return Fail( DeviceStatus::kUnsupported, op );
 	}
 	// A portability implementation requires the application to enable it.
 	if ( HasDeviceExtension( extensions, "VK_KHR_portability_subset" ) )
@@ -204,7 +201,7 @@ DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical, bool host )
 	    choice.core13 ? features13.synchronization2 : sync2.synchronization2;
 	choice.dynamicRendering =
 	    choice.core13 ? features13.dynamicRendering : rendering.dynamicRendering;
-	if ( !timelineSemaphore || !synchronization2 || ( !choice.dynamicRendering && !host ) )
+	if ( !timelineSemaphore || !synchronization2 )
 		return Fail( DeviceStatus::kUnsupported, op );
 	if ( choice.dynamicRendering && !choice.core13 )
 		choice.extensions.push_back( VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME );
@@ -214,6 +211,16 @@ DeviceResult<AdapterChoice> Evaluate( VkPhysicalDevice physical, bool host )
 	choice.imageCubeArray = features.features.imageCubeArray == VK_TRUE;
 	choice.drawIndirectFirstInstance = features.features.drawIndirectFirstInstance == VK_TRUE;
 	choice.drawIndirectCount = choice.core12 && features12.drawIndirectCount == VK_TRUE;
+	if ( !choice.dynamicRendering && !choice.core13 )
+	{
+		for ( const char *name : { "VK_EXT_load_store_op_none", "VK_QCOM_render_pass_store_ops" } )
+			if ( HasDeviceExtension( extensions, name ) )
+			{
+				choice.storeOpNone = true;
+				choice.extensions.push_back( name );
+				break;
+			}
+	}
 	choice.memoryBudget = HasDeviceExtension( extensions, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME );
 	if ( choice.memoryBudget )
 		choice.extensions.push_back( VK_EXT_MEMORY_BUDGET_EXTENSION_NAME );
@@ -491,7 +498,7 @@ DeviceResult<AdapterChoice> SelectAdapter( VkInstance instance, int adapterIndex
 	{
 		if ( static_cast<std::uint32_t>( adapterIndex ) >= count )
 			return Fail( DeviceStatus::kUnavailable, op );
-		return Evaluate( physical[static_cast<std::size_t>( adapterIndex )], false );
+		return Evaluate( physical[static_cast<std::size_t>( adapterIndex )] );
 	}
 
 	std::optional<AdapterChoice> best;
@@ -499,7 +506,7 @@ DeviceResult<AdapterChoice> SelectAdapter( VkInstance instance, int adapterIndex
 	DeviceError lastError{ DeviceStatus::kUnsupported, op, 0 };
 	for ( VkPhysicalDevice candidate : physical )
 	{
-		DeviceResult<AdapterChoice> choice = Evaluate( candidate, false );
+		DeviceResult<AdapterChoice> choice = Evaluate( candidate );
 		if ( !choice )
 		{
 			lastError = choice.Error();
@@ -579,7 +586,7 @@ DeviceResult<AdapterChoice> SelectHostAdapter( VkInstance instance, VkSurfaceKHR
 				continue;
 			}
 		}
-		DeviceResult<AdapterChoice> choice = Evaluate( candidate, true );
+		DeviceResult<AdapterChoice> choice = Evaluate( candidate );
 		if ( !choice )
 		{
 			fail( 2, "no presentable Vulkan device offers Vulkan 1.1 with timeline semaphores, "

@@ -25,7 +25,7 @@ def build(bld):
 		name = 'vulkan_texture_image',
 		arch_module = 'render.bridge.texture-image-vulkan',
 		includes = [ '.', '../../public' ] + bld.env.INCLUDES_VULKAN,
-		use = [ 'VULKAN' ],
+		use = [ 'VULKAN', 'texture_block_decode' ],
 		install_path = None)
 
 	# Capture-tool support shared by the backend and its GPU suites: debug-utils

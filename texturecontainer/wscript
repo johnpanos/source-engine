@@ -25,6 +25,19 @@ def build(bld):
 		includes=['../public'],
 		use=['vtf_container'],
 		install_path=None)
+	# BC decoding for devices without the BC formats: the vendored bcdec
+	# header, reached as a uselib (strict targets take only public/).
+	bld.env.INCLUDES_BCDEC = [bld.path.parent.find_dir('external/bcdec').abspath()]
+	bld.stlib(
+		features='c cxx',
+		env=bld.strict_cpp20_env(),
+		source=['block_decode.cpp'],
+		target='texture_block_decode',
+		name='texture_block_decode',
+		arch_module='content.block-decode',
+		includes=['../public'],
+		use=['BCDEC'],
+		install_path=None)
 	if not bld.env.KTX_READ_ENABLED:
 		return
 	bld.stlib(

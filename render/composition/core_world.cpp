@@ -12,6 +12,7 @@
 #include "mapcontainer/probe_volume.h"
 #include "mapcontainer/light_shadow_masks.h"
 #include "mapcontainer/world_lightmap.h"
+#include "mapcontainer/reflection_probes.h"
 #include "mapcontainer/world_mesh_decode.h"
 #include "render/graph/compiled_graph.h"
 #include "render/graph/executor.h"
@@ -4144,6 +4145,33 @@ const resources::MeshEntry *CoreWorld::BoxCasterMesh()
 
 void CoreWorld::BindStageDevice( device::IRenderDevice2 &device )
 {
+	// Progressive enhancement: a device without the BC formats (Adreno 730)
+	// draws the lightmap's decoded RGBA16F pages and RGBA16F reflection
+	// probes instead of the lump's blocks; the stage is set again with them.
+	if ( !device.Facts().capabilities.Has( device::Capability::kTextureCompressionBC ) )
+	{
+		bool decoded = m_Capture.lightmap.Blocks() && m_Capture.DecodePages();
+		auto &probes = m_Capture.reflection;
+		if ( probes && probes->format == device::Format::kBC6HUfloat )
+		{
+			std::vector<std::byte> texels;
+			if ( mapcontainer::DecodeReflectionProbeRadiance( probes->radiance.data(),
+			         probes->radiance.size(), probes->face, probes->baseMip, probes->mips,
+			         probes->count * 6, &texels ) )
+			{
+				probes->radiance = std::move( texels );
+				probes->format = device::Format::kRGBA16Float;
+				decoded = true;
+			}
+			else
+			{
+				probes.reset(); // drawn without reflection probes
+				decoded = true;
+			}
+		}
+		if ( decoded && m_StageSet )
+			SetStage();
+	}
 	if ( m_ShadowDevice == &device )
 		return;
 	// A new backend device: the old one's objects went with it.
