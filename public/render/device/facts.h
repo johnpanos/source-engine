@@ -96,7 +96,9 @@ enum class ArtifactFormat : std::uint8_t
 {
 	kSpirv,
 	kGlsl450,
-	kGlslEs310 // the GL adapter's ES dialect (RFC 0022)
+	kGlslEs310, // the GL adapter's ES dialect (RFC 0022)
+	kHlsl,      // the Direct3D 12 adapter's HLSL, shader model 6.6 (RFC 0024)
+	kMsl        // the Metal adapter's Metal Shading Language 3.0 (RFC 0025)
 };
 
 struct Limits

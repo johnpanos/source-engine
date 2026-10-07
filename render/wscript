@@ -49,6 +49,8 @@ def modules(env):
 		adapters.append('device/vulkan')
 	if env.RENDER_CORE_GL:
 		adapters.append('device/gl')
+	if env.RENDER_CORE_METAL:
+		adapters.append('device/metal')
 	return PORTABLE + adapters
 
 def options(opt):

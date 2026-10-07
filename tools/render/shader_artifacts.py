@@ -489,6 +489,105 @@ def cross_compile(spirv, stage, es=False):
 
 
 # ---------------------------------------------------------------------------
+# Metal Shading Language (render.device.metal)
+
+# The Metal adapter's contract with the MSL artifacts (render/device/metal):
+# - each bind group is one argument buffer, at [[buffer(group)]], whose
+#   member [[id(n)]] is the group's binding n (SPIRV-Cross's argument buffers
+#   with the SPIR-V bindings as ids); every resource the module declares is
+#   emitted, used or not, so a stage's argument buffer is the module's whole
+#   declaration of that group. The adapter encodes each group through the
+#   stage function's own argument encoder, so it needs no layout rule of its
+#   own; a layout binding with count n takes ids n..n+count-1, so the adapter
+#   refuses layouts whose arrays overlap a later binding;
+# - vertex buffer slot s is buffer METAL_VERTEX_BUFFER_BASE + s; the draw
+#   constants (D16) are buffer METAL_DRAW_CONSTANTS_SLOT;
+# - the entry point is SPIRV-Cross's METAL_ENTRY_POINT; specialization
+#   constant n (D20) is function constant n, listed with its type on the
+#   line METAL_SPECIALIZATION_LINE so the adapter can set a value of that
+#   type; a compute stage's threadgroup size is on METAL_THREADGROUP_LINE.
+# One text serves macOS and iOS (SPIRV-Cross writes the same MSL for both).
+METAL_MSL_VERSION = "30000"  # Metal 3: macOS 13, iOS 16 (MTLGPUFamilyMetal3)
+METAL_VERTEX_BUFFER_BASE = 16
+METAL_DRAW_CONSTANTS_SLOT = 30
+METAL_ENTRY_POINT = "main0"
+METAL_SPECIALIZATION_LINE = "// render.device.metal specialization"
+METAL_THREADGROUP_LINE = "// render.device.metal threadgroup"
+BUFFER_SIZE_HELPER = "spvBufferSizeConstants"
+
+
+def metal_bindings(spirv):
+    """A copy of the module whose descriptor sets and bindings are kept and
+    whose push-constant variable is decorated as binding
+    METAL_DRAW_CONSTANTS_SLOT, which SPIRV-Cross takes as its buffer index."""
+    words = words_of(spirv)
+    push = [words[index + 2] for index, count, opcode in instructions(words)
+            if opcode == OP_VARIABLE and count >= 4 and words[index + 3] == STORAGE_PUSH_CONSTANT]
+    if not push:
+        return spirv
+    added = []
+    for variable in push:
+        added += [(4 << 16) | OP_DECORATE, variable, DECORATION_BINDING,
+                  METAL_DRAW_CONSTANTS_SLOT]
+    # Decorations belong with the annotations: before the first OpDecorate,
+    # else before the first type or constant.
+    first = next((index for index, _, opcode in instructions(words) if opcode == OP_DECORATE),
+                 None)
+    if first is None:
+        first = next(index for index, _, opcode in instructions(words)
+                     if opcode not in PRELUDE_OPS and opcode not in (OP_NAME, OP_MEMBER_NAME))
+    return bytes_of(words[:first] + added + words[first:])
+
+
+def metal_compile(spirv):
+    """The MSL artifact of a SPIR-V module for the Metal adapter: one argument
+    buffer per group, draw constants at their slot, specialization constants
+    and the threadgroup size listed. It must have METAL_ENTRY_POINT and need
+    no buffer-size helper (the adapter supplies none)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "module.spv"
+        path.write_bytes(spirv)
+        reflection = json.loads(run([st.spirv_cross(), str(path), "--reflect"],
+                                    "spirv-cross --reflect").stdout)
+        path.write_bytes(metal_bindings(spirv))
+        text = run([st.spirv_cross(), str(path), "--msl", "--msl-version", METAL_MSL_VERSION,
+                    "--msl-argument-buffers", "--msl-argument-buffer-tier", "1",
+                    "--msl-decoration-binding", "--msl-force-active-argument-buffer-resources",
+                    "--msl-pad-fragment-output"],
+                   "spirv-cross --msl").stdout
+    if " %s(" % METAL_ENTRY_POINT not in text:
+        raise ArtifactError("SPIRV-Cross's MSL has no entry point %s" % METAL_ENTRY_POINT)
+    if BUFFER_SIZE_HELPER in text:
+        raise ArtifactError("the MSL needs SPIRV-Cross's buffer-size buffer, which the Metal "
+                            "adapter does not supply")
+    if reflection.get("push_constants") and "[[buffer(%d)]]" % METAL_DRAW_CONSTANTS_SLOT \
+            not in text:
+        raise ArtifactError("the draw constants are not at buffer %d" % METAL_DRAW_CONSTANTS_SLOT)
+    lines = []
+    entries = []
+    for constant in sorted(reflection.get("specialization_constants", []),
+                           key=lambda c: c["id"]):
+        kind = constant.get("type")
+        if kind not in GL_SPECIALIZATION_TYPES:
+            raise ArtifactError("specialization constant %d has type %s, which the Metal "
+                                "artifacts do not carry" % (constant["id"], kind))
+        if "[[function_constant(%d)]]" % constant["id"] not in text:
+            raise ArtifactError("SPIRV-Cross wrote no function constant %d" % constant["id"])
+        entries.append("%d:%s" % (constant["id"], kind))
+    if entries:
+        lines.append("%s %s" % (METAL_SPECIALIZATION_LINE, " ".join(entries)))
+    for entry in reflection.get("entryPoints", []):
+        if entry.get("mode") != "comp":
+            continue
+        if any(entry.get("workgroup_size_is_spec_constant_id", [0, 0, 0])):
+            raise ArtifactError("the threadgroup size is a specialization constant, which the "
+                                "Metal artifacts do not carry")
+        lines.append("%s %s" % (METAL_THREADGROUP_LINE,
+                                " ".join(str(n) for n in entry["workgroup_size"])))
+    return "".join(line + "\n" for line in lines) + text
+
+
+# ---------------------------------------------------------------------------
 # Declared layouts
 
 
@@ -772,9 +871,9 @@ def write_headers(units, words, out_dir, root=ROOT):
         words[array] = future.result()
     for header in st.GENERATED:
         written[header] = st.render_generated(header, lambda array: words[array])
-    glsl, es_missing = glsl_headers(words, root)
+    glsl, es_missing, msl_missing = glsl_headers(words, root)
     written.update(glsl)
-    written[st.STORE_HEADER] = store_header(words, es_missing)
+    written[st.STORE_HEADER] = store_header(words, es_missing, msl_missing)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, text in written.items():
@@ -843,11 +942,12 @@ def reflect_port(spirv):
     return bindings, push
 
 
-def store_header(words, es_missing=None):
+def store_header(words, es_missing=None, msl_missing=None):
     """spv/core_artifact_table.h: the artifact store's table (public/render/
     shaderlib/core_artifacts.h), one entry per core program row and format:
     source, stage, format, code (the generated SPIR-V, GLSL 4.50 and, for the
-    rows in es_missing's complement, GLSL ES 3.10 arrays),
+    rows in es_missing's and msl_missing's complements, GLSL ES 3.10 and MSL
+    arrays),
     reflected bindings and draw-constant bytes."""
     pin = st.load_pin()
     compiler = compiler_identities(pin)["glsl450"]
@@ -855,7 +955,7 @@ def store_header(words, es_missing=None):
     for header in st.CORE_PROGRAM_HEADERS:
         namespace, _, rows = st.GENERATED[header]
         includes += [header, header.replace("_spv.h", "_glsl.h"),
-                     header.replace("_spv.h", "_gles.h")]
+                     header.replace("_spv.h", "_gles.h"), header.replace("_spv.h", "_msl.h")]
         for array, source, _ in rows:
             spirv = bytes_of(words[array])
             reflected, push = reflect_port(spirv)
@@ -876,14 +976,16 @@ def store_header(words, es_missing=None):
                            ' %s, %d },\n'
                            % (source, stage, glsl_namespace, array, glsl_namespace, array, span,
                               push))
-            if array in (es_missing or {}):
-                continue
-            gles_namespace = namespace.replace("::spirv", "::gles")
-            entries.append('    { "%s", device::ShaderStage::%s, device::ArtifactFormat::kGlslEs310,\n'
-                           '        std::as_bytes( std::span( %s::%s ).first( sizeof( %s::%s ) - 1 ) ),'
-                           ' %s, %d },\n'
-                           % (source, stage, gles_namespace, array, gles_namespace, array, span,
-                              push))
+            for missing, suffix, enum in ((es_missing, "gles", "kGlslEs310"),
+                                          (msl_missing, "msl", "kMsl")):
+                if array in (missing or {}):
+                    continue
+                text_namespace = namespace.replace("::spirv", "::" + suffix)
+                entries.append('    { "%s", device::ShaderStage::%s, device::ArtifactFormat::%s,\n'
+                               '        std::as_bytes( std::span( %s::%s ).first( sizeof( %s::%s ) - 1 ) ),'
+                               ' %s, %d },\n'
+                               % (source, stage, enum, text_namespace, array, text_namespace, array,
+                                  span, push))
     return "".join(
         ["//========= Copyright Valve Corporation, All rights reserved. ============//\n",
          "//\n",
@@ -910,11 +1012,12 @@ def store_header(words, es_missing=None):
 
 
 def glsl_headers(words, root=ROOT):
-    """({name: text} of the GLSL_GENERATED and GLES_GENERATED headers, {array:
-    reason} of the rows with no ES artifact): each row's SPIR-V (its artifact
-    when the row is a unit or a GENERATED row, else compiled here) through
-    cross_compile in both dialects. A GLSL 4.50 failure fails the build; an ES
-    failure leaves the row out of its ES header and the store."""
+    """({name: text} of the GLSL_GENERATED, GLES_GENERATED and MSL_GENERATED
+    headers, {array: reason} of the rows with no ES artifact, the same of the
+    rows with no MSL artifact): each row's SPIR-V (its artifact when the row is
+    a unit or a GENERATED row, else compiled here) through cross_compile in
+    both dialects and metal_compile. A GLSL 4.50 failure fails the build; an
+    ES or MSL failure leaves the row out of its header and the store."""
     rows = [row for _, _, header_rows in st.GLSL_GENERATED.values() for row in header_rows]
     compiler = st.glslc()
 
@@ -934,15 +1037,26 @@ def glsl_headers(words, root=ROOT):
         except ArtifactError as error:
             return None, str(error)
 
+    def msl_text_of(row):
+        try:
+            return metal_compile(spirv_of(row)), None
+        except ArtifactError as error:
+            return None, str(error)
+
     with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as pool:
         texts = dict(zip((row[0] for row in rows), pool.map(text_of, rows)))
         es_results = dict(zip((row[0] for row in rows), pool.map(es_text_of, rows)))
+        msl_results = dict(zip((row[0] for row in rows), pool.map(msl_text_of, rows)))
     headers = {header: st.render_glsl(header, lambda array: texts[array])
                for header in st.GLSL_GENERATED}
     headers.update({header: st.render_glsl(header, lambda array: es_results[array][0])
                     for header in st.GLES_GENERATED})
+    headers.update({header: st.render_glsl(header, lambda array: msl_results[array][0])
+                    for header in st.MSL_GENERATED})
     es_missing = {array: reason for array, (text, reason) in es_results.items() if text is None}
-    return headers, es_missing
+    msl_missing = {array: reason for array, (text, reason) in msl_results.items()
+                   if text is None}
+    return headers, es_missing, msl_missing
 
 
 def generate_headers(out_dir, root=ROOT):

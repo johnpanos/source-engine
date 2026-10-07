@@ -811,6 +811,25 @@
         ]
       },
       {
+        "id": "render.device.metal",
+        "paths": [
+          "public/render/device/metal/",
+          "render/device/metal/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device"
+        ],
+        "kind": "backend",
+        "externalHeaders": [
+          "Metal/Metal.h",
+          "TargetConditionals.h"
+        ],
+        "uselib": [
+          "METAL"
+        ]
+      },
+      {
         "id": "render.graph",
         "paths": [
           "public/render/graph/",
@@ -1305,6 +1324,7 @@
           "render.device.null",
           "render.device.vulkan",
           "render.device.gl",
+          "render.device.metal",
           "render.pass.skinning",
           "render.graph",
           "render.shader-library",
@@ -1349,6 +1369,7 @@
           "render.device.null",
           "render.device.vulkan",
           "render.device.gl",
+          "render.device.metal",
           "render.graph",
           "render.shader-library",
           "render.resources",
@@ -1836,6 +1857,12 @@
           "EGL"
         ]
       },
+      "render_device_metal": {
+        "allowedUse": [
+          "render_device",
+          "METAL"
+        ]
+      },
       "render_graph": {
         "allowedUse": [
           "render_device",
@@ -2068,6 +2095,7 @@
           "render_math",
           "render_device_vulkan",
           "render_device_gl",
+          "render_device_metal",
           "render_pass_skinning",
           "render_pass_debug",
           "mapcontainer",
@@ -2471,6 +2499,7 @@
           [
             "render.device.vulkan",
             "render.device.gl",
+            "render.device.metal",
             "render.device.null"
           ]
         ],
@@ -2478,6 +2507,7 @@
           "render.device": [
             "render.device.vulkan",
             "render.device.gl",
+            "render.device.metal",
             "render.device.null"
           ]
         },

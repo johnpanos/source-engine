@@ -500,10 +500,11 @@ def options(opt):
 		dest='RENDER_BACKEND',
 		help='linked renderer; auto selects native-vulkan for 64-bit Linux, Android and iOS clients '
 			'and legacy otherwise; vulkan uses the DXVK compatibility provider [default: %default]')
-	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles'], default='null',
+	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal'], default='null',
 		dest='RENDER_CORE_DEVICE',
 		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
-			'names another; vulkan needs the native Vulkan backend, gl and gles need --render-core-gl [default: %default]')
+			'names another; vulkan needs the native Vulkan backend, gl and gles need --render-core-gl, '
+			'metal an Apple target [default: %default]')
 	grp.add_option('--render-core-features', default='legacy-stream,present',
 		dest='RENDER_CORE_FEATURES',
 		help='RFC 0016 render core: the frame features a client composes, in order [default: %default]')
@@ -1193,6 +1194,13 @@ def configure_render_core(conf):
 			args=['--cflags', '--libs'], msg='Checking for the Vulkan loader (render core)',
 			mandatory=conf.options.RENDER_CORE_VULKAN == 'on'))
 	conf.env.RENDER_CORE_GL = bool(conf.env.RENDER_CORE and conf.options.RENDER_CORE_GL)
+	# The Metal adapter (RFC 0025) builds on every Apple target: Metal is a
+	# system framework there, and the adapter is Objective-C++.
+	conf.env.RENDER_CORE_METAL = bool(conf.env.RENDER_CORE and conf.env.APPLE)
+	if conf.env.RENDER_CORE_METAL:
+		conf.env.FRAMEWORK_METAL = ['Metal', 'Foundation']
+	if conf.options.RENDER_CORE_DEVICE == 'metal' and not conf.env.RENDER_CORE_METAL:
+		conf.fatal('--render-core-device=metal needs an Apple target (--apple-sdk)')
 	conf.env.RENDER_CORE_DEVICE = conf.options.RENDER_CORE_DEVICE
 	conf.env.RENDER_CORE_FEATURES = conf.options.RENDER_CORE_FEATURES
 	conf.env.RENDER_CORE_FALLBACKS = conf.options.RENDER_CORE_FALLBACKS
@@ -1209,7 +1217,8 @@ def configure_render_core(conf):
 	if conf.env.RENDER_CORE:
 		conf.msg('Render core device adapters', ', '.join(['null'] +
 			(['vulkan'] if conf.env.RENDER_CORE_VULKAN else []) +
-			(['gl'] if conf.env.RENDER_CORE_GL else [])))
+			(['gl'] if conf.env.RENDER_CORE_GL else []) +
+			(['metal'] if conf.env.RENDER_CORE_METAL else [])))
 		# In the root environment, before any subproject derives its own:
 		# the generated SPIR-V headers' tools must exist before any project builds.
 		conf.recurse('render/shaders')
