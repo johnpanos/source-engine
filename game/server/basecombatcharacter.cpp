@@ -448,9 +448,21 @@ void CBaseCombatCharacter::ResetVisibilityCache( CBaseCombatCharacter *pBCC )
 }
 
 #ifdef PORTAL
+#ifdef PORTAL2
+// npc_portal_turret_floor.cpp (retail server.so 0x97f3b0)
+extern bool UTIL_IsPlayerNearPortalForTurretSight( CBaseEntity *pPortal );
+#endif
+
 bool CBaseCombatCharacter::FVisibleThroughPortal( const CSightPortal *pPortal, CBaseEntity *pEntity, int traceMask, CBaseEntity **ppBlocker )
 {
 	VPROF( "CBaseCombatCharacter::FVisible" );
+
+#ifdef PORTAL2
+	// Retail sees through a portal only when a player stands near its exit
+	// (sv_portal_turret_shoot_through_portals_proximity)
+	if ( pPortal && !UTIL_IsPlayerNearPortalForTurretSight( pPortal->m_hLinkedPortal.Get() ) )
+		return false;
+#endif
 
 	if ( pEntity->GetFlags() & FL_NOTARGET )
 		return false;

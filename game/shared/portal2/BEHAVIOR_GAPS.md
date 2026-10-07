@@ -384,7 +384,15 @@ Newest last. Each entry names the build and the check that passed.
   networked; the client laser sight goes through portals with
   `C_PortalBeamHelper`, refreshed on muzzle motion or every 0.2 s
   (0xba9780). Headless `sp_a2_turret_intro` boots with 8 turrets; the new
-  behaviors are not checked at runtime. Open: `sv_portal_turret_shoot_through_portals_proximity`
-  (0x97f3b0, no caller found in the turret unit), PreThink's burning entry
+  behaviors are not checked at runtime. Open: PreThink's burning entry
   (FL_ONFIRE → BurnThink) versus our DMG_BURN start, and ActiveThink's
   multiplayer pre-trace.
+- 2026-10-07, G04 follow-up: `sv_portal_turret_shoot_through_portals_proximity`
+  (36864, squared units) is checked by `CBaseCombatCharacter::FVisibleThroughPortal`
+  (retail 0x7421c0 calls 0x97f3b0 on the linked portal): nothing is seen
+  through a portal unless a player is within 192 units of its exit. The
+  turret's vertical aim limit in `IsValidEnemy` (retail 0x864ee0) is now the
+  virtual `GetFireConeZTolerance`, 28 degrees on the base turret and
+  `sv_portal_turret_fire_cone_z_tolerance` on the Portal 2 turret, whose
+  retail default is 45 (was an inferred 15, and unused). Retail burn time
+  defaults are 1.0–1.5 s (ours had 3.0). Headless `sp_a2_turret_intro` boots.

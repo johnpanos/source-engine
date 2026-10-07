@@ -1209,7 +1209,11 @@ bool CNPC_FloorTurret::IsValidEnemy( CBaseEntity *pEnemy )
 	QAngle angleToTarget;
 	VectorAngles( los, angleToTarget );
 	float flZDiff = fabs( AngleNormalize( angleToTarget.x - GetAbsAngles().x) );
+#ifdef PORTAL2
+	if ( flZDiff > GetFireConeZTolerance() && los.LengthSqr() > 4096.0f )
+#else
 	if ( flZDiff > 28.0f && los.LengthSqr() > 4096.0f )
+#endif
 		return false;
 
 	return BaseClass::IsValidEnemy( pEnemy );

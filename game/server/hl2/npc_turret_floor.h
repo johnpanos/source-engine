@@ -133,6 +133,10 @@ public:
 	void	InputSelfDestruct( inputdata_t &inputdata );
 
 	virtual bool	IsValidEnemy( CBaseEntity *pEnemy );
+#ifdef PORTAL2
+	// Max pitch to an enemy (degrees); retail Portal 2 turrets override it
+	virtual float	GetFireConeZTolerance( void ) { return 28.0f; }
+#endif
 	bool			CanBeAnEnemyOf( CBaseEntity *pEnemy );
 	bool			IsBeingCarriedByPlayer( void ) { return m_bCarriedByPlayer; }
 	bool			WasJustDroppedByPlayer( void );

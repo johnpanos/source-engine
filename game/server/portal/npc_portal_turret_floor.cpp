@@ -99,6 +99,27 @@ extern int ACT_FLOOR_TURRET_FIRE;
 int ACT_FLOOR_TURRET_FIRE2;
 #ifdef PORTAL2
 ConVar sv_portal_turret_shoot_at_death( "sv_portal_turret_shoot_at_death", "1", FCVAR_CHEAT, "If the turrets should shoot after they die." );
+ConVar sv_portal_turret_shoot_through_portals_proximity( "sv_portal_turret_shoot_through_portals_proximity", "36864", FCVAR_CHEAT, "Only allow turrets to shoot through portals at players this close to portals (in square units)" );
+
+// Whether any player is within the proximity of pPortal; a negative proximity
+// allows every portal (retail server.so 0x97f3b0, called by
+// CBaseCombatCharacter::FVisibleThroughPortal on the linked portal).
+bool UTIL_IsPlayerNearPortalForTurretSight( CBaseEntity *pPortal )
+{
+	float flProximitySqr = sv_portal_turret_shoot_through_portals_proximity.GetFloat();
+	if ( flProximitySqr < 0.0f )
+		return true;
+	if ( !pPortal )
+		return false;
+
+	for ( int i = 1; i <= gpGlobals->maxClients; ++i )
+	{
+		CBasePlayer *pPlayer = UTIL_PlayerByIndex( i );
+		if ( pPlayer && ( pPlayer->GetAbsOrigin() - pPortal->GetAbsOrigin() ).LengthSqr() < flProximitySqr )
+			return true;
+	}
+	return false;
+}
 
 int ACT_FLOOR_TURRET_DIE;
 int ACT_FLOOR_TURRET_DIE_IDLE;
@@ -1890,9 +1911,9 @@ void CNPC_Portal_FloorTurret::InputFireBullet( inputdata_t &inputdata )
 //=============================================================================
 
 ConVar sv_portal_turret_min_burn_time( "sv_portal_turret_min_burn_time", "1.0", FCVAR_CHEAT, "The min time that the turret will burn for." );
-ConVar sv_portal_turret_max_burn_time( "sv_portal_turret_max_burn_time", "3.0", FCVAR_CHEAT, "The max time that the turret will burn for." );
-// Portal 2 port: the retail default is not recoverable; 15 degrees is inferred.
-ConVar sv_portal_turret_fire_cone_z_tolerance( "sv_portal_turret_fire_cone_z_tolerance", "15.0", FCVAR_CHEAT, "The max height of the turrets firing view cone (in degrees)" );
+ConVar sv_portal_turret_max_burn_time( "sv_portal_turret_max_burn_time", "1.5", FCVAR_CHEAT, "The max time that the turret will burn for." );
+// Retail defaults (server.so _INIT_374): burn 1.0-1.5 s, cone 45 degrees.
+ConVar sv_portal_turret_fire_cone_z_tolerance( "sv_portal_turret_fire_cone_z_tolerance", "45.0", FCVAR_CHEAT, "The max height of the turrets firing view cone (in degrees)" );
 
 #define PORTAL_TURRET_TALK_BURNING			"NPC_FloorTurret.TalkBurned"
 #define PORTAL_TURRET_TALK_START_BURNING	"NPC_FloorTurret.TalkStartBurning"
