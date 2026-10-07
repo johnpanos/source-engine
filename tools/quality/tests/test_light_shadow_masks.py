@@ -77,5 +77,26 @@ class EncodingTests(unittest.TestCase):
             lsmk.build(self.records, self.visibility[..., :3], self.ids)
 
 
+    def test_stationary_lights_leave_the_masks(self):
+        records = [{"origin": [0, 0, 0], "id": 1, "reach_units": 9000.0},   # a sun shaft
+                   {"origin": [9, 9, 9], "id": 2, "reach_units": 300.0},
+                   {"origin": [5, 5, 5], "id": 3, "reach_units": 8000.0},   # shares group 3
+                   {"origin": [7, 7, 7], "id": 3, "reach_units": 200.0}]
+        ids = np.array([[[1, 2, 3, 0]]])
+        vis = np.array([[[0.0, 0.5, 0.25, 1.0]]])
+        kept, out_ids, out_vis, stationary = lsmk.without_stationary(records, ids, vis, 5000.0)
+        self.assertEqual([i for _, i in kept], [2, 3])
+        self.assertEqual(len(stationary), 2)
+        # Light 1's channel is cleared; group 3 keeps a light, so it stays.
+        self.assertEqual(out_ids.tolist(), [[[0, 2, 3, 0]]])
+        self.assertEqual(out_vis.tolist(), [[[1.0, 0.5, 0.25, 1.0]]])
+
+    def test_no_threshold_keeps_every_light(self):
+        records = [{"origin": [0, 0, 0], "id": 1, "reach_units": 9000.0}]
+        kept, ids, _, stationary = lsmk.without_stationary(records, np.ones((1, 1, 4), int),
+                                                        np.ones((1, 1, 4)), None)
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(stationary, [])
+
 if __name__ == "__main__":
     unittest.main()

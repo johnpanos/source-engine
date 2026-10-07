@@ -1260,12 +1260,21 @@ class Pipeline:
                 p["light_masks"].name + ".json").read_text())
             if masks_receipt.get("status") == "pass":
                 mask_args = ["--light-masks", p["light_masks"], "--lsmk-out", p["lsmk"]]
+                # Source 2's stationary lights: strong key lights keep their
+                # runtime shadow maps (sharp edges) instead of baked masks.
+                stationary = self.lightmap.get("stationary_min_reach_units")
+                if stationary is not None:
+                    mask_args += ["--stationary-min-reach-units", str(stationary)]
                 sun_inputs = sun_inputs + [p["light_masks"], p["light_mask_ids"]]
         layer_args = [item for role, out in denoised_layers.items()
                       for item in ("--layer", "%s=%s" % (role, out))]
         seam_args = ["--seams", p["seams"], "--buried-exr", p["atlas"], "--coverage-exr",
                      p["coverage"]]
         ktx2_settings = {"preview_gain": self.lightmap["preview_gain"], "scope": scope}
+        if mask_args and self.lightmap.get("stationary_min_reach_units") is not None:
+            # Only a profile naming stationary lights changes the step's key.
+            ktx2_settings["stationary_min_reach_units"] = \
+                self.lightmap["stationary_min_reach_units"]
         seam_gate = self.lightmap["seam_gate"]
         if seam_gate:
             ktx2_settings["seam_gate"] = dict(seam_gate)

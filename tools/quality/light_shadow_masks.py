@@ -179,11 +179,34 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def pack(masks_exr, coverage_exr, lighting_stage):
+def without_stationary(receipt_records, ids, visibility, min_reach):
+    """The mask records, ids and visibility with the stationary lights (runtime
+    reach >= `min_reach`; none when it is None) left out: (records [(origin,
+    id)], ids, visibility, stationary receipt records). A group id is shared by
+    lights with disjoint reaches, so a texel channel is cleared only where its
+    group has no light left."""
+    stationary = [record for record in receipt_records if min_reach is not None and
+                  record.get("reach_units", 0.0) >= min_reach]
+    kept = [record for record in receipt_records if record not in stationary]
+    cleared = sorted({int(r["id"]) for r in stationary} - {int(r["id"]) for r in kept})
+    if cleared:
+        gone = np.isin(ids, cleared)
+        ids = np.where(gone, 0, ids)
+        visibility = np.where(gone, 1.0, visibility)
+    return [(r["origin"], int(r["id"])) for r in kept], ids, visibility, stationary
+
+
+def pack(masks_exr, coverage_exr, lighting_stage, stationary_min_reach=None):
     """(LSMK bytes, report) of a light_mask_bake.py output: its receipt beside
     `masks_exr` must name `lighting_stage` and both EXRs. Gutters take their
     nearest covered texel's lights (ids and values together; seam stitching
-    would mix different lights' channels). Rows flip to LMAP's top first."""
+    would mix different lights' channels). Rows flip to LMAP's top first.
+
+    `stationary_min_reach`: lights whose runtime reach is at least this many
+    units are stationary (Source 2's split: a strong key light, such as sun
+    through a ceiling, keeps a real shadow map; a mask at lightmap resolution
+    turns its sharp edges into stair-steps). They get no record and their
+    channels are cleared, so the runtime gives them their shadow tiles."""
     import imageio.v3 as iio
     from scipy import ndimage
     masks_exr = Path(masks_exr)
@@ -202,9 +225,14 @@ def pack(masks_exr, coverage_exr, lighting_stage):
             ids.min() < 0 or ids.max() > MAX_IDS:
         raise MaskError("light masks, ids or coverage have the wrong size or values")
     _, (rows, columns) = ndimage.distance_transform_edt(~covered, return_indices=True)
-    records = [(record["origin"], int(record["id"])) for record in masks["records"]]
-    data, report = build(records, np.clip(visibility[rows, columns], 0.0, 1.0)[::-1],
-                         ids[rows, columns].astype(np.uint8)[::-1])
+    records, ids, visibility, stationary = without_stationary(
+        masks["records"], ids[rows, columns], visibility[rows, columns], stationary_min_reach)
+    data, report = build(records, np.clip(visibility, 0.0, 1.0)[::-1],
+                         ids.astype(np.uint8)[::-1])
+    report["stationary"] = [{"source": record.get("source"), "id": int(record["id"]),
+                             "reach_units": record.get("reach_units")}
+                            for record in stationary]
+    report["stationary_min_reach_units"] = stationary_min_reach
     report.update(exr_sha256=masks["exr_sha256"], ids_exr_sha256=masks["ids_exr_sha256"],
                   groups=masks.get("groups"), without_id=len(masks.get("without_id", [])))
     return data, report

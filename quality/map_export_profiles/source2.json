@@ -21,7 +21,8 @@
     ],
     "seam_gate": {
       "max": 0.24
-    }
+    },
+    "stationary_min_reach_units": 5000
   },
   "probe_volume": {
     "spacing_m": 2.0,
@@ -56,7 +57,7 @@
     "max_wmsh_normal_fallback_fraction": 0.01,
     "require_runtime_gate_when_booted": false
   },
-  "revision": 6,
+  "revision": 7,
   "world_mesh": {
     "exclude_materials": [
       "relight_occluder"

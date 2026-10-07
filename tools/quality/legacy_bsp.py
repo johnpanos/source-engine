@@ -110,7 +110,8 @@ DISPINFO_BYTES = 176
 DISPVERT_BYTES = 20
 DISPTRI_TAG_REMOVE = 1 << 5
 STATIC_PROP_LUMP = struct.unpack(">i", b"sprp")[0]
-STATIC_PROP_RECORD_BYTES = {(21, 9): 72, (21, 10): 76, (20, 10): 72, (19, 10): 72}
+STATIC_PROP_RECORD_BYTES = {(21, 9): 72, (21, 10): 76, (20, 10): 72, (19, 10): 72,
+                            (20, 5): 60}  # Portal (2007): StaticPropLumpV5_t
 HUGE = 65536.0
 
 
