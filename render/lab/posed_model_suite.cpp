@@ -1559,6 +1559,45 @@ std::optional<std::string> RunChecks(
 	results.That( std::fabs( d[3] - 0.25f ) < 0.001f && std::fabs( f[3] - 0.25f ) < 0.001f,
 	    "posed-model.decal-preserves-destination-alpha" );
 	results.That( discarded, "posed-model.decal-zero-alpha-discards" );
+	// Modulate (modulate_ps2x) on the same point: saturate( base x $color ),
+	// its color lerped from 0.5 by its alpha; 2x with $mod2x, else the
+	// destination times the factor (drawn as the 2x blend of half of it). A
+	// zero-alpha texel is the neutral 0.5, not discarded.
+	{
+		WorldMaterial modulate;
+		modulate.name = "modulate-fixture";
+		modulate.shader = "Modulate";
+		modulate.variables = { { "$basetexture", "modulate-decal-data" }, { "$mod2x", "1" },
+		    { "$color", "[0.5 1 1]" } };
+		modulate.textures = { { "$basetexture", 9 } };
+		WorldMaterial plain = modulate;
+		plain.variables = { { "$basetexture", "modulate-decal-data" } };
+		CanvasImage doubled, single;
+		if ( auto why = renderDecal( 0.25f, -1.0f, 1.0f, doubled, &modulate ) )
+			return why;
+		if ( auto why = renderDecal( 0.75f, -1.0f, 1.0f, single, &plain ) )
+			return why;
+		const auto *m = doubled.At( kSize / 2, kSize / 2 );
+		const auto *p = single.At( kSize / 2, kSize / 2 );
+		const float tint[] = { 0.5f, 1.0f, 1.0f };
+		const float alpha = 128.0f / 255.0f;
+		bool mod2x = true, half = true;
+		for ( int c = 0; c < 3; ++c )
+		{
+			const float weight = 0.5f + ( factor[c] * tint[c] - 0.5f ) * alpha;
+			mod2x &= std::fabs( m[c] - 2.0f * weight * destination[c] ) < 0.003f;
+			half &= std::fabs( p[c] - 0.5f * destination[c] ) < 0.003f;
+		}
+		results.That( mod2x && decalPass.Failures() == 0,
+		    "posed-model.modulate-mod2x-lerps-tinted-base-from-neutral",
+		    std::to_string( m[0] ) + " " + std::to_string( m[1] ) + " " + std::to_string( m[2] ) );
+		results.That( half, "posed-model.modulate-plain-multiplies-by-neutral-half",
+		    std::to_string( p[0] ) + " " + std::to_string( p[1] ) + " " + std::to_string( p[2] ) );
+		const auto cloaked = material::MapVariables( "Modulate",
+		    { { "$basetexture", "decal" }, { "$cloakpassenabled", "1" } }, {} );
+		results.That( cloaked && !material::ClaimForDrawing( cloaked.Value() ),
+		    "posed-model.modulate-refuses-cloak-pass" );
+	}
 	const auto unsupportedDecal = material::MapVariables(
 	    "DecalModulate", { { "$basetexture", "decal" }, { "$envmap", "cube" } }, {} );
 	results.That( unsupportedDecal && !material::ClaimForDrawing( unsupportedDecal.Value() ),

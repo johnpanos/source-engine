@@ -318,6 +318,57 @@ UnlitClaim ClaimDecalModulate( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimModulate( const ParameterBlock &block )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "modulate" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	// $translucent only selects destination-alpha writes
+	// (EvaluateBlendRequirements); the blend is fixed. The cloak pass's
+	// factor, tint and refraction are read only with $cloakpassenabled.
+	constexpr std::string_view keys[] = { "basetexture", "frame", "basetexturetransform", "color",
+	    "alpha", "vertexcolor", "vertexalpha", "translucent", "model", "nocull", "nofog", "writez",
+	    "mod2x", "cloakfactor", "cloakcolortint", "refractamount" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the modulate point does not draw " + *unread;
+		return claim;
+	}
+	if ( detail::ReadFlag( block, "cloakpassenabled" ) )
+	{
+		claim.reason = "the modulate point does not draw $cloakpassenabled";
+		return claim;
+	}
+	if ( !detail::TextureBound( block, "basetexture" ) )
+	{
+		claim.reason = "Modulate without $basetexture samples an unbound sampler";
+		return claim;
+	}
+	claim.blend = device::BlendMode::kModulate2x;
+	claim.alphaWrite = false;
+	claim.decalModulate = true;
+	SurfaceConstants &constants = claim.constants;
+	// ComputeModulationColor: $color and $alpha unconverted (the vertex
+	// shader's modulation, in the texture's gamma space).
+	for ( int c = 0; c < 3; ++c )
+		constants.tint[c] = ReadParameter( block, "color", c );
+	constants.tint[3] = ReadParameter( block, "alpha" );
+	constants.flags[0] =
+	    ReadFlag( block, "vertexcolor" ) || ReadFlag( block, "vertexalpha" ) ? 1.0f : 0.0f;
+	for ( std::size_t i = 0; i < 8; ++i )
+		constants.baseTransform[i] = ReadParameter( block, "basetexturetransform", i );
+	// baseDecode.y: Modulate's factor; .z: 0.5, the half factor that draws
+	// DST_COLOR, ZERO through the 2x blend (1 with $mod2x).
+	constants.baseDecode[1] = 1.0f;
+	constants.baseDecode[2] = ReadFlag( block, "mod2x" ) ? 1.0f : 0.5f;
+	constants.surfaceControls[0] = ReadFlag( block, "nofog" ) ? 1.0f : 0.0f;
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimSky( const ParameterBlock &block, bool hdr )
 {
 	UnlitClaim claim;

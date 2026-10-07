@@ -50,6 +50,10 @@ constexpr VmtShaderRow kShaders[] = {
     { "decalmodulate", "decal-modulate",
         "dimensionless surface factors with modulate-2x blending" },
     { "decalmodulate_dx9", "decal-modulate", "DecalModulate DirectX 9 implementation" },
+    { "modulate", "modulate",
+        "Modulate: the base times $color multiplied into the destination (2x with $mod2x); "
+        "the decal-modulate point (unlit_family.h ClaimModulate)" },
+    { "modulate_dx9", "modulate", "Modulate's DirectX 9 implementation" },
     { "cable", "cable", "CPU-expanded rope ribbons with normal UV0 and color UV1" },
     { "cable_dx9", "cable", "Cable's expanded ribbon implementation" },
     { "splinerope", "cable", "this client expands SplineRope ribbons before drawing" },
@@ -90,7 +94,7 @@ constexpr std::string_view kLegacyReason =
 // kLegacyDerivedFamilies a copy.
 constexpr std::string_view kLegacyDerivedFamilies[] = {
     "lightmapped", "vertexlit", "unlit", "depth", "portal-mask", "cable", "decal-modulate",
-    "energy" };
+    "energy", "modulate" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$one", "one", ValueKind::kFloat, "1" },
@@ -133,6 +137,13 @@ constexpr VmtKeyRow kCommonKeys[] = {
 
 constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "decal-modulate", "$decalscale", "decalscale", ValueKind::kFloat, "1" },
+    // Modulate (modulate_dx9.cpp's parameters).
+    { "modulate", "$writez", "writez", ValueKind::kBool, "0" },
+    { "modulate", "$mod2x", "mod2x", ValueKind::kBool, "0" },
+    { "modulate", "$cloakpassenabled", "cloakpassenabled", ValueKind::kBool, "0" },
+    { "modulate", "$cloakfactor", "cloakfactor", ValueKind::kFloat, "0" },
+    { "modulate", "$cloakcolortint", "cloakcolortint", ValueKind::kFloat3, "[1 1 1]" },
+    { "modulate", "$refractamount", "refractamount", ValueKind::kFloat, "2" },
     { "portal-mask", "$stage", "stage", ValueKind::kInt, "0" },
     { "portal-mask", "$portalopenamount", "portalopenamount", ValueKind::kFloat, "0" },
     { "portal-mask", "$portalstatic", "portalstatic", ValueKind::kFloat, "0" },
@@ -520,6 +531,9 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "phong", "no '$': a shader parameter is looked up as $phong, so this key sets nothing" },
     { "$vertextcolor", "misspelled; no shader declares it (the flag is $vertexcolor)" },
     { "$decalfadetime", "the engine's decal fade (r_decal.cpp), not a shader parameter" },
+    { "$modblend", "Modulate declares no such parameter: proxy or VGUI screen input", "modulate" },
+    { "$texoffset", "Modulate declares no such parameter: proxy or VGUI screen input", "modulate" },
+    { "$texscale", "Modulate declares no such parameter: proxy or VGUI screen input", "modulate" },
     { "$intensitynoise", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
         "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
     { "$totalintensity", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "

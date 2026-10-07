@@ -12489,3 +12489,23 @@ Unit and lab suites touched pass (`render.family.unlit`, `.water`,
 Open: vortex pixels (claimed, no pixel check yet), the product mesh handoff
 (stop retaining SolidEnergy) with matched game/lab captures of a fizzler,
 bridge and tractor beam, and frame time.
+
+### K12/R91: Modulate on the decal-modulate point (2026-10-07, user request)
+
+Sixth gap of the unsupported-material sweep: Modulate (8 Portal 2 VMTs: VGUI
+screen overlays, the dark capture-point and nugget effect models,
+`engine/modulatesinglecolor`). `ClaimModulate` (unlit_family.h) draws
+`modulate_ps2x` on the decal-modulate point: saturate(base x `$color`/`$alpha`
+x vertex color), its color lerped from the neutral 0.5 by its alpha, fog to
+the neutral grey. `$mod2x` blends DST_COLOR, SRC_COLOR (the device's
+`kModulate2x`); without it Source blends DST_COLOR, ZERO, drawn as the same
+2x blend of half the factor, so the device contract gains no blend mode.
+`$writez` is the captured draw state's. Refused by name: the cloak pass, and
+a material without `$basetexture` (`engine/modulatesinglecolor`), which in
+Source samples an unbound sampler.
+
+`render.lab.posed-model` gains three checks (mod2x with a tint against
+2 x lerp(0.5, base x tint, a) x destination; plain modulate of a zero-alpha
+texel is 0.5 x destination, not discarded; the cloak refusal). Inventory
+unsupported: 186 → 179 (this checkout's `render_lab`). `posed-model`'s Cable
+normal-texture check fails on another session's uncommitted Cable default.

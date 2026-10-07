@@ -102,6 +102,14 @@ sprite_card::Frame SpriteCardTerms( const ParameterBlock &block );
 // DecalModulate: undecoded multiplicative texture, alpha > 0, fog to neutral.
 // The caller supplies decal depth bias and captured culling; destination alpha stays intact.
 UnlitClaim ClaimDecalModulate( const ParameterBlock &block );
+// Modulate (modulate_dx9.cpp, modulate_ps2x): the decal-modulate point with
+// saturate( base x $color/$alpha x vertex color ), its color lerped from the
+// neutral 0.5 by its alpha, fog to the neutral grey. $mod2x blends
+// DST_COLOR, SRC_COLOR; without it DST_COLOR, ZERO, drawn as the same 2x
+// blend of half the factor. $writez is the captured draw state's. A
+// material without $basetexture samples an unbound sampler and is refused,
+// as is the cloak pass.
+UnlitClaim ClaimModulate( const ParameterBlock &block );
 // Model extension: an authored env map is resolved from the stage's native
 // reflection probes and shaded beside the emissive base in the PBR point.
 UnlitClaim ClaimUnlitMesh( const ParameterBlock &block );

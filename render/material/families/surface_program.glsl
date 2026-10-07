@@ -2264,8 +2264,16 @@ void main()
 	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );
 	if ( kDecalModulate )
 	{
-		const vec4 factor = texture( sampler2D( baseTexture, baseSampler ), baseUv );
-		if ( factor.a <= 0.0 )
+		vec4 factor = texture( sampler2D( baseTexture, baseSampler ), baseUv );
+		if ( material.baseDecode.y > 0.5 )
+		{
+			// Modulate (modulate_ps2x): the base times the modulation (and the
+			// vertex color), saturated, then lerped from the neutral 0.5.
+			factor *= material.tint * ( material.flags.x > 0.5 ? color : vec4( 1.0 ) );
+			factor = clamp( factor, 0.0, 1.0 );
+			factor.rgb = mix( vec3( 0.5 ), factor.rgb, factor.a );
+		}
+		else if ( factor.a <= 0.0 )
 			discard;
 		vec3 weight = factor.rgb;
 		if ( frame.fogColor.w > -0.5 && material.surfaceControls.x == 0.0 )
@@ -2273,6 +2281,10 @@ void main()
 			const float fog = pow( FogFactor(), frame.fogColor.w < 0.5 ? 0.8 : 0.4 );
 			weight = mix( weight, vec3( 0.5 ), fog );
 		}
+		// Modulate without $mod2x (DST_COLOR, ZERO) is the 2x blend of half
+		// the factor (baseDecode.z 0.5; 1 elsewhere).
+		if ( material.baseDecode.y > 0.5 )
+			weight *= material.baseDecode.z;
 		// Multiplicative factors apply to the already lit destination. Exposure
 		// and output encoding would destroy 0.5 as the blend's neutral input.
 		outColor = vec4( weight, factor.a );

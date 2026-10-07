@@ -492,11 +492,13 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		return claim.blend;
 	}
 	if ( material.family == "unlit" || material.family == "cable" ||
-	     material.family == "decal-modulate" || material.family == "energy" )
+	     material.family == "decal-modulate" || material.family == "energy" ||
+	     material.family == "modulate" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
 		    : material.family == "energy"         ? ClaimEnergy( *block )
+		    : material.family == "modulate"       ? ClaimModulate( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -594,6 +596,16 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 			return foundation::MakeUnexpected( "model vertices have no color or alpha channel" );
 		return claim.blend;
 	}
+	if ( material.family == "modulate" )
+	{
+		const UnlitClaim claim = ClaimModulate( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		if ( detail::ReadFlag( *block, "vertexcolor" ) ||
+		     detail::ReadFlag( *block, "vertexalpha" ) )
+			return foundation::MakeUnexpected( "model vertices have no color or alpha channel" );
+		return claim.blend;
+	}
 	if ( material.family == "energy" )
 	{
 		const UnlitClaim claim = ClaimEnergy( *block );
@@ -678,11 +690,13 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		return out;
 	}
 	if ( material.family == "unlit" || material.family == "cable" ||
-	     material.family == "decal-modulate" || material.family == "energy" )
+	     material.family == "decal-modulate" || material.family == "energy" ||
+	     material.family == "modulate" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
 		    : material.family == "energy"         ? ClaimEnergy( *block )
+		    : material.family == "modulate"       ? ClaimModulate( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
