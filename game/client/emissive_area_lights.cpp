@@ -683,7 +683,14 @@ void CEmissiveAreaLights::PreRender()
 	if ( !arealights )
 		return;
 	const int nBudget = MIN( r_area_lights.GetInt(), area_light::kMaxFrameAreaLights );
-	if ( nBudget <= 0 || !engine->IsInGame() )
+	// RFC 0016's Source 2 lighting defaults: with the render core's area
+	// lights off, the frame's emitting surfaces add no runtime light (their
+	// light is baked), so nothing is gathered, sampled or published, and the
+	// engine's lightmap, dlight and light-cache consumers receive none.
+	static ConVarRef coreAreaLights( "r_core_area_lights" );
+	const bool coreAreasOff = EmissiveAreaLights_CoreSurfaceMode() && coreAreaLights.IsValid() &&
+	                          coreAreaLights.GetInt() == 0;
+	if ( nBudget <= 0 || coreAreasOff || !engine->IsInGame() )
 	{
 		Publish( NULL, NULL, 0 );
 		m_Lit.clear();

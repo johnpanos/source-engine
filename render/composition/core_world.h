@@ -52,6 +52,8 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -318,6 +320,24 @@ private:
 		}
 	};
 	std::vector<ModelPoseSource> m_ModelPoseSources;
+	// A posed model's topology at one level and body: the selected surfaces,
+	// the vertices they use with their skinning source, and the bones those
+	// weight. A pure function of the model's data, built on first use and
+	// kept until the models change (m_ModelsRevision); PoseModel had walked
+	// every index of the level each frame.
+	struct PoseTopology
+	{
+		bool valid = false; // false: a vertex names a bone the pose lacks
+		std::vector<std::uint32_t> surfaces;
+		std::vector<pass::skinning::SkinVertex> active;
+		std::vector<std::uint32_t> activeIndices;
+		std::vector<std::uint32_t> bones;
+	};
+	std::shared_ptr<const PoseTopology> PoseTopologyFor(
+	    std::uint32_t model, std::uint32_t lod, int body ) const;
+	mutable std::mutex m_PoseTopologyLock;
+	mutable std::uint64_t m_PoseTopologyRevision = 0;
+	mutable std::unordered_map<std::uint64_t, std::shared_ptr<const PoseTopology>> m_PoseTopology;
 	bool PoseModel(
 	    const RenderCorePosedModel &source, pass::world::WorldView::PosedModel &out ) const;
 	std::vector<pass::world::WorldMaterial> WorldMaterials(
@@ -583,6 +603,23 @@ private:
 	legacy::ILegacyFrontend &m_Frontend;
 	const frame::IRenderer &m_Renderer;
 	const legacy::RenderCallQueueHost *m_Host = nullptr;
+	// The host's neutral default of a shader's variable (materialDefault),
+	// kept once found: a found answer comes from a published neutral
+	// material, whose variables never change. A missing one is asked again
+	// (the neutral material may be published later). Looked up by
+	// string_view, so a capture's per-variable lookup allocates nothing.
+	const char *MaterialDefault( const char *shader, const char *key );
+	struct ViewHash
+	{
+		using is_transparent = void;
+		std::size_t operator()( std::string_view value ) const noexcept
+		{
+			return std::hash<std::string_view>{}( value );
+		}
+	};
+	using DefaultsByKey = std::unordered_map<std::string, std::string, ViewHash, std::equal_to<>>;
+	std::mutex m_DefaultsLock;
+	std::unordered_map<std::string, DefaultsByKey, ViewHash, std::equal_to<>> m_MaterialDefaults;
 	pass::world::WorldPass m_Pass;
 	std::vector<std::pair<std::uint64_t, graph::InlineGraphResources>> m_SceneCaptures;
 	pass::debug::DebugOverlays m_Overlays;

@@ -44,9 +44,11 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <type_traits>
 #include <unordered_set>
 #include <vector>
 
@@ -429,10 +431,21 @@ struct ComputeInterop
 	virtual void DeviceDestroyed() = 0;
 };
 
+// A begin-rendering command's attachments, kept by its encoder.
+struct RenderingPayload
+{
+	std::vector<ColorAttachment> colors;
+	std::optional<DepthAttachment> depth;
+};
+
+// One recorded command: trivially copyable, so an encoder's list grows and
+// clears without per-command construction. Payloads that are rare or
+// variable-sized live in the encoder (VulkanEncoder's payload storage) and
+// are referenced here for the encoder's lifetime.
 struct Command
 {
 	Op op = Op::kDraw;
-	std::shared_ptr<ComputeInterop> compute;
+	ComputeInterop *compute = nullptr; // kComputeInterop; owned by the encoder
 	std::uint64_t a = 0; // main handle (source for copies)
 	std::uint64_t b = 0; // destination handle for copies
 	ResourceUsage before = ResourceUsage::kUndefined;
@@ -444,9 +457,8 @@ struct Command
 	// Uploads: from the ring at ringOffset, or from a dedicated staging buffer.
 	std::uint64_t ringOffset = 0;
 	VkBuffer staging = VK_NULL_HANDLE;
-	// Rendering.
-	std::vector<ColorAttachment> colors;
-	std::optional<DepthAttachment> depth;
+	// Rendering: the attachments (kBeginRendering).
+	const RenderingPayload *rendering = nullptr;
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
 	// Bindings, viewport and draws.
@@ -456,18 +468,19 @@ struct Command
 	Viewport viewport;
 	std::uint32_t params[4] = {};
 	std::int32_t vertexOffset = 0;
-	std::string label;
-	std::vector<std::byte> bytes; // draw constants (D16), written at `offset`
+	const std::string *label = nullptr; // kBeginLabel
+	std::span<const std::byte> bytes;   // draw constants (D16), written at `offset`
 	void ( *native )( void *user, VkCommandBuffer cmd ) = nullptr;
 	void *nativeUser = nullptr;
 };
+static_assert( std::is_trivially_copyable_v<Command> );
 
 class VulkanDevice;
 
 class VulkanEncoder final : public IEncoderBackend
 {
 public:
-	VulkanEncoder( VulkanDevice &device, QueueKind queue ) : m_Device( device ), m_Queue( queue ) {}
+	VulkanEncoder( VulkanDevice &device, QueueKind queue );
 	~VulkanEncoder() override;
 
 	void TransitionTexture( TextureId texture, ResourceUsage before, ResourceUsage after,
@@ -509,6 +522,8 @@ public:
 	VulkanDevice &Device() const { return m_Device; }
 	QueueKind Queue() const { return m_Queue; }
 	const std::vector<Command> &Commands() const { return m_Commands; }
+	// The compute payloads of the kComputeInterop commands, in command order.
+	const std::vector<std::shared_ptr<ComputeInterop>> &Computes() const { return m_Computes; }
 	std::vector<std::uint64_t> &RingAllocations() { return m_RingAllocations; }
 	std::vector<HostBuffer> &Staging() { return m_Staging; }
 	void MarkSubmitted() { m_Submitted = true; }
@@ -524,7 +539,9 @@ public:
 	const std::vector<VkSemaphoreSubmitInfo> &Signals() const { return m_Signals; }
 
 private:
-	void Push( Command command ) { m_Commands.push_back( std::move( command ) ); }
+	void Push( const Command &command ) { m_Commands.push_back( command ); }
+	// Stable storage for a command's draw-constant bytes.
+	std::span<const std::byte> KeepBytes( std::span<const std::byte> bytes );
 	void NotRendering()
 	{
 		if ( m_Rendering )
@@ -538,7 +555,12 @@ private:
 
 	VulkanDevice &m_Device;
 	QueueKind m_Queue;
-	std::vector<Command> m_Commands;
+	std::vector<Command> m_Commands; // from the device's pool, returned on destruction
+	// Payload storage the commands reference (deques keep their addresses).
+	std::vector<std::shared_ptr<ComputeInterop>> m_Computes;
+	std::deque<RenderingPayload> m_Renderings;
+	std::deque<std::string> m_LabelText;
+	std::vector<std::vector<std::byte>> m_ByteChunks; // each filled within its capacity
 	std::vector<std::uint64_t> m_RingAllocations;
 	std::vector<HostBuffer> m_Staging;            // uploads that found the ring full
 	std::vector<VkSemaphoreSubmitInfo> m_Waits;   // binary, host interop
@@ -678,10 +700,16 @@ public:
 	std::size_t CollectHost();
 	std::size_t PendingHostReleases() const;
 	std::mutex &QueueMutex() { return m_QueueMutex; }
+	// Encoders' command lists, recycled with their capacity (any thread).
+	std::vector<Command> TakeCommandList();
+	void ReturnCommandList( std::vector<Command> commands );
 
 private:
 	friend class Translator;
 	friend class FsrProvider;
+
+	std::mutex m_CommandListLock;
+	std::vector<std::vector<Command>> m_CommandLists;
 
 	struct PendingRelease
 	{

@@ -1138,8 +1138,16 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 			float probe[3];
 			for ( int k = 0; k < 3; ++k )
 				probe[k] = grid.origin[k] + float( index[k] ) * grid.spacing[k] + read( state, k );
-			// Only proxies within the probe's visibility range.
-			bool near = false;
+			// Only proxies within the probe's visibility range. A box farther
+			// than the range is entered no nearer than its distance, so it cannot
+			// shorten a direction: the texel loop tests the near ones alone
+			// (with a margin over float rounding), except under scanAll, the
+			// oracle, which tests every proxy for every direction.
+			constexpr size_t kMaxNear = 64;
+			const Proxy *nearProxies[kMaxNear];
+			size_t nearCount = 0;
+			bool near = false, overflow = false;
+			const float keep = grid.maxDistance * 1.01f + 1.0e-3f;
 			for ( const Proxy &proxy : proxies )
 			{
 				float d2 = 0.0f;
@@ -1150,9 +1158,17 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 					d2 += e * e;
 				}
 				near = near || d2 < grid.maxDistance * grid.maxDistance;
+				if ( d2 < keep * keep )
+				{
+					if ( nearCount < kMaxNear )
+						nearProxies[nearCount++] = &proxy;
+					else
+						overflow = true;
+				}
 			}
 			if ( !near )
 				return false;
+			const bool filtered = !scanAll && !overflow;
 			const uint32_t x0 = grid.visibilityOrigin[0] + ( i % grid.tilesPerRow ) * kTile;
 			const uint32_t y0 = grid.visibilityOrigin[1] + ( i / grid.tilesPerRow ) * kTile;
 			bool changed = false;
@@ -1161,8 +1177,10 @@ inline size_t OccludeProbeVisibility( Volume &volume, std::span<const Proxy> pro
 				{
 					const float *d = directions[v][u];
 					float nearest = grid.maxDistance;
-					for ( const Proxy &proxy : proxies )
+					const size_t tested = filtered ? nearCount : proxies.size();
+					for ( size_t p = 0; p < tested; ++p )
 					{
+						const Proxy &proxy = filtered ? *nearProxies[p] : proxies[p];
 						float enter = 0.0f, leave = nearest;
 						bool hit = true;
 						for ( int k = 0; k < 3 && hit; ++k )

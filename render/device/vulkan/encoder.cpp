@@ -40,15 +40,59 @@ namespace render::device::vulkan
 
 // Encoder ----------------------------------------------------------------------
 
+VulkanEncoder::VulkanEncoder( VulkanDevice &device, QueueKind queue )
+    : m_Device( device ), m_Queue( queue ), m_Commands( device.TakeCommandList() )
+{
+}
+
 VulkanEncoder::~VulkanEncoder()
 {
 	if ( !m_Submitted )
 	{
 		m_Device.AbandonUploads( *this );
-		for ( const auto &command : m_Commands )
-			if ( command.compute )
-				command.compute->Aborted();
+		for ( const auto &payload : m_Computes )
+			payload->Aborted();
 	}
+	m_Device.ReturnCommandList( std::move( m_Commands ) );
+}
+
+std::vector<Command> VulkanDevice::TakeCommandList()
+{
+	std::lock_guard<std::mutex> lock( m_CommandListLock );
+	if ( m_CommandLists.empty() )
+		return {};
+	std::vector<Command> commands = std::move( m_CommandLists.back() );
+	m_CommandLists.pop_back();
+	return commands;
+}
+
+void VulkanDevice::ReturnCommandList( std::vector<Command> commands )
+{
+	// Trivially destructible commands: clearing keeps the capacity for free.
+	commands.clear();
+	constexpr std::size_t kKept = 32;
+	std::lock_guard<std::mutex> lock( m_CommandListLock );
+	if ( m_CommandLists.size() < kKept )
+		m_CommandLists.push_back( std::move( commands ) );
+}
+
+std::span<const std::byte> VulkanEncoder::KeepBytes( std::span<const std::byte> bytes )
+{
+	if ( bytes.empty() )
+		return {};
+	// Chunks never reallocate (each is filled within its reserved capacity),
+	// so earlier commands' spans stay valid.
+	constexpr std::size_t kChunk = 64 * 1024;
+	if ( m_ByteChunks.empty() ||
+	     m_ByteChunks.back().capacity() - m_ByteChunks.back().size() < bytes.size() )
+	{
+		m_ByteChunks.emplace_back();
+		m_ByteChunks.back().reserve( std::max( kChunk, bytes.size() ) );
+	}
+	std::vector<std::byte> &chunk = m_ByteChunks.back();
+	const std::size_t at = chunk.size();
+	chunk.insert( chunk.end(), bytes.begin(), bytes.end() );
+	return std::span<const std::byte>( chunk.data() + at, bytes.size() );
 }
 
 void VulkanEncoder::Compute( std::shared_ptr<ComputeInterop> payload )
@@ -56,8 +100,10 @@ void VulkanEncoder::Compute( std::shared_ptr<ComputeInterop> payload )
 	NotRendering();
 	Command command;
 	command.op = Op::kComputeInterop;
-	command.compute = std::move( payload );
-	Push( std::move( command ) );
+	command.compute = payload.get();
+	if ( payload )
+		m_Computes.push_back( std::move( payload ) );
+	Push( command );
 }
 
 void VulkanEncoder::TransitionTexture(
@@ -69,7 +115,7 @@ void VulkanEncoder::TransitionTexture(
 	command.before = before;
 	command.after = after;
 	command.range = range;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::TransitionBuffer( BufferId buffer, ResourceUsage before, ResourceUsage after )
@@ -79,7 +125,7 @@ void VulkanEncoder::TransitionBuffer( BufferId buffer, ResourceUsage before, Res
 	command.a = buffer.value;
 	command.before = before;
 	command.after = after;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::ClearTexture(
@@ -91,7 +137,7 @@ void VulkanEncoder::ClearTexture(
 	command.a = texture.value;
 	command.color = color;
 	command.range = range;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::WriteBuffer(
@@ -107,7 +153,7 @@ void VulkanEncoder::WriteBuffer(
 		m_Error = true;
 	else
 		m_Device.StageUpload( *this, command, bytes );
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::CopyBuffer( BufferId source, BufferId destination, const BufferCopy &copy )
@@ -118,7 +164,7 @@ void VulkanEncoder::CopyBuffer( BufferId source, BufferId destination, const Buf
 	command.a = source.value;
 	command.b = destination.value;
 	command.copy = copy;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::CopyTextureToBuffer(
@@ -130,7 +176,7 @@ void VulkanEncoder::CopyTextureToBuffer(
 	command.a = source.value;
 	command.b = destination.value;
 	command.textureCopy = copy;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::CopyBufferToTexture(
@@ -142,7 +188,7 @@ void VulkanEncoder::CopyBufferToTexture(
 	command.a = source.value;
 	command.b = destination.value;
 	command.textureCopy = copy;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::CopyTexture(
@@ -154,7 +200,7 @@ void VulkanEncoder::CopyTexture(
 	command.a = source.value;
 	command.b = destination.value;
 	command.textureCopy = { 0, copy.mip, copy.layer, copy.width, copy.height, copy.x, copy.y };
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::BeginRendering( const RenderingDesc &desc )
@@ -163,13 +209,15 @@ void VulkanEncoder::BeginRendering( const RenderingDesc &desc )
 	m_Rendering = true;
 	Command command;
 	command.op = Op::kBeginRendering;
-	command.colors.assign( desc.colors.begin(), desc.colors.end() );
-	command.depth = desc.depth;
+	RenderingPayload &rendering = m_Renderings.emplace_back();
+	rendering.colors.assign( desc.colors.begin(), desc.colors.end() );
+	rendering.depth = desc.depth;
+	command.rendering = &rendering;
 	command.width = desc.width;
 	command.height = desc.height;
 	if ( desc.width == 0 || desc.height == 0 || ( desc.colors.empty() && !desc.depth ) )
 		m_Error = true;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::EndRendering()
@@ -179,7 +227,7 @@ void VulkanEncoder::EndRendering()
 	m_Rendering = false;
 	Command command;
 	command.op = Op::kEndRendering;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::SetPipeline( PipelineId pipeline )
@@ -187,7 +235,7 @@ void VulkanEncoder::SetPipeline( PipelineId pipeline )
 	Command command;
 	command.op = Op::kSetPipeline;
 	command.a = pipeline.value;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::SetBindGroup( BindGroupRole role, BindGroupId group )
@@ -198,7 +246,7 @@ void VulkanEncoder::SetBindGroup( BindGroupRole role, BindGroupId group )
 	command.slot = static_cast<std::uint32_t>( role );
 	if ( command.slot >= kMaxBindGroups )
 		m_Error = true;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::SetVertexBuffer( std::uint32_t slot, BufferId buffer, std::uint64_t offset )
@@ -208,7 +256,7 @@ void VulkanEncoder::SetVertexBuffer( std::uint32_t slot, BufferId buffer, std::u
 	command.a = buffer.value;
 	command.slot = slot;
 	command.offset = offset;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::SetIndexBuffer( BufferId buffer, std::uint64_t offset, IndexFormat format )
@@ -218,7 +266,7 @@ void VulkanEncoder::SetIndexBuffer( BufferId buffer, std::uint64_t offset, Index
 	command.a = buffer.value;
 	command.offset = offset;
 	command.indexFormat = format;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::SetViewport( const Viewport &viewport )
@@ -228,7 +276,7 @@ void VulkanEncoder::SetViewport( const Viewport &viewport )
 	command.viewport = viewport;
 	if ( !( viewport.width > 0.0f ) || !( viewport.height > 0.0f ) )
 		m_Error = true;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::Draw( std::uint32_t vertexCount, std::uint32_t instanceCount,
@@ -241,7 +289,7 @@ void VulkanEncoder::Draw( std::uint32_t vertexCount, std::uint32_t instanceCount
 	command.params[1] = instanceCount;
 	command.params[2] = firstVertex;
 	command.params[3] = firstInstance;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::DrawIndexed( std::uint32_t indexCount, std::uint32_t instanceCount,
@@ -255,7 +303,7 @@ void VulkanEncoder::DrawIndexed( std::uint32_t indexCount, std::uint32_t instanc
 	command.params[2] = firstIndex;
 	command.params[3] = firstInstance;
 	command.vertexOffset = vertexOffset;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::DrawIndexedIndirect(
@@ -268,7 +316,7 @@ void VulkanEncoder::DrawIndexedIndirect(
 	command.offset = offset;
 	command.params[0] = drawCount;
 	command.params[1] = stride;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::DrawIndexedIndirectCount( BufferId buffer, std::uint64_t offset,
@@ -284,7 +332,7 @@ void VulkanEncoder::DrawIndexedIndirectCount( BufferId buffer, std::uint64_t off
 	command.copy.destinationOffset = countOffset;
 	command.params[0] = maxDrawCount;
 	command.params[1] = stride;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::Native( void ( *record )( void *, VkCommandBuffer ), void *user )
@@ -296,7 +344,7 @@ void VulkanEncoder::Native( void ( *record )( void *, VkCommandBuffer ), void *u
 	command.op = Op::kNative;
 	command.native = record;
 	command.nativeUser = user;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::BeginSection()
@@ -310,7 +358,7 @@ void VulkanEncoder::BeginSection()
 	m_SectionLabels = m_Labels;
 	Command command;
 	command.op = Op::kSectionBegin;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::EndSection()
@@ -321,7 +369,7 @@ void VulkanEncoder::EndSection()
 	m_InSection = false;
 	Command command;
 	command.op = Op::kSectionEnd;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::AddWait( VkSemaphore semaphore, VkPipelineStageFlags2 stage )
@@ -347,8 +395,8 @@ void VulkanEncoder::SetDrawConstants( std::uint32_t offset, std::span<const std:
 	Command command;
 	command.op = Op::kSetDrawConstants;
 	command.offset = offset;
-	command.bytes.assign( bytes.begin(), bytes.end() );
-	Push( std::move( command ) );
+	command.bytes = KeepBytes( bytes );
+	Push( command );
 }
 
 void VulkanEncoder::Dispatch( std::uint32_t x, std::uint32_t y, std::uint32_t z )
@@ -359,7 +407,7 @@ void VulkanEncoder::Dispatch( std::uint32_t x, std::uint32_t y, std::uint32_t z 
 	command.params[0] = x;
 	command.params[1] = y;
 	command.params[2] = z;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::BeginLabel( std::string_view label )
@@ -367,8 +415,8 @@ void VulkanEncoder::BeginLabel( std::string_view label )
 	++m_Labels;
 	Command command;
 	command.op = Op::kBeginLabel;
-	command.label = std::string( label );
-	Push( std::move( command ) );
+	command.label = &m_LabelText.emplace_back( label );
+	Push( command );
 }
 
 void VulkanEncoder::WriteTimestamp( BufferId buffer, std::uint64_t offset )
@@ -377,7 +425,7 @@ void VulkanEncoder::WriteTimestamp( BufferId buffer, std::uint64_t offset )
 	command.op = Op::kWriteTimestamp;
 	command.a = buffer.value;
 	command.offset = offset;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 void VulkanEncoder::EndLabel()
@@ -388,7 +436,7 @@ void VulkanEncoder::EndLabel()
 		--m_Labels;
 	Command command;
 	command.op = Op::kEndLabel;
-	Push( std::move( command ) );
+	Push( command );
 }
 
 // Uploads ----------------------------------------------------------------------
@@ -613,7 +661,7 @@ bool VulkanDevice::Validate(
 				v.samples = t.desc.sampleCount;
 				return true;
 			};
-			for ( const ColorAttachment &color : command.colors )
+			for ( const ColorAttachment &color : command.rendering->colors )
 			{
 				TextureRecord *t = texture( color.texture.value, ResourceUsage::kColorAttachment );
 				if ( !t || !fits( *t ) )
@@ -629,15 +677,15 @@ bool VulkanDevice::Validate(
 						return false;
 				}
 			}
-			if ( command.depth )
+			if ( const auto &depth = command.rendering->depth )
 			{
-				const std::uint64_t id = command.depth->texture.value;
+				const std::uint64_t id = depth->texture.value;
 				TextureRecord *t = texture( id, ResourceUsage::kDepthWrite );
 				if ( !t )
 				{
 					t = texture( id, ResourceUsage::kDepthRead );
 					// A read-only depth attachment cannot be cleared.
-					if ( t && command.depth->load == LoadOp::kClear )
+					if ( t && depth->load == LoadOp::kClear )
 						return false;
 				}
 				if ( !t || !fits( *t ) )
@@ -1072,8 +1120,9 @@ private:
 		}
 		GroupAccesses( std::move( groups ) );
 
+		const RenderingPayload &attachments = *command.rendering;
 		std::vector<VkRenderingAttachmentInfo> colors;
-		for ( const ColorAttachment &color : command.colors )
+		for ( const ColorAttachment &color : attachments.colors )
 		{
 			const TextureRecord *texture = m_D.LiveTexture( color.texture.value );
 			Access( color.texture.value, true );
@@ -1101,24 +1150,23 @@ private:
 		VkRenderingAttachmentInfo depth{};
 		VkRenderingAttachmentInfo stencil{};
 		const TextureRecord *depthTexture = nullptr;
-		if ( command.depth )
+		if ( const auto &attachment = attachments.depth )
 		{
-			const std::uint64_t id = command.depth->texture.value;
+			const std::uint64_t id = attachment->texture.value;
 			depthTexture = m_D.LiveTexture( id );
 			const bool readOnly = TrackOf( id ).usage == ResourceUsage::kDepthRead;
 			Access( id, !readOnly );
 			depth.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 			depth.imageView = depthTexture->attachmentView;
 			depth.imageLayout = ScopeOf( TrackOf( id ).usage ).layout;
-			depth.loadOp = command.depth->load == LoadOp::kLoad ? VK_ATTACHMENT_LOAD_OP_LOAD
-			               : command.depth->load == LoadOp::kClear
-			                   ? VK_ATTACHMENT_LOAD_OP_CLEAR
-			                   : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			depth.loadOp = attachment->load == LoadOp::kLoad    ? VK_ATTACHMENT_LOAD_OP_LOAD
+			               : attachment->load == LoadOp::kClear ? VK_ATTACHMENT_LOAD_OP_CLEAR
+			                                                    : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			depth.storeOp = readOnly ? VK_ATTACHMENT_STORE_OP_NONE
-			                : command.depth->store == StoreOp::kStore
+			                : attachment->store == StoreOp::kStore
 			                    ? VK_ATTACHMENT_STORE_OP_STORE
 			                    : VK_ATTACHMENT_STORE_OP_DONT_CARE;
-			depth.clearValue.depthStencil = { command.depth->clearDepth, 0 };
+			depth.clearValue.depthStencil = { attachment->clearDepth, 0 };
 			stencil = depth;
 		}
 		VkRenderingInfo info{};
@@ -1359,7 +1407,7 @@ private:
 			{
 				VkDebugUtilsLabelEXT label{};
 				label.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
-				label.pLabelName = command.label.c_str();
+				label.pLabelName = command.label->c_str();
 				m_D.m_Instance->beginLabel( m_Cmd, &label );
 			}
 			break;
@@ -1650,9 +1698,8 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	if ( !translated )
 	{
 		for ( VulkanEncoder *encoder : recorded )
-			for ( const auto &command : encoder->Commands() )
-				if ( command.compute )
-					command.compute->Aborted();
+			for ( const auto &payload : encoder->Computes() )
+				payload->Aborted();
 		return giveBack( VK_ERROR_INITIALIZATION_FAILED );
 	}
 	translator.Finish();
@@ -1723,12 +1770,11 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	const CompletionToken token{ queue, m_Epoch, value };
 	translator.Commit();
 	for ( VulkanEncoder *encoder : recorded )
-		for ( const auto &command : encoder->Commands() )
-			if ( command.compute )
-			{
-				command.compute->Submitted( token );
-				context.compute.push_back( command.compute );
-			}
+		for ( const auto &payload : encoder->Computes() )
+		{
+			payload->Submitted( token );
+			context.compute.push_back( payload );
+		}
 	for ( VulkanEncoder *encoder : recorded )
 	{
 		for ( std::uint64_t allocation : encoder->RingAllocations() )

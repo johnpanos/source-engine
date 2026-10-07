@@ -5155,6 +5155,151 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 	return CoreMeshKind::kSurface;
 }
 
+// Frozen-path: core progress (RFC 0016) - a bound material's captured
+// variables, formatted once and reused while each variable's raw value is
+// unchanged. GetStringValue formats from the same raw value on this thread
+// (the capture runs where no call queue redirects to temporary variables),
+// so equal raw values give the identical text; only a changed variable is
+// formatted again. Names come from the symbol table, whose strings live for
+// the process, and are read once instead of under its lock per draw.
+namespace
+{
+
+struct CapturedVariable
+{
+	IMaterialVar *var = nullptr;
+	const char *key = nullptr; // the symbol table's string
+	bool skipped = false;      // undefined, or a $flags variable
+	const char *defaultValue = nullptr;
+	IMaterialVar *frame = nullptr; // a texture's frame variable
+	bool frameLooked = false;
+	// The raw value the text was formatted from.
+	MaterialVarType_t type = MATERIAL_VAR_TYPE_UNDEFINED;
+	int intValue = 0;
+	int comps = 0;
+	float values[16] = {};
+	const void *object = nullptr; // texture or material
+	std::string text;
+	bool formatted = false;
+};
+
+struct CapturedMaterial
+{
+	IShader *shader = nullptr;
+	IMaterialVar **params = nullptr;
+	int count = 0;
+	std::vector<CapturedVariable> variables;
+};
+
+// Whether var's raw value still equals the captured one; refreshes it if not.
+bool SameRawValue( CapturedVariable &captured, IMaterialVar *var )
+{
+	const MaterialVarType_t type = var->GetType();
+	CapturedVariable raw;
+	raw.type = type;
+	switch ( type )
+	{
+	case MATERIAL_VAR_TYPE_INT:
+		raw.intValue = var->GetIntValue();
+		break;
+	case MATERIAL_VAR_TYPE_FLOAT:
+		raw.values[0] = var->GetFloatValue();
+		break;
+	case MATERIAL_VAR_TYPE_VECTOR:
+		raw.comps = var->VectorSize();
+		var->GetVecValue( raw.values, raw.comps );
+		break;
+	case MATERIAL_VAR_TYPE_MATRIX:
+		std::memcpy( raw.values, var->GetMatrixValue().Base(), sizeof( raw.values ) );
+		break;
+	case MATERIAL_VAR_TYPE_TEXTURE:
+		raw.object = var->GetTextureValue();
+		break;
+	case MATERIAL_VAR_TYPE_MATERIAL:
+		raw.object = var->GetMaterialValue();
+		break;
+	default:
+		// Strings (and anything else) are compared as text.
+		return false;
+	}
+	const bool same = captured.formatted && captured.type == raw.type &&
+	                  captured.intValue == raw.intValue && captured.comps == raw.comps &&
+	                  captured.object == raw.object &&
+	                  !std::memcmp( captured.values, raw.values, sizeof( raw.values ) );
+	captured.type = raw.type;
+	captured.intValue = raw.intValue;
+	captured.comps = raw.comps;
+	captured.object = raw.object;
+	std::memcpy( captured.values, raw.values, sizeof( raw.values ) );
+	return same;
+}
+
+// The captured variables of the bound material, refreshed for this draw.
+CapturedMaterial &CaptureMaterialVariables( IMaterialInternal *material )
+{
+	static std::unordered_map<const IMaterialInternal *, CapturedMaterial> s_captured;
+	IMaterialVar **params = material->GetShaderParams();
+	IShader *shader = material->GetShader();
+	const int count = material->ShaderParamCount();
+	auto found = s_captured.find( material );
+	if ( found == s_captured.end() && s_captured.size() >= 4096 )
+		s_captured.clear(); // bounded: materials come and go with maps
+	CapturedMaterial &captured = s_captured[material];
+	bool rebuild =
+	    captured.shader != shader || captured.params != params || captured.count != count;
+	for ( int i = 0; !rebuild && i < count; ++i )
+		rebuild = captured.variables[i].var != params[i];
+	if ( rebuild )
+	{
+		captured = CapturedMaterial();
+		captured.shader = shader;
+		captured.params = params;
+		captured.count = count;
+		captured.variables.resize( count );
+		for ( int i = 0; i < count; ++i )
+		{
+			CapturedVariable &v = captured.variables[i];
+			v.var = params[i];
+			if ( !v.var )
+				continue;
+			v.key = v.var->GetName();
+			if ( shader && i < shader->GetNumParams() &&
+			     !V_stricmp( shader->GetParamName( i ), v.key ) )
+				v.defaultValue = shader->GetParamDefault( i );
+		}
+	}
+	for ( CapturedVariable &v : captured.variables )
+	{
+		v.skipped = !v.var || !v.var->IsDefined() || !V_strnicmp( v.key, "$flags", 6 );
+		if ( v.skipped )
+			continue;
+		if ( v.var->GetType() == MATERIAL_VAR_TYPE_TEXTURE && !v.frameLooked )
+		{
+			v.frameLooked = true;
+			const char *frameKey =
+			    !V_stricmp( v.key, "$texture2" ) ? "$frame2"
+			    : !V_stricmp( v.key, "$bumpmap" ) || !V_stricmp( v.key, "$normalmap" )
+			        ? "$bumpframe"
+			    : !V_stricmp( v.key, "$envmap" ) ? "$envmapframe"
+			                                     : "$frame";
+			bool frameFound = false;
+			IMaterialVar *frame = material->FindVar( frameKey, &frameFound, false );
+			v.frame = frameFound ? frame : nullptr;
+		}
+		if ( SameRawValue( v, v.var ) )
+			continue;
+		// Frozen-path: preserve the live proxy matrix in the core's row-major
+		// VMT representation, rather than GetStringValue's transposed display.
+		v.text = v.var->GetType() == MATERIAL_VAR_TYPE_MATRIX
+		             ? RenderMaterialVmt::MatrixValue( v.var->GetMatrixValue().Base() )
+		             : v.var->GetStringValue();
+		v.formatted = v.var->GetType() != MATERIAL_VAR_TYPE_STRING;
+	}
+	return captured;
+}
+
+} // namespace
+
 bool CEmptyMesh::EmitToCoreQueue()
 {
 	if ( !g_pBoundMaterial || m_worldMeshBatch )
@@ -5274,40 +5419,24 @@ bool CEmptyMesh::EmitToCoreQueue()
 		}
 	}
 	std::vector<render::legacy::CoreMeshVariable> variables;
-	// GetStringValue formats numeric values into temporary storage. Copy each
-	// one now; retaining its pointer until the final QueueMesh corrupts values.
+	// Values the capture made for this draw alone (the bloom tint); the
+	// material's own come from its captured variables, which outlive QueueMesh.
 	std::vector<std::string> values;
-	values.reserve( g_pBoundMaterial->ShaderParamCount() + 1 ); // + the bloom tint
-	IMaterialVar **params = g_pBoundMaterial->GetShaderParams();
-	IShader *shader = g_pBoundMaterial->GetShader();
-	for ( int i = 0; i < g_pBoundMaterial->ShaderParamCount(); ++i )
+	const CapturedMaterial &captured = CaptureMaterialVariables( g_pBoundMaterial );
+	variables.reserve( captured.variables.size() + 8 );
+	for ( const CapturedVariable &v : captured.variables )
 	{
-		IMaterialVar *var = params[i];
-		if ( !var || !var->IsDefined() || !V_strnicmp( var->GetName(), "$flags", 6 ) )
+		if ( v.skipped )
 			continue;
 		render::legacy::CoreMeshVariable value;
-		value.key = var->GetName();
-		// Frozen-path: preserve the live proxy matrix in the core's row-major
-		// VMT representation, rather than GetStringValue's transposed display.
-		values.emplace_back( var->GetType() == MATERIAL_VAR_TYPE_MATRIX
-		                         ? RenderMaterialVmt::MatrixValue( var->GetMatrixValue().Base() )
-		                         : var->GetStringValue() );
-		value.value = values.back().c_str();
-		if ( shader && i < shader->GetNumParams() &&
-		     !V_stricmp( shader->GetParamName( i ), value.key ) )
-			value.defaultValue = shader->GetParamDefault( i );
-		if ( var->GetType() == MATERIAL_VAR_TYPE_TEXTURE && var->GetTextureValue() )
+		value.key = v.key;
+		value.value = v.text.c_str();
+		value.defaultValue = v.defaultValue;
+		if ( v.type == MATERIAL_VAR_TYPE_TEXTURE && v.object )
 		{
-			ITextureInternal *texture = static_cast<ITextureInternal *>( var->GetTextureValue() );
-			const char *frameKey =
-			    !V_stricmp( value.key, "$texture2" ) ? "$frame2"
-			    : !V_stricmp( value.key, "$bumpmap" ) || !V_stricmp( value.key, "$normalmap" )
-			        ? "$bumpframe"
-			    : !V_stricmp( value.key, "$envmap" ) ? "$envmapframe"
-			                                         : "$frame";
-			bool found = false;
-			IMaterialVar *frame = g_pBoundMaterial->FindVar( frameKey, &found, false );
-			value.textureHandle = texture->GetTextureHandle( found ? frame->GetIntValue() : 0 );
+			ITextureInternal *texture =
+			    static_cast<ITextureInternal *>( const_cast<void *>( v.object ) );
+			value.textureHandle = texture->GetTextureHandle( v.frame ? v.frame->GetIntValue() : 0 );
 		}
 		variables.push_back( value );
 	}

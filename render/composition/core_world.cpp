@@ -1704,6 +1704,72 @@ void CoreWorld::PackViewAreaLights( const std::vector<area_light::AreaLight> &ar
 		    areas[i], i < mapAreas, i < areaTiles.size() ? areaTiles[i] : -1 ) );
 }
 
+std::shared_ptr<const CoreWorld::PoseTopology> CoreWorld::PoseTopologyFor(
+    std::uint32_t model, std::uint32_t lod, int body ) const
+{
+	const std::uint64_t key = ( std::uint64_t( model ) << 40 ) |
+	                          ( std::uint64_t( lod & 0xff ) << 32 ) | std::uint32_t( body );
+	{
+		std::lock_guard<std::mutex> guard( m_PoseTopologyLock );
+		if ( m_PoseTopologyRevision != m_ModelsRevision )
+		{
+			m_PoseTopology.clear();
+			m_PoseTopologyRevision = m_ModelsRevision;
+		}
+		if ( auto found = m_PoseTopology.find( key ); found != m_PoseTopology.end() )
+			return found->second;
+	}
+	auto topology = std::make_shared<PoseTopology>();
+	const ModelPoseSource &pose = m_ModelPoseSources[model];
+	const pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[model];
+	topology->surfaces = pose.SelectedSurfaces( body, lod );
+	const std::span<const pass::skinning::SkinVertex> skinning = pose.LevelVertices( lod );
+	topology->valid = lod < mesh.lodCount() && mesh.lods[lod].indices &&
+	                  skinning.size() == mesh.lods[lod].vertexCount;
+	if ( topology->valid && !topology->surfaces.empty() )
+	{
+		const std::vector<std::uint32_t> &indices = *mesh.lods[lod].indices;
+		std::vector<bool> usedVertices( skinning.size() );
+		for ( std::uint32_t surfaceId : topology->surfaces )
+		{
+			const pass::world::WorldSurface &surface = mesh.surfaces[surfaceId];
+			for ( std::uint32_t i = surface.firstIndex; i < surface.firstIndex + surface.indexCount;
+			    ++i )
+				usedVertices[indices[i]] = true;
+		}
+		std::vector<bool> usedBones( pose.poseToBone.size() );
+		for ( std::uint32_t i = 0; i < skinning.size() && topology->valid; ++i )
+		{
+			if ( !usedVertices[i] )
+				continue;
+			const pass::skinning::SkinVertex &vertex = skinning[i];
+			const auto weights = vertex.Weights();
+			for ( unsigned int influence = 0; influence < 3; ++influence )
+			{
+				if ( weights[influence] != 0.0f )
+				{
+					const std::uint32_t bone = ( vertex.bones >> ( influence * 8 ) ) & 0xffu;
+					if ( bone >= usedBones.size() )
+					{
+						topology->valid = false;
+						break;
+					}
+					usedBones[bone] = true;
+				}
+			}
+			topology->active.push_back( vertex );
+			topology->activeIndices.push_back( i );
+		}
+		for ( std::uint32_t bone = 0; bone < usedBones.size(); ++bone )
+			if ( usedBones[bone] )
+				topology->bones.push_back( bone );
+	}
+	std::lock_guard<std::mutex> guard( m_PoseTopologyLock );
+	if ( m_PoseTopologyRevision != m_ModelsRevision )
+		return topology; // the models changed meanwhile: not kept
+	return m_PoseTopology.try_emplace( key, std::move( topology ) ).first->second;
+}
+
 bool CoreWorld::PoseModel(
     const RenderCorePosedModel &source, pass::world::WorldView::PosedModel &out ) const
 {
@@ -1718,7 +1784,9 @@ bool CoreWorld::PoseModel(
 	if ( !pose.parsed || lod >= pose.lodCount || lod >= mesh.lodCount() ||
 	     pose.poseToBone.empty() || source.boneCount < pose.poseToBone.size() )
 		return false;
-	out.surfaceSelection = pose.SelectedSurfaces( source.body, lod );
+	const std::shared_ptr<const PoseTopology> topology =
+	    PoseTopologyFor( source.model, lod, source.body );
+	out.surfaceSelection = topology->surfaces;
 	if ( !m_Pass.DrawsPosedModel( source.model, source.skin, source.phase, out.surfaceSelection ) )
 		return false;
 	if ( out.surfaceSelection->empty() )
@@ -1726,46 +1794,15 @@ bool CoreWorld::PoseModel(
 	const pass::world::WorldData::StaticMeshLod &block = mesh.lods[lod];
 	if ( !block.vertices || !block.indices )
 		return false;
-	const std::span<const pass::skinning::SkinVertex> skinning = pose.LevelVertices( lod );
-	if ( skinning.size() != block.vertexCount )
+	if ( pose.LevelVertices( lod ).size() != block.vertexCount || !topology->valid )
 		return false;
 	// Only the selected topology borrows the live palette. The host may have
 	// prepared no matrices for bones used exclusively by other body groups/LODs.
-	std::vector<bool> usedVertices( skinning.size() );
-	for ( std::uint32_t surfaceId : *out.surfaceSelection )
-	{
-		const pass::world::WorldSurface &surface = mesh.surfaces[surfaceId];
-		for ( std::uint32_t i = surface.firstIndex; i < surface.firstIndex + surface.indexCount;
-		    ++i )
-			usedVertices[( *block.indices )[i]] = true;
-	}
-	std::vector<pass::skinning::SkinVertex> active;
-	std::vector<std::uint32_t> activeIndices;
-	std::vector<bool> usedBones( pose.poseToBone.size() );
-	for ( std::uint32_t i = 0; i < skinning.size(); ++i )
-	{
-		if ( !usedVertices[i] )
-			continue;
-		const pass::skinning::SkinVertex &vertex = skinning[i];
-		const auto weights = vertex.Weights();
-		for ( unsigned int influence = 0; influence < 3; ++influence )
-		{
-			if ( weights[influence] != 0.0f )
-			{
-				const std::uint32_t bone = ( vertex.bones >> ( influence * 8 ) ) & 0xffu;
-				if ( bone >= usedBones.size() )
-					return false;
-				usedBones[bone] = true;
-			}
-		}
-		active.push_back( vertex );
-		activeIndices.push_back( i );
-	}
+	const std::vector<pass::skinning::SkinVertex> &active = topology->active;
+	const std::vector<std::uint32_t> &activeIndices = topology->activeIndices;
 	std::vector<pass::skinning::BoneMatrix> palette( pose.poseToBone.size() );
-	for ( std::size_t bone = 0; bone < palette.size(); ++bone )
+	for ( std::uint32_t bone : topology->bones )
 	{
-		if ( !usedBones[bone] )
-			continue;
 		const float *world = source.boneToWorld + bone * 12;
 		const pass::skinning::BoneMatrix &bind = pose.poseToBone[bone];
 		for ( int row = 0; row < 3; ++row )
@@ -2522,6 +2559,26 @@ std::optional<pass::world::WorldSceneColor> CoreWorld::Capture( device::IRenderD
 	return result;
 }
 
+const char *CoreWorld::MaterialDefault( const char *shader, const char *key )
+{
+	if ( !m_Host || !m_Host->materialDefault )
+		return nullptr;
+	std::lock_guard<std::mutex> guard( m_DefaultsLock );
+	auto byShader = m_MaterialDefaults.find( std::string_view( shader ) );
+	if ( byShader != m_MaterialDefaults.end() )
+	{
+		auto found = byShader->second.find( std::string_view( key ) );
+		if ( found != byShader->second.end() )
+			return found->second.c_str();
+	}
+	const char *value = m_Host->materialDefault( shader, key );
+	if ( !value )
+		return nullptr;
+	if ( byShader == m_MaterialDefaults.end() )
+		byShader = m_MaterialDefaults.try_emplace( shader ).first;
+	return byShader->second.try_emplace( key, value ).first->second.c_str();
+}
+
 std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 {
 	// The engine's bloom chain (RFC 0016 K8): claimed by name, drawn once by
@@ -2568,9 +2625,7 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		if ( !variable.key || !variable.value )
 			return 0;
 		geometry.material.variables.emplace_back( variable.key, variable.value );
-		const char *declared = m_Host && m_Host->materialDefault
-		                           ? m_Host->materialDefault( draw.shader, variable.key )
-		                           : nullptr;
+		const char *declared = MaterialDefault( draw.shader, variable.key );
 		if ( !declared )
 			declared = variable.defaultValue;
 		if ( declared )

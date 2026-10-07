@@ -505,9 +505,11 @@ void SparseHelpers( const Volume &seed )
 		std::uniform_real_distribution<float> unit( -0.5f, 1.5f );
 		bool same = true;
 		size_t cutTotal = 0;
-		for ( int round = 0; round < 40 && same; ++round )
+		for ( int round = 0; round < 80 && same; ++round )
 		{
-			std::vector<Proxy> proxies( 1 + round % 4 );
+			// Up to eight proxies: each probe also has far ones, which its
+			// direction tests skip (the scanAll oracle tests them all).
+			std::vector<Proxy> proxies( 1 + round % 8 );
 			for ( Proxy &proxy : proxies )
 				for ( int k = 0; k < 3; ++k )
 				{

@@ -11827,3 +11827,61 @@ shadowed-lights, softparticle, reflection-probes, panel, static-light);
 (5 % of the thread) computes the submit's resource states and the port's
 refusals, so it is not a debug check to drop; it stays with the submission
 work. No gate closes.
+
+### CPU round two: the port's command record, the capture's text, the main thread (2026-10-06, user request)
+
+Each sample of the render thread attributed once (innermost recognised
+frame) showed the port above the driver: command recording 1.16 ms,
+translation 0.85, device lookups 0.67 and validation 0.51 against the
+driver's 1.85 ms. The main thread, nearly as busy, spent 20 % posing
+models, 14 % cutting probe visibility and 10 % gathering emissive area
+lights the core then discarded. Changes:
+
+- `vulkan::Command` is trivially copyable (344 bytes with a
+  `shared_ptr`, three vectors, an `optional` and a `std::string`, before);
+  compute payloads, attachments, labels and draw-constant bytes live in
+  the encoder and the command refers to them. Encoders take their command
+  vector from a device pool, so capacity survives. Command recording fell
+  from 10.5 to 3.8 % of the render thread. `render.device.v2.vulkan`
+  (1,300), its sensitivity suite (21) and `render.graph.v1.vulkan` pass.
+- The capture (`EmitToCoreQueue`, Frozen-path: core progress) keeps each
+  material's variables: names read once from the symbol table, values
+  formatted only when the raw value changed (`GetStringValue` formats the
+  same raw fields on that thread). A temporary verifier compared every
+  captured variable with a fresh `GetStringValue` over a whole demo:
+  4,194,304 checked, 0 different; with the cache made stale on purpose it
+  reported 13,635 differences (a proxy-driven `$alpha`).
+- `CoreWorld::MaterialDefault` keeps the host's found neutral defaults by
+  shader and key (`string_view` lookups, no allocation).
+- `CoreWorld::PoseTopologyFor`: a posed model's surfaces, used vertices
+  and bones per level and body, built once per models revision instead of
+  walking every index each frame. A temporary verifier compared it with
+  the per-frame walk on 18,432 posed draws: 0 different.
+- `OccludeProbeVisibility` tests each probe direction against the
+  proxies within its range only (a farther box cannot shorten it; a 1 %
+  margin covers rounding); `scanAll`, the oracle, still tests all.
+  `render.indirect-light`'s equality check now runs 80 rounds of up to
+  eight proxies and fails with the range halved.
+- With `r_core_world 1` and `r_core_area_lights 0` the client gathers and
+  publishes no emissive area lights: RFC 0016's defaults say the frame's
+  emitting surfaces add no runtime light, but the engine still applied
+  them to legacy lightmaps (CPU), dlight slots and the light cache.
+
+Intro4 demo, 8060S, interleaved ABBA against the build before item 1:
+
+| | A1 | B1 | B2 | A2 |
+| --- | --- | --- | --- | --- |
+| 1080p interval p50 / p99 | 17.25 / 42.29 | 15.34 / 36.87 | 16.16 / 38.22 | 18.80 / 43.70 |
+| 1080p render-thread CPU p50 | 13.35 | 9.19 | 9.40 | 14.38 |
+| 1080p GPU-bound | 43 % | 77 % | 78 % | 48 % |
+| 720p fps (mean) | 80.1 | 99.6 | 98.0 | 80.2 |
+| 720p interval p50 / p90 / p99 | 11.51 / 20.50 / 33.85 | 9.11 / 15.51 / 26.52 | 9.49 / 15.64 / 26.41 | 11.57 / 20.44 / 32.93 |
+| 720p render-thread CPU p50 | 10.48 | 7.03 | 7.63 | 10.55 |
+
+At 1080p the 8060S is now GPU-bound in most frames; at 720p about half.
+Open on the CPU: `SkinReference` (posed models are still skinned on the
+CPU; the GPU skinning kernel exists but no pass feeds it), the WorldView
+copy per recorded slot, the snapshot key per dynamic draw, the driver's
+own cost (fewer binds and draws: S1–S3), legacy lightmap uploads and the
+capture's vertex conversion (the scene draw path removes it). No gate
+closes.
