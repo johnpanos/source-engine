@@ -9,6 +9,9 @@
 #include "c_ai_basenpc.h"
 #include "beam_shared.h"
 #include "prop_portal_shared.h"
+#ifdef PORTAL2
+#include "c_portal_beam_helper.h"
+#endif
 
 
 #define FLOOR_TURRET_PORTAL_EYE_ATTACHMENT 1
@@ -36,6 +39,17 @@ public:
 
 private:
 	CBeam	*m_pBeam;
+#ifdef PORTAL2
+	// Retail traces the sight through portals with the beam helper (one beam
+	// per portal segment), refreshed when the muzzle moves or every 0.2 s.
+	void	UpdateBeamPoints( const Vector &vecMuzzle, const Vector &vecDir );
+
+	C_PortalBeamHelper	m_beamHelper;
+	Vector	m_vecLastMuzzle;
+	Vector	m_vecLastDir;
+	float	m_flNextBeamUpdate;
+	bool	m_bIsFiring;
+#endif
 
 	bool	m_bOutOfAmmo;
 	bool	m_bLaserOn;
@@ -52,6 +66,9 @@ IMPLEMENT_CLIENTCLASS_DT( C_NPC_Portal_FloorTurret, DT_NPC_Portal_FloorTurret, C
 
 	RecvPropBool( RECVINFO( m_bOutOfAmmo ) ),
 	RecvPropBool( RECVINFO( m_bLaserOn ) ),
+#ifdef PORTAL2
+	RecvPropBool( RECVINFO( m_bIsFiring ) ),
+#endif
 	RecvPropInt( RECVINFO( m_sLaserHaloSprite ) ),
 
 END_RECV_TABLE()
@@ -76,6 +93,25 @@ void C_NPC_Portal_FloorTurret::Spawn( void )
 	m_bBeamFlickerOff = false;
 	m_fBeamFlickerTime = 0.0f;
 
+#ifdef PORTAL2
+	// Retail client.so 0xba8df0: the template beam the helper copies per segment
+	C_Beam *pBeam = C_Beam::BeamCreate( "effects/redlaser1.vmt", 0.2f );
+	pBeam->SetColor( 255, 32, 32 );
+	pBeam->SetBrightness( 255 );
+	pBeam->SetNoise( 0 );
+	pBeam->SetWidth( 0.75f );
+	pBeam->SetEndWidth( 0 );
+	pBeam->SetScrollRate( 0 );
+	pBeam->SetFadeLength( 0 );
+	pBeam->SetHaloScale( 4.0f );
+	pBeam->SetBeamFlag( FBEAM_REVERSED );
+	m_beamHelper.Init( pBeam );
+	m_beamHelper.TurnOff();
+	m_vecLastMuzzle.Init();
+	m_vecLastDir.Init();
+	m_flNextBeamUpdate = 0.0f;
+#endif
+
 	BaseClass::Spawn();
 }
 
@@ -93,6 +129,60 @@ void C_NPC_Portal_FloorTurret::ClientThink( void )
 		LaserOff();
 }
 
+#ifdef PORTAL2
+void C_NPC_Portal_FloorTurret::LaserOff( void )
+{
+	m_beamHelper.TurnOff();
+}
+
+void C_NPC_Portal_FloorTurret::UpdateBeamPoints( const Vector &vecMuzzle, const Vector &vecDir )
+{
+	CTraceFilterSkipClassname traceFilter( this, "prop_energy_ball", COLLISION_GROUP_NONE );
+	trace_t tr;
+	m_beamHelper.UpdatePoints( vecMuzzle, vecMuzzle + vecDir * FLOOR_TURRET_PORTAL_LASER_RANGE,
+		MASK_SHOT, &traceFilter, &tr );
+	m_vecLastMuzzle = vecMuzzle;
+	m_vecLastDir = vecDir;
+}
+
+void C_NPC_Portal_FloorTurret::LaserOn( void )
+{
+	if ( !IsBoneAccessAllowed() )
+	{
+		LaserOff();
+		return;
+	}
+
+	Vector vecMuzzle;
+	QAngle angMuzzleDir;
+	GetAttachment( FLOOR_TURRET_PORTAL_LASER_ATTACHMENT, vecMuzzle, angMuzzleDir );
+
+	Vector vecEye;
+	QAngle angEyeDir;
+	GetAttachment( FLOOR_TURRET_PORTAL_EYE_ATTACHMENT, vecEye, angEyeDir );
+
+	Vector vecMuzzleDir;
+	AngleVectors( angEyeDir, &vecMuzzleDir );
+
+	const float flEpsilon = 0.001f;
+	if ( !VectorsAreEqual( vecMuzzleDir, m_vecLastDir, flEpsilon ) ||
+		 !VectorsAreEqual( vecMuzzle, m_vecLastMuzzle, flEpsilon ) ||
+		 gpGlobals->curtime > m_flNextBeamUpdate )
+	{
+		UpdateBeamPoints( vecMuzzle, vecMuzzleDir );
+		m_flNextBeamUpdate = gpGlobals->curtime + 0.2f;
+	}
+
+	m_beamHelper.TurnOn();
+
+	C_Beam *pLast = m_beamHelper.GetLastBeam();
+	if ( pLast )
+	{
+		pLast->SetHaloScale( LaserEndPointSize() );
+		pLast->SetHaloTexture( m_sLaserHaloSprite );
+	}
+}
+#else
 void C_NPC_Portal_FloorTurret::LaserOff( void )
 {
 	if( m_pBeam )
@@ -161,6 +251,7 @@ void C_NPC_Portal_FloorTurret::LaserOn( void )
 
 	m_pBeam->SetHaloScale( LaserEndPointSize() );
 }
+#endif // PORTAL2
 
 float C_NPC_Portal_FloorTurret::LaserEndPointSize( void )
 {

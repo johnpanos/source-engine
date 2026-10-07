@@ -77,6 +77,9 @@ public:
 	bool			IsEnemyBehindGlass( CPortal_Base2D *pPortal, CBaseEntity *pEnemy, const Vector &vecMuzzle, const Vector &vecDirToEnemy, float flDistToEnemy );
 	virtual void	BurnThink( void );
 
+	int				GetFireActivity( void ) const;
+	bool			IsMovingSuddenly( void );
+
 	void			OnEnteredTractorBeam( void );
 	void			OnExitedTractorBeam( void );
 	void			TractorBeamThink( void );
@@ -131,6 +134,7 @@ private:
 
 	CNetworkVar( bool, m_bOutOfAmmo );
 	CNetworkVar( bool, m_bLaserOn );
+	CNetworkVar( bool, m_bIsFiring );			// retail: set while in TURRET_ACTIVE
 	CNetworkVar( int, m_sLaserHaloSprite );
 
 	bool			m_bIsDead;

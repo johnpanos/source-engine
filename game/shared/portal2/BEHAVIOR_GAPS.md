@@ -372,3 +372,19 @@ Newest last. Each entry names the build and the check that passed.
   `sp_a2_bridge_the_gap`: `report_entities` counts 30 bumpers on the server
   and `cl_showents` lists 9 `CFuncPortalBumper` on the client (those in the
   PVS). Portal 1 keeps its unnetworked bumper.
+- 2026-10-07, G04 (build-p2): retail turret pass against linux32
+  server.so/client.so. Fixed under PORTAL2: the fire animation alternates by
+  barrel (barrels 2-3 play `ACT_FLOOR_TURRET_FIRE2`; ours always played
+  FIRE); the backwards model always fires barrel 0; no shot from a barrel
+  buried in the world; recoil 30 (was 35); `sv_portal_turret_shoot_at_death`
+  (default 1) gates tipped fire; Die/Retract obey gagging; a tipped turret
+  plays `ACT_FLOOR_TURRET_DIE` then `DIE_IDLE` (DieThink 0x97cfc0) before
+  going inactive; `TalkFlung` when the speed changes by more than 200
+  (0x97f8a0); `UsedAsActor` skips the base PreThink; `m_bIsFiring` is
+  networked; the client laser sight goes through portals with
+  `C_PortalBeamHelper`, refreshed on muzzle motion or every 0.2 s
+  (0xba9780). Headless `sp_a2_turret_intro` boots with 8 turrets; the new
+  behaviors are not checked at runtime. Open: `sv_portal_turret_shoot_through_portals_proximity`
+  (0x97f3b0, no caller found in the turret unit), PreThink's burning entry
+  (FL_ONFIRE → BurnThink) versus our DMG_BURN start, and ActiveThink's
+  multiplayer pre-trace.

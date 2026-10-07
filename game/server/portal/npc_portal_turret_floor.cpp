@@ -97,6 +97,12 @@ extern int ACT_FLOOR_TURRET_OPEN_IDLE;
 extern int ACT_FLOOR_TURRET_CLOSED_IDLE;
 extern int ACT_FLOOR_TURRET_FIRE;
 int ACT_FLOOR_TURRET_FIRE2;
+#ifdef PORTAL2
+ConVar sv_portal_turret_shoot_at_death( "sv_portal_turret_shoot_at_death", "1", FCVAR_CHEAT, "If the turrets should shoot after they die." );
+
+int ACT_FLOOR_TURRET_DIE;
+int ACT_FLOOR_TURRET_DIE_IDLE;
+#endif
 
 
 const char *g_TalkNames[] = 
@@ -206,6 +212,8 @@ private:
 
 	int		m_iBarrelAttachments[ 4 ];
 	bool	m_bShootWithBottomBarrels;
+
+	int		GetFireActivity( void ) const { return m_bShootWithBottomBarrels ? ACT_FLOOR_TURRET_FIRE2 : ACT_FLOOR_TURRET_FIRE; }
 	bool	m_bDamageForce;
 
 	float	m_fSearchSpeed;
@@ -295,6 +303,9 @@ IMPLEMENT_SERVERCLASS_ST(CNPC_Portal_FloorTurret, DT_NPC_Portal_FloorTurret)
 
 	SendPropBool( SENDINFO( m_bOutOfAmmo ) ),
 	SendPropBool( SENDINFO( m_bLaserOn ) ),
+#ifdef PORTAL2
+	SendPropBool( SENDINFO( m_bIsFiring ) ),
+#endif
 	SendPropInt( SENDINFO( m_sLaserHaloSprite ) ),
 
 END_SEND_TABLE()
@@ -316,6 +327,7 @@ CNPC_Portal_FloorTurret::CNPC_Portal_FloorTurret( void )
 	m_flPreviousVelocity = 0.0f;
 	m_bInTractorBeam = false;
 	m_bIsDead = false;
+	m_bIsFiring = false;
 	m_bGagged = false;
 	m_bUsedAsActor = false;
 	m_bShootAtMovingObjects = false;
@@ -341,6 +353,10 @@ void CNPC_Portal_FloorTurret::Precache( void )
 	BaseClass::Precache();
 
 	ADD_CUSTOM_ACTIVITY( CNPC_FloorTurret, ACT_FLOOR_TURRET_FIRE2 );
+#ifdef PORTAL2
+	ADD_CUSTOM_ACTIVITY( CNPC_FloorTurret, ACT_FLOOR_TURRET_DIE );
+	ADD_CUSTOM_ACTIVITY( CNPC_FloorTurret, ACT_FLOOR_TURRET_DIE_IDLE );
+#endif
 
 	m_sLaserHaloSprite = PrecacheModel( "sprites/redlaserglow.vmt" );
 	PrecacheModel("effects/redlaser1.vmt");
@@ -358,6 +374,7 @@ void CNPC_Portal_FloorTurret::Precache( void )
 	}
 	SetTurretModel( m_nTurretModelIndex );
 	PrecacheModel( STRING( GetModelName() ) );
+	PrecacheScriptSound( "NPC_FloorTurret.TalkFlung" );
 #endif
 
 	for ( int iTalkScript = 0; iTalkScript < PORTAL_TURRET_STATE_TOTAL; ++iTalkScript )
@@ -600,9 +617,23 @@ bool CNPC_Portal_FloorTurret::PreThink( turretState_e state )
 	// Working 2 enums into one integer
 	int iNewState = state;
 
+#ifdef PORTAL2
+	// Retail PreThink (server.so 0x97f950) networks whether the turret is in
+	// its active (firing) state and complains when it is flung.
+	m_bIsFiring = ( state == TURRET_ACTIVE );
+#endif
+
 	// If the turret is dissolving go to a special state
 	if ( IsDissolving() )
 		iNewState = PORTAL_TURRET_DISSOLVED;
+
+#ifdef PORTAL2
+	if ( IsMovingSuddenly() )
+	{
+		TURRET_TALK( "NPC_FloorTurret.TalkFlung" );
+		m_fNextTalk = gpGlobals->curtime + 1.0f;
+	}
+#endif
 
 	// Need to play these sounds immediately
 	if ( m_iLastState != iNewState && ( ( iNewState == TURRET_TIPPED && !m_bDelayTippedTalk ) || 
@@ -670,6 +701,13 @@ bool CNPC_Portal_FloorTurret::PreThink( turretState_e state )
 		}
 	}
 
+#ifdef PORTAL2
+	// A turret used as a choreography actor keeps its pose: retail skips the
+	// base turret logic while UsedAsActor is set.
+	if ( m_bUsedAsActor )
+		return true;
+#endif
+
 	// New states are not supported by old turret code
 	if ( iNewState != TURRET_TIPPED && iNewState < TURRET_STATE_TOTAL )
 		return BaseClass::PreThink( (turretState_e)iNewState );
@@ -721,14 +759,23 @@ void CNPC_Portal_FloorTurret::Shoot( const Vector &vecSrc, const Vector &vecDirT
 #ifdef PORTAL2
 	// Retail fires one bullet per shot from each of the four barrels in turn;
 	// the backwards model fires out of its back.
+	// The backwards model always fires its first barrel (server.so 0x97de60).
 	QAngle angBarrelDir;
-	GetAttachment( m_iBarrelAttachments[ m_iNextShootingBarrel ], info.m_vecSrc, angBarrelDir );
 	if ( m_nTurretModelIndex == TURRET_MODEL_BACKWARDS )
 	{
+		m_iNextShootingBarrel = 0;
 		info.m_vecDirShooting = -info.m_vecDirShooting;
 	}
+	GetAttachment( m_iBarrelAttachments[ m_iNextShootingBarrel ], info.m_vecSrc, angBarrelDir );
 	info.m_flDistance = 16384.0f;
-	FireBullets( info );
+
+	// Retail keeps Portal 1's rule: no shot out of a barrel buried in the world
+	trace_t tr;
+	UTIL_TraceLine( GetAbsOrigin(), info.m_vecSrc, MASK_SHOT, this, COLLISION_GROUP_NONE, &tr );
+	if ( !tr.m_pEnt || !tr.m_pEnt->IsWorld() )
+	{
+		FireBullets( info );
+	}
 	m_iNextShootingBarrel = ( m_iNextShootingBarrel + 1 ) % 4;
 #else
 	int iBarrelIndex = ( m_bShootWithBottomBarrels ) ? ( 2 ) : ( 0 );
@@ -778,7 +825,11 @@ void CNPC_Portal_FloorTurret::Shoot( const Vector &vecSrc, const Vector &vecDirT
 		m_pMotionController->Suspend( 2.0f );
 
 		IPhysicsObject *pTurretPhys = VPhysicsGetObject();
+#ifdef PORTAL2
+		Vector vVelocityImpulse = info.m_vecDirShooting * -30.0f;	// retail recoil
+#else
 		Vector vVelocityImpulse = info.m_vecDirShooting * -35.0f;
+#endif
 		pTurretPhys->AddVelocity( &vVelocityImpulse, &vVelocityImpulse );
 	}
 
@@ -1148,7 +1199,7 @@ void CNPC_Portal_FloorTurret::ActiveThink( void )
 				if ( dot3d >= minCos3d ) 
 				{
 					SetActivity( (Activity) ACT_FLOOR_TURRET_OPEN_IDLE );
-					SetActivity( (Activity)( ( m_bShootWithBottomBarrels ) ? ( ACT_FLOOR_TURRET_FIRE2 ) : ( ACT_FLOOR_TURRET_FIRE ) ) );
+					SetActivity( (Activity)GetFireActivity() );
 
 					//Fire the weapon
 #if !DISABLE_SHOT
@@ -1380,13 +1431,17 @@ void CNPC_Portal_FloorTurret::TippedThink( void )
 				SetActivity( (Activity) ACT_FLOOR_TURRET_OPEN_IDLE );
 				DryFire();
 			}
+#ifdef PORTAL2
+			else if ( sv_portal_turret_shoot_at_death.GetBool() )
+#else
 			else
+#endif
 			{
 				Vector vecMuzzle, vecMuzzleDir;
 				GetAttachment( m_iMuzzleAttachment, vecMuzzle, &vecMuzzleDir );
 
 				SetActivity( (Activity) ACT_FLOOR_TURRET_OPEN_IDLE );
-				SetActivity( (Activity)( ( m_bShootWithBottomBarrels ) ? ( ACT_FLOOR_TURRET_FIRE2 ) : ( ACT_FLOOR_TURRET_FIRE ) ) );
+				SetActivity( (Activity)GetFireActivity() );
 
 #if !DISABLE_SHOT
 				Shoot( vecMuzzle, vecMuzzleDir );
@@ -1415,12 +1470,12 @@ void CNPC_Portal_FloorTurret::TippedThink( void )
 			if ( UpdateFacing() == false )
 			{
 				//Make any last death noises and anims
-				EmitSound( "NPC_FloorTurret.Die" );
+				TURRET_TALK( "NPC_FloorTurret.Die" );
 				TURRET_TALK( GetTurretTalkName( PORTAL_TURRET_DISABLED ) );
 				SpinDown();
 
 				SetActivity( (Activity) ACT_FLOOR_TURRET_CLOSE );
-				EmitSound( "NPC_FloorTurret.Retract" );
+				TURRET_TALK( "NPC_FloorTurret.Retract" );
 
 				CTakeDamageInfo	info;
 				info.SetDamage( 1 );
@@ -1433,7 +1488,11 @@ void CNPC_Portal_FloorTurret::TippedThink( void )
 			m_bActive		= false;
 			m_flLastSight	= 0;
 
+#ifdef PORTAL2
+			SetActivity( (Activity) ACT_FLOOR_TURRET_DIE );
+#else
 			SetActivity( (Activity) ACT_FLOOR_TURRET_CLOSED_IDLE );
+#endif
 
 			// Don't need to store last NPC anymore, because I've been knocked over
 			if ( m_hLastNPCToKickMe )
@@ -1449,10 +1508,17 @@ void CNPC_Portal_FloorTurret::TippedThink( void )
 				SetEyeState( TURRET_EYE_DEAD );
 				//SetCollisionGroup( COLLISION_GROUP_DEBRIS_TRIGGER );
 
+#ifdef PORTAL2
+				// Retail plays the die animation before going inactive
+				RopesOff();
+				SetThink( &CNPC_Portal_FloorTurret::DieThink );
+				SetNextThink( gpGlobals->curtime + 0.1f );
+#else
 				// Start thinking slowly to see if we're ever set upright somehow
 				SetThink( &CNPC_FloorTurret::InactiveThink );
 				SetNextThink( gpGlobals->curtime + 1.0f );
 				RopesOff();
+#endif
 			}
 		}
 	}
@@ -1788,7 +1854,7 @@ void CNPC_Portal_FloorTurret::FireBullet( const char *pTargetName )
 		else
 		{
 			SetActivity( (Activity) ACT_FLOOR_TURRET_OPEN_IDLE );
-			SetActivity( (Activity)( ( m_bShootWithBottomBarrels ) ? ( ACT_FLOOR_TURRET_FIRE2 ) : ( ACT_FLOOR_TURRET_FIRE ) ) );
+			SetActivity( (Activity)GetFireActivity() );
 
 			//Fire the weapon
 #if !DISABLE_SHOT
@@ -1891,21 +1957,57 @@ void CNPC_Portal_FloorTurret::BurnThink( void )
 }
 
 //-----------------------------------------------------------------------------
-// Purpose: Portal 2 port: the dead turret state (DieThink is a retail 2011 think
-//			without a 2010 body). The turret shuts down for good.
+// Purpose: A tipped turret plays its die animation, then idles dead and goes
+//			inactive (retail server.so 0x97cfc0, entered from TippedThink).
 //-----------------------------------------------------------------------------
 void CNPC_Portal_FloorTurret::DieThink( void )
 {
-	m_bIsDead = true;
-	m_lifeState = LIFE_DEAD;
-
 	LaserOff();
-	RopesOff();
-	SetEyeState( TURRET_EYE_DEAD );
-	SetActivity( (Activity) ACT_FLOOR_TURRET_CLOSED_IDLE );
-
-	SetThink( &CNPC_Portal_FloorTurret::InactiveThink );
+	StudioFrameAdvance();
 	SetNextThink( gpGlobals->curtime + 0.1f );
+	m_bIsDead = true;
+
+	if ( GetActivity() == ACT_FLOOR_TURRET_DIE )
+	{
+		if ( IsActivityFinished() )
+		{
+			SetActivity( (Activity) ACT_FLOOR_TURRET_DIE_IDLE );
+			SetThink( &CNPC_Portal_FloorTurret::InactiveThink );
+			SetNextThink( gpGlobals->curtime + 1.0f );
+		}
+	}
+	else
+	{
+		SetActivity( (Activity) ACT_FLOOR_TURRET_DIE );
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Bottom barrels (2, 3) use the second fire animation, as retail
+//			picks it from the barrel about to fire.
+//-----------------------------------------------------------------------------
+int CNPC_Portal_FloorTurret::GetFireActivity( void ) const
+{
+	if ( m_nTurretModelIndex != TURRET_MODEL_BACKWARDS && m_iNextShootingBarrel > 1 )
+		return ACT_FLOOR_TURRET_FIRE2;
+	return ACT_FLOOR_TURRET_FIRE;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Whether the awake physics object's speed changed by more than 200
+//			since the last check (retail server.so 0x97f8a0).
+//-----------------------------------------------------------------------------
+bool CNPC_Portal_FloorTurret::IsMovingSuddenly( void )
+{
+	IPhysicsObject *pPhys = VPhysicsGetObject();
+	if ( !pPhys || pPhys->IsAsleep() )
+		return false;
+
+	Vector vecVelocity;
+	pPhys->GetVelocity( &vecVelocity, NULL );
+	float flPrevious = m_flPreviousVelocity;
+	m_flPreviousVelocity = vecVelocity.Length();
+	return fabsf( m_flPreviousVelocity - flPrevious ) > 200.0f;
 }
 
 //-----------------------------------------------------------------------------
