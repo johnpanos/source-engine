@@ -56,6 +56,7 @@
 #include "../../shaders/common/shadow_sample.glsl"
 #include "../../shaders/common/projected_light.glsl"
 #include "../../shaders/common/lightmap_basis.glsl"
+#include "../../shaders/common/energy_field.glsl"
 #include "surface_lighting.glsl"
 
 // The terms (the port's static combo bits where they exist).
@@ -71,6 +72,9 @@ layout( constant_id = 8 ) const bool kShadowDepth = false;
 // A static prop's baked vertex lighting, in vertexLighting
 // (SurfaceVariant::staticVertexLight).
 layout( constant_id = 9 ) const bool kStaticVertexLight = false;
+// The energy point (SurfaceVariant::energy): SolidEnergy's fields, bridges
+// and beams, EnergySurface().
+layout( constant_id = 11 ) const bool kEnergy = false;
 const uint kMaterialAlphaTest = 1u;
 const uint kMaterialHalfLambert = 2u;
 const uint kMaterialDiffuseWarp = 4u;
@@ -2009,6 +2013,235 @@ void WaterSurface()
 	outColor = Output( lit / frame.light.y, material.waterReflect.a );
 }
 
+// The energy point's static and dynamic combos (SurfaceConstants::energy[9].x).
+const int kEnergyAdditive = 1;
+const int kEnergyDetail1 = 2;
+const int kEnergyDetail2 = 4;
+const int kEnergyTangentT = 8;
+const int kEnergyTangentS = 16;
+const int kEnergyFresnel = 32;
+const int kEnergyVertexColor = 64;
+const int kEnergyFlowMap = 128;
+const int kEnergyModelFormat = 256;
+const int kEnergyFlowCheap = 512;
+const int kEnergyPowerUp = 1024;
+const int kEnergyVortex1 = 2048;
+const int kEnergyVortex2 = 4096;
+
+// The vortex's offset in the tangent frame, as solidenergy_vs20 computes it
+// (linear in the position, so per pixel equals the interpolated value).
+vec3 EnergyVortex( vec3 vortex )
+{
+	const vec3 v = vortex - worldPosition;
+	return -vec3( dot( v, tangentS ), dot( v, tangentT ), dot( v, worldNormal ) );
+}
+
+float EnergySmoothstep( float edge0, float edge1, float x )
+{
+	const float t = clamp( ( x - edge0 ) / ( edge1 - edge0 ), 0.0, 1.0 );
+	return t * t * ( 3.0 - 2.0 * t );
+}
+
+// SolidEnergy (solidenergy_ps20b with solidenergy_vs20's coordinates per
+// pixel): an unlit flow field or a detail-layered beam, its opacity from
+// the view's angle to the tangent frame, written additively or blended. The
+// flow radiance is render.energy-field.v1's (energy_field.glsl). The output
+// is FinalOutput's: no fog, times saturate( output scale ) and
+// $outputintensity, clamped as the retained target stores it.
+void EnergySurface()
+{
+	const int flags = int( material.energy[9].x );
+	const bool layerActive = material.energy[9].w > 0.5;
+	const bool flowMap = ( flags & kEnergyFlowMap ) != 0;
+	const bool cheap = ( flags & kEnergyFlowCheap ) != 0;
+	const bool detail1 = ( flags & kEnergyDetail1 ) != 0;
+	const bool detail2 = ( flags & kEnergyDetail2 ) != 0;
+	const bool tangentTOpacity = ( flags & kEnergyTangentT ) != 0;
+	const bool tangentSOpacity = ( flags & kEnergyTangentS ) != 0;
+	const bool fresnelOpacity = ( flags & kEnergyFresnel ) != 0;
+	const bool powerUp = ( flags & kEnergyPowerUp ) != 0;
+	const bool vortex1 = ( flags & kEnergyVortex1 ) != 0;
+	const bool vortex2 = ( flags & kEnergyVortex2 ) != 0;
+	const int detail1Mode = int( material.energy[9].y );
+	const int detail2Mode = int( material.energy[9].z );
+	const vec4 tangentTRanges = material.energy[0];
+	const vec4 tangentSRanges = material.energy[1];
+	const vec4 fresnelRanges = material.energy[2];
+
+	// solidenergy_vs20's coordinates: the base at its transform, detail 1
+	// and 2 at theirs, and a flow field's world-projected coordinates.
+	const vec2 uv = BaseTextureUv();
+	vec2 detail1Uv = vec2( dot( vec4( baseUv, 0.0, 1.0 ), material.energy[10] ),
+	    dot( vec4( baseUv, 0.0, 1.0 ), material.energy[11] ) );
+	vec2 detail2Uv = vec2( dot( vec4( baseUv, 0.0, 1.0 ), material.energy[12] ),
+	    dot( vec4( baseUv, 0.0, 1.0 ), material.energy[13] ) );
+	vec2 flowUv = vec2( 0.0 );
+	if ( flowMap )
+	{
+		flowUv = ( flags & kEnergyModelFormat ) != 0
+		             ? baseUv
+		             : vec2( dot( worldPosition, tangentS ), dot( worldPosition, tangentT ) );
+		detail2Uv = flowUv * material.energy[3].z;
+		detail1Uv = flowUv * material.energy[3].y;
+	}
+
+	vec4 result = vec4( 0.0, 0.0, 0.0, 1.0 );
+	if ( layerActive )
+	{
+		vec4 base = vec4( 0.0, 0.0, 0.0, 1.0 );
+		if ( flowMap )
+		{
+			const vec4 bounds =
+			    texture( sampler2D( emissionTexture, emissionSampler ), uv );
+			vec2 flowVector = vec2( 0.0 );
+			if ( !cheap )
+			{
+				const vec4 flowTexel = texture( sampler2D( envmapMaskTexture, envmapMaskSampler ),
+				    flowUv * material.energy[3].x );
+				flowVector = ( flowTexel.rg * 2.0 - 1.0 ) * bounds.r;
+			}
+			float vortexIntensity = 0.0;
+			const float vortexSize = material.energy[6].w;
+			if ( vortex1 )
+			{
+				const vec3 offset = EnergyVortex( material.energy[7].xyz );
+				const float strength = clamp( vortexSize / length( offset ) - 0.5, 0.0, 1.0 );
+				if ( !cheap )
+					flowVector = mix( flowVector, normalize( offset.xy ), strength * 0.5 );
+				vortexIntensity += strength;
+			}
+			if ( vortex2 )
+			{
+				const vec3 offset = EnergyVortex( material.energy[8].xyz );
+				const float strength = clamp( vortexSize / length( offset ) - 0.5, 0.0, 1.0 );
+				if ( !cheap )
+					flowVector = mix( flowVector, normalize( offset.xy ), strength * 0.5 );
+				vortexIntensity += strength;
+			}
+			const float noise =
+			    texture( sampler2D( mraoTexture, mraoSampler ), detail2Uv ).g;
+			const float intervals = frame.water.x / ( material.energy[4].x * 2.0 ) + noise;
+			const float scroll1 = fract( intervals ) - 0.5;
+			const float scroll2 = fract( intervals + 0.5 ) - 0.5;
+			float offset1 = 0.0;
+			float offset2 = 0.5;
+			if ( !cheap )
+			{
+				offset1 = floor( intervals ) * 0.311;
+				offset2 = floor( intervals + 0.5 ) * 0.311 + 0.5;
+			}
+			float weight1 = abs( 2.0 * fract( intervals + 0.5 ) - 1.0 );
+			float weight2 = abs( 2.0 * fract( intervals ) - 1.0 );
+			if ( !cheap )
+			{
+				weight1 = pow( weight1, material.energy[4].z );
+				weight2 = pow( weight2, material.energy[4].z );
+			}
+			else
+			{
+				weight1 *= weight1;
+				weight2 *= weight2;
+			}
+			vec2 uv0 = detail1Uv + offset1;
+			vec2 uv1 = detail1Uv + offset2;
+			if ( !cheap )
+			{
+				const float distance = material.energy[4].y * ( 1.0 + vortexIntensity );
+				uv0 += scroll1 * distance * flowVector;
+				uv1 += scroll2 * distance * flowVector;
+			}
+			base = texture( sampler2D( baseTexture, baseSampler ), uv0 ) * weight1 +
+			       texture( sampler2D( baseTexture, baseSampler ), uv1 ) * weight2;
+			base = EnergyFieldReveal( base, noise, bounds.g, powerUp ? material.energy[4].w : 1.0 );
+			base.rgb = EnergyFieldRadiance( base, material.energy[5].rgb, material.energy[6].rgb,
+			    vortexIntensity, vortex1 || vortex2, bounds.b, material.energy[5].w );
+		}
+		else
+			base = texture( sampler2D( baseTexture, baseSampler ), uv );
+
+		// The view-dependent opacity (solidenergy_vs20's view-aligned tangent).
+		const vec3 eye = normalize( frame.eye.xyz - worldPosition );
+		const vec3 normal = normalize( worldNormal );
+		float backfaceRatio = 0.0;
+		if ( tangentTOpacity || tangentSOpacity || fresnelOpacity )
+		{
+			backfaceRatio = dot( eye, normal ) * 0.5 + 0.5;
+			backfaceRatio *= backfaceRatio;
+		}
+		float alpha = 1.0;
+		float backfaceAlpha = 1.0;
+		if ( tangentTOpacity )
+		{
+			const vec3 aligned = normalize( cross( tangentS, cross( tangentS, eye ) ) );
+			const float facing = abs( dot( normalize( tangentT ), aligned ) );
+			alpha *= mix( tangentTRanges.x, tangentTRanges.y, pow( facing, tangentTRanges.z ) );
+			backfaceAlpha = mix( 1.0, tangentTRanges.w, backfaceRatio );
+		}
+		if ( tangentSOpacity )
+		{
+			const vec3 aligned = normalize( cross( tangentT, cross( tangentT, eye ) ) );
+			const float facing = abs( dot( normalize( tangentS ), aligned ) );
+			// The shader's exponent is the T ranges' (solidenergy_ps20b).
+			alpha *= mix( tangentSRanges.x, tangentSRanges.y, pow( facing, tangentTRanges.z ) );
+			backfaceAlpha = min( backfaceAlpha, mix( tangentSRanges.w, 1.0, backfaceRatio ) );
+		}
+#ifndef SEEDED_ENERGY_FRESNEL_IGNORED
+		if ( fresnelOpacity )
+#else
+		if ( false ) // negative control: the fresnel opacity term is dropped
+#endif
+		{
+			const float facing = abs( dot( normal, eye ) );
+			alpha *= mix( fresnelRanges.x, fresnelRanges.y, pow( facing, fresnelRanges.z ) );
+			backfaceAlpha =
+			    min( backfaceAlpha, mix( fresnelRanges.w, 1.0, dot( eye, normal ) * 0.5 + 0.5 ) );
+		}
+		alpha *= backfaceAlpha;
+		if ( !flowMap && !tangentTOpacity && !tangentSOpacity && !fresnelOpacity &&
+		     !( detail1 && detail1Mode == 1 ) )
+			alpha *= base.a;
+
+		vec4 layer1 = vec4( 0.0 );
+		if ( detail1 )
+		{
+			layer1 = texture( sampler2D( detailTexture, detailSampler ), detail1Uv );
+			base.rgb = detail1Mode == 0 ? base.rgb * 2.0 * layer1.rgb
+			                            : mix( base.rgb * layer1.rgb, base.rgb, base.a );
+		}
+#ifndef SEEDED_ENERGY_DETAIL2_IGNORED
+		if ( detail2 )
+#else
+		if ( false ) // negative control: the second detail layer is dropped
+#endif
+		{
+			vec3 layer2 = texture( sampler2D( bumpTexture, bumpSampler ), detail2Uv ).rgb;
+			if ( detail2Mode == 0 )
+				base.rgb += detail1 ? layer2 * layer1.rgb : layer2;
+			else
+				base.rgb *= layer2;
+		}
+
+		result = vec4( base.rgb, alpha );
+		if ( powerUp && !flowMap )
+			result.rgb *= material.energy[4].w;
+		if ( ( flags & kEnergyAdditive ) != 0 )
+		{
+			// ComputeCameraFade: fade out right at the near plane.
+			const float fade = EnergySmoothstep( 0.0, 1.0, clamp( fogDepth.x * 0.025, 0.0, 1.0 ) );
+#ifndef SEEDED_ENERGY_ADDITIVE_ALPHA_IGNORED
+			result.rgb *= ( 1.0 + alpha ) * fade;
+#else
+			result.rgb *= fade; // negative control: the opacity's ( 1 + alpha ) is dropped
+#endif
+			result.a = 1.0;
+		}
+		if ( ( flags & kEnergyVertexColor ) != 0 )
+			result.rgb *= pow( color.rgb, vec3( ( 2.0 - alpha ) * 2.0 ) );
+	}
+	result *= clamp( frame.light.y, 0.0, 1.0 ) * material.energy[3].w;
+	outColor = EncodeOutput( clamp( result, 0.0, 1.0 ) );
+}
+
 void main()
 {
 	if ( kPortalMask )
@@ -2043,6 +2276,11 @@ void main()
 		// Multiplicative factors apply to the already lit destination. Exposure
 		// and output encoding would destroy 0.5 as the blend's neutral input.
 		outColor = vec4( weight, factor.a );
+		return;
+	}
+	if ( kEnergy )
+	{
+		EnergySurface();
 		return;
 	}
 	if ( kCable )

@@ -275,6 +275,13 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	}
 	if ( variant.layout == SurfaceVertexLayout::kFlat && ( variant.terms & kSurfaceNormalTerms ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	// The energy point reads the tangent frame (flow coordinates, vortices,
+	// opacity terms) and casts no shadow.
+	if ( variant.energy && ( variant.layout == SurfaceVertexLayout::kFlat || variant.shadowDepth ) )
+	{
+		m_PipelineFailure = "the energy point needs a tangent frame and casts no shadow";
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	}
 	if ( variant.layout != SurfaceVertexLayout::kModel && ( variant.terms & kSurfaceModelTerms ) )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	// The map's probes are the pbr point's.
@@ -344,7 +351,8 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	    { ShaderStage::kFragment, 6, variant.cable ? 1u : 0u },
 	    { ShaderStage::kFragment, 7, variant.decalModulate ? 1u : 0u },
 	    { ShaderStage::kFragment, 8, variant.shadowDepth ? 1u : 0u },
-	    { ShaderStage::kFragment, 9, variant.staticVertexLight ? 1u : 0u } };
+	    { ShaderStage::kFragment, 9, variant.staticVertexLight ? 1u : 0u },
+	    { ShaderStage::kFragment, 11, variant.energy ? 1u : 0u } };
 	// The model vertex reads the terms too (the vertexlit point's lighting),
 	// the world vertex a static prop's baked vertex light.
 	if ( model )
@@ -493,7 +501,7 @@ std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
 	char line[512];
 	std::snprintf( line, sizeof( line ),
 	    "%s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
-	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u %u",
+	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u %u %u",
 	    kVariantKeyTag, unsigned( m_ColorFormat ), unsigned( m_DepthFormat ), m_SampleCount,
 	    unsigned( v.blend ), unsigned( v.alphaWrite ), v.terms, v.detailMode, unsigned( v.layout ),
 	    unsigned( v.ignoreDepth ), unsigned( d.stencil.enabled ), unsigned( d.stencil.compare ),
@@ -505,7 +513,8 @@ std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
 	    std::bit_cast<std::uint32_t>( d.depthBiasSlope ), unsigned( v.portalMask ),
 	    unsigned( v.temporal ), v.materialFeatures, v.viewFeatures, v.treeSwayMode,
 	    unsigned( v.alphaToCoverage ), unsigned( v.decalModulate ), unsigned( v.cable ),
-	    unsigned( v.shadowDepth ), unsigned( v.instanced ), unsigned( v.staticVertexLight ) );
+	    unsigned( v.shadowDepth ), unsigned( v.instanced ), unsigned( v.staticVertexLight ),
+	    unsigned( v.energy ) );
 	return line;
 }
 
@@ -515,14 +524,14 @@ std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
 	for ( const std::string &key : keys )
 	{
 		char tag[16] = {};
-		unsigned f[36] = {};
+		unsigned f[37] = {};
 		if ( std::sscanf( key.c_str(),
 		         "%15s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
-		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u %u",
+		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u %u %u",
 		         tag, &f[0], &f[1], &f[2], &f[3], &f[4], &f[5], &f[6], &f[7], &f[8], &f[9], &f[10],
 		         &f[11], &f[12], &f[13], &f[14], &f[15], &f[16], &f[17], &f[18], &f[19], &f[20],
 		         &f[21], &f[22], &f[23], &f[24], &f[25], &f[26], &f[27], &f[28], &f[29], &f[30],
-		         &f[31], &f[32], &f[33], &f[34], &f[35] ) != 37 ||
+		         &f[31], &f[32], &f[33], &f[34], &f[35], &f[36] ) != 38 ||
 		     std::strcmp( tag, kVariantKeyTag ) != 0 )
 			continue;
 		if ( f[0] != unsigned( m_ColorFormat ) || f[1] != unsigned( m_DepthFormat ) ||
@@ -563,6 +572,7 @@ std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
 		v.shadowDepth = f[33] != 0;
 		v.instanced = f[34] != 0;
 		v.staticVertexLight = f[35] != 0;
+		v.energy = f[36] != 0;
 		if ( Pipeline( v ) )
 			++created;
 	}
@@ -707,18 +717,24 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
 	// water_ps2x's sampler does.
 	request.material.textures.push_back( { 3, textures.envmap, 4, sampler,
 	    ( variant.terms & kSurfaceWater ) == 0, TextureDimension::kCube } );
-	// The water point reads its flow map through the env map mask's binding
-	// and its flow noise through MRAO's (data, like those; it reads neither).
+	// The water and energy points read their flow map through the env map
+	// mask's binding and their flow noise through MRAO's (data, like those;
+	// they read neither). The energy point's details are sRGB images
+	// (solidenergy_dx9_helper.cpp) at the detail and bump bindings, and its
+	// flow bounds data at the emission binding.
 	const bool water = ( variant.terms & kSurfaceWater ) != 0;
+	const bool flow = water || variant.energy;
 	request.material.textures.push_back(
-	    { 5, water ? textures.flowmap : textures.envmapMask, 6, sampler, false } );
-	request.material.textures.push_back( { 7, textures.bump, 8, sampler, false } );
+	    { 5, flow ? textures.flowmap : textures.envmapMask, 6, sampler, false } );
+	request.material.textures.push_back(
+	    { 7, variant.energy ? textures.detail2 : textures.bump, 8, sampler, variant.energy } );
 	request.material.textures.push_back( { 9, textures.detail, 10, sampler,
-	    ( variant.terms & kSurfacePbr ) != 0 || variant.detailMode == 1 } );
+	    ( variant.terms & kSurfacePbr ) != 0 || variant.detailMode == 1 || variant.energy } );
 	request.material.textures.push_back(
-	    { 11, water ? textures.flowNoise : textures.mrao, 12, sampler, false } );
-	request.material.textures.push_back(
-	    { 13, textures.emission, 14, sampler, ( variant.terms & kSurfaceSelfIllumMask ) == 0 } );
+	    { 11, flow ? textures.flowNoise : textures.mrao, 12, sampler, false } );
+	request.material.textures.push_back( { 13,
+	    variant.energy ? textures.flowBounds : textures.emission, 14, sampler,
+	    !variant.energy && ( variant.terms & kSurfaceSelfIllumMask ) == 0 } );
 	return request;
 }
 

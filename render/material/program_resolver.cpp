@@ -11,6 +11,7 @@
 #include "family_program.h"
 
 #include "render/material/cable_family.h"
+#include "render/material/energy_family.h"
 #include "render/material/lightmapped_family.h"
 #include "render/material/pbr_family.h"
 #include "render/material/refract_family.h"
@@ -491,10 +492,11 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		return claim.blend;
 	}
 	if ( material.family == "unlit" || material.family == "cable" ||
-	     material.family == "decal-modulate" )
+	     material.family == "decal-modulate" || material.family == "energy" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
+		    : material.family == "energy"         ? ClaimEnergy( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -592,6 +594,16 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 			return foundation::MakeUnexpected( "model vertices have no color or alpha channel" );
 		return claim.blend;
 	}
+	if ( material.family == "energy" )
+	{
+		const UnlitClaim claim = ClaimEnergy( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		if ( detail::ReadFlag( *block, "vertexcolor" ) ||
+		     detail::ReadFlag( *block, "vertexalpha" ) )
+			return foundation::MakeUnexpected( "model vertices have no color or alpha channel" );
+		return claim.blend;
+	}
 	return foundation::MakeUnexpected( "family " + material.family + " has no mesh point yet" );
 }
 
@@ -666,10 +678,11 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		return out;
 	}
 	if ( material.family == "unlit" || material.family == "cable" ||
-	     material.family == "decal-modulate" )
+	     material.family == "decal-modulate" || material.family == "energy" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
+		    : material.family == "energy"         ? ClaimEnergy( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -686,9 +699,22 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			textures.base = TextureOf( material, "basetexture" );
 		if ( claim.cable )
 			textures.bump = TextureOf( material, "bumpmap" );
+		if ( claim.energy )
+		{
+			if ( s.layout == SurfaceVertexLayout::kFlat )
+				return foundation::MakeUnexpected(
+				    std::string( "the energy point reads the tangent frame, and the "
+				                 "resolver's vertex is flat" ) );
+			textures.detail = TextureOf( material, "detail1" );
+			textures.detail2 = TextureOf( material, "detail2" );
+			textures.flowmap = TextureOf( material, "flowmap" );
+			textures.flowNoise = TextureOf( material, "flow_noise_texture" );
+			textures.flowBounds = TextureOf( material, "flowbounds" );
+		}
 		if ( claim.twoTexture )
 			textures.emission = TextureOf( material, "texture2" );
-		if ( s.mesh && s.worldPbr && !claim.twoTexture && !claim.cable && !claim.decalModulate )
+		if ( s.mesh && s.worldPbr && !claim.twoTexture && !claim.cable && !claim.decalModulate &&
+		     !claim.energy )
 		{
 			if ( detail::ReadFlag( *block, "vertexcolor" ) ||
 			     detail::ReadFlag( *block, "vertexalpha" ) ||

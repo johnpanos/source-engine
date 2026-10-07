@@ -12446,3 +12446,46 @@ Modulate 8, Portal 7, `$flat` 7. `render.lab.posed-model` (Cable's required
 normal) and `render.material.v2` (PBR schema) fail on uncommitted work in
 files this slice did not touch. Open: matched game/lab captures of the bridge
 paint and model decals, frame time.
+
+### K12/R91: SolidEnergy on the core's energy point, lab first (2026-10-07, user request)
+
+Fifth gap of the unsupported-material sweep: SolidEnergy (14 Portal 2
+materials: ten fizzlers, the light bridge `projected_wall`, two tractor
+beams, `laserplane`). The game still retains these draws on the frozen
+backend (`RetainsSolidEnergy`); this slice proves the surface on the core in
+`render_lab` before any integration.
+
+- **One point, one definition.** `SurfaceVariant::energy` (fragment
+  specialization 11) runs `EnergySurface()` in `surface_program.glsl`: a
+  port of `solidenergy_ps20b` with `solidenergy_vs20`'s coordinates
+  evaluated per pixel from the world position and tangent frame (flow
+  coordinates and vortex offsets are linear, so equal to the interpolated
+  values; the view-aligned tangent is normalized per pixel). The flow
+  radiance and power-up reveal are `render.energy-field.v1`'s
+  (`energy_field.glsl`), the same owner the retained shader and the fizzler
+  area light use. Output follows `FinalOutput`: no fog, times
+  saturate(output scale) and `$outputintensity`, clamped per fragment as the
+  retained target stores it.
+- **Claim.** `energy_family.h` (`ClaimEnergy`) packs
+  `solidenergy_dx9_helper.cpp`'s combos: detail layers, flow field (refused
+  by name without `$flow_noise_texture`/`$flowbounds`), tangent T/S and
+  fresnel opacity (ranges authored or `$needs*`), and the per-draw combos
+  (ACTIVE, POWERUP, VORTEX1/2) as uniform flags, so proxy-driven values
+  change no pipeline. 14 constant rows in `SurfaceConstants::energy`; the
+  textures reuse water's flow bindings, with `$detail2` at the bump binding
+  and `$flowbounds` at the emission binding. Proxy scratch keys
+  (`$scrollrate`, `$intensitynoise`, ...) are metadata: SolidEnergy declares
+  none of them.
+- **Oracle: `render.lab.energy-surface`** (15 checks; sensitivity 4 of 4
+  seeded programs caught: additive alpha, second detail, fresnel opacity,
+  reveal). A posed quad with 1x1 textures and clip z past the camera fade,
+  against analytic values; power-up uses the CPU oracle
+  `energy_field::Reveal`.
+
+All 14 SolidEnergy materials now claim (`dynamically_unresolved`: their
+proxies). Inventory unsupported: 200 → 186 (this checkout's `render_lab`).
+Unit and lab suites touched pass (`render.family.unlit`, `.water`,
+`render.material.programs`, `render.lab.selfillum`, `render.lab.particles`).
+Open: vortex pixels (claimed, no pixel check yet), the product mesh handoff
+(stop retaining SolidEnergy) with matched game/lab captures of a fizzler,
+bridge and tractor beam, and frame time.

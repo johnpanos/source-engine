@@ -61,6 +61,12 @@
 //			                $selfillumfresnel through render.pass.world
 //			                against the analytic emission; neutral bitwise.
 //			                Seeded: fresnel-ignored, brightness-ignored.
+//			energy-surface  RFC 0016 K12: SolidEnergy's energy point (detail
+//			                layers, additive opacity, fresnel opacity, a
+//			                cheap flow field, power-up, inactive field)
+//			                through render.pass.world against analytic
+//			                values. Seeded: additive-alpha-ignored,
+//			                detail2-ignored, fresnel-ignored, reveal-ignored.
 //
 //=============================================================================//
 
@@ -83,6 +89,7 @@ int RunSoftParticleSuite( int argc, char **argv );
 // render.lab.particles (RFC 0016 K8): SpriteCard cards and warp particles.
 int RunParticlesSuite( int argc, char **argv );
 int RunSelfIllumSuite( int argc, char **argv );
+int RunEnergySurfaceSuite( int argc, char **argv );
 // render.lab.pbr-compat (RFC 0016 surface model): P2:CE PBR on the pbr point.
 int RunPbrCompatSuite( int argc, char **argv );
 int RunViewStateSuite( int argc, char **argv );

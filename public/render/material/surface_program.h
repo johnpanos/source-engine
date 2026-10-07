@@ -167,8 +167,19 @@ struct SurfaceConstants
 	// The pbr point's per-channel scale of its MRAO texture sample (P2:CE's
 	// $mraoscale); [1 1 1] is the texture unchanged.
 	float mraoScale[4] = { 1.0f, 1.0f, 1.0f, 0.0f };
+	// The energy point (SurfaceVariant::energy, energy_family.h):
+	// solidenergy_ps20b's constants, neutral for every other point.
+	// Rows: 0 $tangenttopacityranges; 1 $tangentsopacityranges; 2
+	// $fresnelopacityranges; 3 $flow_worlduvscale, $flow_normaluvscale,
+	// $flow_noise_scale, $outputintensity; 4 $flow_timeintervalinseconds,
+	// $flow_uvscrolldistance, $flow_lerpexp, $powerup; 5 rgb $flow_color, w
+	// $flow_color_intensity; 6 rgb $flow_vortex_color, w $flow_vortex_size;
+	// 7 the vortex 1 position, w 1 when on; 8 vortex 2's; 9 the static combos
+	// as flags (EnergyFlag), $detail1blendmode, $detail2blendmode, and 1 when
+	// ACTIVE; 10 and 11 the detail 1 UV rows; 12 and 13 detail 2's.
+	float energy[14][4] = {};
 };
-static_assert( sizeof( SurfaceConstants ) == 592 );
+static_assert( sizeof( SurfaceConstants ) == 816 );
 
 // An area light as the frame block holds it (render.area-light.v1: the
 // rectangle, its radiance and its reach).
@@ -599,6 +610,9 @@ struct SurfaceVariant
 	bool alphaToCoverage = false;   // authored request; effective only with multiple samples
 	bool decalModulate = false;     // dimensionless factors, no exposure or output encoding
 	bool cable = false;             // fragment specialization: expanded Source rope ribbon
+	// Fragment specialization 11: SolidEnergy (energy_family.h), unlit flow
+	// fields, bridges and beams; its textures by SurfaceTextures' energy names.
+	bool energy = false;
 	// A single-sample shadow atlas: the same vertex deformation and alpha
 	// coverage as the visible point, with no color attachments or lighting.
 	bool shadowDepth = false;
@@ -637,10 +651,14 @@ struct SurfaceTextures
 	std::string detail;
 	std::string mrao;     // or VertexLit's light-warp lookup (no MRAO term on that point)
 	std::string emission; // or VertexLit's self-illumination mask
-	// The water point's flow map and flow noise (data), bound in the env map
-	// mask's and MRAO's places (the water point reads neither).
+	// The water and energy points' flow map and flow noise (data), bound in
+	// the env map mask's and MRAO's places (those points read neither).
 	std::string flowmap;
 	std::string flowNoise;
+	// The energy point's: $flowbounds (data) at the emission binding, and
+	// $detail1 and $detail2 (sRGB) at the detail and bump bindings.
+	std::string flowBounds;
+	std::string detail2;
 	bool baseSrgb = true; // Sprite's $nosrgb selects an undecoded base image
 };
 

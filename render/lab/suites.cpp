@@ -78,6 +78,8 @@ int RunSuite( int argc, char **argv )
 		return RunSoftParticleSuite( argc - 1, argv + 1 );
 	if ( name == "selfillum" )
 		return RunSelfIllumSuite( argc - 1, argv + 1 );
+	if ( name == "energy-surface" )
+		return RunEnergySurfaceSuite( argc - 1, argv + 1 );
 	if ( name == "pbr-compat" )
 		return RunPbrCompatSuite( argc - 1, argv + 1 );
 	if ( name == "view-state" )

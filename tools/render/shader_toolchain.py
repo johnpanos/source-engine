@@ -511,6 +511,17 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_BRIGHTNESS_IGNORED",)),
         ("kSurfaceSelfIllumMaskIgnored", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_MASK_IGNORED",)))),
+    "energy_surface_defects_spv.h": ("render::lab::spirv",
+        "render_lab's energy-surface suite's seeded programs (render.lab.energy-surface "
+        "sensitivity, RFC 0016 K12 SolidEnergy)", (
+        ("kSurfaceEnergyAdditiveAlphaIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_ENERGY_ADDITIVE_ALPHA_IGNORED",)),
+        ("kSurfaceEnergyDetail2Ignored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_ENERGY_DETAIL2_IGNORED",)),
+        ("kSurfaceEnergyFresnelIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_ENERGY_FRESNEL_IGNORED",)),
+        ("kSurfaceEnergyRevealIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_FIELD_REVEAL_IGNORED",)))),
     "pbr_compat_defects_spv.h": ("render::lab::spirv",
         "render_lab's P2:CE PBR compatibility suite's seeded programs (render.lab.pbr-compat "
         "sensitivity, RFC 0016 surface model)", (

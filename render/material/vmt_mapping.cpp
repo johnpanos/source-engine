@@ -72,6 +72,10 @@ constexpr VmtShaderRow kShaders[] = {
     { "writez", "depth", "depth-only material-system geometry" },
     { "portalrefract", "portal-mask", "PortalRefract stage 1 aperture mask" },
     { "portalrefract_dx9", "portal-mask", "PortalRefract stage 1 aperture mask" },
+    { "solidenergy", "energy",
+        "Portal 2's fizzlers, light bridges and tractor beams: unlit flow fields and detail-layered "
+        "beams with view-dependent opacity (solidenergy_ps20b); render/material/energy_family.h" },
+    { "solidenergy_dx9", "energy", "SolidEnergy's DirectX 9 implementation" },
     { "subrect", kLegacyFamily,
         "not a shader: a sub-rectangle ($pos, $size) of another material ($material) that "
         "the material system resolves (CMaterialSubRect) and draws as that material" },
@@ -85,7 +89,8 @@ constexpr std::string_view kLegacyReason =
 // the material flags the draw state depends on); BuildKeyRows() gives each of
 // kLegacyDerivedFamilies a copy.
 constexpr std::string_view kLegacyDerivedFamilies[] = {
-    "lightmapped", "vertexlit", "unlit", "depth", "portal-mask", "cable", "decal-modulate" };
+    "lightmapped", "vertexlit", "unlit", "depth", "portal-mask", "cable", "decal-modulate",
+    "energy" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$one", "one", ValueKind::kFloat, "1" },
@@ -224,6 +229,60 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "vertexlit", "$lowqualityflashlightshadows", "lowqualityflashlightshadows", ValueKind::kBool,
         "0" },
 
+    // SolidEnergy (solidenergy_dx9.cpp's parameters; defaults are
+    // InitParamsSolidEnergy's, solidenergy_dx9_helper.h). The opacity ranges
+    // default to zero, which no material authors: a term is on when its
+    // ranges are set or its $needs* flag is (the helper's IS_PARAM_DEFINED).
+    { "energy", "$detail1", "detail1", ValueKind::kTexture, "" },
+    { "energy", "$detail1scale", "detail1scale", ValueKind::kFloat, "1" },
+    { "energy", "$detail1frame", "detail1frame", ValueKind::kInt, "0" },
+    { "energy", "$detail1blendmode", "detail1blendmode", ValueKind::kInt, "0" },
+    { "energy", "$detail1texturetransform", "detail1texturetransform", ValueKind::kTransform, "" },
+    { "energy", "$detail2", "detail2", ValueKind::kTexture, "" },
+    { "energy", "$detail2scale", "detail2scale", ValueKind::kFloat, "1" },
+    { "energy", "$detail2frame", "detail2frame", ValueKind::kInt, "0" },
+    { "energy", "$detail2blendmode", "detail2blendmode", ValueKind::kInt, "0" },
+    { "energy", "$detail2texturetransform", "detail2texturetransform", ValueKind::kTransform, "" },
+    { "energy", "$tangenttopacityranges", "tangenttopacityranges", ValueKind::kFloat4,
+        "[0 0 0 0]" },
+    { "energy", "$tangentsopacityranges", "tangentsopacityranges", ValueKind::kFloat4,
+        "[0 0 0 0]" },
+    { "energy", "$fresnelopacityranges", "fresnelopacityranges", ValueKind::kFloat4, "[0 0 0 0]" },
+    { "energy", "$needstangentt", "needstangentt", ValueKind::kBool, "0" },
+    { "energy", "$needstangents", "needstangents", ValueKind::kBool, "0" },
+    { "energy", "$needsnormals", "needsnormals", ValueKind::kBool, "0" },
+    { "energy", "$flowmap", "flowmap", ValueKind::kTexture, "" },
+    { "energy", "$flowmapframe", "flowmapframe", ValueKind::kInt, "0" },
+    { "energy", "$flow_noise_texture", "flow_noise_texture", ValueKind::kTexture, "" },
+    { "energy", "$flowbounds", "flowbounds", ValueKind::kTexture, "" },
+    { "energy", "$flow_worlduvscale", "flow_worlduvscale", ValueKind::kFloat, "1" },
+    { "energy", "$flow_normaluvscale", "flow_normaluvscale", ValueKind::kFloat, "1" },
+    { "energy", "$flow_timeintervalinseconds", "flow_timeintervalinseconds", ValueKind::kFloat,
+        "0.4" },
+    { "energy", "$flow_uvscrolldistance", "flow_uvscrolldistance", ValueKind::kFloat, "0.2" },
+    { "energy", "$flow_noise_scale", "flow_noise_scale", ValueKind::kFloat, "0.0002" },
+    { "energy", "$flow_lerpexp", "flow_lerpexp", ValueKind::kFloat, "0" },
+    { "energy", "$powerup", "powerup", ValueKind::kFloat, "1" },
+    { "energy", "$flow_color_intensity", "flow_color_intensity", ValueKind::kFloat, "1" },
+    { "energy", "$flow_color", "flow_color", ValueKind::kFloat3, "[0.1 0.2 0.4]" },
+    { "energy", "$flow_vortex_color", "flow_vortex_color", ValueKind::kFloat3, "[1.2 0.4 0]" },
+    { "energy", "$flow_vortex_size", "flow_vortex_size", ValueKind::kFloat, "30" },
+    { "energy", "$flow_vortex1", "flow_vortex1", ValueKind::kBool, "0" },
+    { "energy", "$flow_vortex_pos1", "flow_vortex_pos1", ValueKind::kFloat3, "[0 0 0]" },
+    { "energy", "$flow_vortex2", "flow_vortex2", ValueKind::kBool, "0" },
+    { "energy", "$flow_vortex_pos2", "flow_vortex_pos2", ValueKind::kFloat3, "[0 0 0]" },
+    { "energy", "$flow_cheap", "flow_cheap", ValueKind::kBool, "0" },
+    { "energy", "$modelformat", "modelformat", ValueKind::kBool, "0" },
+    { "energy", "$outputintensity", "outputintensity", ValueKind::kFloat, "1" },
+    // Declared but read by no SolidEnergy combo on PC (DEPTHBLEND is "0..0"
+    // there; the blend factors, $time and the flow map's scroll rate reach
+    // no constant): claimed as inert.
+    { "energy", "$detail1blendfactor", "detail1blendfactor", ValueKind::kFloat, "1" },
+    { "energy", "$detail2blendfactor", "detail2blendfactor", ValueKind::kFloat, "1" },
+    { "energy", "$depthblend", "depthblend", ValueKind::kBool, "0" },
+    { "energy", "$depthblendscale", "depthblendscale", ValueKind::kFloat, "50" },
+    { "energy", "$time", "time", ValueKind::kFloat, "0" },
+    { "energy", "$flowmapscrollrate", "flowmapscrollrate", ValueKind::kFloat2, "[0 0]" },
     { "cable", "$bumpmap", "bumpmap", ValueKind::kTexture, "" },
     { "cable", "$minlight", "minlight", ValueKind::kFloat, "0.1" },
     { "cable", "$maxlight", "maxlight", ValueKind::kFloat, "0.3" },
@@ -461,6 +520,54 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "phong", "no '$': a shader parameter is looked up as $phong, so this key sets nothing" },
     { "$vertextcolor", "misspelled; no shader declares it (the flag is $vertexcolor)" },
     { "$decalfadetime", "the engine's decal fade (r_decal.cpp), not a shader parameter" },
+    { "$intensitynoise", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$totalintensity", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$basetexturescale", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$basetexturecentroid", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detail1offset", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detail1rot", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detail2offset", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detail2rot", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detailscroll1", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detailscroll2", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detail2componentscale", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$basescroll", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$basescale", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$scrollrate", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detail1scrollfactor", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detail2scrollfactor", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detail1scrollrate", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$detail2scrollrate", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$basetexturescrollrate", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$basetextureoffset", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$basetextureoffsetfreeze", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$basetexturetranslate", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$neg", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
+    { "$none", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
+        "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
     { "$use_in_fillrate_mode",
         "selects the material for mat_fillrate's debug drawing only (shadersystem.cpp)" },
     { "$keywords", "tool and asset-browser metadata, not a shader parameter" },

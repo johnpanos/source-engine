@@ -61,6 +61,7 @@ struct UnlitClaim
 	bool twoTexture = false;
 	bool decalModulate = false;
 	bool cable = false; // expanded ribbon: normal UV0, color UV1, linear vertex lighting
+	bool energy = false; // SolidEnergy (energy_family.h)
 	bool ignoreDepth = false;
 	bool depthBlend = false; // requires the view's copied scene depth in alpha
 	bool baseSrgb = true;
@@ -77,6 +78,7 @@ struct UnlitClaim
 	{
 		SurfaceVariant variant{ blend, alphaWrite, kSurfaceUnlit, 0, layout, ignoreDepth };
 		variant.cable = cable;
+		variant.energy = energy;
 		variant.decalModulate = decalModulate;
 		return variant;
 	}
