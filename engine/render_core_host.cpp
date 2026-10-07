@@ -464,9 +464,8 @@ void RenderCoreHost_BeginFrame()
 			const RenderCoreWorldQuality quality{ r_core_ao_quality.GetInt(),
 			    r_core_shadow_quality.GetInt(), r_core_depth_prepass.GetInt(),
 			    r_core_shadow_movers.GetInt(), r_core_shadow_pcss.GetInt(),
-			    r_core_runtime_direct.GetInt(),
-			    RenderCoreWorldDraw_OnlyCore(), r_core_dynamic_draws.GetBool(),
-			    r_core_volumetric.GetInt(), r_core_ssr.GetInt(),
+			    r_core_runtime_direct.GetInt(), RenderCoreWorldDraw_OnlyCore(),
+			    r_core_dynamic_draws.GetBool(), r_core_volumetric.GetInt(), r_core_ssr.GetInt(),
 			    r_core_world_gpu_submit.GetInt(), r_core_area_lights.GetInt(),
 			    r_core_probe_bounce.GetInt() };
 			host.world->SetQuality( quality );
