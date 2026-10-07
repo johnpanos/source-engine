@@ -690,6 +690,10 @@ bool CMatQueuedRenderContext::Init( CMaterialSystem *pMaterialSystem, CMatRender
 #if defined(DEDICATED)
 	Assert( !"CMatQueuedRenderContext shouldn't be initialized on dedicated servers..." );
 	nSize = nCommitSize = 1024;
+#elif defined( PLATFORM_3DS )
+	// The 3DS runs the material system unqueued (mat_queue_mode 0), and with
+	// no virtual memory a memory stack allocates its whole size up front.
+	nSize = nCommitSize = 64 * 1024;
 #endif
 
 	bool bVerticesInit = m_Vertices.Init( nSize, nCommitSize );

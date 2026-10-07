@@ -1295,6 +1295,8 @@ private:
 		{
 			m_Clock += 10; // each command takes 10 ns of the null GPU's time
 			Apply( command );
+			if ( !m_Options.recordCommands )
+				continue;
 			RecordedCommand recorded;
 			recorded.op = command.op;
 			recorded.resource = command.a;

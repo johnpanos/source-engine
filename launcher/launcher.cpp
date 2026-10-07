@@ -916,6 +916,10 @@ bool CSourceAppSystemGroup::Create()
 	// entry-point name; see legacy_shader_provider.h. The first entry is the
 	// default when -renderer is absent.
 	const render::LegacyShaderProvider *catalog[] = {
+#if defined( LINKED_PICA_BACKEND )
+	    // The 3DS client's only drawing backend.
+	    PicaShaderBackend_Describe(),
+#endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 	    // The client renderer (RFC 0001 R32).
 	    NativeVulkanShaderBackend_Describe(),
@@ -1275,9 +1279,9 @@ bool GrabSourceMutex()
 	CRC32_ProcessBuffer( &gameCRC, (void *)pchGameParam, Q_strlen( pchGameParam ) );
 	CRC32_Final( &gameCRC );
 
-#if defined( ANDROID ) || defined( OSX )
+#if defined( ANDROID ) || defined( OSX ) || defined( PLATFORM_3DS )
 	// The system runs one instance of an app; an Apple app also cannot lock
-	// files in /tmp, which is outside its sandbox.
+	// files in /tmp, which is outside its sandbox, and the 3DS has no /tmp.
 	return true;
 #elif defined (LINUX) || defined(PLATFORM_BSD)
 	/*

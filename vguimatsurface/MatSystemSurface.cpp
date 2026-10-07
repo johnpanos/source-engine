@@ -2294,6 +2294,20 @@ void *CMatSystemSurface::FontDataHelper( const char *pchFontName, int &size, con
 
 	if( fontFileName )
 	{
+		// A file already loaded is shared: the Linux font path asks for its file
+		// once per face (every size and weight), and a fresh copy each time
+		// held a dozen copies of each fallback font.
+		{
+			CUtlString strFileKey( fontFileName );
+			strFileKey.ToLower();
+			const int iCached = m_FontData.Find( strFileKey.Get() );
+			if ( iCached != m_FontData.InvalidIndex() )
+			{
+				size = m_FontData[ iCached ].size;
+				return m_FontData[ iCached ].data;
+			}
+		}
+
 		// If we were given a fontFileName, then load that bugger and shove it in the cache.
 
 		// Just load the font data, decrypt in memory and register for this process
@@ -2354,6 +2368,15 @@ void *CMatSystemSurface::FontDataHelper( const char *pchFontName, int &size, con
 		}
 
 		FT_Done_Face( face );
+
+		// Also under the file name, for the cache check above (the font names
+		// are registered with spaces removed; the key keeps the path as is).
+		{
+			CUtlString strFileKey( fontFileName );
+			strFileKey.ToLower();
+			if ( m_FontData.Find( strFileKey.Get() ) == m_FontData.InvalidIndex() )
+				m_FontData.Insert( strFileKey.Get(), entry );
+		}
 
 		size = entry.size;
 		return entry.data;

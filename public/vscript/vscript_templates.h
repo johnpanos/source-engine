@@ -105,10 +105,13 @@ inline ScriptFunctionBindingStorageType_t ScriptConvertFreeFuncPtrToVoid( FUNCPT
 		FuncPtrConvertMI convert;
 		convert.fn8.iToc = 0;
 		convert.pFunc = pFunc;
-#if defined( __aarch64__ )
-		// The ARM C++ ABI keeps the virtual flag in bit 0 of the adjustment word
+#if defined( __aarch64__ ) || defined( __arm__ )
+#if defined( __thumb__ )
+#error the member-pointer fold below needs ARM-mode code (Thumb addresses use bit 0)
+#endif
+		// The ARM C++ ABI (AArch64 and 32-bit ARM) keeps the virtual flag in bit 0 of the adjustment word
 		// (adj = 2 * this-adjustment + virtual) and puts the vtable offset in the
-		// pointer word. Code addresses are 4-aligned and vtable offsets 8-aligned,
+		// pointer word. ARM-mode code addresses and vtable offsets are at least 4-aligned,
 		// so fold the flag into bit 0 of the stored value; FromVoid undoes it.
 		if ( !( convert.fn8.iToc >> 1 ) )
 			return (ScriptFunctionBindingStorageType_t)( (uintptr_t)convert.fn8.stype | ( convert.fn8.iToc & 1 ) );
@@ -159,7 +162,7 @@ inline FUNCPTR_TYPE ScriptConvertFreeFuncPtrFromVoid( ScriptFunctionBindingStora
 
 		FuncPtrConvertMI convert;
 		convert.pFunc = 0;
-#if defined( __aarch64__ )
+#if defined( __aarch64__ ) || defined( __arm__ )
 		convert.fn8.stype = (ScriptFunctionBindingStorageType_t)( (uintptr_t)p & ~(uintptr_t)1 );
 		convert.fn8.iToc = (uintptr_t)p & 1;
 #else

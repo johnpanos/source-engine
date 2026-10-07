@@ -384,7 +384,48 @@ def configure_apple(conf):
 	conf.msg('Selected %s SDK' % APPLE_PLATFORM_NAMES[platform], '%s (%s)' % (sdk, conf.env.APPLE_SDK_VERSION))
 	conf.msg('... target', triple)
 
+N3DS_ARCH = ['-march=armv6k', '-mtune=mpcore', '-mfloat-abi=hard', '-mtp=soft', '-mword-relocations']
+
+def configure_n3ds(conf):
+	"""--n3ds: cross-compile for the Nintendo 3DS with devkitARM (run inside
+	the devkitpro/devkitarm container; build-3ds.sh). libctru, citro3d and
+	the profile's cross-built SDL3 prefix are the platform SDK."""
+	devkitpro = conf.environ.get('DEVKITPRO', '/opt/devkitpro')
+	bindir = os.path.join(devkitpro, 'devkitARM', 'bin')
+	if not os.path.isfile(os.path.join(bindir, 'arm-none-eabi-gcc')):
+		conf.fatal('--n3ds needs devkitARM (%s); run through build-3ds.sh' % bindir)
+	ctru = os.path.join(devkitpro, 'libctru')
+	portlibs = os.path.join(devkitpro, 'portlibs', '3ds')
+	# newlib takes the exact-width types from GCC's macros; arm-none-eabi
+	# makes the 32-bit ones long. Every other target (and the engine's
+	# templates) has int32_t = int; long and int are both 32 bits here, so
+	# the C ABI is unchanged.
+	int32 = ['-U__INT32_TYPE__', '-D__INT32_TYPE__=int', '-U__UINT32_TYPE__',
+		"-D__UINT32_TYPE__=unsigned int", '-U__INT_LEAST32_TYPE__', '-D__INT_LEAST32_TYPE__=int',
+		'-U__UINT_LEAST32_TYPE__', "-D__UINT_LEAST32_TYPE__=unsigned int"]
+	common = N3DS_ARCH + ['-D__3DS__', '-I' + os.path.join(ctru, 'include'),
+		'-I' + os.path.join(portlibs, 'include')]
+	conf.environ['PATH'] = bindir + os.pathsep + conf.environ.get('PATH', '')
+	conf.environ['CC'] = ' '.join([os.path.join(bindir, 'arm-none-eabi-gcc')] + common)
+	conf.environ['CXX'] = ' '.join([os.path.join(bindir, 'arm-none-eabi-g++')] + common)
+	conf.environ['AR'] = os.path.join(bindir, 'arm-none-eabi-ar')
+	conf.environ['OBJCOPY'] = os.path.join(bindir, 'arm-none-eabi-objcopy')
+	conf.env.LINKFLAGS += N3DS_ARCH + ['-specs=3dsx.specs', '-L' + os.path.join(ctru, 'lib'),
+		'-L' + os.path.join(portlibs, 'lib')]
+	# After the objects and libraries: the crt (3dsx.specs) needs libctru.
+	conf.env.LDFLAGS += ['-liconv', '-lcitro3d', '-lctru', '-lm']
+	# The product is one executable: thread-local variables need no
+	# __tls_get_addr (which the 3DS has not), even in -fPIC objects.
+	conf.env.CFLAGS += int32 + ['-ftls-model=local-exec']
+	conf.env.CXXFLAGS += int32 + ['-ftls-model=local-exec']
+	conf.env.N3DS = True
+	conf.env.DEVKITPRO = devkitpro
+	conf.msg('Selected Nintendo 3DS', devkitpro)
+
 def options(opt):
+	n3ds = opt.add_option_group('Nintendo 3DS options')
+	n3ds.add_option('--n3ds', action='store_true', dest='N3DS', default=False,
+		help='cross-compile for the Nintendo 3DS with devkitARM (build-3ds.sh)')
 	apple = opt.add_option_group('Apple options')
 	apple.add_option('--apple-sdk', action='store', dest='APPLE_SDK', default=None,
 		help='cross-compile for macOS, iOS or tvOS with this MacOSX.sdk, iPhoneOS.sdk or AppleTVOS.sdk (copied from Xcode on a Mac)')
@@ -398,6 +439,8 @@ def options(opt):
 		help='enable building for android, format: --android=<arch>,<toolchain>,<api>, example: --android=armeabi-v7a-hard,4.9,21')
 
 def configure(conf):
+	if getattr(conf.options, 'N3DS', False):
+		configure_n3ds(conf)
 	if getattr(conf.options, 'APPLE_SDK', None):
 		if conf.options.ANDROID_OPTS:
 			conf.fatal('--apple-sdk and --android select different targets')
@@ -454,7 +497,7 @@ def configure(conf):
 	# iOS and tvOS before the generic __APPLE__ (darwin) mapping; clang defines
 	# these macros for their device and simulator targets only. tvOS is part
 	# of the ios (UIKit) family; APPLE_PLATFORM tells the two apart.
-	MACRO_TO_DESTOS = OrderedDict({ '__ANDROID__' : 'android',
+	MACRO_TO_DESTOS = OrderedDict({ '__3DS__' : '3ds', '__ANDROID__' : 'android',
 		'__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__' : 'ios',
 		'__ENVIRONMENT_TV_OS_VERSION_MIN_REQUIRED__' : 'ios' })
 	for k in c_config.MACRO_TO_DESTOS:

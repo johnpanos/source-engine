@@ -43,6 +43,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--content", default="build-3ds-content/n3ds_chamber")
     parser.add_argument("--map", default="n3ds_chamber")
+    parser.add_argument("--demo", default=None, help="play this demo (game-relative, e.g. intro4) instead of loading --map")
     parser.add_argument("--cmds", default="", help="console commands, separated by ';'")
     parser.add_argument("--launch", default="", help="extra launch arguments (e.g. -pica_dump_draws 400)")
     parser.add_argument("--wait", type=int, default=300, help="frames to wait after the map load")
@@ -60,7 +61,8 @@ def main():
 
     stop_running_emulator()
     app = harness.package()
-    run_azahar.stage(options.content, "%s +map %s %s" % (options.launch, options.map, args))
+    start = "+playdemo %s" % options.demo if options.demo else "+map %s" % options.map
+    run_azahar.stage(options.content, "%s %s %s" % (options.launch, start, args))
     console = harness.GAME / "console.log"
     if console.exists():
         console.unlink()
@@ -117,7 +119,14 @@ def main():
         print("  " + text)
     shot = harness.azahar_ns.PROBE_PNG
     try:
-        print("screenshot: %s" % session.request("screenshot %s" % shot))
+        if shot.exists():
+            shot.unlink()
+        reply = session.request("screenshot %s" % shot)
+        # The frontend writes the next presented frame; quitting first loses it.
+        deadline = time.time() + 30
+        while reply.get("ok") and not shot.exists() and time.time() < deadline:
+            time.sleep(0.1)
+        print("screenshot: %s" % (shot if shot.exists() else "none within 30 s (%s)" % reply))
     except Exception as error:
         print("screenshot failed: %s" % error)
     if not options.keep:

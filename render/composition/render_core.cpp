@@ -185,6 +185,7 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 	{
 		render::device::null::NullOptions options;
 		options.capabilities = allow( options.capabilities );
+		options.recordCommands = false; // no product reads the command log
 		return render::device::null::Create( options );
 	}
 #if defined( RENDER_CORE_GL )

@@ -201,11 +201,17 @@ InitReturnVal_t CSDL3Mgr::Init()
 	// scale the frame up (the tvOS root: 1080p on a 4K television).
 	const SDL_WindowFlags pixelDensity =
 	    CommandLine()->FindParm( "-nohighdpi" ) ? 0 : SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#if defined( PLATFORM_3DS )
+	// The 3DS's top screen (400x240): the PICA backend (shaderapipica) draws
+	// it through citro3d, so the window carries no graphics API.
+	m_Window = SDL_CreateWindow( "", 400, 240, 0 );
+#else
 	m_Window = SDL_CreateWindow( "", 1280, 720,
 	    SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN | pixelDensity | SDL_WINDOW_RESIZABLE );
+#endif
 	if ( m_Window == NULL )
 	{
-		Warning( "SDL3 Vulkan window creation failed: %s\n", SDL_GetError() );
+		Warning( "SDL3 window creation failed: %s\n", SDL_GetError() );
 		Shutdown();
 		return INIT_FAILED;
 	}

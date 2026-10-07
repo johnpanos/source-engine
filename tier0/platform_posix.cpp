@@ -468,6 +468,15 @@ bool Plat_IsInDebugSession()
 	return !!s_IsInDebugSession;
 }
 
+#elif defined( PLATFORM_3DS )
+
+// No /proc to ask (each open was a slow SD card probe); a debugger attaches
+// through the emulator's GDB stub, which the game cannot see.
+bool Plat_IsInDebugSession()
+{
+	return false;
+}
+
 #elif defined( LINUX )
 
 bool Plat_IsInDebugSession()

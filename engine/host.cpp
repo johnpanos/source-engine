@@ -1320,6 +1320,10 @@ void Host_ReadConfiguration_360( void )
 // Purpose: 
 // Input  : false - 
 //-----------------------------------------------------------------------------
+#if defined( PLATFORM_3DS )
+void N3ds_ApplyPlatformDefaults(); // n3ds_platform_defaults.cpp
+#endif
+
 void Host_ReadConfiguration()
 {
 	if ( sv.IsDedicated() )
@@ -1368,6 +1372,14 @@ void Host_ReadConfiguration()
 	}
 
 	Cbuf_Execute();
+
+#if defined( PLATFORM_3DS )
+	// After config.cfg, so a saved desktop config cannot undo them.
+	N3ds_ApplyPlatformDefaults();
+	// Apply the material settings now: a later first update (mid map load,
+	// under +map) reloads every texture beside the map's resident ones.
+	UpdateMaterialSystemConfig();
+#endif
 
 	if ( pRemoteStorage )
 	{
@@ -4132,6 +4144,13 @@ void Host_Init( bool bDedicated )
 #endif
 
 	Host_PostInit();
+#if defined( PLATFORM_3DS )
+	// Again after the client's PostInit, which applies Portal 2's system-level
+	// presets (cpu_level...; the table sets them low), and before any map loads
+	// so the material settings take effect without a texture reload.
+	N3ds_ApplyPlatformDefaults();
+	UpdateMaterialSystemConfig();
+#endif
 	EndLoadingUpdates( );
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 	pRenderContext->SetNonInteractiveTempFullscreenBuffer( NULL, MATERIAL_NON_INTERACTIVE_MODE_STARTUP );

@@ -43,6 +43,10 @@ struct NullOptions
 	// ranges at submission instead of completion, the defect clause D10
 	// must catch. Never set by a product.
 	bool unsafeUploadReuse = false;
+	// Keep every executed command for Recorded() (the port suites read it).
+	// A product composes the null device without the log: it grows by every
+	// command of every frame and is never read there.
+	bool recordCommands = true;
 };
 
 enum class RecordedOp : std::uint8_t

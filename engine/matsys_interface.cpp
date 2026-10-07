@@ -378,10 +378,18 @@ static void WriteVideoConfigString( const char *pName, const char *pString )
 // for the usual machinery to work here.)
 //-----------------------------------------------------------------------------
 static bool s_bVideoConfigOverriddenFromCmdLine;
+#if defined( PLATFORM_3DS )
+const char *N3ds_PlatformDefault( const char *name ); // n3ds_platform_defaults.cpp
+#endif
 
 template<typename T>
 static T OverrideVideoConfigFromCommandLine( const char *pCVarName, T curVal )
 {
+#if defined( PLATFORM_3DS )
+	// The platform's settings win over a saved video config too.
+	if ( const char *pPlatform = N3ds_PlatformDefault( pCVarName ) )
+		return (T)atof( pPlatform );
+#endif
 	char szOption[256];
 	V_snprintf( szOption, sizeof( szOption ), "+%s", pCVarName );
 	if ( CommandLine()->CheckParm( szOption ) )

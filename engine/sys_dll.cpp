@@ -686,7 +686,11 @@ void Sys_InitMemory( void )
 #elif defined(POSIX)
 	uint64_t memsize = ONE_HUNDRED_TWENTY_EIGHT_MB;
 
-#if defined(OSX) || defined(PLATFORM_BSD)
+#if defined( PLATFORM_3DS )
+	// The New 3DS has 256 MB (no /proc/meminfo); the engine takes a quarter of
+	// it as its cache budget below.
+	memsize = 256ull * 1024 * 1024;
+#elif defined(OSX) || defined(PLATFORM_BSD)
 	int mib[2] = { CTL_HW, HW_MEMSIZE };
 	u_int namelen = sizeof(mib) / sizeof(mib[0]);
 	size_t len = sizeof(memsize);
@@ -777,6 +781,13 @@ void Sys_InitMemory( void )
 	{
 		host_parms.memsize = MAXIMUM_WIN_MEMORY;
 	}
+
+#if defined( PLATFORM_3DS )
+	// The engine's hunk plus data cache budget (models, sounds): the 3DS's
+	// whole heap is about 100 MB, so a quarter of its 256 MB would starve the
+	// rest. 12 MB of hunk (zone.cpp) leaves 16 MB of cache.
+	host_parms.memsize = 28 * 1024 * 1024;
+#endif
 
 #else
 #error Write me.
@@ -899,6 +910,11 @@ SpewRetval_t Sys_SpewFunc( SpewType_t spewType, const char *pMsg )
 			Plat_DebugString( pMsg );
 		}
 
+#if defined( PLATFORM_3DS )
+		// The 3DS has no debugger console: every message goes to stderr, the
+		// SD card's console.log, which tools/n3ds/azahar_harness.py streams.
+		fputs( pMsg, stderr );
+#endif
 		if ( g_bTextMode )
 		{
 			printf( "%s", pMsg );

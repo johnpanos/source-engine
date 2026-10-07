@@ -158,6 +158,7 @@ def build(bld):
 		'hltvserver.cpp',
 		'hltvtest.cpp',
 		'host.cpp',
+		'n3ds_platform_defaults.cpp',
 		'host_frame_graph.cpp',
 		'host_cmd.cpp',
 		'host_listmaps.cpp',

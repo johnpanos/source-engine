@@ -18,6 +18,14 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+// The 3DS's sockets (libctru soc:U) refuse buffer sizes and broadcast; the
+// sockets work without them. Elsewhere a refused option fails the socket.
+#if defined( PLATFORM_3DS )
+#define NET_SOCKOPT_FAILED() ( (void)0 )
+#else
+#define NET_SOCKOPT_FAILED() return 0
+#endif
+
 #define NET_COMPRESSION_STACKBUF_SIZE 4096 
 
 static ConVar net_showudp_wire( "net_showudp_wire", "0", 0, "Show incoming packet information" );
@@ -526,7 +534,7 @@ int NET_OpenSocket ( const char *net_interface, int& port, int protocol )
 		{
 			NET_GetLastError();		
 			Msg ("WARNING: NET_OpenSocket: setsockopt SO_SNDBUF: %s\n", NET_ErrorString(net_error));
-			return 0;
+			NET_SOCKOPT_FAILED();
 		}
 
 		opt = NET_MAX_MESSAGE; // set TCP options: set receive buffer size
@@ -535,7 +543,7 @@ int NET_OpenSocket ( const char *net_interface, int& port, int protocol )
 		{
 			NET_GetLastError();		
 			Msg ("WARNING: NET_OpenSocket: setsockopt SO_RCVBUF: %s\n", NET_ErrorString(net_error));
-			return 0;
+			NET_SOCKOPT_FAILED();
 		}
 		
 
@@ -592,7 +600,7 @@ int NET_OpenSocket ( const char *net_interface, int& port, int protocol )
 		{
 			NET_GetLastError();		
 			Msg ("WARNING: NET_OpenSocket: setsockopt SO_BROADCAST: %s\n", NET_ErrorString(net_error));
-			return 0;
+			NET_SOCKOPT_FAILED();
 		}
 	}
 	

@@ -70,6 +70,8 @@ def build(bld):
 			'pme_posix.cpp',
 			'vcrmode_posix.cpp'
 		]
+		if bld.env.DEST_OS == '3ds':
+			source += ['../platform/n3ds/compat/n3ds_compat.cpp']
 
 	includes = [
 		'.',

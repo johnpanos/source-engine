@@ -24,6 +24,7 @@ The emulator window stays open after the report unless --quit is given.
 import argparse
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -243,6 +244,9 @@ def start_emulator(headless, app, hold=False):
 
 
 GDB = ROOT / "dependencies/3ds/devkitpro/devkitARM/bin/arm-none-eabi-gdb"
+# A breakpoint or script line gdb could not take: the run cannot be trusted.
+GDB_SCRIPT_ERROR = re.compile(r'(Function|No symbol) ".*" (not defined|in current context)|^No symbol table|'
+                              r'Error in sourced command file|^Junk at end')
 GDB_PORT = azahar_ns.GDB_PORT
 
 
@@ -266,7 +270,7 @@ def debug_run(options):
     breaks = options.breaks or ["exit", "abort", "_exit"]
     command = [str(GDB), "-q", "-batch", "-ex", "set pagination off", "-ex", "set confirm off",
                "-ex", "set tcp auto-retry on", "-ex", "set tcp connect-timeout 60",
-               "-ex", "target remote 127.0.0.1:%d" % GDB_PORT, "-ex", "echo GDB_ATTACHED\\n"]
+               "-ex", "target remote 127.0.0.1:%d" % GDB_PORT, "-ex", "printf \"GDB_ATTACHED %x\\n\", $pc"]
     for location in breaks:
         command += ["-ex", "break %s" % location]
     command += ["-ex", "source %s" % (ROOT / "tools/n3ds/gdb/errors.gdb")]
@@ -283,16 +287,19 @@ def debug_run(options):
     # halted at a breakpoint.
     gdb_lines = []
     gdb_attached = threading.Event()
+    gdb_failed = threading.Event()
 
     def read_gdb():
         for line in gdb.stdout:
             line = line.rstrip("\n")
-            if line.strip() == "GDB_ATTACHED":
+            if line.startswith("GDB_ATTACHED "):
                 gdb_attached.set()
             if "no version information" in line or line.startswith("Breakpoint "):
                 continue
             gdb_lines.append(line)
             print("gdb| " + line, flush=True)
+            if GDB_SCRIPT_ERROR.search(line):
+                gdb_failed.set()
 
     reader = threading.Thread(target=read_gdb, daemon=True)
     reader.start()
@@ -316,6 +323,10 @@ def debug_run(options):
     reason = "gdb"
     memory, memory_at = None, 0.0
     while gdb.poll() is None:
+        if gdb_failed.is_set():
+            print("GDB SCRIPT ERROR: a breakpoint or command was not accepted (see gdb| lines); stopping")
+            reason = "gdb script error"
+            break
         if time.time() - memory_at > 2.0:
             try:
                 memory, memory_at = session.request("memory"), time.time()

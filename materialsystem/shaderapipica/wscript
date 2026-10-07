@@ -1,0 +1,78 @@
+#! /usr/bin/env python
+# encoding: utf-8
+#
+# The Nintendo 3DS fullbright shader API (DEST_OS 3ds, --render-backend=pica).
+# Its PICA200 vertex shader is assembled with devkitPro's picasso and embedded
+# as a generated C source.
+
+import os
+
+from waflib.TaskGen import extension
+
+
+@extension('.pica')
+def assemble_pica_shader( self, node ):
+	# picasso assembles the vertex shader; embed_binary.py turns the binary
+	# into a C source compiled into the library.
+	name = node.name.split( '.' )[0] + '_shbin'
+	shbin = node.change_ext( '.shbin' )
+	csrc = node.change_ext( '_shbin.c' )
+	picasso = os.path.join( self.env.DEVKITPRO, 'tools', 'bin', 'picasso' )
+	embed = self.bld.path.find_node( 'tools/n3ds/embed_binary.py' ).abspath()
+	self.create_task( 'pica_shader', node, [shbin, csrc], picasso=picasso, embed=embed, symbol=name )
+	self.create_compiled_task( 'c', csrc )
+
+top = '.'
+PROJECT_NAME = 'shaderapipica'
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.env.append_unique('DEFINES', [
+		'SHADER_DLL_EXPORT',
+		'PROTECTED_THINGS_ENABLE'
+	])
+
+from waflib import Task
+
+
+class pica_shader( Task.Task ):
+	color = 'BLUE'
+
+	def run( self ):
+		shbin, csrc = self.outputs
+		return self.exec_command( [self.picasso, '-o', shbin.abspath(), self.inputs[0].abspath()] ) or \
+			self.exec_command( ['python3', self.embed, shbin.abspath(), csrc.abspath(), self.symbol] )
+
+
+def build(bld):
+	source = [
+		'shaderapipica.cpp',
+		'pica_renderer.cpp',
+		'pica_texture.cpp',
+		'fullbright.v.pica',
+		'../../public/tier0/memoverride.cpp'
+	]
+
+	includes = [
+		'.',
+		'../../public',
+		'../../public/tier0',
+		'../../public/tier1',
+		'../../common',
+		'../'
+	] + bld.env.INCLUDES_SDL2
+
+	libs = ['tier0', 'tier1', 'tier2', 'mathlib', 'bitmap']
+
+	bld.shlib(
+		source   = source,
+		target   = PROJECT_NAME,
+		name     = PROJECT_NAME,
+		features = 'c cxx',
+		includes = includes,
+		use      = libs,
+		install_path = bld.env.LIBDIR,
+		idx      = bld.get_taskgen_count()
+	)

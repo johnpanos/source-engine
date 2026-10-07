@@ -19,6 +19,7 @@ import hashlib
 import os
 import re
 import signal
+import time
 import subprocess
 from pathlib import Path
 
@@ -182,6 +183,16 @@ def stop():
         os.killpg(pid, signal.SIGTERM)
     except (ProcessLookupError, PermissionError):
         pass
+    # Azahar inside the sandbox can ignore SIGTERM (a held boot waiting for
+    # gdb does): whatever is left after 2 s is killed.
+    deadline = time.time() + 2.0
+    while time.time() < deadline and any(os.path.exists("/proc/%d" % p) for p in family | {pid}):
+        time.sleep(0.05)
+    for p in family | {pid}:
+        try:
+            os.kill(p, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
     PIDFILE.unlink(missing_ok=True)
     if SOCKET.exists():
         SOCKET.unlink()

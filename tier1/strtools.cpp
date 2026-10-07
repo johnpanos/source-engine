@@ -2356,6 +2356,15 @@ bool V_MakeRelativePath( const char *pFullPath, const char *pDirectory, char *pR
 bool V_IsAbsolutePath( const char *pStr )
 {
 	bool bIsAbsolute = ( pStr[0] && pStr[1] == ':' ) || pStr[0] == '/' || pStr[0] == '\\';
+#if defined( PLATFORM_3DS )
+	// newlib device paths: "sdmc:/source-engine", "romfs:/".
+	if ( !bIsAbsolute )
+	{
+		const char *pColon = strchr( pStr, ':' );
+		bIsAbsolute = pColon && pColon > pStr && pColon[1] == '/' && !strchr( pStr, '/' ) == false &&
+			strchr( pStr, '/' ) == pColon + 1;
+	}
+#endif
 	
 	return bIsAbsolute;
 }

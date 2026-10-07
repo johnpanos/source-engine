@@ -120,6 +120,8 @@ struct LegacyShaderProvider
 extern "C" const render::LegacyShaderProvider *NativeVulkanShaderBackend_Describe();
 extern "C" bool NativeVulkanShaderBackend_Create( render::LegacyShaderServices *services );
 extern "C" const render::LegacyShaderProvider *NullShaderBackend_Describe();
+// The Nintendo 3DS fullbright backend (materialsystem/shaderapipica).
+extern "C" const render::LegacyShaderProvider *PicaShaderBackend_Describe();
 extern "C" bool MaterialSystem_BindShaderProvider(
 	IMaterialSystem *materialSystem, const render::LegacyShaderProvider *provider );
 

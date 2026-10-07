@@ -285,6 +285,13 @@ def resolve_render_backend(conf):
 	# 'legacy' (no client renderer) remains only for server, test and tool
 	# products; a client that cannot build native Vulkan fails configure.
 	client = not (conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS)
+	if conf.env.DEST_OS == '3ds':
+		# The 3DS client: the PICA200 shader API on render.device.pica (RFC 0026).
+		if conf.options.RENDER_BACKEND not in ('auto', 'pica'):
+			conf.fatal('The 3DS client requires --render-backend=pica')
+		conf.options.RENDER_BACKEND = 'pica'
+		conf.msg('Render backend', conf.options.RENDER_BACKEND)
+		return
 	if conf.options.RENDER_BACKEND == 'auto':
 		conf.options.RENDER_BACKEND = 'native-vulkan' if client else 'legacy'
 	if client and conf.options.RENDER_BACKEND != 'native-vulkan':
@@ -304,7 +311,7 @@ def resolve_platform_provider(conf):
 	# provider actually linked; stored options keep 'auto' and resolve again.
 	if conf.options.PLATFORM_PROVIDER == 'auto':
 		vulkan = conf.options.RENDER_BACKEND == 'native-vulkan'
-		conf.options.PLATFORM_PROVIDER = 'sdl3' if vulkan or conf.env.APPLE else 'sdl2'
+		conf.options.PLATFORM_PROVIDER = 'sdl3' if vulkan or conf.env.APPLE or conf.env.DEST_OS == '3ds' else 'sdl2'
 	conf.msg('Window/input provider', conf.options.PLATFORM_PROVIDER)
 
 def define_platform(conf):
@@ -318,12 +325,21 @@ def define_platform(conf):
 	resolve_platform_provider(conf)
 	conf.env.SDL3 = conf.options.PLATFORM_PROVIDER == 'sdl3'
 	conf.env.NATIVE_VULKAN = conf.options.RENDER_BACKEND == 'native-vulkan'
-	if conf.env.SDL3 or conf.env.NATIVE_VULKAN:
+	conf.env.PICA = conf.options.RENDER_BACKEND == 'pica'
+	if conf.env.DEST_OS == '3ds':
+		if conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
+			conf.fatal('The 3DS target builds only the client')
+		if not conf.env.SDL3:
+			conf.fatal('The 3DS client requires --platform-provider=sdl3')
+		conf.options.SDL = 1
+		conf.options.GL = 0
+		conf.define('USE_SDL3', 1)
+	elif conf.env.SDL3 or conf.env.NATIVE_VULKAN:
 		if conf.env.DEST_OS not in ['linux', 'android', 'darwin', 'ios'] or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
 			conf.fatal('The SDL3/Vulkan profiles currently target the Linux, Android and Apple clients')
 	if conf.env.APPLE and not (conf.env.NATIVE_VULKAN and conf.env.SDL3):
 		conf.fatal('The Apple clients require --platform-provider=sdl3 --render-backend=native-vulkan')
-	if conf.env.SDL3 or conf.env.NATIVE_VULKAN:
+	if conf.env.DEST_OS != '3ds' and (conf.env.SDL3 or conf.env.NATIVE_VULKAN):
 		if not (conf.env.SDL3 and conf.env.NATIVE_VULKAN):
 			conf.fatal('SDL3 and the native Vulkan backend require each other')
 		conf.options.SDL = 1
@@ -435,6 +451,20 @@ def define_platform(conf):
 			# tvOS: PLATFORM_IOS code that assumes a phone or tablet (touch,
 			# Core Motion, Documents) checks this too.
 			conf.env.append_unique('DEFINES', ['PLATFORM_TVOS=1'])
+	elif conf.env.DEST_OS == '3ds':
+		# Nintendo 3DS (devkitARM, newlib + libctru): a POSIX-like target with
+		# no dynamic loader, statically composed.
+		conf.env.append_unique('DEFINES', [
+			'LINUX=1', '_LINUX=1', 'POSIX=1', '_POSIX=1', 'PLATFORM_POSIX=1', 'PLATFORM_3DS=1', '_GNU_SOURCE',
+			'GNUC',
+			'NO_HOOK_MALLOC',
+			'_DLL_EXT=.so'
+		])
+		compat = os.path.abspath('platform/n3ds/compat/include')
+		conf.env.append_unique('INCLUDES', [compat])
+		for flags in ('CFLAGS', 'CXXFLAGS'):
+			conf.env.append_unique(flags, ['-I' + compat, '-include', os.path.join(compat, 'n3ds_compat.h'),
+				'-Wno-error=array-bounds'])
 	elif conf.env.DEST_OS in ['freebsd', 'openbsd', 'netbsd', 'dragonflybsd']: # Tested only in freebsd
 		conf.env.append_unique('DEFINES', [
 			'POSIX=1', '_POSIX=1', 'PLATFORM_POSIX=1',
@@ -489,7 +519,7 @@ def options(opt):
 		dest='PLATFORM_PROVIDER',
 		help='linked window/input provider; auto selects sdl3 for Vulkan and iOS clients, '
 			'sdl2 for legacy-renderer products [default: %default]')
-	grp.add_option('--render-backend', choices=['auto', 'legacy', 'native-vulkan'], default='auto',
+	grp.add_option('--render-backend', choices=['auto', 'legacy', 'native-vulkan', 'pica'], default='auto',
 		dest='RENDER_BACKEND',
 		help='linked renderer; clients render through native-vulkan, server, test and tool '
 			'products link none (legacy) [default: %default]')
@@ -652,6 +682,17 @@ def check_deps(conf):
 			conf.check(lib='libpng', uselib_store='PNG', define_name='HAVE_PNG')
 		return
 
+	if conf.env.DEST_OS == '3ds':
+		# build-3ds.sh's PKG_CONFIG_LIBDIR names the cross-built SDL3 prefix
+		# and devkitPro's 3ds portlibs. No fontconfig, OpenAL or curl.
+		conf.check_cfg(package='sdl3', uselib_store='SDL2', args=['--cflags', '--libs', '--static'])
+		conf.check_cfg(package='sdl3', uselib_store='SDL3', args=['--cflags', '--libs', '--static'])
+		conf.env.INCLUDES_SDL2 += [os.path.abspath('platform/sdl3/legacy_include')]
+		conf.check_cfg(package='freetype2', uselib_store='FT2', args=['--cflags', '--libs', '--static'])
+		conf.check_cfg(package='libjpeg', uselib_store='JPEG', args=['--cflags', '--libs'])
+		conf.check_cfg(package='libpng', uselib_store='PNG', args=['--cflags', '--libs', '--static'])
+		conf.check_cc(lib='z', uselib_store='ZLIB')
+		return
 	if conf.env.APPLE:
 		# As on Android: PKG_CONFIG_LIBDIR names only build-apple-app.sh's
 		# cross-built prefix. No fontconfig (fonts ship with the content) and
@@ -1088,7 +1129,7 @@ def configure(conf):
 		conf.add_subproject(projects['dedicated'])
 	else:
 		# Desktop conformance harnesses; the Android product packages only runtime modules.
-		if conf.env.SDL3 and not conf.env.ANDROID_SDL3:
+		if conf.env.SDL3 and not conf.env.ANDROID_SDL3 and conf.env.DEST_OS != '3ds':
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest']
 			# Loader fixtures are shared libraries by definition.
 			if not conf.env.STATIC_COMPOSITION:
@@ -1097,6 +1138,8 @@ def configure(conf):
 			# A launchable desktop tool module, and the server browser, which
 			# only a desktop platform menu loads; neither is in the product.
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
+		if conf.env.PICA:
+			projects['game'] += ['materialsystem/shaderapipica']
 		if conf.env.NATIVE_VULKAN:
 			projects['game'] += ['materialsystem/shaderapivulkan']
 			if not conf.env.ANDROID_SDL3:
@@ -1104,7 +1147,7 @@ def configure(conf):
 			# Its KTX2 suites are gated inside; the VTF 7.6 suite needs no KTX.
 			if not conf.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/texturecontainertest']
-		if not conf.env.ANDROID_SDL3:
+		if not conf.env.ANDROID_SDL3 and conf.env.DEST_OS != '3ds':
 			projects['game'] += ['unittests/physicstest']
 		if conf.env.VIDEO_FFMPEG:
 			projects['game'] += ['video/video_bink']
@@ -1226,7 +1269,7 @@ def build(bld):
 		bld.add_subproject(projects['dedicated'])
 	else:
 		# Desktop conformance harnesses; the Android product packages only runtime modules.
-		if bld.env.SDL3 and not bld.env.ANDROID_SDL3:
+		if bld.env.SDL3 and not bld.env.ANDROID_SDL3 and bld.env.DEST_OS != '3ds':
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest']
 			# Loader fixtures are shared libraries by definition.
 			if not bld.env.STATIC_COMPOSITION:
@@ -1235,6 +1278,8 @@ def build(bld):
 			# A launchable desktop tool module, and the server browser, which
 			# only a desktop platform menu loads; neither is in the product.
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
+		if bld.env.PICA:
+			projects['game'] += ['materialsystem/shaderapipica']
 		if bld.env.NATIVE_VULKAN:
 			projects['game'] += ['materialsystem/shaderapivulkan']
 			if not bld.env.ANDROID_SDL3:
@@ -1242,7 +1287,7 @@ def build(bld):
 			# Its KTX2 suites are gated inside; the VTF 7.6 suite needs no KTX.
 			if not bld.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/texturecontainertest']
-		if not bld.env.ANDROID_SDL3:
+		if not bld.env.ANDROID_SDL3 and bld.env.DEST_OS != '3ds':
 			projects['game'] += ['unittests/physicstest']
 		if bld.env.VIDEO_FFMPEG:
 			projects['game'] += ['video/video_bink']

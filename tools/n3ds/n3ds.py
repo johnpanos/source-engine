@@ -13,6 +13,11 @@
                                         engine on out-of-memory)
   n3ds.py census <heap.bin>             heap census (heap_census.py)
   n3ds.py log [-n N] [pattern]          last console lines without the noise
+  n3ds.py speed [PERCENT]               emulation speed of the running emulator:
+                                        100 (default) is normal, 0 unlimited;
+                                        for this session only (your saved
+                                        Azahar setting is untouched). A new
+                                        run takes `run --speed PERCENT`.
   n3ds.py ns                            where this namespace's files live
   n3ds.py stop                          stop this namespace's emulator only
 
@@ -131,6 +136,11 @@ def main():
         return subprocess.run([sys.executable, str(HERE / "heap_census.py")] + argv, cwd=ROOT).returncode
     if command == "log":
         return log(argv)
+    if command == "speed":
+        percent = float(argv[0]) if argv else 100.0
+        reply = harness.Session(connect_within=2.0).request("speed %g" % percent)
+        print("speed %g%%: %s" % (percent, reply))
+        return 0 if reply.get("ok") else 1
     print("unknown command %s\n%s" % (command, __doc__))
     return 2
 

@@ -210,8 +210,15 @@ static void WaitForDebuggerConnect( int argc, char *argv[], int time )
 extern "C" int LauncherMain( int argc, char **argv );
 #endif
 
+#if defined( PLATFORM_3DS )
+extern "C" void N3ds_PrepareLaunch( int *argc, char ***argv ); // n3ds_main.cpp
+#endif
+
 int main( int argc, char *argv[] )
 {
+#if defined( PLATFORM_3DS )
+	N3ds_PrepareLaunch( &argc, &argv );
+#endif
 	BootstrapModuleLoadTelemetry_Init( argc, argv );
 #if defined( SOURCE_STATIC_COMPOSITION )
 	if ( !StaticComposition_BindGame() )
