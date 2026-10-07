@@ -34,8 +34,8 @@ import pbrt_blender  # noqa: E402
 # (light_shadow_masks.area_visibility): Cycles bakes a texel at one point, so
 # without it a hard edge is all or nothing per texel (stair-steps). SAMPLES
 # per sub-texel keeps 64 per texel.
-SUPERSAMPLE = 4
-SAMPLES = 4
+SUPERSAMPLE = 3
+SAMPLES = 7
 BAKE_TILE = 1024
 
 
