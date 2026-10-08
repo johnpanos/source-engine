@@ -31,15 +31,24 @@
 
 // Tier 0's stack capture (R103): the provider's frames start at this function,
 // as glibc's backtrace() did; the skip count was never applied here. Platforms
-// other than glibc used to return no frames at all.
+// other than glibc used to return no frames at all. The empty asm consumes the
+// result, so the capture is never a sibling call that drops this frame.
 int GetCallStack( void **pReturnAddressesOut, int iArrayCount, int iSkipCount )
 {
-	return tier0_facade::StackCapture().CaptureStack( pReturnAddressesOut, iArrayCount );
+	int nFrames = tier0_facade::StackCapture().CaptureStack( pReturnAddressesOut, iArrayCount );
+#if defined( __GNUC__ )
+	__asm__ volatile( "" : "+r"( nFrames ) );
+#endif
+	return nFrames;
 }
 
 int GetCallStack_Fast( void **pReturnAddressesOut, int iArrayCount, int iSkipCount )
 {
-	return tier0_facade::StackCapture().CaptureStack( pReturnAddressesOut, iArrayCount );
+	int nFrames = tier0_facade::StackCapture().CaptureStack( pReturnAddressesOut, iArrayCount );
+#if defined( __GNUC__ )
+	__asm__ volatile( "" : "+r"( nFrames ) );
+#endif
+	return nFrames;
 }
 
 //where we'll find our PDB's for win32. Translation will not work until this has been called once (even if with NULL)

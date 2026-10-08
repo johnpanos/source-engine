@@ -30,12 +30,21 @@ def run(argv, env=None):
     return checks, failures, output
 
 
+# The compiler that builds the host and the behavior oracle for each platform
+# whose Tier 0 runs on this machine. Android has its own lane
+# (tools/quality/android_tier0.py), which pushes the same programs to a device.
+HOST_CXX = {
+    "linux-x86_64": ["g++"],
+    "linux-i386": ["g++", "-m32"],
+}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=["check"])
     parser.add_argument("--tier0", required=True, help="directory holding the built libtier0.so")
-    parser.add_argument("--platform", default="linux-x86_64")
+    parser.add_argument("--platform", default="linux-x86_64", choices=sorted(HOST_CXX))
     args = parser.parse_args()
     tier0_dir = os.path.abspath(args.tier0)
     lib = os.path.join(tier0_dir, "libtier0.so")
@@ -48,7 +57,7 @@ def main():
                                            "selftest", "--lib", lib, "--platform", args.platform])))
     with tempfile.TemporaryDirectory() as scratch:
         host = os.path.join(scratch, "modhost")
-        build = subprocess.run(["g++", "-std=c++20", "-I", os.path.join(ROOT, "public"), "-I", ROOT,
+        build = subprocess.run(HOST_CXX[args.platform] + ["-std=c++20", "-I", os.path.join(ROOT, "public"), "-I", ROOT,
                                 os.path.join(FIXTURE, "host.cpp"),
                                 os.path.join(ROOT, "platform/posix/dynamic_library_provider.cpp"),
                                 "-ldl", "-o", host], capture_output=True, text=True)
@@ -59,7 +68,7 @@ def main():
             parts.append(("mod-fixture", run([host, lib, os.path.join(FIXTURE, args.platform,
                                                                       "libmod_fixture.so")], env)))
         oracle = os.path.join(scratch, "behavior_oracle")
-        build = subprocess.run(["g++", "-std=c++20", "-I", os.path.join(ROOT, "public"), "-I", ROOT,
+        build = subprocess.run(HOST_CXX[args.platform] + ["-std=c++20", "-I", os.path.join(ROOT, "public"), "-I", ROOT,
                                 os.path.join(FIXTURE, "behavior_oracle.cpp"),
                                 os.path.join(ROOT, "platform/posix/dynamic_library_provider.cpp"),
                                 "-ldl", "-o", oracle], capture_output=True, text=True)
