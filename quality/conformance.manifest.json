@@ -16021,6 +16021,44 @@
       "expect": "pass"
     },
     {
+      "id": "render.output.encoded-copy",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "public/render/pass/output/encoded_copy.h",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "render.pass.output's encoded copy (RFC 0016, R91 cutover part f: the desktop core shader API's presentation) on render.device.vulkan with real pixels: a frame whose texels already hold the output encoding (RGBA8) drawn into a BGRA8 target equals the source's red, green and blue at every texel with alpha 1, the same into an RGBA8 target equals the source, both textures return to their home usages, an invalid request records nothing, and a seeded program that swaps red and blue is caught; the Khronos validation layer reports no message.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
+        "render/device/port.cpp",
+        "render/device/encoder.cpp",
+        "render/device/validation.cpp",
+        "render/device/vulkan/device.cpp",
+        "render/device/vulkan/fsr_features.cpp",
+        "render/device/vulkan/encoder.cpp",
+        "render/device/vulkan/host_device.cpp",
+        "render/device/vulkan/instance.cpp",
+        "render/device/vulkan/memory.cpp",
+        "render/device/vulkan/pipelines.cpp",
+        "render/device/vulkan/resources.cpp",
+        "render/device/vulkan/transitions.cpp",
+        "render/device/vulkan/upload_ring.cpp",
+        "render/pass/output/encoded_copy.cpp",
+        "unittests/rendertest/core/pass/output/test_encoded_copy_vulkan.cpp"
+      ],
+      "min_checks": 9,
+      "extra_flags": [
+        "-O2",
+        "-pthread",
+        "-isystemdependencies/vulkan-memory-allocator/include"
+      ],
+      "timeout_seconds": 300,
+      "expect": "pass"
+    },
+    {
       "id": "render.output",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

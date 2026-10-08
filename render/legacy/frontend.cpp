@@ -168,7 +168,7 @@ public:
 		}
 		if ( !m_DepthAlpha )
 			return false;
-		m_DepthAlpha->Collect( copy.submitted );
+		m_DepthAlpha->Collect( copy.submitted, copy.recording );
 		return m_DepthAlpha->Record( encoder, copy );
 	}
 

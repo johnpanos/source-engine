@@ -236,7 +236,34 @@ int main()
 		const int farAlpha = ReferenceAlpha( kFarDepth );
 		checks.That( std::abs( nearAlpha - farAlpha ) > 4, "A3.the-two-depths-differ" );
 		std::printf( "depth alpha: near %d far %d of 255\n", nearAlpha, farAlpha );
-		pass->Collect( frame.token );
+		pass->Collect( frame.token, 1 );
+
+		// R2: two copies recorded into one open recording, with the frontend's
+		// Collect between them (as RecordDepthAlpha does before each copy),
+		// submit; the control collects as if the recording had been submitted,
+		// which frees the first copy's group and gets the submission refused.
+		const auto twoCopies = [&]( std::uint64_t collectAs )
+		{
+			auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+			if ( !encoder )
+				return false;
+			encoder.Value().TransitionTexture(
+			    color.Value(), ResourceUsage::kCopySource, ResourceUsage::kCopyDestination );
+			legacy::DepthAlphaCopy copy = Request( *device, color.Value(), depth.Value() );
+			copy.submitted = frame.token;
+			copy.recording = 7;
+			bool recorded = pass->Record( encoder.Value(), copy );
+			pass->Collect( frame.token, collectAs );
+			recorded = pass->Record( encoder.Value(), copy ) && recorded;
+			encoder.Value().TransitionTexture(
+			    color.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+			auto submitted = device->Submit( QueueKind::kGraphics, { &encoder.Value(), 1 }, {} );
+			(void)device->WaitIdle();
+			pass->Collect( submitted ? submitted.Value() : frame.token, 8 );
+			return recorded && submitted.HasValue();
+		};
+		checks.That( twoCopies( 7 ), "R2.two-copies-in-one-recording-submit" );
+		checks.That( !twoCopies( 6 ), "R2.control-releasing-the-open-recordings-group-is-refused" );
 
 		// S1: a seeded program that ignores the range is caught by A1.
 		auto seeded = legacy::DepthAlphaPass::CreateWithFragment(
@@ -247,7 +274,7 @@ int main()
 			    readback.Value(), readbackDesc.size );
 			checks.That( bad.recorded && bad.read && !bad.alphaInside,
 			    "S1.a-pass-that-ignores-the-range-fails-A1" );
-			seeded->Collect( bad.token );
+			seeded->Collect( bad.token, 1 );
 			seeded.reset();
 		}
 		pass.reset();

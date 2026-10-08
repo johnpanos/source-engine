@@ -57,8 +57,8 @@ std::unique_ptr<DepthAlphaPass> DepthAlphaPass::CreateWithFragment(
 
 DepthAlphaPass::~DepthAlphaPass()
 {
-	for ( BindGroupId group : m_Pending )
-		(void)m_Device.Release( group, m_LastToken );
+	for ( const PendingGroup &pending : m_Pending )
+		(void)m_Device.Release( pending.group, m_LastToken );
 	for ( const Pipeline &p : m_Pipelines )
 		(void)m_Device.Release( p.pipeline, m_LastToken );
 	if ( m_Sampler.IsValid() )
@@ -111,7 +111,7 @@ bool DepthAlphaPass::Record( CommandEncoder &encoder, const DepthAlphaCopy &copy
 	auto group = m_Device.CreateBindGroup( { m_Layout, entries } );
 	if ( !group )
 		return false;
-	m_Pending.push_back( group.Value() );
+	m_Pending.push_back( { group.Value(), copy.recording } );
 	Constants constants = {};
 	for ( int i = 0; i < 4; ++i )
 		constants.projection[i] = copy.projection[i];
@@ -144,11 +144,19 @@ bool DepthAlphaPass::Record( CommandEncoder &encoder, const DepthAlphaCopy &copy
 	return true;
 }
 
-void DepthAlphaPass::Collect( CompletionToken token )
+void DepthAlphaPass::Collect( CompletionToken token, std::uint64_t recording )
 {
-	for ( BindGroupId group : m_Pending )
-		(void)m_Device.Release( group, token );
-	m_Pending.clear();
+	// Groups the open recording binds are in its unsubmitted encoder: a release
+	// behind the last submission would free them before that encoder submits.
+	std::size_t kept = 0;
+	for ( const PendingGroup &pending : m_Pending )
+	{
+		if ( pending.recording == recording )
+			m_Pending[kept++] = pending;
+		else
+			(void)m_Device.Release( pending.group, token );
+	}
+	m_Pending.resize( kept );
 	m_LastToken = token;
 }
 

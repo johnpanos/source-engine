@@ -13503,3 +13503,62 @@ Plan (agent decision, recorded so the slices stay bounded):
 - Order: families by material count in the corpus (unlit, lightmapped,
   vertex-lit and skin, decals, refract and water, then the post and engine
   shaders), each slice deleting its stdshaders sources when its dump matches.
+
+### R91: the fixed-state provider table, the depth-alpha blur, and the desktop presenter plan (2026-10-08)
+
+**Fixed-state table (stdshaders).** `materialsystem/stdshaders/fixed_state_shaders.cpp`
+serves 34 shaders as rows (`bb3ab7191` to `41fa124d9`, `74eb3f8d9`): typed
+parameters and base-parameter overrides, init flags and typed defaults,
+texture loads (sRGB, cube, bump, the OSX and sky format cases), and an
+ordered list of snapshot steps, some conditional on a material flag or a row
+parameter. Each slice was judged by `mat_dump_shader_table` (117 shaders,
+byte-identical to the dump before the table), the whole-corpus material
+compare (`material_corpus_dump.py`, 0 missing and 0 structural differences
+on Portal 6,504 and Portal 2 3,846 materials; only animated values differ)
+and the 19-view census (0 legacy draws per frame, no material field or set
+difference). The census caught two defects before commit: an unused load
+slot loaded `$FLAGS`, and Sample4x4's own `$BASETEXTURE` shadows the base one.
+What remains in stdshaders carries per-family rules (cloak passes, stage
+parameters, multi-pass eyes, the vertex-lit helper shared with unlit and
+skin) and is the provider's next design step, not more rows.
+
+**Depth-alpha blur (part c) found and fixed (`17bd3f335`).** Nothing read the
+copies' alpha: `RecordDepthAlpha` released every pending bind group behind
+the last (completed) submission before each copy, so a second copy in one
+recording freed the first copy's group while it was still bound in the open
+encoder. The device refused that submission (`invalid state` at the group's
+bind), and recordings lost during load took their one-time work with them,
+which showed as a brighter, blurred frame. Bisected on `portal-webgpu-core`
+(testchmb_a_01): the draw, depth transitions, rendering scope, viewport,
+pipeline and constants were innocent; binding the group was the trigger, and
+the four submission refusals appeared only with depth alpha on. Pending
+groups now carry the frontend's recording serial (`DepthAlphaCopy::recording`)
+and `Collect` keeps the open recording's. `render.legacy.depth-alpha` gains
+R2 with a control (16/0); the game frame with depth alpha is sharp (2.382,
+was 0.423) and no submission is refused.
+
+**Desktop presenter (part f): plan, not started.** source-engine-14's seam
+(`PicaShaderBackend_BindPresenter`) has one consumer, the browser canvas.
+Clients render only through native Vulkan, so the desktop presenter shows the
+core shader API's colour target from the core's own `"vulkan"` device.
+Today that device is standalone (no surface), it is created by
+`RenderCore_Create` before the engine opens its window, and the SDL3–Vulkan
+bridge presents only a `render.backend.v1` provider's devices (the legacy
+host's, or `render_lab`'s). The slice:
+
+1. The core's Vulkan device is surface-capable: the composition creates it
+   through the host device factory with SDL3's instance extensions (the
+   adapter ranked first without a surface, as `DescribeHostAdapter` already
+   ranks it), so no second device appears when the window does.
+2. A pair-specific presentation (`render/bridge/sdl3-vulkan`, the only place
+   that sees SDL and Vulkan handles together) over that device: surface and
+   swapchain from the window, each swapchain image imported as a port texture
+   (`ImportImage`, as `render_lab` does), resize and loss through
+   `render.presentation.v1`'s statuses.
+3. The launcher binds a presenter that acquires, blits the core shader API's
+   colour target into the imported image through a core pass (`render.pass.output`),
+   and presents; unbinding precedes the presentation's destruction.
+4. Evidence: the shared presentation suite on the new pair in an isolated
+   compositor (X11 and Wayland), a `portal` boot on the core shader API in a
+   private mutter session with a frame matched against the headless capture,
+   resize-stress, and validation silent.
