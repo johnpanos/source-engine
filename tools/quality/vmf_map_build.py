@@ -42,6 +42,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
@@ -291,10 +294,11 @@ def finish(out, record):
     return record
 
 
-def boot(record, out, runtime, renderer="native-vulkan", timeout=240):
-    """Boot the installed product headless on the built map (portal_boot.py)."""
+def boot(record, out, profile="portal", flavor="dev", renderer="native-vulkan", timeout=240):
+    """Boot a kiln profile headless on the built map (portal_boot.py --profile)."""
     boot_out = out / "boot"
-    command = [sys.executable, str(HERE / "portal_boot.py"), "--runtime", str(runtime),
+    command = [sys.executable, str(HERE / "portal_boot.py"), "--profile", profile,
+               "--flavor", flavor,
                "--content-root", record["content_root"], "--map", record["map"],
                "--renderer", renderer, "--headless", "--out", str(boot_out),
                "--timeout", str(timeout)]
@@ -316,8 +320,9 @@ def main():
     b.add_argument("--name", help="map name (default: the VMF's file name)")
     b.add_argument("--quality", choices=("fast", "full"), default="fast")
     b.add_argument("--toolchain", type=Path, default=TOOLCHAIN)
-    b.add_argument("--runtime", type=Path, default=ROOT / "run/runtime",
-                   help="staged runtime the map's materials come from")
+    b.add_argument("--runtime", type=Path,
+                   help="runtime the map's materials come from (default: the --boot-profile's "
+                        "kiln package)")
     b.add_argument("--publish", action="store_true", help="publish to the playable map store")
     b.add_argument("--lighting", metavar="PROFILE",
                    help="light the compiled map with the lighting back end (map_lighting.py) "
@@ -328,11 +333,14 @@ def main():
     b.add_argument("--install-game-dir", type=Path,
                    help="also copy the map into <dir>/maps (a staged game directory)")
     b.add_argument("--boot", action="store_true", help="boot the map headless (portal_boot.py)")
-    b.add_argument("--boot-runtime", type=Path, default=ROOT / "run/runtime-native")
+    b.add_argument("--boot-profile", default="portal", help="kiln profile --boot runs")
+    b.add_argument("--boot-flavor", default="dev", help="its build flavor")
     args = parser.parse_args()
 
     tools = Path(json.loads(args.toolchain.read_text())["compile_tools"])
     out = args.out.resolve()
+    if args.runtime is None:
+        args.runtime = sepipe_loader.packaged_runtime(args.boot_profile, args.boot_flavor)
     record = build(args.vmf, out, tools, args.runtime.resolve(), args.quality, args.name)
     print("vmf_map_build: %s %s (%s)" % (record["map"], record["status"], out / "build.json"))
     if record["status"] != "pass":
@@ -349,7 +357,7 @@ def main():
     if args.install_game_dir:
         print("installed " + str(install(record, args.install_game_dir.resolve())))
     if args.boot:
-        result = boot(record, out, args.boot_runtime.resolve())
+        result = boot(record, out, args.boot_profile, args.boot_flavor)
         record["boot"] = result
         finish(out, record)
         print("vmf_map_build: boot %s %s" % (result["status"], "; ".join(result["failures"])))

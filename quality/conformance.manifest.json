@@ -105,7 +105,7 @@
         "{python}",
         "tools/quality/hammer_loop.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--out",
         "{out}"
       ],
@@ -113,7 +113,7 @@
       "min_checks": 14,
       "timeout_seconds": 600,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
         "path:run/runtime-native",
         "vulkan-device:gpu"
@@ -140,7 +140,7 @@
         "{python}",
         "tools/quality/hammer_ui_test.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--out",
         "{out}"
       ],
@@ -148,7 +148,7 @@
       "min_checks": 58,
       "timeout_seconds": 900,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
         "path:run/runtime",
         "executable:mutter",
@@ -187,7 +187,7 @@
         "{python}",
         "tools/quality/hammer_ui_test.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--backend",
         "wayland",
         "--out",
@@ -197,7 +197,7 @@
       "min_checks": 48,
       "timeout_seconds": 900,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
         "path:run/runtime",
         "executable:mutter",
@@ -233,7 +233,7 @@
         "{python}",
         "tools/quality/hammer_ui_test.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--scale",
         "2",
         "--case",
@@ -245,7 +245,7 @@
       "min_checks": 8,
       "timeout_seconds": 900,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
         "path:run/runtime",
         "executable:mutter",
@@ -278,7 +278,7 @@
         "{python}",
         "tools/quality/hammer_ui_test.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--backend",
         "wayland",
         "--scale",
@@ -292,7 +292,7 @@
       "min_checks": 8,
       "timeout_seconds": 900,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
         "path:run/runtime",
         "executable:mutter",
@@ -466,7 +466,7 @@
         "{python}",
         "tools/quality/hammer_mcp_check.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--out",
         "{out}"
       ],
@@ -474,7 +474,7 @@
       "min_checks": 21,
       "timeout_seconds": 300,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
         "path:run/runtime"
       ],

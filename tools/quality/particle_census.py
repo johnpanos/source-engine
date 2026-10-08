@@ -30,6 +30,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 SCHEMA = "particle-census/v1"
 # Effects whose materials cover the cohort: sparks, fizzler edges, the portal
@@ -65,8 +68,8 @@ def run(args):
     commands += ["wait 90", "screenshot", "wait 6", "cl_render_debug_claims",
                  "r_core_world_stats"]
     boot = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
-            "--runtime", str(args.runtime.resolve()), "--out", str(out),
-            "--game", "portal2", "--renderer", "native-vulkan", "--require-vulkan",
+            *sepipe_loader.boot_arguments(args), "--out", str(out),
+            "--renderer", "native-vulkan", "--require-vulkan",
             "--headless", "--map", args.map, "--timeout", str(args.timeout),
             "--capture-wait", "60", "--no-mouse", "--physics", "vphysics_box3d"]
     for setting in ("sv_cheats 1", "mat_queue_mode 2", "r_core_world 1",
@@ -128,7 +131,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run")
-    r.add_argument("--runtime", type=Path, required=True)
+    sepipe_loader.add_arguments(r, "portal2")
     r.add_argument("--map", required=True)
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--setpos")
