@@ -13934,6 +13934,72 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.blob-shadow",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K8: the render-to-texture blob shadows RFC 0016 keeps for legacy renderables, on the decal-modulate point. ShadowBuild (shadowbuildtexture_ps2x) adds white with the caster's base alpha times the vertex and $alpha coverage (ONE, ONE): two casters of 0.6 x 0.5 leave 0.6 in alpha, and without a base texture the coverage is the vertex alpha. Shadow (shadow_vs20, shadow_ps2x) averages five bilinear samples of the page (the base and one texel along each diagonal), less the vertex alpha, and multiplies white lerped toward $color (gamma to linear) into the frame: judged against a CPU oracle inside a covered region, at an edge where the jittered samples straddle the page's edge (0.70 coverage, against 1.0 for a single sample), on uncovered pixels, and faded by vertex alpha. Shadow without its page is refused by name. No validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "blob-shadow",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 13,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/blob_shadow_suite.cpp",
+        "render/material/unlit_family.cpp",
+        "render/material/vmt_mapping.cpp",
+        "render/material/program_resolver.cpp",
+        "render/material/families/surface_program.glsl",
+        "render/pass/world/world_pass.cpp",
+        "render/lab/lab_support.cpp",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.blob-shadow.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "render.lab.blob-shadow's seeded program: the Shadow point reading one sample of the page instead of five must fail blob-shadow.edge-is-the-five-sample-mean.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "blob-shadow",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 2,
+      "timeout_seconds": 900,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/blob_shadow_suite.cpp",
+        "render/material/families/surface_program.glsl",
+        "render/material/families/surface.frag",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.view-state",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

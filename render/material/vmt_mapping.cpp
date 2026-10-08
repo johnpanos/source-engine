@@ -63,6 +63,16 @@ constexpr VmtShaderRow kShaders[] = {
         "Modulate: the base times $color multiplied into the destination (2x with $mod2x); "
         "the decal-modulate point (unlit_family.h ClaimModulate)" },
     { "modulate_dx9", "modulate", "Modulate's DirectX 9 implementation" },
+    { "shadow", "blob-shadow",
+        "Shadow (shadow.cpp, shadow_ps2x): a render-to-texture blob shadow decal, five "
+        "jittered samples of the shadow page multiplied into the frame, fogged to white; the "
+        "decal-modulate point (unlit_family.h ClaimBlobShadow)" },
+    { "shadow_dx9", "blob-shadow", "Shadow's DirectX 9 implementation" },
+    { "shadowbuild", "shadow-build",
+        "ShadowBuild (shadowbuild_dx9.cpp, shadowbuildtexture_ps2x): a caster's coverage "
+        "added into the shadow page; the decal-modulate point (unlit_family.h "
+        "ClaimShadowBuild)" },
+    { "shadowbuild_dx9", "shadow-build", "ShadowBuild's DirectX 9 implementation" },
     { "teeth", "teeth",
         "Teeth: the base under Source's model lighting darkened by $illumfactor x N.$forward, "
         "on VertexLitGeneric's mesh point (vertexlit_family.h ClaimTeeth)" },
@@ -109,9 +119,9 @@ constexpr std::string_view kLegacyReason =
 // Keys every legacy-derived family reads (BaseShader's standard parameters and
 // the material flags the draw state depends on); BuildKeyRows() gives each of
 // kLegacyDerivedFamilies a copy.
-constexpr std::string_view kLegacyDerivedFamilies[] = {
-    "lightmapped", "vertexlit", "unlit", "depth", "portal-mask", "cable", "decal-modulate",
-    "energy", "modulate", "teeth", "eyes" };
+constexpr std::string_view kLegacyDerivedFamilies[] = { "lightmapped", "vertexlit", "unlit",
+    "depth", "portal-mask", "cable", "decal-modulate", "energy", "modulate", "teeth", "eyes",
+    "blob-shadow", "shadow-build" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$one", "one", ValueKind::kFloat, "1" },
@@ -154,6 +164,9 @@ constexpr VmtKeyRow kCommonKeys[] = {
 
 constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "decal-modulate", "$decalscale", "decalscale", ValueKind::kFloat, "1" },
+    // ShadowBuild's caster material: the frontend binds its $basetexture,
+    // $frame and $basetexturetransform in this material's place.
+    { "shadow-build", "$translucent_material", "translucent_material", ValueKind::kMaterial, "" },
     // Teeth (teeth.cpp's parameters; the shader system leaves an undefined
     // float or vector at zero, and studiorender sets these per draw).
     { "teeth", "$illumfactor", "illumfactor", ValueKind::kFloat, "0" },

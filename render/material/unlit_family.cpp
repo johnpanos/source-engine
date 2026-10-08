@@ -368,6 +368,81 @@ UnlitClaim ClaimDecalModulate( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimBlobShadow( const ParameterBlock &block )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "blob-shadow" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	// shadow.cpp reads its page, frame, transform and $color; the blend and
+	// fog are fixed, and $decal only selects the decal depth bias.
+	constexpr std::string_view keys[] = { "basetexture", "frame", "basetexturetransform", "color",
+	    "decal", "nofog", "model", "nocull" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the blob shadow point does not draw " + *unread;
+		return claim;
+	}
+	if ( !detail::TextureBound( block, "basetexture" ) )
+	{
+		claim.reason = "Shadow needs its shadow page ($basetexture)";
+		return claim;
+	}
+	claim.blend = device::BlendMode::kModulate2x;
+	claim.alphaWrite = false;
+	claim.decalModulate = true;
+	claim.baseSrgb = true; // EnableSRGBRead: the page's alpha is unaffected
+	SurfaceConstants &constants = claim.constants;
+	// SetPixelShaderConstantGammaToLinear( 1, COLOR ).
+	for ( int c = 0; c < 3; ++c )
+		constants.tint[c] = std::pow( std::max( ReadParameter( block, "color", c ), 0.0f ), 2.2f );
+	constants.tint[3] = 1.0f;
+	for ( std::size_t i = 0; i < 8; ++i )
+		constants.baseTransform[i] = ReadParameter( block, "basetexturetransform", i );
+	// baseDecode.y 2: the blob shadow; .z the half factor of the 2x blend.
+	constants.baseDecode[1] = 2.0f;
+	constants.baseDecode[2] = 0.5f;
+	constants.surfaceControls[0] = ReadFlag( block, "nofog" ) ? 1.0f : 0.0f;
+	claim.claimed = true;
+	return claim;
+}
+
+UnlitClaim ClaimShadowBuild( const ParameterBlock &block )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "shadow-build" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	constexpr std::string_view keys[] = { "basetexture", "frame", "basetexturetransform",
+	    "translucent_material", "color", "alpha", "model", "nocull" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the shadow build point does not draw " + *unread;
+		return claim;
+	}
+	claim.blend = device::BlendMode::kAdditive;
+	claim.alphaWrite = true;
+	claim.decalModulate = true;
+	claim.ignoreDepth = true; // DepthFunc ALWAYS, no depth writes
+	SurfaceConstants &constants = claim.constants;
+	// SetModulationVertexShaderDynamicState: $alpha modulates the coverage.
+	constants.tint[0] = constants.tint[1] = constants.tint[2] = 1.0f;
+	constants.tint[3] = ReadParameter( block, "alpha" );
+	for ( std::size_t i = 0; i < 8; ++i )
+		constants.baseTransform[i] = ReadParameter( block, "basetexturetransform", i );
+	constants.baseDecode[1] = 3.0f; // the shadow build
+	constants.baseDecode[2] = 1.0f;
+	// surfaceControls.y: the caster's base texture is bound (else coverage 1,
+	// BindStandardTexture( TEXTURE_LIGHTMAP_FULLBRIGHT )).
+	constants.surfaceControls[1] = detail::TextureBound( block, "basetexture" ) ? 1.0f : 0.0f;
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimModulate( const ParameterBlock &block )
 {
 	UnlitClaim claim;

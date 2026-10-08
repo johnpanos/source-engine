@@ -13136,3 +13136,26 @@ portal's far view reads dark against legacy: to be compared next.
     distance alpha one (8 checks).
   - `fizzler-close` drops only the render-to-texture shadows
     (`engine/shadowbuild`, `decals/rendershadow`).
+- **Render-to-texture blob shadows** (RFC 0016 keeps them for legacy
+  renderables): `engine/shadowbuild` and `decals/rendershadow` were dropped
+  on every census view. Both now draw on the core's decal-modulate point, as
+  two modes chosen by `baseDecode.y`:
+  - ShadowBuild adds `(1, 1, 1, base alpha × vertex and $alpha coverage)`
+    (ONE, ONE, no depth) into `_rt_Shadows`. The frozen backend binds the
+    caster's `$translucent_material` base texture, frame and transform in the
+    material's place.
+  - Shadow averages five bilinear page samples, less the vertex alpha, and
+    multiplies white lerped toward `$color` into the frame, fogged to white.
+    It is drawn as half the factor under the 2x blend, which is exactly
+    ZERO, SRC_COLOR.
+  - Both use a new mesh kind, `kBlobShadow`. `_rt_Shadows` is the Shadow
+    family's one allowed view render target.
+  - `render.lab.blob-shadow` 13/0: the oracle follows the world pass's D3D9
+    pixel centers; the edge pixel's coverage is 0.70, against 1.0 for a
+    single sample. The one-sample seeded program is caught (sensitivity 2/0).
+  - Census: `fizzler-close` drops nothing.
+  - Not verified on screen: in the scenes tried (a spawned cube in
+    `sp_a1_intro2`, `fizzler-close`), `r_shadows 1` against `0` changes no
+    pixel beyond animation noise, on the core and on the legacy renderer
+    alike. A scene where a blob shadow is visible is still needed for a
+    matched game capture.

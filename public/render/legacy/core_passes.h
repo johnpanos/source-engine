@@ -263,7 +263,8 @@ enum class CoreMeshKind : std::uint8_t
 	kCable,              // gameplay-expanded rope ribbons with captured vertex illumination
 	kScreenEffect,       // the engine bloom chain (render.pass.post consumes it by name)
 	kParticle, // SpriteCard particle cards (render.sprite-card.v1), independent of other dynamic draws
-	kEnergy    // SolidEnergy fields, bridges and beams (the core's energy point)
+	kEnergy,    // SolidEnergy fields, bridges and beams (the core's energy point)
+	kBlobShadow // render-to-texture shadows: ShadowBuild casters and Shadow decals
 };
 struct CoreMeshDraw
 {

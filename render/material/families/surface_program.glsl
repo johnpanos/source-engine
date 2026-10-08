@@ -2392,6 +2392,42 @@ void main()
 	// Points without image specular leave the SSR targets empty (weight 0:
 	// render.pass.ssr leaves their pixels unchanged).
 	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );
+	if ( kDecalModulate && material.baseDecode.y > 2.5 )
+	{
+		// ShadowBuild (shadowbuildtexture_ps2x): white with the caster's base
+		// alpha times the vertex and modulation alpha, added into the page.
+		const float coverage = ( material.surfaceControls.y > 0.5
+		                             ? texture( sampler2D( baseTexture, baseSampler ), baseUv ).a
+		                             : 1.0 ) *
+		                       color.a * material.tint.a;
+		outColor = vec4( 1.0, 1.0, 1.0, coverage );
+		return;
+	}
+	if ( kDecalModulate && material.baseDecode.y > 1.5 )
+	{
+		// Shadow (shadow_vs20, shadow_ps2x): the mean alpha of five samples of
+		// the shadow page, the base and one texel along each diagonal.
+		const vec2 jitter = 1.0 / vec2( textureSize( sampler2D( baseTexture, baseSampler ), 0 ) );
+		const vec2 other = vec2( jitter.x, -jitter.y );
+#if defined( SEEDED_BLOB_SHADOW_ONE_SAMPLE )
+		float coverage = texture( sampler2D( baseTexture, baseSampler ), baseUv ).a;
+#else
+		float coverage = ( texture( sampler2D( baseTexture, baseSampler ), baseUv ).a +
+		                     texture( sampler2D( baseTexture, baseSampler ), baseUv + jitter ).a +
+		                     texture( sampler2D( baseTexture, baseSampler ), baseUv - jitter ).a +
+		                     texture( sampler2D( baseTexture, baseSampler ), baseUv + other ).a +
+		                     texture( sampler2D( baseTexture, baseSampler ), baseUv - other ).a ) *
+		                 0.2;
+#endif
+		// The vertex alpha fades the shadow out.
+		coverage = clamp( coverage - color.a, 0.0, 1.0 );
+		vec3 factor = vec3( 1.0 ) + coverage * ( material.tint.rgb - vec3( 1.0 ) );
+		// Fog toward white: the blend multiplies already fogged pixels.
+		if ( frame.fogColor.w > -0.5 && material.surfaceControls.x == 0.0 )
+			factor = vec3( 1.0 ) - ( vec3( 1.0 ) - factor ) * pow( 1.0 - FogFactor(), 4.0 );
+		outColor = vec4( factor * material.baseDecode.z, 1.0 );
+		return;
+	}
 	if ( kDecalModulate )
 	{
 		vec4 factor = texture( sampler2D( baseTexture, baseSampler ), baseUv );

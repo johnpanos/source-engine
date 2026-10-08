@@ -4664,6 +4664,11 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 		         ( !V_stricmp( shader, "screenspace_general" ) ||
 		             !V_stricmp( shader, "screenspace_general_dx9" ) ) ) )
 			return CoreMeshKind::kScreenEffect;
+		// Frozen-path: core progress (RFC 0016 K8) - the render-to-texture blob
+		// shadows: casters into the page, decals from it.
+		if ( !V_stricmp( shader, "Shadow" ) || !V_stricmp( shader, "Shadow_DX9" ) ||
+		     !V_stricmp( shader, "ShadowBuild" ) || !V_stricmp( shader, "ShadowBuild_DX9" ) )
+			return CoreMeshKind::kBlobShadow;
 		// Frozen-path: core progress (RFC 0016 K8) - SolidEnergy to the core's
 		// energy point.
 		if ( !V_stricmp( shader, "SolidEnergy" ) || !V_stricmp( shader, "SolidEnergy_dx9" ) )
@@ -4978,6 +4983,7 @@ bool CEmptyMesh::EmitToCoreQueue()
 	// Values the capture made for this draw alone (the bloom tint); the
 	// material's own come from its captured variables, which outlive QueueMesh.
 	std::vector<std::string> values;
+	values.reserve( 4 ); // the variables below keep pointers into these strings
 	const CapturedMaterial &captured = CaptureMaterialVariables( g_pBoundMaterial );
 	variables.reserve( captured.variables.size() + 8 );
 	for ( const CapturedVariable &v : captured.variables )
@@ -5027,6 +5033,42 @@ bool CEmptyMesh::EmitToCoreQueue()
 		{
 			values.emplace_back( std::to_string( percentMax.GetFloat() / 100.0f ) );
 			variables.push_back( { "$motionblurmax", values.back().c_str(), nullptr, 0 } );
+		}
+	}
+	// Frozen-path: core progress (RFC 0016 K8) - ShadowBuild reads its
+	// caster's base texture through $translucent_material (shadowbuild_dx9.cpp
+	// DYNAMIC_STATE); the core's shadow build point takes it as its own.
+	if ( !V_stricmp( g_pBoundMaterial->GetShaderName(), "ShadowBuild" ) ||
+	     !V_stricmp( g_pBoundMaterial->GetShaderName(), "ShadowBuild_DX9" ) )
+	{
+		bool found = false;
+		IMaterialVar *translucent =
+		    g_pBoundMaterial->FindVar( "$translucent_material", &found, false );
+		IMaterial *caster = found && translucent->GetType() == MATERIAL_VAR_TYPE_MATERIAL
+		                        ? translucent->GetMaterialValue()
+		                        : nullptr;
+		IMaterialVar *base = caster ? caster->FindVar( "$basetexture", &found, false ) : nullptr;
+		if ( base && found && base->IsTexture() && base->GetTextureValue() )
+		{
+			ITexture *texture = base->GetTextureValue();
+			IMaterialVar *frame = caster->FindVar( "$frame", &found, false );
+			const int handle = static_cast<ITextureInternal *>( texture )->GetTextureHandle(
+			    found && frame ? frame->GetIntValue() : 0 );
+			values.emplace_back( texture->GetName() );
+			variables.push_back( { "$basetexture", values.back().c_str(), nullptr, handle } );
+			IMaterialVar *transform = caster->FindVar( "$basetexturetransform", &found, false );
+			if ( found && transform && transform->GetType() == MATERIAL_VAR_TYPE_MATRIX )
+			{
+				const VMatrix &m = transform->GetMatrixValue();
+				std::string text = "[";
+				for ( int row = 0; row < 4; ++row )
+					for ( int column = 0; column < 4; ++column )
+						text += std::to_string( m[row][column] ) +
+						        ( row == 3 && column == 3 ? "]" : " " );
+				values.emplace_back( std::move( text ) );
+				variables.push_back(
+				    { "$basetexturetransform", values.back().c_str(), nullptr, 0 } );
+			}
 		}
 	}
 	render::legacy::CoreMeshDraw draw;

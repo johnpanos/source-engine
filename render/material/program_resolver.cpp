@@ -306,6 +306,10 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 // keeps the material out.
 bool ViewRenderTarget( const MaterialDesc &material, const MaterialValue &value )
 {
+	// The client's render-to-texture shadow page (clientshadowmgr.cpp).
+	if ( material.family == "blob-shadow" && value.parameter == "basetexture" &&
+	     SameKey( value.text, "_rt_Shadows" ) )
+		return true;
 	return material.family == "water" &&
 	       ( ( value.parameter == "reflecttexture" &&
 	             SameKey( value.text, "_rt_WaterReflection" ) ) ||
@@ -546,12 +550,15 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 	}
 	if ( material.family == "unlit" || material.family == "cable" ||
 	     material.family == "decal-modulate" || material.family == "energy" ||
-	     material.family == "modulate" )
+	     material.family == "modulate" || material.family == "blob-shadow" ||
+	     material.family == "shadow-build" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
 		    : material.family == "energy"         ? ClaimEnergy( *block )
 		    : material.family == "modulate"       ? ClaimModulate( *block )
+		    : material.family == "blob-shadow"    ? ClaimBlobShadow( *block )
+		    : material.family == "shadow-build"   ? ClaimShadowBuild( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -684,6 +691,15 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 		return ClaimForMesh( AsVertexLit( material ), nativeReflectionProbes,
 		    sceneColorAvailable );
 	}
+	if ( material.family == "shadow-build" )
+	{
+		// A caster's coverage into the shadow page: the model vertex's
+		// position and base coordinate only.
+		const UnlitClaim claim = ClaimShadowBuild( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return claim.blend;
+	}
 	if ( material.family == "modulate" )
 	{
 		const UnlitClaim claim = ClaimModulate( *block );
@@ -788,12 +804,15 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	}
 	if ( material.family == "unlit" || material.family == "cable" ||
 	     material.family == "decal-modulate" || material.family == "energy" ||
-	     material.family == "modulate" )
+	     material.family == "modulate" || material.family == "blob-shadow" ||
+	     material.family == "shadow-build" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
 		    : material.family == "energy"         ? ClaimEnergy( *block )
 		    : material.family == "modulate"       ? ClaimModulate( *block )
+		    : material.family == "blob-shadow"    ? ClaimBlobShadow( *block )
+		    : material.family == "shadow-build"   ? ClaimShadowBuild( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )

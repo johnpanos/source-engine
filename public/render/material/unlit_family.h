@@ -104,6 +104,16 @@ sprite_card::Frame SpriteCardTerms( const ParameterBlock &block );
 // DecalModulate: undecoded multiplicative texture, alpha > 0, fog to neutral.
 // The caller supplies decal depth bias and captured culling; destination alpha stays intact.
 UnlitClaim ClaimDecalModulate( const ParameterBlock &block );
+// Shadow (shadow.cpp, shadow_ps2x): a render-to-texture blob shadow decal on
+// the decal-modulate point: the mean alpha of five samples of the shadow page
+// (the base and +-1 texel on each diagonal) less the vertex alpha, lerping
+// white toward $color (linear), fogged to white, multiplied into the frame
+// (ZERO, SRC_COLOR, drawn as the 2x blend of half the factor).
+UnlitClaim ClaimBlobShadow( const ParameterBlock &block );
+// ShadowBuild (shadowbuild_dx9.cpp, shadowbuildtexture_ps2x): white with the
+// caster's base alpha times its alpha, added (ONE, ONE) into the shadow page
+// without depth; without a base texture the coverage is 1.
+UnlitClaim ClaimShadowBuild( const ParameterBlock &block );
 // Modulate (modulate_dx9.cpp, modulate_ps2x): the decal-modulate point with
 // saturate( base x $color/$alpha x vertex color ), its color lerped from the
 // neutral 0.5 by its alpha, fog to the neutral grey. $mod2x blends

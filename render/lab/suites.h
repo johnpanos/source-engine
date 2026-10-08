@@ -118,6 +118,7 @@ int RunPanelSuite( int argc, char **argv );
 int RunUiSuite( int argc, char **argv );
 int RunLuminanceSuite( int argc, char **argv );
 int RunVisibilitySuite( int argc, char **argv );
+int RunBlobShadowSuite( int argc, char **argv );
 
 } // namespace render::lab
 
