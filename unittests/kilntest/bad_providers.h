@@ -68,6 +68,13 @@ enum class TransportFault
 std::unique_ptr<product::IDeployTransport> Transport(
     TransportFault fault, fixture::FakeDevice &device, platform::IToolProcessProvider &processes );
 
+enum class RunFault
+{
+	kReturnsBeforeExit,
+	kIgnoresCancel,
+};
+std::unique_ptr<product::IRunProvider> RunProvider( RunFault fault );
+
 enum class DisplayFault
 {
 	kLeaksUserDisplay,

@@ -265,7 +265,10 @@ public:
 		    request.arguments.end(), m_State.extraArguments.begin(), m_State.extraArguments.end() );
 		if ( m_State.display )
 		{
-			auto display = m_State.display->Open( inputs.Cancel() );
+			product::DisplayRequest displayRequest;
+			displayRequest.scratch = m_State.tree / "display-session";
+			displayRequest.cancel = inputs.Cancel();
+			auto display = m_State.display->Open( displayRequest );
 			if ( !display )
 				return foundation::MakeUnexpected( display.Error() );
 			request.environment = display.Value().environment;

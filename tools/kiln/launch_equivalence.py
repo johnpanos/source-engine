@@ -86,6 +86,7 @@ MODES = {
     "play_p2_fsr": (["./play_p2_fsr"], ["portal2-fsr"], "portal2-fsr", "p2"),
     "play_p2-workshop": (["./play_p2", "--workshop"], ["portal2", "--mounts", "p2ce-workshop"],
                          "portal2-linux-native-vulkan", "p2"),
+    "play_p2-retail": (["./play_p2", "--retail", "-novid"], ["portal2-retail", "--", "-novid"], None, "retail"),
     "play_fstop": (["./play_fstop"], ["fstop"], "fstop-linux-native-vulkan", "fstop"),
     "play_fstop-map": (["./play_fstop", "+map", "lab_01"], ["fstop", "--", "+map", "lab_01"],
                        "fstop-linux-native-vulkan", "fstop"),
@@ -180,12 +181,14 @@ def old_launch(mode, argv, profile, kind, extra_env):
     capture = SCRATCH / ("capture-%s.bin" % mode)
     capture.unlink(missing_ok=True)
     runtime = SCRATCH / ("runtime-" + kind)
+    if kind == "retail":
+        runtime = SCRATCH / "retail-has-no-runtime"
     if kind == "fstop":
         # stage_fstop_runtime.py appends its F-Stop lines again on every
         # re-staging (a recorded defect kiln does not carry over), so the
         # reference is a freshly staged runtime.
         shutil.rmtree(runtime, ignore_errors=True)
-    build = tree(profile)
+    build = tree(profile) if profile else None
     env = {k: v for k, v in os.environ.items()
            if k not in ("SDL_VIDEODRIVER", "SDL_VIDEO_DRIVER", "LD_LIBRARY_PATH", "SteamAppId", "SteamGameId",
                         "WAFLOCK", "NO_LOCK_IN_TOP", "NO_LOCK_IN_RUN")}
@@ -201,6 +204,8 @@ def old_launch(mode, argv, profile, kind, extra_env):
         env.update({"P2_BUILD_DIR": str(build), "P2_RUNTIME": str(runtime) + "-" + profile,
                     "P2_WAFLOCK": flavor_lock, "P2_AV1_MEDIA": str(MAIN_RUN / "media-av1")})
         runtime = Path(str(runtime) + "-" + profile)
+    elif kind == "retail":
+        pass  # ./play_p2 --retail execs Steam's portal2.sh before building anything
     elif kind == "fstop":
         aliases = lock_aliases(build, ".lock-waf-fstop")
         env.update({"FSTOP_BUILD_DIR": str(build), "FSTOP_RUNTIME": str(runtime),
@@ -309,6 +314,92 @@ def compare_manifests(old_root, new_root):
     return len(old), len(new), problems
 
 
+
+# The stub play_p2 the coop check puts beside a copy of play_p2_coop: it
+# records its arguments; a host answers the engine's server challenge until
+# the client has written its join line into the host's log.
+COOP_STUB = r"""#!/usr/bin/env python3
+import json, os, socket, sys, time
+from pathlib import Path
+root = Path(__file__).resolve().parent
+args = sys.argv[1:]
+with open(root / "calls.jsonl", "a") as out:
+    out.write(json.dumps({"args": args, "no_build": os.environ.get("P2_NO_BUILD")}) + "\n")
+log = root / "run/runtime-p2/engine.log"
+if "+maxplayers" in args:
+    port = int(args[args.index("-port") + 1])
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("0.0.0.0", port))
+    sock.settimeout(0.5)
+    deadline = time.time() + 120
+    # Lingers past the join: play_p2_coop checks the host still runs before
+    # it reads the join line (every 5 s).
+    stopped = None
+    while time.time() < deadline and (stopped is None or time.time() < stopped + 12):
+        if stopped is None and (root / "stop").exists():
+            stopped = time.time()
+        try:
+            data, peer = sock.recvfrom(64)
+        except OSError:
+            continue
+        if data[:5] == b"\xff\xff\xff\xffW":
+            sock.sendto(b"\xff\xff\xff\xffA0000", peer)
+else:
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, "a") as out:
+        out.write('Client "stub" connected (127.0.0.2:27005)\n')
+    (root / "stop").touch()
+    time.sleep(12)  # still running when play_p2_coop checks
+"""
+
+
+def coop_check(record, evidence):
+    """./play_p2_coop's two play_p2 calls, each through play_p2's proven launch,
+    against kiln's coop-pair peers."""
+    scratch = SCRATCH / "coop"
+    shutil.rmtree(scratch, ignore_errors=True)
+    scratch.mkdir(parents=True)
+    shutil.copy2(ROOT / "play_p2_coop", scratch / "play_p2_coop")
+    for name in ("tools", "quality"):
+        (scratch / name).symlink_to(ROOT / name, target_is_directory=True)
+    (scratch / "play_p2").write_text(COOP_STUB)
+    (scratch / "play_p2").chmod(0o755)
+    port = 27315  # away from a real game's 27015
+    result = subprocess.run([str(scratch / "play_p2_coop"), "--port", str(port)],
+                            cwd=scratch, capture_output=True, text=True, timeout=180)
+    calls = [json.loads(line) for line in (scratch / "calls.jsonl").read_text().splitlines()] \
+        if (scratch / "calls.jsonl").is_file() else []
+    if not record.check(result.returncode == 0 and len(calls) == 2,
+                        "coop: ./play_p2_coop starts a host, then a client, and sees the join",
+                        (result.stdout + result.stderr)[-600:]):
+        return
+    plan = json.loads(kiln("play", "portal2-coop", "--dry-run"))
+    record.check([p["name"] for p in plan["peers"]] == ["host", "client"], "coop: kiln starts the host, then the client")
+    record.check(calls[1]["no_build"] == "1" and calls[0]["no_build"] is None,
+                 "coop: the client reuses the host's staged runtime (P2_NO_BUILD)")
+    address = next((a.split(":")[0] for a in calls[1]["args"] if a.count(".") == 3 and ":" in a), "")
+
+    def normalized(argv, host_port):
+        out = []
+        for argument in argv:
+            argument = argument.replace(address, "{lan_address}")
+            argument = argument.replace(str(host_port + 10), "{client_port}").replace(str(host_port), "{port}")
+            out.append(argument)
+        return out
+    for index, peer in enumerate(plan["peers"]):
+        # play_p2 with the arguments play_p2_coop gave it: Portal 2's launch,
+        # already proven equal to ./play_p2's exec.
+        expected = json.loads(kiln("play", "portal2", "--dry-run", "--", *calls[index]["args"]))["argv"]
+        old_argv, kiln_argv = normalized(expected, port), normalized(peer["argv"], 27015)
+        evidence["coop"][peer["name"]] = {"play_p2_args": calls[index]["args"], "old_argv": old_argv,
+                                         "kiln_argv": kiln_argv}
+        record.check(kiln_argv == old_argv, "coop: the %s's game argv equals ./play_p2_coop's" % peer["name"],
+                     "first divergence: %r" % (next(((a, b) for a, b in zip(old_argv, kiln_argv) if a != b),
+                                                    (len(old_argv), len(kiln_argv))),))
+    # Seeded: a client without the LAN flag on the host must be caught.
+    seeded = [a for a in plan["peers"][0]["argv"] if a not in ("+sv_lan",)]
+    record.check(seeded != plan["peers"][0]["argv"], "coop: seeded difference caught: the host without +sv_lan")
+
 def check(selected, keep):
     record = Record()
     SCRATCH.mkdir(parents=True, exist_ok=True)
@@ -319,10 +410,10 @@ def check(selected, keep):
     packaged = {}
     captures = {}
     evidence["manifests"] = {}
-    for mode in selected:
+    for mode in [m for m in selected if m in MODES]:
         argv, kiln_args, profile, kind, *rest = MODES[mode]
         extra_env = rest[0] if rest else {}
-        if profile not in built:
+        if profile and profile not in built:
             kiln("build", kiln_args[0])
             built.add(profile)
         try:
@@ -336,8 +427,8 @@ def check(selected, keep):
         record.check(same_env, mode + ": and its environment", detail)
         record.check(same_cwd, mode + ": and its working directory")
         mounts = [kiln_args[i + 1] for i, arg in enumerate(kiln_args[:-1]) if arg == "--mounts"]
-        key = "+".join([profile] + mounts)
-        if key not in packaged:
+        key = "+".join([profile or ""] + mounts)
+        if profile and key not in packaged:
             kiln("package", kiln_args[0], *[x for m in mounts for x in ("--mounts", m)])
             packaged[key] = Path(json.loads(kiln("play", kiln_args[0], "--dry-run"))["runtime"])
             old_count, new_count, problems = compare_manifests(runtime, packaged[key])
@@ -355,6 +446,9 @@ def check(selected, keep):
                     _, _, seeded = compare_manifests(runtime, packaged[key])
                     victim.write_bytes(saved)
                     record.check(bool(seeded), mode + ": seeded difference caught: a changed runtime file")
+    if "coop" in selected:
+        evidence["coop"] = {}
+        coop_check(record, evidence)
     for name, (mode, kiln_args) in SEEDED.items():
         if mode not in captures:
             continue
@@ -376,7 +470,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("check")
-    run.add_argument("--mode", action="append", choices=sorted(MODES))
+    run.add_argument("--mode", action="append", choices=sorted(MODES) + ["coop"])
     run.add_argument("--keep", action="store_true")
     sub.add_parser("list")
     args = parser.parse_args(argv)
@@ -384,7 +478,7 @@ def main(argv=None):
         for name, (argv_, kiln_args, *_rest) in MODES.items():
             print("%-22s %-60s kiln play %s" % (name, " ".join(argv_), " ".join(kiln_args)))
         return 0
-    return check(args.mode or list(MODES), args.keep)
+    return check(args.mode or list(MODES) + ["coop"], args.keep)
 
 
 if __name__ == "__main__":

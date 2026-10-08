@@ -109,6 +109,13 @@ int main( int argc, char **argv )
 	for ( int i = 1; i < argc; ++i )
 	{
 		const std::string arg = argv[i];
+		if ( arg == "--" )
+		{
+			// Everything after `--` belongs to the game, verbatim.
+			for ( ; i < argc; ++i )
+				args.push_back( argv[i] );
+			break;
+		}
 		if ( arg == "--json" )
 			json = true;
 		else if ( arg == "--root" && i + 1 < argc )
@@ -286,6 +293,8 @@ int main( int argc, char **argv )
 				request.flavor = args[++i];
 			else if ( args[i] == "--device" && i + 1 < args.size() )
 				request.device = args[++i];
+			else if ( args[i] == "--display" && i + 1 < args.size() )
+				request.displaySession = args[++i];
 			else if ( args[i] == "--mounts" && i + 1 < args.size() )
 				request.mountSets.push_back( args[++i] );
 			else if ( args[i] == "--dry-run" )
@@ -316,7 +325,17 @@ int main( int argc, char **argv )
 			for ( const auto &stage : built.Value().stages )
 				std::cerr << "kiln: " << stage.name << ": " << stage.summary << '\n';
 		}
-		return Exec( plan.Value() );
+		// One program in the user's own session replaces kiln, as the old
+		// launchers' exec did; anything else runs under its run provider.
+		const bool single =
+		    ( plan.Value().runProvider.empty() || plan.Value().runProvider == "single" ) &&
+		    ( plan.Value().displaySession.empty() || plan.Value().displaySession == "user" );
+		if ( single )
+			return Exec( plan.Value() );
+		auto status = session.Launch( request, *composition.Value().spawner );
+		if ( !status )
+			return Failure( json, status.Error() );
+		return status.Value();
 	}
 	return Usage();
 }

@@ -16,12 +16,15 @@
 #include "jobsystem/graph_executor.h"
 #include "kiln/api.h"
 #include "product/contracts.h"
+#include "product/display_desktop.h"
 #include "product/package_linux_dir.h"
+#include "product/run_desktop.h"
 #include "product/profile.h"
 #include "product/stage_waf.h"
 #include "product/toolchain_linux.h"
 #include "testing/conformance_result.h"
 
+#include "../../platform/posix/process_spawner.h"
 #include "../../platform/posix/tool_process_provider.h"
 
 #include <algorithm>
@@ -597,6 +600,31 @@ void DisplayChecks()
 {
 	CheckVerdict(
 	    suites::DisplaySuite( *fixture::CreateHeadlessSession() ), "display fixture-headless" );
+	CheckVerdict( suites::DisplaySuite( *product::CreateUserDisplaySession() ), "display user" );
+	CheckVerdict(
+	    suites::DisplaySuite( *product::CreateHeadlessDisplaySession() ), "display none" );
+	{
+		const fs::path config = fs::temp_directory_path() / "kilntest-session.conf";
+		fixture::WriteBytes( config, "<busconfig/>\n" );
+		auto privateSession =
+		    product::CreatePrivateDisplaySession( { "/nonexistent/session.conf", config } );
+		CheckVerdict( suites::DisplaySuite( *privateSession ), "display private" );
+		product::DisplayRequest request;
+		request.scratch = fs::temp_directory_path() / "kilntest-private";
+		auto opened = privateSession->Open( request );
+		Check( opened && opened.Value().commandPrefix.size() > 4 &&
+		           opened.Value().commandPrefix[0] == "dbus-run-session" &&
+		           fixture::ReadBytes(
+		               request.scratch / "services" / "org.freedesktop.portal.Documents.service" )
+		                   .find( "Exec=/bin/false" ) != std::string::npos &&
+		           fixture::ReadBytes( request.scratch / "session.conf" ).find( config.string() ) !=
+		               std::string::npos,
+		    "display private: a private bus that blocks the document portal, then mutter" );
+		auto missing = product::CreatePrivateDisplaySession( { "/nonexistent/session.conf" } )
+		                   ->Open( request );
+		Check( !missing && missing.Error().code == product::kUnavailable,
+		    "display private: no bus configuration is unavailable" );
+	}
 	const struct
 	{
 		bad::DisplayFault fault;
@@ -932,8 +960,8 @@ void LaunchPlanChecks( const Workbench &bench, platform::IToolProcessProvider &p
 	Check( PlanArgv( workspace, Play( "game" ) ) == bound,
 	    "launch.workspace-binds-resolution-windowed-map-and-variables" );
 
-	auto badSet = kiln::Session( catalog, posix, executor, sink, config )
-	                  .PlanLaunch( Play( "bad-set" ) );
+	auto badSet =
+	    kiln::Session( catalog, posix, executor, sink, config ).PlanLaunch( Play( "bad-set" ) );
 	Check( !badSet && badSet.Error().detail.find( "undeclared" ) != std::string::npos,
 	    "launch.switch-setting-an-undeclared-variable-refused" );
 	auto badVar = session.PlanLaunch( Play( "bad-var" ) );
@@ -945,15 +973,19 @@ void LaunchPlanChecks( const Workbench &bench, platform::IToolProcessProvider &p
 
 void PackagerUnitChecks( const Workbench &bench, platform::IToolProcessProvider &posix )
 {
-	Check( product::GlobMatch( "bin/*.so", "bin/libengine.so" ) && !product::GlobMatch( "bin/*.so", "bin/sub/x.so" ) &&
-	           product::GlobMatch( "**", "a/b/c" ) && product::GlobMatch( "*/bin/*.so", "portal/bin/libclient.so" ) &&
-	           !product::GlobMatch( "hl2_launcher", "bin/hl2_launcher" ) && product::GlobMatch( "a/**/z", "a/b/c/z" ),
+	Check( product::GlobMatch( "bin/*.so", "bin/libengine.so" ) &&
+	           !product::GlobMatch( "bin/*.so", "bin/sub/x.so" ) &&
+	           product::GlobMatch( "**", "a/b/c" ) &&
+	           product::GlobMatch( "*/bin/*.so", "portal/bin/libclient.so" ) &&
+	           !product::GlobMatch( "hl2_launcher", "bin/hl2_launcher" ) &&
+	           product::GlobMatch( "a/**/z", "a/b/c/z" ),
 	    "package.glob-segments" );
 	// A mount set must be declared by the profile.
 	const fs::path profiles = bench.root / "mount-profiles";
 	fixture::WriteBytes( profiles / "fixture.json",
 	    R"({"schema": "source-product-profile/v2", "id": "m", "description": "m",
-	      "toolchain": {"family": "host", "version": ")" + HostCompilerVersion( posix, "c++" ) + R"(", "cxx": "c++"},
+	      "toolchain": {"family": "host", "version": ")" +
+	        HostCompilerVersion( posix, "c++" ) + R"(", "cxx": "c++"},
 	      "build": {"toolchain": "fixture-host", "flavors": {"dev": {"description": "d"}}},
 	      "pipeline": {"stages": ["fixture-compile"]},
 	      "content": {"mount_sets": {"extra": {"description": "e"}}}})" );
@@ -971,7 +1003,8 @@ void PackagerUnitChecks( const Workbench &bench, platform::IToolProcessProvider 
 	request.profile = "fixture";
 	request.mountSets = { "nope" };
 	auto refused = session.Run( request );
-	Check( !refused && refused.Error().detail.find( "nope" ) != std::string::npos, "package.undeclared-mount-set-refused" );
+	Check( !refused && refused.Error().detail.find( "nope" ) != std::string::npos,
+	    "package.undeclared-mount-set-refused" );
 	request.mountSets = { "extra" };
 	Check( session.Run( request ).HasValue(), "package.declared-mount-set-accepted" );
 }
@@ -1010,6 +1043,25 @@ int main()
 	TransportChecks( bench, *posix );
 	DisplayChecks();
 	CatalogChecks( *posix );
+	{
+		auto spawner = platform::CreatePosixProcessSpawner();
+		CheckVerdict( suites::RunSuite( *product::CreateSingleRunProvider(), *spawner,
+		                  bench.scratch / "run-single" ),
+		    "run single" );
+		CheckVerdict( suites::RunSuite( *product::CreateExternalInstallRunProvider(), *spawner,
+		                  bench.scratch / "run-external" ),
+		    "run external-install" );
+		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kReturnsBeforeExit ),
+		                   *spawner, bench.scratch / "run-bad1" ),
+		    "N2", "bad run provider: returns before its program ends" );
+		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kIgnoresCancel ),
+		                   *spawner, bench.scratch / "run-bad2" ),
+		    "N4", "bad run provider: ignores cancellation" );
+		std::string error;
+		auto missing = spawner->Spawn( { { "/nonexistent/program" }, "/", {} }, error );
+		Check( missing.id < 0 && error.find( "/nonexistent/program" ) != std::string::npos,
+		    "spawn: a missing program fails by name" );
+	}
 	FixturePlatformChecks( bench, *posix );
 	LaunchPlanChecks( bench, *posix );
 	PackagerUnitChecks( bench, *posix );

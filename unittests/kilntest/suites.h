@@ -91,6 +91,10 @@ Verdict TransportSuite( product::IDeployTransport &transport, const TransportCas
 
 Verdict DisplaySuite( product::IDisplaySession &session );
 
+// The run providers that start one launch (single, external-install).
+Verdict RunSuite( product::IRunProvider &provider, platform::IProcessSpawner &spawner,
+    const std::filesystem::path &scratch );
+
 } // namespace suites
 
 #endif // UNITTESTS_KILNTEST_SUITES_H

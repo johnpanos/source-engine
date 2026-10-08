@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "portal2-retail-v2",
-  "description": "The installed retail Portal 2, for comparisons (./play_p2 --retail). Nothing is built: the external-install run provider arrives in L1.",
+  "description": "The installed retail Portal 2 run as is, for comparisons (./play_p2 --retail execs Steam's portal2.sh from the repository root). Nothing is built.",
   "extends": [
     "fragments/desktop-launch.json"
   ],
@@ -15,8 +15,20 @@
   },
   "launch": {
     "game": "portal2",
-    "default_map": "sp_a1_intro1",
-    "executable": "portal2.sh",
-    "arguments": []
+    "run": "external-install",
+    "executable": "{locator:steam-portal2}/portal2.sh",
+    "working_directory": "{root}",
+    "arguments": [
+      "{args}"
+    ],
+    "environment": {}
+  },
+  "content": {
+    "locators": {
+      "steam-portal2": {
+        "default": "{home}/.local/share/Steam/steamapps/common/Portal 2",
+        "description": "The installed retail Portal 2 (P2_STEAM_ROOT)"
+      }
+    }
   }
 }

@@ -625,8 +625,9 @@ public:
 	std::string_view Name() const noexcept override { return "fixture-headless"; }
 	bool ClaimsIsolation() const noexcept override { return true; }
 	foundation::Expected<product::DisplayEnvironment, ProviderError> Open(
-	    const product::ICancellation *cancel ) override
+	    const product::DisplayRequest &request ) override
 	{
+		const product::ICancellation *cancel = request.cancel;
 		if ( Cancelled( cancel ) )
 			return foundation::MakeUnexpected( Cancelled() );
 		m_Open = true;

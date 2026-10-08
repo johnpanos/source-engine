@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <map>
+#include <thread>
 
 namespace suites
 {
@@ -475,10 +476,14 @@ Verdict DisplaySuite( product::IDisplaySession &session )
 	setenv( "DISPLAY", ":suite-user", 1 );
 	product::CancellationFlag cancelled;
 	cancelled.Cancel();
-	auto refused = session.Open( &cancelled );
+	product::DisplayRequest cancelledRequest;
+	cancelledRequest.cancel = &cancelled;
+	auto refused = session.Open( cancelledRequest );
 	if ( refused || refused.Error().code != product::kCancelled || session.IsOpen() )
 		verdict.Fail( "V1 cancellation opens nothing" );
-	auto opened = session.Open( nullptr );
+	product::DisplayRequest request;
+	request.scratch = std::filesystem::temp_directory_path() / "kilntest-display";
+	auto opened = session.Open( request );
 	if ( !opened )
 	{
 		verdict.Fail( "V2 opens", opened.Error().detail );
@@ -515,6 +520,64 @@ Verdict DisplaySuite( product::IDisplaySession &session )
 	session.Close();
 	if ( session.IsOpen() )
 		verdict.Fail( "V5 Close ends the session and is idempotent" );
+	return verdict;
+}
+
+//-----------------------------------------------------------------------------
+// IRunProvider (one launch)
+//-----------------------------------------------------------------------------
+
+Verdict RunSuite(
+    product::IRunProvider &provider, platform::IProcessSpawner &spawner, const fs::path &scratch )
+{
+	Verdict verdict;
+	std::error_code ec;
+	fs::remove_all( scratch, ec );
+	fs::create_directories( scratch, ec );
+	const auto launch = [&]( const std::string &script )
+	{
+		product::RunRequest request;
+		product::LaunchSpec spec;
+		spec.name = "game";
+		spec.argv = { "/bin/sh", "-c", script };
+		spec.workingDirectory = scratch;
+		spec.environment = { { "KILN_SUITE_VALUE", std::string( "from-launch" ) } };
+		request.launches.push_back( spec );
+		request.spawner = &spawner;
+		return request;
+	};
+	auto status = provider.Run( launch( "exit 7" ) );
+	if ( !status || status.Value() != 7 )
+		verdict.Fail( "N1 the run's exit status is the program's" );
+	auto waited = provider.Run( launch( "sleep 0.3; echo done > waited.txt" ) );
+	if ( !waited || !fs::exists( scratch / "waited.txt", ec ) )
+		verdict.Fail( "N2 the run waits for its program (no process is left running)" );
+	product::RunRequest wrapped =
+	    launch( "echo \"$KILN_SUITE_VALUE $KILN_SUITE_DISPLAY\" > environment.txt" );
+	wrapped.display.commandPrefix = { "/usr/bin/env", "KILN_SUITE_DISPLAY=from-display" };
+	auto prefixed = provider.Run( wrapped );
+	if ( !prefixed ||
+	     fixture::ReadBytes( scratch / "environment.txt" ) != "from-launch from-display\n" )
+		verdict.Fail(
+		    "N3 the display's prefix wraps the launch and the launch's environment applies" );
+	product::CancellationFlag cancel;
+	product::RunRequest slow = launch( "sleep 30" );
+	slow.cancel = &cancel;
+	std::thread canceller(
+	    [&]
+	    {
+		    std::this_thread::sleep_for( std::chrono::milliseconds( 300 ) );
+		    cancel.Cancel();
+	    } );
+	const auto started = std::chrono::steady_clock::now();
+	(void)provider.Run( slow );
+	canceller.join();
+	if ( std::chrono::steady_clock::now() - started > std::chrono::seconds( 10 ) )
+		verdict.Fail( "N4 cancellation stops the run's programs" );
+	product::RunRequest none;
+	none.spawner = &spawner;
+	if ( provider.Run( none ) )
+		verdict.Fail( "N5 a run with no launch is refused" );
 	return verdict;
 }
 

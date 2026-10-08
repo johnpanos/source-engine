@@ -185,8 +185,9 @@ const std::set<std::string> kFlavorKeys = { "description", "configure_options" }
 const std::set<std::string> kPipelineKeys = { "stages" };
 const std::set<std::string> kPackageKeys = { "form", "directory", "steps" };
 const std::set<std::string> kDeployKeys = { "transport", "content_root", "capabilities" };
-const std::set<std::string> kLaunchKeys = { "game", "default_map", "executable", "arguments",
-    "environment", "display_session", "run", "switches", "variables", "map_arguments" };
+const std::set<std::string> kLaunchKeys = { "game", "default_map", "executable",
+    "working_directory", "arguments", "environment", "display_session", "run", "switches",
+    "variables", "map_arguments", "peers", "facts" };
 const std::set<std::string> kSwitchKeys = { "description", "arguments", "conflicts", "set" };
 const std::set<std::string> kContentKeys = {
     "roots", "base_packages", "mount_order", "mount_sets", "locators", "lowering" };

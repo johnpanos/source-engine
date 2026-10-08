@@ -19,6 +19,6 @@ def build(bld):
 	bld.program(env=strict, source=['kilntest.cpp', 'suites.cpp', 'bad_providers.cpp'],
 		target='kilntest', name='kilntest', arch_module='kiln.tests',
 		features='cxx cxxprogram', includes=['../../public', '.'],
-		use=['kiln_fixture_platform', 'kiln_core', 'product_toolchain_linux', 'product_stage_waf', 'product_package_linux_dir', 'content_vpk',
+		use=['kiln_fixture_platform', 'kiln_core', 'product_toolchain_linux', 'product_stage_waf', 'product_package_linux_dir', 'content_vpk', 'product_display_desktop', 'product_run_desktop',
 			'product_contracts', 'product_profile', 'foundation_json', 'platform_posix', 'jobsystem'],
 		install_path=bld.env.TESTDIR, subsystem=bld.env.MSVC_SUBSYSTEM)

@@ -20713,7 +20713,7 @@
         "out/host-tests/unittests/kilntest/kilntest"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 122,
+      "min_checks": 132,
       "timeout_seconds": 300,
       "requires": [
         "path:out/host-tests/unittests/kilntest/kilntest"
@@ -20816,14 +20816,14 @@
       "contract": "public/kiln/api.h",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0027 L1 launch-equivalence gate, argv and environment half: for each launcher mode (./play native, null, map with switches, render state, environment overrides; ./play_p2 plain, map, switches, environment overrides and --workshop; ./play_p2_fsr; ./play_fstop with and without a map) the old launcher runs for real until it exec()s the game (tools/kiln/exec_capture.c records and stops that exec), and `kiln play --dry-run` must give the same argv, launcher-set environment and working directory, paths normalized, and `kiln package` must lay out a runtime with the old staging's manifest (files by SHA-256, links by resolved target; Portal, Portal 2, Portal 2 with the P2:CE Workshop mount set, Portal 2 FSR and F-Stop, the F-Stop reference freshly staged), apart from the recorded differences (./play -> run.sh plumbing variables; CCACHE_DIR). A dropped switch, a swapped switch order and an extra map are caught. Needs installed Portal and Portal 2 content and the F-Stop depot.",
+      "description": "RFC 0027 L1 launch-equivalence gate, argv and environment half: for each launcher mode (./play native, null, map with switches, render state, environment overrides; ./play_p2 plain, map, switches, environment overrides and --workshop; ./play_p2_fsr; ./play_fstop with and without a map) the old launcher runs for real until it exec()s the game (tools/kiln/exec_capture.c records and stops that exec), and `kiln play --dry-run` must give the same argv, launcher-set environment and working directory, paths normalized, and `kiln package` must lay out a runtime with the old staging's manifest (files by SHA-256, links by resolved target; Portal, Portal 2, Portal 2 with the P2:CE Workshop mount set, Portal 2 FSR and F-Stop, the F-Stop reference freshly staged), apart from the recorded differences (./play -> run.sh plumbing variables; CCACHE_DIR). A dropped switch, a swapped switch order and an extra map are caught. Needs installed Portal and Portal 2 content and the F-Stop depot. Also ./play_p2 --retail (Steam's portal2.sh from the repository root) and ./play_p2_coop: run against a stub play_p2 that answers the engine's server challenge and writes the join line, each peer's arguments through Portal 2's proven launch equal kiln's coop-pair peers (start order and the client's P2_NO_BUILD included).",
       "command": [
         "{python}",
         "tools/kiln/launch_equivalence.py",
         "check"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 52,
+      "min_checks": 61,
       "timeout_seconds": 3600,
       "requires": [
         "path:out/host-linux-x86_64/product/kiln/kiln"
@@ -20837,6 +20837,34 @@
         "product/stage/video_av1.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "kiln.coop-live",
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L1",
+      "contract": "public/product/run_desktop.h",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0027 L1 gate: `kiln play portal2-coop --display none --set null --set until-joined` starts a real two-player co-op pair headless (no window on the user's desktop): the host's server answers the engine challenge, the client connects over the LAN, and the host's engine.log records the remote join; both peers then stop. Needs the installed Portal 2 content.",
+      "command": [
+        "{python}",
+        "tools/kiln/kiln_gate.py",
+        "coop"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 1800,
+      "requires": [
+        "path:out/host-linux-x86_64/product/kiln/kiln"
+      ],
+      "sources": [
+        "product/run/desktop.cpp",
+        "platform/posix/process_spawner.cpp",
+        "product/kiln/core/launch.cpp",
+        "tools/kiln/kiln_gate.py"
+      ],
+      "expect": "pass",
+      "min_checks": 4
     }
   ]
 }

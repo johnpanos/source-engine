@@ -6,6 +6,7 @@
     kiln_gate.py rebuild PROFILE [--kiln PATH]
                                           a second `kiln build` of an unchanged
                                           profile neither reconfigures nor rebuilds
+    kiln_gate.py coop                     a real co-op pair starts headless and connects
     kiln_gate.py selftest                 the comparators catch seeded divergence
 
 Each prints one `CONFORMANCE <checks> <failures>` record (checks-v1).
@@ -109,6 +110,24 @@ def rebuild(kiln, profile):
     return record.report()
 
 
+def coop(kiln):
+    """kiln play portal2-coop, headless (display none, null renderer), until the
+    client joins: the live half of the coop-pair gate."""
+    record = Record()
+    result = subprocess.run([str(kiln), "play", "portal2-coop", "--display", "none", "--set", "null",
+                             "--set", "until-joined"], cwd=ROOT, capture_output=True, text=True, timeout=1800)
+    output = result.stdout + result.stderr
+    record.check(result.returncode == 0, "the co-op pair runs and stops", output[-800:])
+    record.check("[run] host answers at" in output, "the host's server answers the engine challenge")
+    record.check("[run] connected:" in output, "the client joins over the LAN")
+    plan = json.loads(run_kiln(kiln, "play", "portal2-coop", "--dry-run").stdout)
+    log = Path(plan["runtime"]) / "engine.log"
+    text = log.read_text(errors="replace") if log.is_file() else ""
+    record.check(" connected (" in text and "loopback" not in text.split(" connected (")[-1][:10],
+                 "the host's engine.log records the remote join", str(log))
+    return record.report()
+
+
 def selftest():
     """Seeded divergences the comparators must catch (sensitivity)."""
     record = Record()
@@ -133,7 +152,7 @@ def selftest():
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("parity", "rebuild"):
+    for name in ("parity", "rebuild", "coop"):
         command = sub.add_parser(name)
         command.add_argument("--kiln", type=Path, default=ROOT / "kiln", help="the kiln bootstrap or binary")
         if name == "rebuild":
@@ -144,6 +163,8 @@ def main(argv=None):
         return parity(args.kiln)
     if args.command == "rebuild":
         return rebuild(args.kiln, args.profile)
+    if args.command == "coop":
+        return coop(args.kiln)
     return selftest()
 
 

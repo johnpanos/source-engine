@@ -8,11 +8,14 @@
 
 #include "jobsystem/graph_executor.h"
 #include "product/package_linux_dir.h"
+#include "product/display_desktop.h"
+#include "product/run_desktop.h"
 #include "product/stage_fstop.h"
 #include "product/stage_video_av1.h"
 #include "product/stage_waf.h"
 #include "product/toolchain_linux.h"
 
+#include "../../../platform/posix/process_spawner.h"
 #include "../../../platform/posix/tool_process_provider.h"
 
 #include <chrono>
@@ -79,6 +82,20 @@ foundation::Expected<product::ProviderCatalog, Error> ComposeDefaultCatalog(
 		return foundation::MakeUnexpected( *error );
 	if ( auto error = AddTo( catalog, product::CreateLinuxDirPackager() ) )
 		return foundation::MakeUnexpected( *error );
+	if ( auto error = AddTo( catalog, product::CreateUserDisplaySession() ) )
+		return foundation::MakeUnexpected( *error );
+	if ( auto error = AddTo( catalog, product::CreateHeadlessDisplaySession() ) )
+		return foundation::MakeUnexpected( *error );
+	if ( auto error = AddTo(
+	         catalog, product::CreatePrivateDisplaySession(
+	                      { "/usr/share/dbus-1/session.conf", "/etc/dbus-1/session.conf" } ) ) )
+		return foundation::MakeUnexpected( *error );
+	for ( auto *create : { &product::CreateSingleRunProvider,
+	          &product::CreateExternalInstallRunProvider, &product::CreateCoopPairRunProvider } )
+	{
+		if ( auto error = AddTo( catalog, ( *create )() ) )
+			return foundation::MakeUnexpected( *error );
+	}
 	return catalog;
 }
 
@@ -89,6 +106,7 @@ foundation::Expected<DefaultComposition, Error> ComposeDefault()
 	if ( !composition.processes )
 		return foundation::MakeUnexpected( Error{ "composition", "no process provider" } );
 	composition.executor = std::make_unique<jobsystem::DeterministicExecutor>();
+	composition.spawner = platform::CreatePosixProcessSpawner();
 	auto catalog = ComposeDefaultCatalog( *composition.processes );
 	if ( !catalog )
 		return foundation::MakeUnexpected( catalog.Error() );

@@ -126,6 +126,7 @@ struct PlayRequest
 	std::vector<std::string> arguments;
 	std::optional<std::string> device;
 	std::vector<std::string> mountSets;
+	std::optional<std::string> displaySession; // overrides launch.display_session
 	const product::ICancellation *cancel = nullptr;
 };
 
@@ -145,6 +146,15 @@ struct LaunchPlan
 	std::vector<std::string> switches;
 	std::string displaySession;
 	std::string runProvider;
+	// A multi-process run (launch.peers): each peer's argv, in start order.
+	struct Peer
+	{
+		std::string name;
+		std::vector<std::string> argv;
+	};
+	std::vector<Peer> peers;
+	// launch.facts, the values a run provider reads (ports, logs, timeouts).
+	std::map<std::string, std::string> facts;
 };
 
 class Session
@@ -170,6 +180,11 @@ public:
 	// starting anything (`kiln play --dry-run`).
 	[[nodiscard]] foundation::Expected<LaunchPlan, Error> PlanLaunch(
 	    const PlayRequest &request ) const;
+	// Runs a planned launch on this host: opens the profile's display session
+	// and hands the launches to its run provider, which starts them through
+	// `spawner` (borrowed for the call). Returns the run's exit status.
+	[[nodiscard]] foundation::Expected<int, Error> Launch(
+	    const PlayRequest &request, platform::IProcessSpawner &spawner ) const;
 	// The profile's launch switches (`kiln switches`).
 	[[nodiscard]] foundation::Expected<std::vector<product::Switch>, Error> Switches(
 	    const std::string &nameOrAlias ) const;

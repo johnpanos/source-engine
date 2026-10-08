@@ -246,7 +246,7 @@ equivalence gate (argv, environment and staged-runtime manifest) passes.
 | --- | --- | --- |
 | L1a | launch model, `.kiln/local.json` bindings, `kiln play`/`run --dry-run`, `kiln switches`, argv/environment equivalence | done (below) |
 | L1b | `linux-dir` packager, mount sets and content locators, `video.av1`, manifest equivalence, real `kiln play` | done (below) |
-| L1c | `coop-pair` and `external-install` run providers, `user`/`private`/`none` display sessions | planned |
+| L1c | `coop-pair` and `external-install` run providers, `user`/`private`/`none` display sessions | done (below) |
 | L1d | `sepipe` and `play_embedded`; the 35 harness modules and the CI workflows | planned |
 | L1e | AGENTS.md and memory notes, the deletions, the root allowlist | planned |
 
@@ -391,3 +391,57 @@ Evidence at the end of L1b: `kiln.launch-equivalence` 13 modes, 52/0
 (argv, environment, working directory; five runtimes equal: Portal,
 Portal 2, Portal 2 + Workshop, FSR, F-Stop; seeded faults caught);
 `kiln.l0` 122/0; archlint and its 176 tests pass; style clean.
+
+### L1c: run providers and display sessions
+
+- **Contracts.** `IDisplaySession::Open` takes a `DisplayRequest`
+  (a scratch directory it owns, the virtual monitor) and returns, beside
+  environment changes, a command prefix that wraps the launch. A new
+  `IRunProvider` contract (`product.contracts`) takes the launches, the
+  display environment, `launch.facts` and a spawner, and returns the run's
+  exit status. Decision (agent, recorded here): the RFC calls coop pairs
+  and the retail launch run-role stage providers that need no new
+  contract, but a stage has no way to receive the launch plans or start
+  long-running programs, so a narrow run contract is the smaller seam.
+  `platform.process-spawn.v1` (`public/platform/contracts/process_spawn.h`)
+  starts long-running programs in their own process group, with a POSIX
+  provider in `platform.posix`; the synchronous tool-process contract stays
+  for tools whose output the caller collects.
+- **Display sessions** (`product.display.desktop`): `user` (nothing
+  changes), `none` (SDL offscreen, displays unset), `private` (a headless
+  mutter on a private D-Bus that shadows the Flatpak document portal, as
+  `private_session.py` does). `kiln play|run --display <session>`
+  overrides the profile's session.
+- **Run providers** (`product.run.desktop`, a native backend module):
+  `single`, `external-install`, and `coop-pair`: the host first, its server
+  probed with the engine's challenge, `{lan_address}` filled from the
+  route's source address, the client next, the host's `engine.log` watched
+  for a remote join, then both waited on (or stopped after the join with
+  the `until-joined` switch). `kiln play` still execs a single launch in
+  the user's own session in place, as the old launchers did; anything else
+  goes through `Session::Launch`.
+- **Profiles:** `launch.peers` (per-peer argument templates in the base
+  template's `{args}` place), `launch.facts`, `launch.working_directory`
+  and executables over `{locator:<name>}`. `portal2-coop` carries
+  `play_p2_coop`'s peers; `portal2-retail` runs Steam's `portal2.sh` from
+  the repository root.
+- **Fixed on the way:** the `--` tail was spliced through placeholder
+  substitution (a game argument containing braces would have been
+  rewritten), and the app's global option loop read past `--`, so a game's
+  `-h 720` printed the help.
+
+Evidence:
+- `kiln.launch-equivalence`: `./play_p2 --retail` equal; `./play_p2_coop`
+  against a stub `play_p2` (which answers the challenge and writes the
+  join line): each peer's arguments, through Portal 2's proven launch,
+  equal kiln's peers, with start order and the client's `P2_NO_BUILD`;
+  a seeded difference is caught.
+- `kiln.coop-live`: a real pair, headless (`--display none --set null
+  --set until-joined`): the host answered at its LAN address, the client
+  joined over the LAN (`Client "…" connected (10.0.0.203:27006)` in the
+  host's `engine.log`), and both stopped. No window reached the desktop.
+- `kiln.l0`: 132 checks, including the display suites for `user`, `none`
+  and `private`, a run-provider suite (exit status, waiting, prefix and
+  environment, cancellation, refusal) for `single` and `external-install`,
+  and two bad run providers (returns before its program ends; ignores
+  cancellation) rejected by their clauses.

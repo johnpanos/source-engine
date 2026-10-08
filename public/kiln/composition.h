@@ -22,6 +22,7 @@ namespace kiln
 struct DefaultComposition
 {
 	std::unique_ptr<platform::IToolProcessProvider> processes;
+	std::unique_ptr<platform::IProcessSpawner> spawner;
 	std::unique_ptr<jobsystem::IGraphExecutor> executor;
 	product::ProviderCatalog catalog;
 	std::string hostTag; // "<os>-<architecture>" of this host, e.g. "linux-x86_64"

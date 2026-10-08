@@ -29,6 +29,7 @@
 #define PUBLIC_PRODUCT_CONTRACTS_H
 
 #include "foundation/expected.h"
+#include "platform/contracts/process_spawn.h"
 #include "platform/contracts/tool_process.h"
 #include "product/profile.h"
 
@@ -538,9 +539,23 @@ std::vector<std::string> MissingCapabilities(
 //   left open at destruction is closed.
 //-----------------------------------------------------------------------------
 
+// What a session needs: a scratch directory it owns for its private files
+// (bus configuration, sockets) and the virtual monitor of an isolated one.
+struct DisplayRequest
+{
+	std::filesystem::path scratch;
+	int width = 1920;
+	int height = 1080;
+	double refreshHz = 60.0;
+	const ICancellation *cancel = nullptr;
+};
+
 struct DisplayEnvironment
 {
 	std::vector<platform::ToolProcessEnvironmentOverride> environment;
+	// Programs that wrap the launch (an isolated compositor runs it as its
+	// child and ends with it); empty for the user's own session.
+	std::vector<std::string> commandPrefix;
 	bool isolated = false; // no window can reach the user's desktop
 	bool headless = false; // no display at all
 };
@@ -552,9 +567,49 @@ public:
 	virtual std::string_view Name() const noexcept = 0;
 	virtual bool ClaimsIsolation() const noexcept = 0;
 	[[nodiscard]] virtual foundation::Expected<DisplayEnvironment, ProviderError> Open(
-	    const ICancellation *cancel ) = 0;
+	    const DisplayRequest &request ) = 0;
 	virtual void Close() noexcept = 0;
 	virtual bool IsOpen() const noexcept = 0;
+};
+
+//-----------------------------------------------------------------------------
+// IRunProvider: how a launch plan runs on this host: one program (`single`),
+// a co-op pair that connects (`coop-pair`), an installed game run as is
+// (`external-install`). The plan's programs, arguments and environment are
+// profile data; a provider adds only the mechanics (start order, readiness,
+// waiting). It starts processes only through the spawner it is given, never
+// starts a process it does not wait for or stop, and returns the exit status
+// of the run (the first nonzero one). Cancellation stops every process it
+// started.
+//-----------------------------------------------------------------------------
+
+struct LaunchSpec
+{
+	std::string name; // "game", "host", "client"
+	std::vector<std::string> argv;
+	std::vector<platform::ToolProcessEnvironmentOverride>
+	    environment; // "{inherit}" filled by the spawner
+	std::filesystem::path workingDirectory;
+};
+
+struct RunRequest
+{
+	std::vector<LaunchSpec> launches; // in start order
+	std::map<std::string, std::string>
+	    facts; // profile launch values a provider reads (ports, logs)
+	DisplayEnvironment display;
+	platform::IProcessSpawner *spawner = nullptr;
+	IDiagnosticSink *diagnostics = nullptr;
+	const ICancellation *cancel = nullptr;
+};
+
+class IRunProvider
+{
+public:
+	virtual ~IRunProvider() = default;
+	virtual std::string_view Name() const noexcept = 0;
+	[[nodiscard]] virtual foundation::Expected<int, ProviderError> Run(
+	    const RunRequest &request ) = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -586,8 +641,7 @@ public:
 	foundation::Expected<void, CatalogError> Add( std::unique_ptr<IPackager> provider );
 	foundation::Expected<void, CatalogError> Add( std::unique_ptr<IDeployTransport> provider );
 	foundation::Expected<void, CatalogError> Add( std::unique_ptr<IDisplaySession> provider );
-	// Run providers are named here so profiles validate; L1 adds their contract.
-	foundation::Expected<void, CatalogError> AddRunProviderName( std::string name );
+	foundation::Expected<void, CatalogError> Add( std::unique_ptr<IRunProvider> provider );
 
 	foundation::Expected<ITargetToolchain *, CatalogError> Toolchain( std::string_view name ) const;
 	foundation::Expected<IRecipeBuilder *, CatalogError> RecipeBuilder(
@@ -597,6 +651,7 @@ public:
 	foundation::Expected<IDeployTransport *, CatalogError> Transport( std::string_view name ) const;
 	foundation::Expected<IDisplaySession *, CatalogError> DisplaySession(
 	    std::string_view name ) const;
+	foundation::Expected<IRunProvider *, CatalogError> RunProvider( std::string_view name ) const;
 
 	// The names profiles may select, for product::Resolve.
 	ProviderNames Names() const;
@@ -609,7 +664,7 @@ private:
 	List<IPackager> m_Packagers;
 	List<IDeployTransport> m_Transports;
 	List<IDisplaySession> m_DisplaySessions;
-	std::vector<std::string> m_RunProviders;
+	List<IRunProvider> m_RunProviders;
 };
 
 } // namespace product
