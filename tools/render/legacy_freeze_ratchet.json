@@ -202,8 +202,6 @@
     "stdshader_files": [
       "materialsystem/stdshaders/BaseVSShader.cpp",
       "materialsystem/stdshaders/BaseVSShader.h",
-      "materialsystem/stdshaders/BufferClearObeyStencil_dx9.cpp",
-      "materialsystem/stdshaders/DebugTextureView.cpp",
       "materialsystem/stdshaders/DecalBaseTimesLightmapAlphaBlendSelfIllum_dx9.cpp",
       "materialsystem/stdshaders/DecalModulate_dx9.cpp",
       "materialsystem/stdshaders/Engine_Post_dx9.cpp",
