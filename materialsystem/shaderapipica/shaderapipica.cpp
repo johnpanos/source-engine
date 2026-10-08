@@ -3136,10 +3136,16 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 		m_pNormals = normals;
 		m_nNormalCapacity = capacity;
 	}
-	// Dynamic meshes only (decals, overlays): the static world meshes'
-	// copy would be megabytes the core never reads (it draws the world
-	// from the map's own data).
+	// The lightmap coordinates. On the 3DS, dynamic meshes only (decals,
+	// overlays): the static world meshes' copy would be megabytes the core
+	// never reads (it draws the world from the map's own data). Elsewhere
+	// static meshes keep them too: brush entities (windows, doors) are static
+	// meshes the core draws through this path, lit by their own pages.
+#if defined( PLATFORM_3DS )
 	if ( m_bIsDynamic && TexCoordSize( 1, m_Format ) >= 2 )
+#else
+	if ( TexCoordSize( 1, m_Format ) >= 2 )
+#endif
 	{
 		const int size = TexCoordSize( 1, m_Format );
 		float *coords = new float[capacity * size];
@@ -3962,6 +3968,16 @@ bool CEmptyMesh::EmitSurfaceToCore( int firstIndex, int indexCount, render::lega
 	draw.staticVertexLighting = modelSurface && colors;
 	if ( modelSurface && !colors )
 		FillModelLighting( draw );
+	// A lightmapped material's page is the material system's current one
+	// (the shader's dynamic state used to bind it, TEXTURE_LIGHTMAP on sampler
+	// 1): resolved here when nothing bound it, so a moving brush (glass, a
+	// door) reads its own lighting, not a full-bright page.
+	if ( g_BoundLightmap == INVALID_SHADERAPI_TEXTURE_HANDLE && lightmapUv &&
+	     g_pBoundMaterial->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_LIGHTMAP ) )
+		g_ShaderAPIEmpty.BindStandardTexture( SHADER_SAMPLER1,
+			g_pBoundMaterial->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_BUMPED_LIGHTMAPS )
+				? TEXTURE_LIGHTMAP_BUMPED
+				: TEXTURE_LIGHTMAP );
 	if ( g_BoundLightmap != INVALID_SHADERAPI_TEXTURE_HANDLE && lightmapUv )
 	{
 		draw.lightmapPage = int( g_BoundLightmap );
