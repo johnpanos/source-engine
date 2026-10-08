@@ -73,6 +73,7 @@ enum class Op
 	AlphaWritesIfOpaque, // EnableAlphaWrites( base texture neither blends nor alpha tests )
 	ShadowBias,     // EnablePolyOffset( SHADOW_BIAS ) unless extra a is set
 	ColorWritesIf1, // EnableColorWrites( extra a == 1 )
+	ClearWrites,    // BufferClearObeyStencil: depth, colour and alpha writes from extras 2, 0 and 1
 	CullAlphaTested, // EnableCulling( $alphatest && !$nocull )
 	DepthWriteAlpha, // DepthWrite's alpha-clip / vertex-texture samplers (extra a: $color_depth)
 };
@@ -290,6 +291,23 @@ const FixedStateRow kRows[] = {
 	        { Op::BlendEnable, 0, 0 }, { Op::Culling, 0, 0 }, { Op::Texture, SHADER_SAMPLER0, 0 },
 	        { Op::Texture, SHADER_SAMPLER1, 0 }, { Op::Texture, SHADER_SAMPLER2, 0 },
 	        { Op::Texture, SHADER_SAMPLER3, 0 }, { Op::Pos1, 0, 0 }, { Op::OsxSrgb4, 0, 0 } } },
+	{ "DebugTextureView", "DebugTextureView_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "DebugTextureView_dx9", nullptr, 0, 0, { { "$SHOWALPHA", SHADER_PARAM_TYPE_BOOL, "0", "" } },
+	    -1, 0, { { false, BASETEXTURE, true } },
+	    { { Op::DepthWrites, 0, 0 }, { Op::AlphaTest, 1, 0 }, { Op::Texture, SHADER_SAMPLER0, 0 },
+	        { Op::CompressedPos, 0, 0 } } },
+	{ "BufferClearObeyStencil", "BufferClearObeyStencil_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "BufferClearObeyStencil_DX9", nullptr, SHADER_NOT_EDITABLE, 0,
+	    { { "$CLEARCOLOR", I, "1", "activates clearing of color" },
+	        { "$CLEARALPHA", I, "-1", "activates clearing of alpha. -1 == copy CLEARCOLOR setting" },
+	        { "$CLEARDEPTH", I, "1", "activates clearing of depth" } },
+	    // The source's SHADER_INIT set an undefined $CLEARALPHA to -1, but the
+	    // corpus shows those materials at 0 after init; the row keeps that.
+	    -1, 0, NO_LOADS,
+	    { { Op::DepthFunc, SHADER_DEPTHFUNC_ALWAYS, 0 }, { Op::ClearWrites, 0, 0 },
+	        { Op::Format, VERTEX_POSITION | VERTEX_COLOR, 1 },
+	        { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ZERO }, { Op::AlphaTest, 1, 0 },
+	        { Op::AlphaFunc, SHADER_ALPHAFUNC_ALWAYS, 0 } } },
 	{ "Downsample_nohdr", nullptr, SHADER_NOT_EDITABLE, 0,
 	    { { "$BLOOMTINTENABLE", I, "1", "" }, { "$CSTRIKE", I, "0", "" } }, 0, 1,
 	    { { false, BASETEXTURE, false } },
@@ -831,6 +849,16 @@ private:
 		case Op::ColorWritesIf1:
 			pShaderShadow->EnableColorWrites( params[Extra( step.a )]->GetIntValue() == 1 );
 			break;
+		case Op::ClearWrites:
+		{
+			// $CLEARALPHA -1 copies $CLEARCOLOR.
+			const bool color = params[Extra( 0 )]->GetIntValue() != 0;
+			const int alpha = params[Extra( 1 )]->GetIntValue();
+			pShaderShadow->EnableDepthWrites( params[Extra( 2 )]->GetIntValue() != 0 );
+			pShaderShadow->EnableColorWrites( color );
+			pShaderShadow->EnableAlphaWrites( alpha >= 0 ? alpha != 0 : color );
+			break;
+		}
 		case Op::CullAlphaTested:
 			pShaderShadow->EnableCulling(
 			    IS_FLAG_SET( MATERIAL_VAR_ALPHATEST ) && !IS_FLAG_SET( MATERIAL_VAR_NOCULL ) );
