@@ -8,7 +8,7 @@ stream and the same analysis and budget checks. Only staging and launch
 differ, through ios_device.Device (the one owner of the device plumbing).
 
 The product profile (--profile, default the Portal iOS profile; "extends"
-resolved by profile_extends.py) names the platform, the app and its content
+resolved by kiln profiles resolve) names the platform, the app and its content
 directory in the app's data container (content.container_directory:
 Documents on iOS, Library/Caches on tvOS). The installed app
 (ios-deploy.sh) appends that directory's commandline.txt to its arguments
@@ -42,7 +42,8 @@ import sys
 import conformance
 import frame_pacing
 import ios_device
-from profile_extends import load_profile
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+from sepipe_loader import resolve_profile as load_profile  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_SCENARIO = REPO / "quality/workloads/portal-frame-pacing-v1.json"

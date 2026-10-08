@@ -42,7 +42,8 @@ import sys
 
 import conformance
 import ios_device
-from profile_extends import load_profile
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+from sepipe_loader import resolve_profile as load_profile  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = REPO / "quality/product_profiles/portal-tvos-native-vulkan.json"

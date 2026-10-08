@@ -35,8 +35,40 @@ import sys
 import zipfile
 from pathlib import Path
 
-# The "extends" rule is shared by every platform's product profiles.
-from profile_extends import load_profile, merge_profile  # noqa: F401 (re-exported)
+
+def merge_profile(base, derived):
+    """derived over base: objects merge key by key, any other value replaces."""
+    merged = dict(base)
+    for key, value in derived.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merge_profile(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def load_profile(path, _chain=()):
+    """A product profile with its "extends" chain (paths relative to it)
+    resolved: one parent or a list merged left to right before the child.
+
+    This is the verifier's own reading of the rule kiln's product.profile
+    owns: android_apk.py is an independent oracle of kiln's APKs (RFC 0027
+    "Independent oracles stay independent"), so it never asks kiln.
+    """
+    path = Path(path).resolve()
+    if path in _chain:
+        raise ValueError("extends cycle: " + " -> ".join(str(p) for p in (*_chain, path)))
+    profile = json.loads(path.read_text())
+    parents = profile.pop("extends", None)
+    if parents is None:
+        return profile
+    if isinstance(parents, str):
+        parents = [parents]
+    merged = {}
+    for parent in parents:
+        merged = merge_profile(merged, load_profile(path.parent / parent, (*_chain, path)))
+    return merge_profile(merged, profile)
+
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PROFILE = ROOT / "quality/product_profiles/portal-android-native-vulkan.json"

@@ -169,3 +169,22 @@ def game_of(profile):
         raise
     except Exception as error:  # sepipe.KilnError, or a profile without a game
         raise LoadError("%s names no launch.game: %s" % (profile, error)) from error
+
+
+PROFILE_ROOT = ROOT / "quality" / "product_profiles"
+
+
+def resolve_profile(path):
+    """A product profile with its extends chain resolved, by kiln's
+    product.profile (`kiln profiles resolve`, which needs only the host kiln,
+    not the tools tree). `path` is a profile file or a name."""
+    import json
+    path = Path(path)
+    name = path.name
+    if path.is_absolute() or len(path.parts) > 1:
+        name = path.resolve().relative_to(PROFILE_ROOT.resolve()).as_posix()
+    result = subprocess.run([str(ROOT / "kiln"), "profiles", "resolve", name], cwd=ROOT,
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        raise LoadError("kiln profiles resolve %s: %s" % (name, result.stderr.strip()[-400:]))
+    return json.loads(result.stdout)
