@@ -1097,6 +1097,16 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::ResolveMesh(
 	return resolved;
 }
 
+foundation::Expected<device::PipelineId, std::string> ProgramResolver::SkinnedPipeline(
+    const ResolvedProgram &program )
+{
+	auto pipeline = m_State->lightmapped->Program().SkinnedPipeline( program.request.pipeline );
+	if ( !pipeline )
+		return foundation::MakeUnexpected( "the skinned variant of " + program.name +
+		                                   " was refused (the reduced model's lit world point only)" );
+	return pipeline.Value();
+}
+
 foundation::Expected<device::PipelineId, std::string> ProgramResolver::StaticVertexLightPipeline(
     const ResolvedProgram &program )
 {
@@ -1224,7 +1234,8 @@ foundation::Expected<ProgramResolver::Preview, std::string> ProgramResolver::Res
 }
 
 std::optional<GroupRequest> ProgramResolver::DrawGroup( const ResolvedProgram &program,
-    const std::vector<std::string> &inputTextures, const ModelLighting *lighting ) const
+    const std::vector<std::string> &inputTextures, const ModelLighting *lighting,
+    std::span<const float> bonePalette ) const
 {
 	const State &s = *m_State;
 	if ( !program.request.drawLayout.IsValid() ||
@@ -1237,7 +1248,7 @@ std::optional<GroupRequest> ProgramResolver::DrawGroup( const ResolvedProgram &p
 	         program.name == "unlit" ) &&
 	     inputTextures.empty() )
 		return s.lightmapped->Program().DrawGroup(
-		    "", lighting ? *lighting : ModelLighting{}, {}, {}, {} );
+		    "", lighting ? *lighting : ModelLighting{}, {}, {}, {}, {}, bonePalette );
 	if ( program.request.drawLayout == s.lightmapped->DrawLayout() && inputTextures.size() == 1 )
 		return s.lightmapped->LightmapGroup( inputTextures[0] );
 	return std::nullopt;

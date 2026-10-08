@@ -603,6 +603,9 @@ struct WorldView
 		// A static prop: its vertices' color is its baked lighting (the
 		// static-prop color lump), drawn by SurfaceVariant::staticVertexLight.
 		bool staticVertexLight = false;
+		// Bones for a GPU-skinned draw (CoreMeshDraw::bonePalette), 12 floats
+		// each; the vertices are then in bone space. Empty: world space.
+		std::vector<float> bonePalette;
 		// SpriteCard's card records (render.sprite-card.v1), one per corner,
 		// in place of vertices: the pass expands them with the claimed
 		// material's card terms when the view queues, into world-space

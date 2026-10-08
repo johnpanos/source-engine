@@ -2867,7 +2867,92 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	const bool skinned = src.m_pBoneWeights && g_MaxBone > 0;
 	const float *model = Top( kStackModel );
 	std::vector<render::material::SurfaceWorldVertex> vertices( src.m_nVertices );
-	for ( int i = 0; i < src.m_nVertices; ++i )
+
+	// The GPU skins (surface_lit_skinned.v.pica) when the draw's bones fit its
+	// palette: the vertices stay in bone space and the palette holds each
+	// bone's bone-to-world rows; an unskinned mesh is one "bone", its model
+	// matrix. The CPU loop below is the fallback (more bones) and the A/B
+	// reference (-pica_cpu_skinning).
+	static const bool s_CpuSkinning = CommandLine()->FindParm( "-pica_cpu_skinning" ) != 0;
+	constexpr int kPalette = int( render::material::kMaxReducedBones );
+	float palette[kPalette * 12];
+	int paletteCount = 0;
+	signed char slotOf[kMaxBones];
+	bool gpu = !s_CpuSkinning;
+	if ( gpu && skinned )
+	{
+		memset( slotOf, -1, sizeof( slotOf ) );
+		for ( int i = 0; i < src.m_nVertices && gpu; ++i )
+		{
+			const float *w = src.m_pBoneWeights + i * 2;
+			const unsigned char *b = src.m_pBoneIndices + i * 4;
+			const float weights[3] = { w[0], w[1], 1.0f - w[0] - w[1] };
+			for ( int k = 0; k < 3; ++k )
+			{
+				if ( weights[k] <= 0.0f || b[k] >= kMaxBones || slotOf[b[k]] >= 0 )
+					continue;
+				if ( paletteCount == kPalette )
+				{
+					gpu = false;
+					break;
+				}
+				slotOf[b[k]] = (signed char)paletteCount;
+				memcpy( palette + paletteCount * 12, g_Bones[b[k]], 12 * sizeof( float ) );
+				++paletteCount;
+			}
+		}
+	}
+	else if ( gpu )
+	{
+		// The model matrix (row vectors, D3D) as one bone's three rows.
+		for ( int r = 0; r < 3; ++r )
+		{
+			palette[r * 4 + 0] = model[0 + r];
+			palette[r * 4 + 1] = model[4 + r];
+			palette[r * 4 + 2] = model[8 + r];
+			palette[r * 4 + 3] = model[12 + r];
+		}
+		paletteCount = 1;
+	}
+	if ( gpu && paletteCount > 0 )
+	{
+		for ( int i = 0; i < src.m_nVertices; ++i )
+		{
+			const pica::Vertex &in = src.m_pVertices[i];
+			const float *n = src.m_pNormals + i * 3;
+			render::material::SurfaceWorldVertex &out = vertices[i];
+			memcpy( out.position, in.pos, sizeof( out.position ) );
+			memcpy( out.normal, n, sizeof( out.normal ) );
+			out.uv[0] = in.uv[0];
+			out.uv[1] = in.uv[1];
+			out.color[0] = in.color[2];
+			out.color[1] = in.color[1];
+			out.color[2] = in.color[0];
+			out.color[3] = in.color[3];
+			if ( skinned )
+			{
+				const float *w = src.m_pBoneWeights + i * 2;
+				const unsigned char *b = src.m_pBoneIndices + i * 4;
+				const float weights[3] = { w[0], w[1], 1.0f - w[0] - w[1] };
+				// A bone the CPU path would skip (no weight, out of range)
+				// reads slot 0 with its (zero or rounding) weight.
+				int slots[3];
+				for ( int k = 0; k < 3; ++k )
+					slots[k] = weights[k] > 0.0f && b[k] < kMaxBones ? slotOf[b[k]] : 0;
+				out.lightmapUv[0] = w[0];
+				out.lightmapUv[1] = w[1];
+				for ( int k = 0; k < 3; ++k )
+					out.tangentS[k] = float( slots[k] * 3 );
+			}
+			else
+			{
+				out.lightmapUv[0] = 1.0f;
+				out.lightmapUv[1] = 0.0f;
+				out.tangentS[0] = out.tangentS[1] = out.tangentS[2] = 0.0f;
+			}
+		}
+	}
+	for ( int i = 0; !( gpu && paletteCount > 0 ) && i < src.m_nVertices; ++i )
 	{
 		const pica::Vertex &in = src.m_pVertices[i];
 		const float *n = src.m_pNormals + i * 3;
@@ -2927,6 +3012,11 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	draw.variables = variables.data();
 	draw.variableCount = std::uint32_t( variables.size() );
 	draw.materialRevision = material.revision;
+	if ( gpu && paletteCount > 0 )
+	{
+		draw.bonePalette = palette;
+		draw.boneCount = std::uint32_t( paletteCount );
+	}
 	draw.vertices = vertices.data();
 	draw.vertexCount = std::uint32_t( vertices.size() );
 	draw.indices = triangles.data();

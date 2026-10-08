@@ -2706,6 +2706,8 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		}
 	}
 	geometry.staticVertexLight = draw.staticVertexLighting;
+	if ( draw.bonePalette && draw.boneCount )
+		geometry.bonePalette.assign( draw.bonePalette, draw.bonePalette + draw.boneCount * 12 );
 	if ( cards )
 	{
 		geometry.cards.assign( draw.cards, draw.cards + draw.cardCount );

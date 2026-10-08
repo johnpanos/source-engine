@@ -275,6 +275,14 @@ struct CoreMeshDraw
 	// core reuses what it built from them (no per-draw copy or key); 0 means
 	// unknown, and the core reads the variables every time.
 	std::uint64_t materialRevision = 0;
+	// A model draw the GPU skins (the reduced model, RFC 0026): boneCount
+	// bone-to-world matrices, 12 floats each (3 rows of a row-major 3x4), at
+	// most material::kMaxReducedBones (19); the vertices are then in bone
+	// space, lightmapUv holding the first two weights (the third is 1 - both)
+	// and tangentS the three bones' palette offsets (slot x 3). A device
+	// without the reduced model refuses the draw by name.
+	const float *bonePalette = nullptr;
+	std::uint32_t boneCount = 0;
 	const material::SurfaceWorldVertex *vertices = nullptr;
 	std::uint32_t vertexCount = 0;
 	const std::uint32_t *indices = nullptr;

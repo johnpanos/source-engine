@@ -45,9 +45,17 @@ enum class ReducedVertex : std::uint8_t
 	kFlat,        // flat and world layouts: the vertex colour under $vertexcolor
 	kStaticLight, // world layout, a static prop's baked vertex light
 	kModel,       // model layout: per-vertex model lighting
-	kWorldLit     // world layout in world space (a model draw handed over as
+	kWorldLit,    // world layout in world space (a model draw handed over as
 	              // world geometry): per-vertex model lighting, no transform
+	kWorldLitSkinned // kWorldLit skinned on the GPU: SurfaceWorldVertex's
+	                 // position and normal in bone space, lightmapUv the first
+	                 // two bone weights (the third is 1 - both), tangentS the
+	                 // three bones' palette offsets (bone slot x 3); the draw
+	                 // group's palette follows its ModelLighting
 };
+
+// The skinned palette's limits (kMaxReducedBones, kReducedBoneFloats) are
+// public, beside SurfaceWorldVertex (surface_program.h).
 
 struct ReducedPoint
 {

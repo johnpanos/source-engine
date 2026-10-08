@@ -437,3 +437,147 @@ See the [progress section](#progress).
     `memset`) and `StageUpload` copies.
   - `guest_profile.py --lines F`: the hottest source lines, or without
     line tables the hottest instructions, inside functions matching F.
+- 2026-10-07: the portal lab (user goal: "in a separate binary w/ the 3ds
+  rendercore figure out novel ways to render portals in high
+  performance"). Lab scope only: no product or frontend change, no gate
+  closed.
+  - What: `render/lab/pica_portals/` (module `render.lab.pica-portals`, top
+    render layer beside `render.lab`), a standalone 3DS program on this
+    adapter alone. One test chamber (15,344 triangles in 133 chunks, one
+    draw each), two facing portals (64 x 112, elliptical, so each shows the
+    other), one camera path of five segments (approach, turn in place,
+    strafe, close: 6 units from the portal, blue: the other portal), each
+    technique over the same 120 frames. Build and run:
+    `tools/n3ds/build_portal_lab.sh 24`, then
+    `tools/n3ds/run_portal_lab.py --renderer opengl` (Azahar namespace
+    `portal-lab`, private headless compositor; results in
+    `build-3ds-portals/results/opengl/`: `report.txt`, `frames.csv`, the
+    gallery as PNG).
+  - Techniques. `stencil` is Portal's own (mask, depth reset, remote scene
+    through an oblique near plane, seal) and the image reference.
+    `stencil-crop` crops the remote projection to the portal's screen
+    rectangle and sets the viewport to it, so the clipper drops everything
+    outside it and culling uses the narrow frustum; `-cone` also culls by
+    nine planes through the transferred eye and an octagon circumscribing
+    the ellipse. `screen-rtt` draws the cropped view into a texture at 1:1
+    and samples it with a CPU pre-projected ellipse (w = 1, so affine
+    screen coordinates are exact without projective texturing, which the
+    port does not have). `plane-rtt` uses Kooima's off-axis projection with
+    the portal as the image plane: the texture is a function of the eye's
+    position only (not its orientation), needs no oblique clipping (the near
+    plane is the exit plane) and maps onto the ellipse with static
+    coordinates. `plane-visible` crops that projection to the visible part
+    of the portal at about one texel per pixel. `-cached` keeps the texture
+    while the eye moves less than one texel's worth (with a guard band of a
+    fifth on each side for the visible rectangle), `-recursive` shows a
+    portal seen through a portal with its previous (ping-pong) texture, so
+    recursion costs no extra pass. `plane-best` is visible + cached +
+    recursive + cone; `plane-best-half` the same at half a texel per pixel.
+    Every pass is cleared by a quad drawn first (colour, depth and stencil)
+    except `stencil-cpu-clear`, which uses the load op. Controls: `none`
+    (flat ellipses) and `seed-mirror` (the plane texture mirrored).
+  - Oracles. Host: `portal_math_test.cpp`, 27 checks (the transfer, the
+    three projections agreeing on 400 exit-room points seen through the
+    portal, oblique clipping of the exit wall, the visible rectangle, the
+    cone never culling what the ellipse shows, frustum culling, the scene);
+    six seeded defects (mirrored texture, no oblique plane, no half turn,
+    crop y swapped, visible rectangle cut short, inscribed octagon) each
+    fail it; the build script requires all six. Device: 11 checks, all
+    pass: `stencil-cpu-clear`, `stencil-crop`, `stencil-crop-cone` and
+    `screen-rtt` match the stencil image (worst mean difference 0.001 of
+    255); `plane-visible` and `plane-visible-cached` within resampling
+    (worst raw mean 3.12, after a 4 x 4 low-pass 0.97, 0.14 % of pixels off
+    by more than 48); both controls differ (low-pass 32.7 and 29.3); the
+    cached techniques render at most twice while the eye only turns (1 of
+    24 frames). The texture-based checks first used a raw mean < 3, which
+    the close frame missed (3.02 to 3.12) with no bias (signed mean 0.04);
+    the low-pass metric was added to separate resampling blur from
+    geometric error, and the controls still fail it by 20 times.
+  - Results (Azahar OpenGL renderer, 24 frames a segment, per frame over
+    the whole path; CPU time is record + submit, which replays and drains;
+    fragments are counted on 7 of 24 frames by drawing every draw again
+    with an additive 1/255 and no tests, so they are what the GPU
+    rasterizes before depth and stencil):
+
+    | Technique | CPU ms | draws | indices | remote frags | stencil frags | total frags | turn CPU ms |
+    | --- | --- | --- | --- | --- | --- | --- | --- |
+    | none | 1.82 | 23 | 7,337 | 0 | 0 | 227,819 | 1.77 |
+    | stencil-cpu-clear | 10.82 | 143 | 47,712 | 77,885 | 45,356 | 239,941 | 10.93 |
+    | stencil | 8.69 | 144 | 47,718 | 77,885 | 45,356 | 335,941 | 8.79 |
+    | stencil-crop | 5.20 | 81 | 25,967 | 24,758 | 45,356 | 282,814 | 4.88 |
+    | stencil-crop-cone | 5.08 | 78 | 24,861 | 24,710 | 45,356 | 282,766 | 4.80 |
+    | screen-rtt | 5.30 | 80 | 25,822 | 24,758 | 0 | 269,770 | 4.96 |
+    | plane-visible | 5.27 | 80 | 25,621 | 25,346 | 0 | 270,973 | 4.96 |
+    | plane-visible-cached | 4.71 | 70 | 22,610 | 25,089 | 0 | 271,506 | 2.06 |
+    | plane-best | 4.66 | 68 | 21,920 | 25,060 | 0 | 271,477 | 2.06 |
+    | plane-best-half | 4.66 | 68 | 21,920 | 7,676 | 0 | 241,245 | 2.06 |
+
+    Total fragments include each pass's clear quad (96,000 for the main
+    pass); `stencil-cpu-clear` has none because the CPU clears.
+  - Findings.
+    - The adapter's load-op clear is a CPU fill over every texel: 2.50 ms
+      for the 400 x 240 colour and depth (median of 16, isolated), against
+      0.40 ms of CPU for a quad that clears colour, depth and stencil on the
+      GPU. In the full frame the quad saves 2.1 ms (`stencil` against
+      `stencil-cpu-clear`); every pass of every other technique uses it. A
+      GX memory fill in the adapter would serve the game too; not done here
+      (the adapter is unchanged).
+    - Cropping the remote view to the portal's rectangle is exact and halves
+      the CPU cost of a portal (stencil 6.9 ms over `none`, cropped 3.4 ms):
+      43 % fewer draws and 46 % fewer indices, 68 % fewer remote fragments.
+      The cone culls 3 more draws a frame and stays exact.
+    - The texture techniques drop the stencil passes (45,356 fragments a
+      frame, three full ellipses; 166,277 at close range) for a clear of
+      their region; overall fragment counts are within 5 % of the cropped
+      stencil's at full density, and half density removes 69 % of the remote
+      fragments for a low-pass error of 1.57.
+    - The portal-plane texture is the one technique that survives camera
+      rotation: while the eye only turns, `plane-best` renders the portal
+      once in 24 frames and costs 0.29 ms over `none` (stencil 7.0 ms,
+      cropped stencil 3.1 ms). Walking re-renders every frame (each step
+      moves the eye by more than a texel's worth), so on the whole path the
+      cache saves 19 % of the renders. Recursion through the previous
+      texture adds no pass; its image is approximate (the inner view is the
+      outer eye's), a raw mean difference 0.13 above the non-recursive one.
+    - Rendering the whole portal at a fixed size (`plane-rtt`, LODs to
+      256 x 512) blurs when the portal fills the screen; the visible
+      rectangle at one texel per pixel fixes that at the same cost.
+    - Not measured: GPU time. Azahar charges no emulated time for GPU work
+      (the software and OpenGL renderers give identical timings), so the
+      fragment and index counts stand for it. Azahar's software renderer
+      samples level 0 only; image checks are judged on OpenGL. An earlier
+      4-frame build measured 15 to 20 ms for the same CPU clear; neither the
+      isolated benchmark nor later builds reproduce it, and it is not
+      explained.
+  - Open: New 3DS hardware (frame time, GPU time, fill rate: P5);
+    stereoscopic rendering (one plane texture per eye, or one shared within
+    a texel's parallax); moving objects in the remote room (the cache is
+    keyed on the eye only); the game's portals (`r_core_world` frames).
+- 2026-10-07: GPU skinning on the PICA200 (user direction: "work on that
+  PICA vertex shader for skinning").
+  - `kWorldLitSkinned` (`surface_lit_skinned.v.pica` + `skin.pica`): three
+    bones per vertex from a 19-bone palette in c35-c91, after the draw's
+    ModelLighting; the vertex is `SurfaceWorldVertex` with a bone meaning
+    (bone-space position and normal, weights in `lightmapUv`, palette
+    offsets in `tangentS`; `kMaxReducedBones`/`kReducedBoneFloats` in
+    surface_program.h). `CoreMeshDraw::bonePalette` carries it through
+    `QueueMesh` (`DynamicDraw::bonePalette`), the lit draw group appends it
+    (`SurfaceProgram::DrawGroup`'s `bonePalette`), and
+    `ProgramResolver::SkinnedPipeline` selects the variant (reduced programs
+    only; `SurfaceVariant::skinned`, variant key `surface-v3`).
+    `EmitToCore` sends bone-space vertices and the palette when the draw's
+    bones fit (an unskinned mesh is one bone, its model matrix); more bones,
+    or `-pica_cpu_skinning`, keep the CPU path.
+  - The per-vertex model lighting now has one copy, `model_lighting.pica`
+    (`.proc light`), linked into surface_model, surface_lit and the skinned
+    program: pica_programs entries join files with '+', assembled as one
+    source (one DVLE, the reader's rule, with every file's constants).
+  - `CreateBuffer` zeroes new buffers only with guard bands (no clause
+    promises zeroed contents), and `CheckGuards` returns at once without
+    them.
+  - Evidence: the matched camera renders pixel-identical with GPU and CPU
+    skinning (0 of 96,000 pixels differ by more than 4). Guest profile:
+    `EmitToCore` 13.9 % -> 7.6 % self; intro4 windows 230 -> 214 ms and
+    299 -> 275 ms per frame (with the buffer fixes). An earlier experiment
+    that skinned only each draw's referenced vertices was slower and was
+    dropped.

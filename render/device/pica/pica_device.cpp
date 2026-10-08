@@ -220,6 +220,10 @@ void EnableGuardBands( bool enabled )
 
 std::size_t CheckGuards( std::size_t span )
 {
+	// Without bands every registry entry has none: walking it on every
+	// submit was a measured cost (the guest profile) for nothing.
+	if ( !g_GuardBands.load( std::memory_order_relaxed ) )
+		return 0;
 	std::lock_guard<std::mutex> guard( GuardLock() );
 	std::size_t broken = 0;
 	for ( auto &[at, guarded] : GuardRegistry() )
@@ -610,7 +614,10 @@ DeviceResult<BufferId> PicaDevice::CreateBuffer( const BufferDesc &desc )
 	record.createdAt = m_Submitted;
 	if ( !record.data )
 		return Fail( DeviceStatus::kOutOfMemory, op );
-	std::memset( record.data, 0, std::size_t( desc.size ) );
+	// No clause promises zeroed contents (Vulkan's are not); zeroing every
+	// new buffer was 2 % of the 3DS frame, so only the audit (guard bands) does.
+	if ( g_GuardBands.load( std::memory_order_relaxed ) )
+		std::memset( record.data, 0, std::size_t( desc.size ) );
 	const BufferId id{ ++m_NextId };
 	m_Buffers.emplace( id.value, record );
 	return id;

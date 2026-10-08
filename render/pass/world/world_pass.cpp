@@ -5664,7 +5664,7 @@ void WorldPass::RecordBatch(
 		if ( draw.lighting && m->program.drawInputs.empty() )
 		{
 			const std::optional<material::GroupRequest> request =
-			    m->resolver->DrawGroup( m->program, {}, &*draw.lighting );
+			    m->resolver->DrawGroup( m->program, {}, &*draw.lighting, draw.bonePalette );
 			litDrawGroups.emplace_back();
 			std::string why;
 			if ( !request || !buildGroup( *request, {}, litDrawGroups.back(), &why ) )
@@ -5689,6 +5689,22 @@ void WorldPass::RecordBatch(
 			{
 				note( "material " + draw.material.name +
 				      ": its static vertex light variant: " + variant.Error() );
+				complete = false;
+				continue;
+			}
+			pipeline = variant.Value();
+		}
+		// A GPU-skinned draw: its palette rides in the lighting group above.
+		if ( !draw.bonePalette.empty() )
+		{
+			auto variant = lit && !draw.staticVertexLight
+			                   ? m->resolver->SkinnedPipeline( m->program )
+			                   : foundation::Expected<PipelineId, std::string>(
+			                         foundation::MakeUnexpected( std::string(
+			                             "a skinned draw needs model lighting and no baked light" ) ) );
+			if ( !variant )
+			{
+				note( "material " + draw.material.name + ": its skinned variant: " + variant.Error() );
 				complete = false;
 				continue;
 			}

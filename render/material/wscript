@@ -10,9 +10,13 @@ def build(bld):
 	programs = []
 	if bld.env.N3DS:
 		features += ' pica_device_shaders'
+		# '+' links files into one program (render/device/pica/wscript): the
+		# model lighting has one copy, model_lighting.pica.
+		lighting = '+families/pica/model_lighting.pica'
 		programs = ['families/pica/surface_flat.v.pica', 'families/pica/surface_static.v.pica',
-			'families/pica/surface_model.v.pica',
-			'families/pica/surface_lit.v.pica']
+			'families/pica/surface_model.v.pica' + lighting,
+			'families/pica/surface_lit.v.pica' + lighting,
+			'families/pica/surface_lit_skinned.v.pica' + lighting + '+families/pica/skin.pica']
 	bld.stlib(
 		env         = bld.strict_cpp20_env(),
 		features    = features,

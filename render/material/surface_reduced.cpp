@@ -22,6 +22,8 @@ extern "C" const unsigned char surface_model_shbin[];
 extern "C" const unsigned surface_model_shbin_size;
 extern "C" const unsigned char surface_lit_shbin[];
 extern "C" const unsigned surface_lit_shbin_size;
+extern "C" const unsigned char surface_lit_skinned_shbin[];
+extern "C" const unsigned surface_lit_skinned_shbin_size;
 #endif
 
 namespace render::material
@@ -167,7 +169,8 @@ ReducedPoint ReduceSurface( const SurfaceVariant &variant )
 	const bool model = variant.layout == SurfaceVertexLayout::kModel || worldLit;
 	const bool selfIllum = ( variant.terms & kSurfaceSelfIllum ) != 0 &&
 	                       ( variant.terms & kSurfaceSelfIllumMask ) == 0 && !unlit;
-	point.vertex = worldLit                 ? ReducedVertex::kWorldLit
+	point.vertex = worldLit && variant.skinned ? ReducedVertex::kWorldLitSkinned
+	               : worldLit                  ? ReducedVertex::kWorldLit
 	               : model                     ? ReducedVertex::kModel
 	               : variant.staticVertexLight ? ReducedVertex::kStaticLight
 	                                           : ReducedVertex::kFlat;
@@ -247,6 +250,13 @@ std::vector<std::byte> ReducedVertexArtifact( ReducedVertex vertex )
 		size = surface_lit_shbin_size;
 		program.uniforms = { { std::uint8_t( BindGroupRole::kDraw ), 2, 8, 27 } };
 		break;
+	case ReducedVertex::kWorldLitSkinned:
+		// ModelLighting, then the palette (skin.pica: c35-c91).
+		code = surface_lit_skinned_shbin;
+		size = surface_lit_skinned_shbin_size;
+		program.uniforms = { { std::uint8_t( BindGroupRole::kDraw ), 2, 8,
+		    std::uint8_t( 27 + kMaxReducedBones * 3 ) } };
+		break;
 	}
 	return pf::WriteVertexProgram( program, { reinterpret_cast<const std::byte *>( code ), size } );
 #else
@@ -319,6 +329,11 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ReducedPipeline(
 	               offsetof( SurfaceWorldVertex, normal ) == 32 );
 	const VertexAttribute litAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
 	    { 1, VertexFormat::kFloat3, 32, 0 }, { 3, VertexFormat::kFloat2, 12, 0 } };
+	// The skinned meaning of SurfaceWorldVertex (surface_reduced.h): weights in
+	// lightmapUv (offset 20), palette offsets in tangentS (offset 44).
+	const VertexAttribute skinnedAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
+	    { 1, VertexFormat::kFloat3, 32, 0 }, { 3, VertexFormat::kFloat2, 12, 0 },
+	    { 4, VertexFormat::kFloat2, 20, 0 }, { 5, VertexFormat::kFloat3, 44, 0 } };
 	const VertexBufferLayout buffers[] = { { SurfaceVertexStride( variant.layout ), false } };
 	const BindGroupLayoutId layouts[] = {
 	    m_FrameLayout, m_ViewLayout, m_MaterialLayout, m_DrawLayout };
@@ -327,7 +342,9 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ReducedPipeline(
 	desc.stages = stages;
 	desc.layouts = layouts;
 	desc.drawConstantBytes = drawConstantBytes;
-	desc.vertex = { point.vertex == ReducedVertex::kWorldLit
+	desc.vertex = { point.vertex == ReducedVertex::kWorldLitSkinned
+	                    ? std::span<const VertexAttribute>( skinnedAttributes )
+	                : point.vertex == ReducedVertex::kWorldLit
 	                    ? std::span<const VertexAttribute>( litAttributes )
 	                : model ? std::span<const VertexAttribute>( modelAttributes )
 	                        : std::span<const VertexAttribute>( flatAttributes ),

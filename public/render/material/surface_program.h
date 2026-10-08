@@ -434,6 +434,14 @@ struct SurfaceWorldVertex
 };
 static_assert( sizeof( SurfaceWorldVertex ) == 72 );
 
+// The reduced model's GPU skinning (kWorldLitSkinned, RFC 0026): a palette
+// of at most this many bones, each three rows of a row-major bone-to-world
+// 3x4 (kReducedBoneFloats floats); SurfaceWorldVertex then carries bone-space
+// position and normal, lightmapUv the first two weights, tangentS the three
+// bones' palette offsets (slot x 3).
+inline constexpr std::size_t kMaxReducedBones = 19;
+inline constexpr std::size_t kReducedBoneFloats = 12;
+
 // The model vertex (surface_model.vert): position, normal, tangent (w: the
 // bitangent's sign) and uv0 of a mesh, in object space.
 struct SurfaceModelVertex
@@ -663,6 +671,11 @@ struct SurfaceVariant
 	// read, and a baked light adds its specular lobe alone. (Every kSurface*
 	// term bit is in use.)
 	bool staticVertexLight = false;
+	// The reduced model's skinned lit vertex (kWorldLitSkinned, RFC 0026): a
+	// model draw handed over with its bone palette (DrawGroup's bonePalette)
+	// and its vertices in bone space (surface_reduced.h). Reduced programs
+	// only; others refuse it.
+	bool skinned = false;
 	// WorldVertexTransition on the lightmapped point (specialization constant
 	// 10): $basetexture2 at the emission binding (at the base coordinates),
 	// $bumpmap2 at the MRAO binding and $blendmodulatetexture at the env map
@@ -784,6 +797,10 @@ public:
 	// `shipped`'s static vertex light variant (SurfaceVariant::staticVertexLight).
 	foundation::Expected<device::PipelineId, SurfaceStatus> StaticVertexLightPipeline(
 	    device::PipelineId shipped );
+	// `shipped`'s skinned variant (SurfaceVariant::skinned): reduced programs
+	// with a lit world point only, else kInvalidRequest (PipelineFailure says why).
+	foundation::Expected<device::PipelineId, SurfaceStatus> SkinnedPipeline(
+	    device::PipelineId shipped );
 	foundation::Expected<device::PipelineId, SurfaceStatus> InstancedPipeline(
 	    device::PipelineId pipeline );
 	// Pipeline prewarming (a driver compile in a frame is a visible hitch): a
@@ -833,9 +850,12 @@ public:
 	// kSurfaceDirectionalLightmap; empty otherwise).
 	// 'indirect' names the bake's indirect layer of the same page
 	// (kSurfaceAmbientOcclusion on a world surface; empty otherwise).
+	// bonePalette: a skinned variant's bones (kReducedBoneFloats floats each,
+	// at most kMaxReducedBones), placed after the lighting; empty otherwise.
 	GroupRequest DrawGroup( std::string page, const ModelLighting &lighting = {},
 	    const device::SamplerDesc &sampler = {}, std::string gradient = {},
-	    std::string indirect = {}, std::string shadowMask = {} ) const;
+	    std::string indirect = {}, std::string shadowMask = {},
+	    std::span<const float> bonePalette = {} ) const;
 
 	// The device runs kPica artifacts: the program draws the reduced 3DS
 	// material model (RFC 0026 decision 8, surface_reduced.h). Its layouts

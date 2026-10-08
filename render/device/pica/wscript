@@ -14,7 +14,15 @@ class pica_device_shader(Task.Task):
 	color = 'BLUE'
 	def run(self):
 		shbin, csrc = self.outputs
-		return self.exec_command([self.picasso, '-o', shbin.abspath(), self.inputs[0].abspath()]) or \
+		source = self.inputs[0].abspath()
+		if len(self.inputs) > 1:
+			# One program from several files: concatenated in order, so it is
+			# one DVLE (the PVS1 reader takes exactly one) whose constant table
+			# holds every file's .constf, and uniforms keep file order.
+			linked = shbin.change_ext('.linked.pica')
+			linked.write(''.join(n.read() + '\n' for n in self.inputs))
+			source = linked.abspath()
+		return self.exec_command([self.picasso, '-o', shbin.abspath(), source]) or \
 			self.exec_command(['python3', self.embed, shbin.abspath(), csrc.abspath(), self.symbol])
 
 @feature('pica_device_shaders')
@@ -23,13 +31,16 @@ class pica_device_shader(Task.Task):
 def pica_device_shaders(self):
 	# Each program's picasso output, embedded as a C source the library
 	# compiles: a declared task output, so it exists before it is compiled.
+	# A program of several files names them joined by '+', the main file
+	# first: they are assembled as one source, uniforms in file order.
 	picasso = os.path.join(self.env.DEVKITPRO, 'tools', 'bin', 'picasso')
 	embed = self.bld.path.find_node('tools/n3ds/embed_binary.py').abspath()
 	for name in self.to_list(getattr(self, 'pica_programs', [])):
-		node = self.path.find_resource(name)
+		nodes = [self.path.find_resource(part) for part in name.split('+')]
+		node = nodes[0]
 		shbin = node.change_ext('.shbin')
 		csrc = node.change_ext('_shbin.c')
-		self.create_task('pica_device_shader', node, [shbin, csrc], picasso=picasso, embed=embed,
+		self.create_task('pica_device_shader', nodes, [shbin, csrc], picasso=picasso, embed=embed,
 			symbol=node.name.split('.')[0] + '_shbin')
 		self.create_compiled_task('c', csrc)
 
