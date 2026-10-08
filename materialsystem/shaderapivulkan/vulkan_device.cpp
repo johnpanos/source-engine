@@ -2811,7 +2811,6 @@ void CVulkanContext::QueueClear( bool color, bool depth, bool stencil )
 		return;
 	EnsureRenderTargetStorage( m_dynTarget );
 	DynDraw &d = AppendRecord( kRecordClear );
-	NoteSceneChanged();
 	d.clearColor = color;
 	d.clearDepth = depth;
 	d.clearStencil = stencil;
@@ -2837,8 +2836,6 @@ bool CVulkanContext::QueueCopyToTexture(
 	std::string error;
 	const bool depthAlpha = depthToAlpha && EnsureSceneCapture( &error );
 	DynDraw &d = AppendRecord( kRecordCopy );
-	if ( dstHandle == m_sceneCaptureTarget || depthAlpha )
-		NoteSceneChanged();
 	d.copyDst = dstHandle;
 	d.copyDepthToAlpha = depthAlpha;
 	if ( depthAlpha )
@@ -3586,9 +3583,7 @@ void CVulkanContext::DestroyDynamicMesh()
 		ReleaseManagedTextureObjects( t );
 	m_managedTextures.clear();
 	m_whiteVolumeHandle = -1;
-	m_sceneColorHandle = -1;
 	m_sceneDepthHandle = -1;
-	m_sceneDepthCaptured = false;
 	for ( RetiredTexture &r : m_retiredTextures )
 		ReleaseManagedTextureObjects( r.texture );
 	m_retiredTextures.clear();
@@ -4554,7 +4549,6 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 	// them replays. Only the slots this stream issues are reset, so a result of
 	// an earlier frame that the engine has yet to read survives.
 	m_replayedQueries.clear();
-	m_lastFrameSceneCaptures = 0;
 	m_lastFrameSceneDepthCaptures = 0;
 	m_lastFrameDepthToAlpha = 0;
 	m_lastFrameDepthToAlphaSkipped = 0;
@@ -5890,10 +5884,6 @@ bool CVulkanContext::FinishFrame(
 }
 
 static const char kPipelineCacheFile[] = "vulkan_pipelines.cache";
-static const char kPipelineKeysFile[] = "vulkan_pipelines.keys";
-// The first line of the keys file. Bump the version when RasterStateKey's
-// encoding or a family's meaning changes, so old keys are ignored, not misread.
-static const char kPipelineKeysHeader[] = "vulkan-pipeline-keys/v1";
 
 static bool ReadWholeFile( const std::string &path, std::vector<char> *out )
 {
@@ -5987,21 +5977,9 @@ bool CVulkanContext::SavePipelineStore( std::string *outError )
 			size = 0;
 		data.resize( size );
 	}
-	std::vector<std::pair<int, uint64_t>> variants = m_pipelineVariants;
-	std::sort( variants.begin(), variants.end() );
-	variants.erase( std::unique( variants.begin(), variants.end() ), variants.end() );
-	std::string keys = std::string( kPipelineKeysHeader ) + "\n";
-	for ( const std::pair<int, uint64_t> &variant : variants )
-	{
-		char line[64];
-		std::snprintf( line, sizeof( line ), "%d %llx\n", variant.first,
-		    static_cast<unsigned long long>( variant.second ) );
-		keys += line;
-	}
 	const std::string base = m_pipelineStoreDirectory + "/";
-	if ( ( !data.empty() &&
-	         !WriteFileAtomically( base + kPipelineCacheFile, data.data(), data.size() ) ) ||
-	     !WriteFileAtomically( base + kPipelineKeysFile, keys.data(), keys.size() ) )
+	if ( !data.empty() &&
+	     !WriteFileAtomically( base + kPipelineCacheFile, data.data(), data.size() ) )
 	{
 		SetError( outError, "cannot write the pipeline store in " + m_pipelineStoreDirectory );
 		return false;
@@ -6572,8 +6550,7 @@ void CVulkanContext::Shutdown()
 			vkDestroyPipelineCache( m_device, m_pipelineCache, nullptr );
 			m_pipelineCache = VK_NULL_HANDLE;
 		}
-		m_pipelineVariants.clear();
-		m_pipelineStoreDirectory.clear();
+			m_pipelineStoreDirectory.clear();
 		m_querySlots.clear();
 		m_replayedQueries.clear();
 
@@ -6650,7 +6627,6 @@ void CVulkanContext::Shutdown()
 	m_frameOpen = false;
 	m_currentFrame = 0;
 	m_captureRequested = false;
-	m_capturePending = false;
 	m_swapExtent = { 0, 0 };
 	m_presentExtent = { 0, 0 };
 	m_host = nullptr;

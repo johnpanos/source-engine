@@ -301,8 +301,6 @@ public:
 		m_queueLegacyHud = false;
 		m_frameLabels.clear();
 		m_dynFramePresented = false;
-		m_sceneCaptureCurrent = false;
-		m_sceneCapturesQueued = 0;
 	}
 	// Volume textures (the material system's colour-correction lookups and the
 	// white volume) are available once the dynamic resources hold the white
@@ -1284,7 +1282,6 @@ private:
 	bool m_captureRequested = false;
 	bool m_captureHdrRequested = false;
 	VkFormat m_captureFormat = VK_FORMAT_UNDEFINED;
-	bool m_capturePending = false;
 	std::vector<uint8_t> m_capturedPixels;
 	std::vector<uint16_t> m_capturedHdrPixels;
 	int m_capturedWidth = 0;
@@ -1297,25 +1294,15 @@ private:
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
 	// mesh UVs, bound through a descriptor set (its own layout adds the sampler).
 	// Scene capture (vulkan_scene_capture.cpp): managed textures the size of the
-	// back buffer. Color is the swapchain format with its sRGB view and a full
-	// mip chain; depth is the depth format, sampled through a depth-only view.
-	int m_sceneColorHandle = -1;
+	// back buffer's depth: the depth format, sampled through a depth-only view
+	// (RecordDepthToAlpha's input).
 	int m_sceneDepthHandle = -1;
 	// The depth format can be copied from the attachments and sampled.
 	bool m_sceneDepthUsable = false;
 	bool m_sceneDepthEnabled = true;
-	// Queue-side state: whether the target still holds what the last capture
-	// copied, which target and glass material it served, and captures queued.
-	bool m_sceneCaptureCurrent = false;
-	int m_sceneCaptureTarget = -1;
-	uint32_t m_sceneCapturesQueued = 0;
-	uint32_t m_lastFrameSceneCaptures = 0;
 	uint32_t m_lastFrameSceneDepthCaptures = 0;
-	// Whether the latest replayed capture copied depth (ReadSceneDepth).
-	bool m_sceneDepthCaptured = false;
 	bool EnsureSceneCapture( std::string *outError );
 	void DestroySceneCapture();
-	void NoteSceneChanged() { m_sceneCaptureCurrent = false; }
 	// Records the copy into the capture images; returns whether depth was copied.
 	// Copies `target`'s depth (width x height from the origin) into the capture's
 	// depth image; false when there is no single-sampled depth to copy.
@@ -1326,7 +1313,6 @@ private:
 	{
 	};
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
-	std::vector<std::pair<int, uint64_t>> m_pipelineVariants;
 	std::string m_pipelineStoreDirectory;
 
 	// PortalRefract pipelines, one per raster state, built on first use.

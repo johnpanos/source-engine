@@ -60,44 +60,13 @@ bool CVulkanContext::EnsureSceneCapture( std::string *outError )
 		CaptureError( outError, "scene capture needs a back buffer" );
 		return false;
 	}
-	if ( m_sceneColorHandle >= 0 )
+	if ( m_sceneDepthHandle >= 0 )
 	{
-		const ManagedTexture &color = m_managedTextures[static_cast<size_t>( m_sceneColorHandle )];
-		if ( color.width == width && color.height == height )
+		const ManagedTexture &depth = m_managedTextures[static_cast<size_t>( m_sceneDepthHandle )];
+		if ( depth.width == width && depth.height == height )
 			return true;
 		DestroySceneCapture();
 	}
-
-	// Color: the back buffer's format, so a blit copies it unconverted, with
-	// its sRGB view (glass reads linear light) and a full mip chain made by
-	// linear blits.
-	VkFormatProperties colorProps = {};
-	vkGetPhysicalDeviceFormatProperties( m_physicalDevice, m_swapFormat, &colorProps );
-	const VkFormatFeatureFlags blits = VK_FORMAT_FEATURE_BLIT_SRC_BIT |
-	                                   VK_FORMAT_FEATURE_BLIT_DST_BIT |
-	                                   VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
-	if ( ( colorProps.optimalTilingFeatures & blits ) != blits )
-	{
-		CaptureError( outError, "back buffer format cannot be blitted into a filtered mip chain" );
-		return false;
-	}
-	const int color = CreateManagedTexture( static_cast<int>( width ), static_cast<int>( height ),
-	    m_swapFormat, outError, VK_IMAGE_USAGE_TRANSFER_SRC_BIT, UINT32_MAX,
-	    m_srgbAttachments ? m_swapFormatSrgb : VK_FORMAT_UNDEFINED );
-	if ( color < 0 )
-		return false;
-	m_sceneColorHandle = color;
-	NameManagedTexture( color, "scene capture color" );
-	SetManagedTextureSamplerState(
-	    color, kSamplerClampU | kSamplerClampV | kSamplerLinear | kSamplerMipLinear );
-	ManagedTexture &colorTexture = m_managedTextures[static_cast<size_t>( color )];
-	if ( colorTexture.descSet == VK_NULL_HANDLE )
-	{
-		DestroySceneCapture();
-		CaptureError( outError, "no descriptor set for the scene color capture" );
-		return false;
-	}
-	colorTexture.uploaded = true;
 	if ( !m_sceneDepthUsable )
 		return true;
 
@@ -185,7 +154,8 @@ bool CVulkanContext::EnsureSceneCapture( std::string *outError )
 		ok = false;
 	if ( !ok )
 	{
-		// Glass still works without depth; only foreground rejection is lost.
+		// Without it the depth-to-alpha copy is skipped (soft particles lose
+		// their depth feathering).
 		ReleaseManagedTextureObjects( depth );
 		CaptureLog( "scene depth capture unavailable: %s\n",
 		    outError && !outError->empty() ? outError->c_str() : "image or descriptor set" );
@@ -201,13 +171,9 @@ bool CVulkanContext::EnsureSceneCapture( std::string *outError )
 void CVulkanContext::DestroySceneCapture()
 {
 	// Retired, not destroyed: submitted frames may still sample them.
-	if ( m_sceneColorHandle >= 0 )
-		DestroyManagedTexture( m_sceneColorHandle );
 	if ( m_sceneDepthHandle >= 0 )
 		DestroyManagedTexture( m_sceneDepthHandle );
-	m_sceneColorHandle = -1;
 	m_sceneDepthHandle = -1;
-	m_sceneCaptureCurrent = false;
 }
 
 bool CVulkanContext::RecordSceneDepthCopy(
