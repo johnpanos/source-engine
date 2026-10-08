@@ -68,7 +68,18 @@ VIEWS = {
                                          "wait 20", "+attack", "wait 5", "-attack", "wait 20",
                                          "cmd setang 0 90 0", "wait 5", "+attack2", "wait 5",
                                          "-attack2", "wait 40"]),
+    # Native Portal (RFC 0016 K9 covers both games): the K0 views and one pass
+    # of the frame-pacing workload (quality/workloads/portal-frame-pacing-v1).
+    "p1-testchmb-a-00": ("testchmb_a_00", []),
+    "p1-testchmb-a-08": ("testchmb_a_08", []),
+    "p1-testchmb-a-01": ("testchmb_a_01", []),
+    "p1-frame-pacing": ("testchmb_a_02", ["god", "notarget", "give weapon_portalgun", "upgrade_portalgun", "upgrade_portalgun", "wait 120", "ent_fire prop_portal fizzle", "setpos -448 150 0", "setang 0 90 0", "wait 90", "wait 120", "+attack", "wait 2", "-attack", "wait 120", "setang 0 270 0", "wait 30", "+attack2", "wait 2", "-attack2", "wait 120", "wait 60", "setang 0 90 0", "wait 60", "+forward", "wait 300", "-forward", "wait 30", "setpos -448 150 0", "setang 0 270 0", "+forward", "wait 300", "-forward", "wait 60"]),
 }
+
+# Views on native Portal (--p1-runtime, --p1-build) rather than Portal 2.
+PORTAL1 = {"p1-testchmb-a-00", "p1-testchmb-a-08", "p1-testchmb-a-01", "p1-frame-pacing"}
+# Views judged over every frame after the map settles, not the last ones.
+ALL_FRAMES = {"p1-frame-pacing"}
 
 DRAW = re.compile(r"\[vulkan\]\s+frame draw tgt=(-?\d+) blend=(\d+)\s+verts=\d+ material=(\S+)")
 DROPPED = re.compile(r"dropped material draws=(\d+)\s+(\S+) \[(\w+)\]")
@@ -76,15 +87,19 @@ DROPPED = re.compile(r"dropped material draws=(\d+)\s+(\S+) \[(\w+)\]")
 
 def boot(args, name, out):
     level, commands = VIEWS[name]
+    portal1 = name in PORTAL1
+    runtime = args.p1_runtime if portal1 else args.runtime
+    build = args.p1_build if portal1 else args.build
     stats = out / (name + ".jsonl")
     cmd = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
-           "--runtime", str(args.runtime.resolve()), "--out", str(out / name),
-           "--game", "portal2", "--renderer", "native-vulkan", "--require-vulkan",
+           "--runtime", str(runtime.resolve()), "--out", str(out / name),
+           "--game", "portal" if portal1 else "portal2", "--renderer", "native-vulkan",
+           "--require-vulkan",
            "--headless", "--map", level, "--timeout", str(args.timeout),
            "--capture-wait", "60", "--no-mouse", "--physics", "vphysics_box3d",
            "--engine-arg=-vkframestats", "--engine-arg=" + str(stats)]
-    if args.build:
-        cmd += ["--build", str(args.build.resolve())]
+    if build:
+        cmd += ["--build", str(build.resolve())]
     for setting in ("sv_cheats 1", "mat_queue_mode 2", "r_core_world 1",
                     "r_indirect_producer baked"):
         cmd += ["--startup-command", setting]
@@ -98,7 +113,9 @@ def boot(args, name, out):
         frames = [json.loads(line) for line in stats.read_text().splitlines()[1:]]
     except OSError:
         frames = []
-    settled = [f["legacy_stream_draws"] for f in frames[-SETTLED:]]
+    # Past the map's settling wait (120 frames) for a workload judged whole.
+    window = frames[120:] if name in ALL_FRAMES else frames[-SETTLED:]
+    settled = [f["legacy_stream_draws"] for f in window]
     record["frames"] = len(frames)
     record["legacy_stream_draws"] = {"max": max(settled, default=None),
                                      "min": min(settled, default=None)}
@@ -125,7 +142,7 @@ def line(record):
 def run(args):
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    views = args.view or list(VIEWS)
+    views = args.view or [v for v in VIEWS if v not in PORTAL1 or args.p1_runtime]
     records = []
     for name in views:
         record = boot(args, name, out)
@@ -149,6 +166,8 @@ def main(argv=None):
     r = sub.add_parser("run")
     r.add_argument("--runtime", type=Path, required=True)
     r.add_argument("--build", type=Path)
+    r.add_argument("--p1-runtime", type=Path, help="native Portal's runtime (the p1-* views)")
+    r.add_argument("--p1-build", type=Path, help="native Portal's build tree")
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--view", action="append", choices=sorted(VIEWS))
     r.add_argument("--timeout", type=int, default=400)

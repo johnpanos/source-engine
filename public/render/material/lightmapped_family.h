@@ -70,6 +70,7 @@ struct LightmappedClaim
 	// translucent and alpha-tested draws (write mask, clause D17).
 	bool alphaWrite = true;
 	bool alphaToCoverage = false; // only opaque cutouts on multisampled targets
+	bool fogToBlack = false;      // $additive: added radiance fogs toward black
 	std::uint32_t terms = 0;      // kSurface* bits
 	std::uint32_t detailMode = 0; // $detailblendmode, with kSurfaceDetail
 	// WorldVertexTransition's second layer (SurfaceVariant::blendTexture2):

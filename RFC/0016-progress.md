@@ -13239,3 +13239,23 @@ portal's far view reads dark against legacy: to be compared next.
   - Found on the same frame: Chell and the view model are drawn flat and
     pale on this BSP2 fixture map, while the legacy renderer lights and
     textures them. This is the open model defect noted earlier.
+- **Native Portal in the census** (RFC 0016 K9 covers both games): the
+  census gains `p1-testchmb-a-00`, `-a-08`, `-a-01` (the K0 views) and
+  `p1-frame-pacing`, one pass of `portal-frame-pacing-v1` judged over every
+  settled frame (`--p1-runtime`, `--p1-build`). All four draw 0 legacy-stream
+  draws.
+  - The frosted glass (LightmappedGeneric `$additive`) was dropped. The
+    lightmapped claim now takes `$additive`: SRC_ALPHA, ONE where the output
+    alpha is a coverage; ONE, ONE where the base alpha is a mask or
+    alpha-tested; fog to black (`DefaultFog`); no destination alpha writes.
+  - Still dropped on Portal 1: the portal rims (`portal_1_anims`,
+    `portal_2_anims`, WriteZ) and `portal_depthdoubler` (`Portal_DX90`).
+  - Observed once: a `p1-testchmb-a-00` capture came out as the core's
+    all-hatch frame (boot exit 1, "lacks scene detail"). The rerun passed.
+    Intermittent, cause unknown, open.
+  - Earlier finding on `qa_portal_walk`: the pale view model and Chell. The
+    gun's image specular is about 0.4 grey over its whole surface: the BSP2
+    fixture's reflection probes captured its bright room. The legacy
+    renderer has no built cubemap there (`cubemapdefault` missing) and
+    reflects nothing. A fixture difference (no built cubemaps), not a core
+    defect.

@@ -857,6 +857,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		out.name = "lightmapped";
 		out.request = std::move( request ).Value();
 		out.blend = claim.blend;
+		out.fogToBlack = claim.fogToBlack;
 		out.drawInputs = { "lightmap" };
 		return out;
 	}

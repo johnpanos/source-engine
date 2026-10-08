@@ -28,7 +28,7 @@ using detail::ReadParameter;
 using detail::TextureBound;
 
 // The parameters the family draws, and the ones the caller owns.
-constexpr std::array<std::string_view, 45> kClaimed = { "basetexture", "color", "alpha",
+constexpr std::array<std::string_view, 46> kClaimed = { "basetexture", "color", "alpha",
     "vertexcolor", "vertexalpha", "alphatest", "alphatestreference", "translucent", "model",
     "nofog", "nocull", "bumpmap", "ssbump", "nodiffusebumplighting", "envmap", "envmapmask",
     "basealphaenvmapmask", "normalmapalphaenvmapmask", "envmaptint", "envmapcontrast",
@@ -36,7 +36,8 @@ constexpr std::array<std::string_view, 45> kClaimed = { "basetexture", "color", 
     "detailblendfactor", "detailtint", "selfillum", "selfillumtint", "ssbumpmathfix",
     "envmaplightscale", "envmaplightscaleminmax", "decal", "alpha2", "allowalphatocoverage",
     "frame", "bumptransform", "basetexture2", "basetexturetransform2", "bumpmap2",
-    "blendmodulatetexture", "frame2", "bumpframe", "basetexturenoenvmap", "detail_ssbump" };
+    "blendmodulatetexture", "frame2", "bumpframe", "basetexturenoenvmap", "detail_ssbump",
+    "additive" };
 
 // The detail modes the port's combos draw: every TextureCombine mode but the
 // self-illuminating ones (5, 6). 10 and 11 are the ssbump detail modes, which
@@ -152,7 +153,23 @@ LightmappedClaim ClaimLightmapped( const ParameterBlock &block )
 	                          ReadFlag( block, "vertexalpha" ) ||
 	                          ReadParameter( block, "alpha" ) < 1.0f;
 	claim.blend = alphaBlended ? BlendMode::kAlpha : BlendMode::kOpaque;
-	claim.alphaWrite = !alphaBlended && !ReadFlag( block, "alphatest" );
+	// $additive (SetAdditiveBlendingShadowState): SRC_ALPHA, ONE where the
+	// output alpha is a coverage (the base alpha, $alpha or the vertex
+	// alpha: 1 for a base without alpha, so the same as ONE, ONE there), and
+	// ONE, ONE where the base alpha is a mask (self-illumination, the env map
+	// mask) or alpha tested. It fogs to black (DefaultFog).
+	if ( ReadFlag( block, "additive" ) )
+	{
+		const bool maskAlpha = ReadFlag( block, "selfillum" ) ||
+		                       ReadFlag( block, "basealphaenvmapmask" ) ||
+		                       ReadFlag( block, "alphatest" );
+		claim.blend = maskAlpha && !ReadFlag( block, "vertexalpha" ) &&
+		                      ReadParameter( block, "alpha" ) >= 1.0f
+		                  ? BlendMode::kAdditive
+		                  : BlendMode::kAlphaAdditive;
+		claim.fogToBlack = true;
+	}
+	claim.alphaWrite = claim.blend == BlendMode::kOpaque && !ReadFlag( block, "alphatest" );
 	SurfaceConstants &constants = claim.constants;
 	for ( int c = 0; c < 3; ++c )
 	{
