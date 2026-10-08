@@ -11,6 +11,7 @@
 #include "render/device/null/provider.h"
 #endif
 #include "core_panels.h"
+#include "core_luminance.h"
 #include "core_ui.h"
 #include "core_world.h"
 #include "render/legacy/core_backend.h"
@@ -55,6 +56,8 @@ struct RenderCore
 	std::unique_ptr<render::composition::CorePanels> panels;
 	// The screen UI (render.ui-draw-list.v1), drawn as the world's dynamic draws.
 	std::unique_ptr<render::composition::CoreUi> ui;
+	// The luminance counts behind auto exposure (render.pass.luminance).
+	std::unique_ptr<render::composition::CoreLuminance> luminance;
 	std::unique_ptr<render::composition::ForwardedSlots> forwarded;
 	std::unique_ptr<render::frame::IRenderer> renderer;
 	std::string deviceName;
@@ -89,6 +92,7 @@ struct RenderCore
 		if ( renderer && world )
 			renderer->RemoveStageHooks( world.get() );
 		forwarded.reset();
+		luminance.reset();
 		ui.reset();
 		panels.reset();
 		world.reset();
@@ -381,8 +385,9 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	    std::make_unique<render::composition::CorePanels>( *core->frontend, *core->renderer,
 	        core->device->Facts().capabilities.Has( render::device::Capability::kCompute ) );
 	core->ui = std::make_unique<render::composition::CoreUi>( *core->frontend, *core->world );
-	core->forwarded =
-	    std::make_unique<render::composition::ForwardedSlots>( *core->world, *core->panels );
+	core->luminance = std::make_unique<render::composition::CoreLuminance>( *core->frontend );
+	core->forwarded = std::make_unique<render::composition::ForwardedSlots>(
+	    *core->world, *core->panels, *core->luminance );
 	core->world->EnableTemporal( config->temporal, config->temporalAssets );
 	core->binding.temporal.context = core->world.get();
 	core->binding.temporal.setEnabled = []( void *context, bool enabled )
@@ -399,6 +404,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->binding.world = core->world.get();
 	core->binding.panels = core->panels.get();
 	core->binding.ui = core->ui.get();
+	core->binding.luminance = core->luminance.get();
 	core->binding.deviceName = core->deviceName.c_str();
 	if ( result )
 	{
@@ -446,5 +452,6 @@ extern "C" void RenderCore_BindRenderCallQueue(
 		core->frontend->BindRenderCallQueue( host );
 		core->world->BindHost( host );
 		core->panels->BindHost( host );
+		core->luminance->BindHost( host );
 	}
 }

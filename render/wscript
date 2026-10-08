@@ -28,6 +28,7 @@ PORTABLE = [
 	'pass/world',
 	'pass/lines',
 	'pass/panels',
+	'pass/luminance',
 	'pass/debug',
 	'pass/lights',
 	'pass/shadows',

@@ -87,6 +87,7 @@ SKINNING = "render/pass/skinning"
 CULL = "render/culling"
 LINES = "render/pass/lines"
 PANELS = "render/pass/panels"
+LUMINANCE = "render/pass/luminance"
 FAMILIES = "render/material/families"
 SKINNING_TESTS = "unittests/rendertest/core/skinning"
 LIGHTS = "render/pass/lights"
@@ -211,6 +212,13 @@ GENERATED = {
         ("kPanelRasterFragment", PANELS + "/panel_raster.frag", DEVICE_OPTIONS),
         ("kPanelCoatingFragment", PANELS + "/panel_coating.frag", DEVICE_OPTIONS),
         ("kPanelMipsCompute", PANELS + "/panel_mips.comp", DEVICE_OPTIONS))),
+    "luminance_spv.h": ("render::pass::luminance::spirv",
+        "the luminance pass: the counts behind auto exposure (RFC 0016 K8)", (
+        ("kLuminanceCount", LUMINANCE + "/luminance_count.comp", DEVICE_OPTIONS),)),
+    "luminance_defects_spv.h": ("render::lab::spirv",
+        "render_lab's luminance suite's seeded program (render.lab.luminance sensitivity)", (
+        ("kLuminanceHalfOpen", LUMINANCE + "/luminance_count.comp",
+         DEVICE_OPTIONS + ("-DSEEDED_LUMINANCE_HALF_OPEN",)),)),
     "panels_defects_spv.h": ("render::lab::spirv",
         "render_lab's panel suite's seeded programs (render.lab.panel sensitivity, RFC 0016 K11)", (
         ("kPanelMipsGamma", PANELS + "/panel_mips.comp",
@@ -572,7 +580,7 @@ GLSL_GENERATED = {
 CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "cull_spv.h", "debug_spv.h", "families_spv.h", "lines_spv.h",
                         "output_spv.h", "temporal_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h",
                         "ssr_spv.h", "ao_spv.h", "bounce_spv.h", "indirect_spv.h",
-                        "panels_spv.h", "post_spv.h")
+                        "panels_spv.h", "post_spv.h", "luminance_spv.h")
 for _header in CORE_PROGRAM_HEADERS:
     _namespace, _purpose, _rows = GENERATED[_header]
     GLSL_GENERATED[_header.replace("_spv.h", "_glsl.h")] = (

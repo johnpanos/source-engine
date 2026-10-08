@@ -20,10 +20,15 @@
 #include "tier0/vprof.h"
 
 #include "proxyentity.h"
+#include "engine/iluminancecount.h"
 
 //-----------------------------------------------------------------------------
 // Globals
 //-----------------------------------------------------------------------------
+
+// RFC 0016 render.pass.luminance: the engine's luminance counts on the render
+// core (cdll_client_int.cpp sets it); null counts with occlusion queries.
+IEngineLuminanceCount *g_pEngineLuminanceCount = NULL;
 
 // mapmaker controlled autoexposure
 bool g_bUseCustomAutoExposureMin = false;
@@ -397,6 +402,7 @@ class CHistogram_entry_t
 public:
 	Histogram_entry_state_t m_state;
 	OcclusionQueryObjectHandle_t m_occ_handle;				// the occlusion query handle
+	unsigned m_core_query; // the render core's count in flight (RFC 0016), or 0
 	int m_frame_queued;										// when this query was last queued
 	int m_npixels;										   // # of pixels this histogram represents
 	int m_npixels_in_range;
@@ -409,7 +415,21 @@ public:
 	}
 
 	void IssueQuery( int frm_num );
+	// The query's pixel count, or -1 while it is not finished.
+	int ReadCount( IMatRenderContext *pRenderContext );
 };
+
+int CHistogram_entry_t::ReadCount( IMatRenderContext *pRenderContext )
+{
+	if ( !m_core_query )
+		return pRenderContext->OcclusionQuery_GetNumPixelsRendered( m_occ_handle );
+	// The render core's count (RFC 0016 render.pass.luminance): -1 pending, -2
+	// failed, which counts as nothing until this range is queried again.
+	const int np = g_pEngineLuminanceCount->Result( m_core_query );
+	if ( np != -1 )
+		m_core_query = 0;
+	return np == -2 ? 0 : np;
+}
 
 void CHistogram_entry_t::IssueQuery( int frm_num )
 {
@@ -463,6 +483,25 @@ void CHistogram_entry_t::IssueQuery( int frm_num )
 	use_t_scale->SetFloatValue( tscale );
 
 	m_npixels = ( 1 + scrx_max - scrx_min ) * ( 1 + scry_max - scry_min );
+
+	// RFC 0016 render.pass.luminance: the render core counts the texels of
+	// _rt_FullFrameFB the compare draw below would cover, in frame order.
+	m_core_query = 0;
+	if ( g_pEngineLuminanceCount && g_pEngineLuminanceCount->CoreCounts() )
+	{
+		ITexture *pSource =
+		    materials->FindTexture( "_rt_FullFrameFB", TEXTURE_GROUP_RENDER_TARGET );
+		m_core_query = g_pEngineLuminanceCount->Queue( pSource, scrx_min + skip_edgex,
+		    scry_min + skip_edgey, scrx_max - skip_edgex, scry_max - skip_edgey, flTestRangeMin,
+		    flTestRangeMax, tscale );
+		if ( m_core_query )
+		{
+			m_state = m_state == HESTATE_INITIAL ? HESTATE_FIRST_QUERY_IN_FLIGHT
+			                                     : HESTATE_QUERY_IN_FLIGHT;
+			m_frame_queued = frm_num;
+			return;
+		}
+	}
 
 	if ( mat_tonemapping_occlusion_use_stencil.GetInt() )
 	{
@@ -554,46 +593,45 @@ void CLuminanceHistogramSystem::Update( void )
 	UpdateLuminanceRanges();
 
 	// find which histogram entries should have something done this frame
-	int n_queries_issued_this_frame=0;
+	int n_queries_issued_this_frame = 0;
 	cur_query_frame++;
 
 	int nNumRanges = N_LUMINANCE_RANGES;
 	if ( mat_tonemap_algorithm.GetInt() == 1 )
 		nNumRanges = N_LUMINANCE_RANGES_NEW;
 
-	for ( int i=0; i<nNumRanges; i++ )
+	for ( int i = 0; i < nNumRanges; i++ )
 	{
 		switch ( CurHistogram[i].m_state )
 		{
-			case HESTATE_INITIAL:
-				if ( n_queries_issued_this_frame<MAX_QUERIES_PER_FRAME )
-				{
-					CurHistogram[i].IssueQuery(cur_query_frame);
-					n_queries_issued_this_frame++;
-				}
-				break;
+		case HESTATE_INITIAL:
+			if ( n_queries_issued_this_frame < MAX_QUERIES_PER_FRAME )
+			{
+				CurHistogram[i].IssueQuery( cur_query_frame );
+				n_queries_issued_this_frame++;
+			}
+			break;
 
-			case HESTATE_FIRST_QUERY_IN_FLIGHT:
-			case HESTATE_QUERY_IN_FLIGHT:
-				if ( cur_query_frame > CurHistogram[i].m_frame_queued + 2 )
+		case HESTATE_FIRST_QUERY_IN_FLIGHT:
+		case HESTATE_QUERY_IN_FLIGHT:
+			if ( cur_query_frame > CurHistogram[i].m_frame_queued + 2 )
+			{
+				CMatRenderContextPtr pRenderContext( materials );
+				int np = CurHistogram[i].ReadCount( pRenderContext );
+				if ( np != -1 ) // -1=query not finished. wait until
+				                // next time
 				{
-					CMatRenderContextPtr pRenderContext( materials );
-					int np = pRenderContext->OcclusionQuery_GetNumPixelsRendered(
-						CurHistogram[i].m_occ_handle );
-					if ( np !=- 1 ) 						// -1=query not finished. wait until
-						// next time
-					{
-						CurHistogram[i].m_npixels_in_range = np;
-						// 						    if (mat_debug_autoexposure.GetInt())
-						// 								Warning("min=%f max=%f np = %d\n",CurHistogram[i].m_min_lum,CurHistogram[i].m_max_lum,np);
-						CurHistogram[i].m_state = HESTATE_QUERY_DONE;
-					}
+					CurHistogram[i].m_npixels_in_range = np;
+					// 						    if (mat_debug_autoexposure.GetInt())
+					// 								Warning("min=%f max=%f np = %d\n",CurHistogram[i].m_min_lum,CurHistogram[i].m_max_lum,np);
+					CurHistogram[i].m_state = HESTATE_QUERY_DONE;
 				}
-				break;
+			}
+			break;
 		}
 	}
 	// now, issue queries for the oldest finished queries we have
-	while( n_queries_issued_this_frame < MAX_QUERIES_PER_FRAME )
+	while ( n_queries_issued_this_frame < MAX_QUERIES_PER_FRAME )
 	{
 		int nNumRanges = N_LUMINANCE_RANGES;
 		if ( mat_tonemap_algorithm.GetInt() == 1 )

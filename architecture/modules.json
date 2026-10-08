@@ -1182,6 +1182,7 @@
           "render.pass.bounce",
           "render.pass.world",
           "render.pass.panels",
+          "render.pass.luminance",
           "render.contracts",
           "jobs.graph",
           "testing.contracts",
@@ -1221,6 +1222,19 @@
           "render.resources",
           "render.shader-library",
           "render.contracts"
+        ]
+      },
+      {
+        "id": "render.pass.luminance",
+        "description": "RFC 0016 layer 6 feature, K8 post cohort: the luminance counts behind the client's auto exposure (the legacy luminance_compare_ps2x occlusion-query histogram) as a compute count over a texture rectangle, read back once its frame completes.",
+        "paths": [
+          "public/render/pass/luminance/",
+          "render/pass/luminance/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device",
+          "render.shader-library"
         ]
       },
       {
@@ -1504,6 +1518,7 @@
           "render.contracts",
           "world.map-container",
           "render.pass.panels",
+          "render.pass.luminance",
           "render.legacy-pass-contract",
           "render.pass.volumetric",
           "render.map-media",
@@ -2219,12 +2234,19 @@
           "render_shaderlib"
         ]
       },
-      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf_decompress", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_temporal", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels", "render_map_media", "render_pass_output", "asset_resolver", "asset_index", "asset_identity", "content_hash"]},
+      "render_lab": {"allowedUse": ["render_device", "render_device_vulkan", "render_resources", "render_material", "render_math", "render_spv", "mapcontainer", "mdl", "vtf_texture_reader", "vtf_decompress", "render_shaderlib", "render_frame", "render_graph", "jobsystem", "render_pass_lines", "render_pass_lights", "render_pass_volumetric", "render_pass_ssr", "render_pass_temporal", "render_pass_ao", "render_pass_bounce", "render_pass_world", "render_pass_panels", "render_pass_luminance", "render_map_media", "render_pass_output", "asset_resolver", "asset_index", "asset_identity", "content_hash"]},
       "render_pass_debug": {
         "allowedUse": [
           "render_device",
           "render_spv",
           "render_shaderlib"
+        ]
+      },
+      "render_pass_luminance": {
+        "allowedUse": [
+          "render_shaderlib",
+          "render_device",
+          "render_spv"
         ]
       },
       "render_pass_panels": {
@@ -2288,6 +2310,7 @@
           "render_pass_ao",
           "render_pass_indirect",
           "render_pass_panels",
+          "render_pass_luminance",
           "render_pass_volumetric",
           "render_map_media",
           "render_pass_ssr"

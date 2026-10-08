@@ -13611,6 +13611,68 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.luminance",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K8 post cohort: render.pass.luminance's counts behind auto exposure against the legacy luminance_compare_ps2x test restated (the NTSC weights on the texel as stored times the scale, minimum <= L <= maximum) over a fixture counted texel by texel on the CPU: the whole texture, a sub-rectangle, a scale and a texel exactly at the maximum; a count stays pending until its frame's completion token is reported and is read once; a slot recorded again dispatches nothing; malformed queries are refused and a missing texture fails the query by name. No validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "luminance",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 11,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/luminance_suite.cpp",
+        "render/pass/luminance/luminance.cpp",
+        "render/pass/luminance/luminance_count.comp",
+        "public/render/pass/luminance/luminance.h",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.lab.luminance.sensitivity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "sensitivity",
+      "description": "render.lab.luminance's seeded kernel (luminance_defects_spv.h, built from luminance_count.comp): a half-open range that excludes the maximum fails luminance.range.maximum-inclusive; the control passes.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "luminance",
+        "--sensitivity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 2,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/luminance_suite.cpp",
+        "render/pass/luminance/luminance_count.comp",
+        "tools/render/shader_toolchain.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.particles",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

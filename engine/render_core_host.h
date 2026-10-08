@@ -59,6 +59,10 @@ IRenderCorePanels *RenderCoreHost_Panels();
 // null when unbound.
 class IRenderCoreUi;
 IRenderCoreUi *RenderCoreHost_Ui();
+// The luminance counts behind auto exposure (RFC 0016 render.pass.luminance,
+// render_core_luminance.h); null when unbound.
+class IRenderCoreLuminance;
+IRenderCoreLuminance *RenderCoreHost_Luminance();
 
 // Host render steps (host_render_steps.h): EngineFrameBegin and EngineFrameEnd.
 void RenderCoreHost_BeginFrame();

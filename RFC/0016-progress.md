@@ -12968,3 +12968,54 @@ Not done:
 - matched `render_lab` frames of the game's HUD and menu (the lab has the
   analytic oracles, not a replay of the game's lists);
 - frame cost on target hardware.
+
+## R91 K8 post cohort: the exposure histogram's luminance counts on the core (2026-10-07, user goal)
+
+After the UI slice, the one legacy-stream draw left on `sp_a1_intro4`'s
+settled frames was the client's tone-mapping histogram: one
+`dev/lumcompare` draw a frame (`screenspace_general` running
+`luminance_compare_ps20` over `_rt_FullFrameFB`, alpha-tested, color writes
+off) under an occlusion query, which the native backend keeps as a query
+input in core-only frames.
+
+- **`render.pass.luminance`** (`public/render/pass/luminance/luminance.h`,
+  `render/pass/luminance/`): the one definition of that test, a compute count
+  of a texture rectangle's texels whose luminance (0.2125, 0.7154, 0.0721 on
+  the texel as stored, times the scale) lies in [minimum, maximum], the
+  maximum inclusive. A query is queued on the main thread in frame order and
+  dispatched at its slot (it reads the texture as the stream left it there);
+  its count is read back once the native host's submission token for that
+  frame completes (`ICorePassRecorder::FrameSubmitted`), never earlier.
+- **Composition**: `CoreLuminance` (`IRenderCoreLuminance`,
+  `RenderCoreBinding::luminance`); the forwarded-slot router sends luminance
+  tags (high byte 0x8e) to it and forwards submissions and device release.
+- **Engine**: `VEngineLuminanceCount001` (`public/engine/iluminancecount.h`,
+  `engine/render_core_luminance.cpp`), `r_core_luminance` (default 1) and
+  `r_core_luminance_stats`.
+- **Client** (`viewpostprocess.cpp`): `CHistogram_entry_t::IssueQuery` queues
+  the core count over the same `_rt_FullFrameFB` rectangle (after the
+  centre-region edge skip) with the same range and tone-map scale, and skips
+  the compare draw; `ReadCount` reads the core's result where the occlusion
+  query's was read.
+
+**Lab** (`render_lab suite luminance`, rows `render.lab.luminance` and
+`.sensitivity`): 11 checks, 0 failed, validation silent: exact counts against
+the restated test over a fixture counted on the CPU (whole texture,
+sub-rectangle, scale, a texel exactly at the maximum), pending until the
+frame's token, read once, a recapture dispatches nothing, malformed queries
+refused, a missing texture failed by name. The seeded half-open kernel fails
+`luminance.range.maximum-inclusive` (1 of 1).
+
+**Game** (`sp_a1_intro4`, headless, product settings with the core UI):
+legacy-stream draws per settled frame 1 → **0**; 405 counts queued, 404 read
+back, 0 failed. Exposure parity: settled screenshots after 600 frames have
+mean 40.49 in both modes (two runs each). The histogram overlay
+(`mat_show_histogram 1`) reads 602,936 valid pixels and a 10.95 target scalar
+with core counts against 602,945 and 10.96 with occlusion queries; final and
+actual scales 5.00 / 4.91 in both. The residual is the moving scene.
+
+Not done: other views and maps are not yet censused at zero (portal views,
+monitors, motion blur and RTT shadows, which this view drops without a core
+replacement); the client still acquires the render context in the histogram
+code for the viewport and the legacy fallback (static ratchet unchanged at
+496); frame cost unmeasured on target hardware.

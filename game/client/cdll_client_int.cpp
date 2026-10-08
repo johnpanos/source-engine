@@ -203,6 +203,8 @@ void SimulateEntities();
 #include "render_stage_marks.h"
 #include "engine/iworldpanels.h"
 #include "vgui/IWorldPanelRecorder.h"
+#include "engine/iluminancecount.h"
+extern IEngineLuminanceCount *g_pEngineLuminanceCount;
 
 #ifdef FSTOP
 #include "blob_networkbypass.h"
@@ -1073,6 +1075,10 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	    (IEngineWorldPanels *)appSystemFactory( ENGINE_WORLD_PANELS_INTERFACE_VERSION, NULL );
 	g_pWorldPanelRecorder = (IWorldPanelRecorder *)appSystemFactory(
 	    VGUI_WORLD_PANEL_RECORDER_INTERFACE_VERSION, NULL );
+	// RFC 0016 render.pass.luminance: the tone-mapping histogram's counts on
+	// the core (viewpostprocess.cpp); occlusion queries without it.
+	g_pEngineLuminanceCount =
+	    (IEngineLuminanceCount *)appSystemFactory( ENGINE_LUMINANCE_COUNT_INTERFACE_VERSION, NULL );
 
 	// The render core's stage markers (RFC 0016); absent without a core.
 	g_pRenderStageMarkers =

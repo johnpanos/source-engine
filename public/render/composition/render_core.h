@@ -29,6 +29,7 @@ class IRenderMaterialBlocks; // render/legacy/material_blocks.h (legacy-interop)
 #include "render/legacy/capabilities.h"
 #include "render/legacy/core_passes.h"
 #include "render/composition/render_core_panels.h"
+#include "render/composition/render_core_luminance.h"
 #include "render/composition/render_core_ui.h"
 #include "render/composition/render_core_world.h"
 #include "render/legacy_shader_provider.h"
@@ -129,6 +130,9 @@ struct RenderCoreBinding
 	// The screen UI drawn by the core (render_core_ui.h); null when no
 	// legacy backend is composed.
 	IRenderCoreUi *ui = nullptr;
+	// The luminance counts behind auto exposure (render_core_luminance.h);
+	// null when no legacy backend is composed.
+	IRenderCoreLuminance *luminance = nullptr;
 	// The renderer's compute service for the engine's indirect-light
 	// producers (render/gpu_compute.h) on the core (RFC 0016 K12,
 	// render.pass.indirect): it runs the SDF producer's program. Null when

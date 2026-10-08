@@ -1,0 +1,46 @@
+// render.pass.luminance (RFC 0016 K8): counts the texels of a rectangle
+// whose scaled luminance lies in [minimum, maximum] (luminance_compare_ps2x's
+// test, render/pass/luminance/luminance.h), one invocation per texel, into
+// one counter. Texels are read as stored.
+#version 450
+
+layout( local_size_x = 16, local_size_y = 16 ) in;
+
+layout( set = 3, binding = 0 ) uniform texture2D sourceTexture;
+layout( set = 3, binding = 2 ) uniform sampler pointSampler;
+layout( set = 3, binding = 1 ) buffer Count
+{
+	uint count;
+}
+counter;
+
+layout( push_constant ) uniform Constants
+{
+	ivec4 rect;  // x0, y0, width, height
+	vec4 range;  // minimum, maximum, scale
+}
+constants;
+
+shared uint groupCount;
+
+void main()
+{
+	if ( gl_LocalInvocationIndex == 0u )
+		groupCount = 0u;
+	barrier();
+	const ivec2 offset = ivec2( gl_GlobalInvocationID.xy );
+	if ( offset.x < constants.rect.z && offset.y < constants.rect.w )
+	{
+		const vec3 texel = texelFetch( sampler2D( sourceTexture, pointSampler ), constants.rect.xy + offset, 0 ).rgb;
+		const float l = dot( texel * constants.range.z, vec3( 0.2125, 0.7154, 0.0721 ) );
+#ifdef SEEDED_LUMINANCE_HALF_OPEN
+		if ( l >= constants.range.x && l < constants.range.y )
+#else
+		if ( l >= constants.range.x && l <= constants.range.y )
+#endif
+			atomicAdd( groupCount, 1u );
+	}
+	barrier();
+	if ( gl_LocalInvocationIndex == 0u && groupCount != 0u )
+		atomicAdd( counter.count, groupCount );
+}
