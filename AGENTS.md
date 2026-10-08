@@ -227,8 +227,13 @@ platform acceptance.
     `render.device.v2` adapters and the composition root only; the frozen
     interfaces answer from the core's device and own nothing. Slices F1–F4
     are in [RFC 0016's legacy device facade](RFC/0016-render-core.md#legacy-device-facade-user-decision-2026-10-07);
-    F1 (one `IShaderDeviceMgr` answering adapters, recommended
-    configuration and modes from the core's adapter) is done.
+    F1–F4 are done (2026-10-07): the material system's facades are the one
+    `IShaderDeviceMgr` and `IShaderDevice`; the root's
+    `IHostDeviceOwner` creates and releases the device; the SDL3–Vulkan
+    bridge's presentation owns the window's surface, mode request, gamma
+    ramp and mode-change callbacks; no backend implements either interface
+    (each keeps only `render::legacy::ILegacyStreamDevice`, which retires
+    with the legacy stream in R91).
   - New render work lands on the core in its owning module and is proven
     in `render_lab` before any integration.
   - The old copy is deleted in the change that replaces it.
