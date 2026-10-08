@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <vector>
 
 namespace render::legacy
 {
@@ -283,6 +284,11 @@ struct CoreMeshDraw
 	// without the reduced model refuses the draw by name.
 	const float *bonePalette = nullptr;
 	std::uint32_t boneCount = 0;
+	// Optional: the frontend's own storage of `vertices` and `indices`, which
+	// QueueMesh may take (move from) instead of copying; when set, each holds
+	// exactly the array its pointer names. Left in an unspecified state.
+	std::vector<material::SurfaceWorldVertex> *takeVertices = nullptr;
+	std::vector<std::uint32_t> *takeIndices = nullptr;
 	const material::SurfaceWorldVertex *vertices = nullptr;
 	std::uint32_t vertexCount = 0;
 	const std::uint32_t *indices = nullptr;

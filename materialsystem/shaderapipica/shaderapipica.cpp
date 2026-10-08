@@ -2866,7 +2866,9 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	// World-space positions and normals: skinned by the bones, else by the model.
 	const bool skinned = src.m_pBoneWeights && g_MaxBone > 0;
 	const float *model = Top( kStackModel );
-	std::vector<render::material::SurfaceWorldVertex> vertices( src.m_nVertices );
+	// Built once per vertex (each a complete value): default-constructing the
+	// array first wrote every vertex twice (a measured memset).
+	std::vector<render::material::SurfaceWorldVertex> vertices;
 
 	// The GPU skins (surface_lit_skinned.v.pica) when the draw's bones fit its
 	// palette: the vertices stay in bone space and the palette holds each
@@ -2916,19 +2918,13 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	}
 	if ( gpu && paletteCount > 0 )
 	{
+		vertices.reserve( src.m_nVertices );
 		for ( int i = 0; i < src.m_nVertices; ++i )
 		{
 			const pica::Vertex &in = src.m_pVertices[i];
 			const float *n = src.m_pNormals + i * 3;
-			render::material::SurfaceWorldVertex &out = vertices[i];
-			memcpy( out.position, in.pos, sizeof( out.position ) );
-			memcpy( out.normal, n, sizeof( out.normal ) );
-			out.uv[0] = in.uv[0];
-			out.uv[1] = in.uv[1];
-			out.color[0] = in.color[2];
-			out.color[1] = in.color[1];
-			out.color[2] = in.color[0];
-			out.color[3] = in.color[3];
+			float weight0 = 1.0f, weight1 = 0.0f;
+			float offsets[3] = { 0.0f, 0.0f, 0.0f };
 			if ( skinned )
 			{
 				const float *w = src.m_pBoneWeights + i * 2;
@@ -2936,22 +2932,20 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 				const float weights[3] = { w[0], w[1], 1.0f - w[0] - w[1] };
 				// A bone the CPU path would skip (no weight, out of range)
 				// reads slot 0 with its (zero or rounding) weight.
-				int slots[3];
 				for ( int k = 0; k < 3; ++k )
-					slots[k] = weights[k] > 0.0f && b[k] < kMaxBones ? slotOf[b[k]] : 0;
-				out.lightmapUv[0] = w[0];
-				out.lightmapUv[1] = w[1];
-				for ( int k = 0; k < 3; ++k )
-					out.tangentS[k] = float( slots[k] * 3 );
+					offsets[k] = float( ( weights[k] > 0.0f && b[k] < kMaxBones ? slotOf[b[k]] : 0 ) * 3 );
+				weight0 = w[0];
+				weight1 = w[1];
 			}
-			else
-			{
-				out.lightmapUv[0] = 1.0f;
-				out.lightmapUv[1] = 0.0f;
-				out.tangentS[0] = out.tangentS[1] = out.tangentS[2] = 0.0f;
-			}
+			// Every member given (tangentT and lightmapOffset unread here).
+			vertices.push_back( render::material::SurfaceWorldVertex{
+				{ in.pos[0], in.pos[1], in.pos[2] }, { in.uv[0], in.uv[1] }, { weight0, weight1 },
+				{ in.color[2], in.color[1], in.color[0], in.color[3] }, { n[0], n[1], n[2] },
+				{ offsets[0], offsets[1], offsets[2] }, { 0.0f, 1.0f, 0.0f }, 0.0f } );
 		}
 	}
+	else
+		vertices.resize( src.m_nVertices );
 	for ( int i = 0; !( gpu && paletteCount > 0 ) && i < src.m_nVertices; ++i )
 	{
 		const pica::Vertex &in = src.m_pVertices[i];
@@ -3074,6 +3068,11 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		vh = viewport.m_nHeight;
 	}
 	draw.viewport = { float( vx ), float( vy ), float( vw ), float( vh ), 0.0f, 1.0f };
+	// The core takes the arrays (no copy); their sizes are counted first.
+	const std::size_t geometryBytes = vertices.size() * sizeof( render::material::SurfaceWorldVertex ) +
+		triangles.size() * sizeof( std::uint32_t );
+	draw.takeVertices = &vertices;
+	draw.takeIndices = &triangles;
 	const std::uint32_t tag = g_CorePassRecorder->QueueMesh( draw );
 	if ( !tag )
 		return skip( 4, "QueueMesh refused it" );
@@ -3082,8 +3081,7 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	// recording that reads it is submitted: past 1.5 MB, submit and go on, so
 	// a frame of models never holds the 3DS's linear memory at once.
 	static std::size_t s_pendingBytes = 0;
-	s_pendingBytes += vertices.size() * sizeof( render::material::SurfaceWorldVertex ) +
-		triangles.size() * sizeof( std::uint32_t );
+	s_pendingBytes += geometryBytes;
 	if ( s_pendingBytes > ( 3u << 19 ) )
 	{
 		pica::FlushRecording();

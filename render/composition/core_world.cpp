@@ -2716,9 +2716,18 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		geometry.cardSplineRange = draw.cardSplineRange;
 		geometry.cardSplineNormals = draw.cardSplineNormals;
 	}
+	// The frontend's own arrays are taken when offered (CoreMeshDraw::take*):
+	// a copy per model draw was the 3DS frame's largest memcpy caller.
+	else if ( draw.takeVertices && draw.takeVertices->data() == draw.vertices &&
+	          draw.takeVertices->size() == draw.vertexCount )
+		geometry.vertices = std::move( *draw.takeVertices );
 	else
 		geometry.vertices.assign( draw.vertices, draw.vertices + draw.vertexCount );
-	geometry.indices.assign( draw.indices, draw.indices + draw.indexCount );
+	if ( draw.takeIndices && draw.takeIndices->data() == draw.indices &&
+	     draw.takeIndices->size() == draw.indexCount )
+		geometry.indices = std::move( *draw.takeIndices );
+	else
+		geometry.indices.assign( draw.indices, draw.indices + draw.indexCount );
 	geometry.lightmapPage = draw.lightmapPage;
 	geometry.capturedLightmap = draw.capturedLightmap;
 	if ( draw.modelLighting && draw.lightCount <= material::kMaxModelLights )
