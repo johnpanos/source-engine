@@ -246,6 +246,18 @@ public:
 	// can cancel it as in IVP; any other object keeps Box3D's per-substep
 	// gravity, which its contact solver expects.
 	void ApplyGravityAndDamping( float dt, const Vector &gravity, bool controlled );
+	// After the controllers, for an object whose velocity no controller set
+	// this step (a motion controller that only adds accelerations): takes
+	// back the gravity ApplyGravityAndDamping added and lets Box3D integrate
+	// it per substep. The step ends with the same velocity, but the contact
+	// solver sees resting contact as it does for an uncontrolled object. With
+	// a whole step of gravity added up front and none in the substeps, a
+	// resting body pressed on its contacts in the first substep only, so it
+	// had almost no friction in the others, never slept and slid: floor
+	// turrets walked off their placements under their tip controller. An
+	// object whose velocity was set (grab controllers, shadows, the player
+	// controller) keeps the step's gravity as IVP does, so it does not sag.
+	void ReturnStepGravity( float dt, const Vector &gravity );
 	void ApplyGravityScale();
 	// A driven player shadow slides without friction (see
 	// CPlayerControllerBox3D::Update); its material friction is restored
@@ -325,6 +337,7 @@ private:
 	bool m_collisionEnabled;
 	bool m_gravityEnabled;
 	bool m_stepGravity;		// gravity applied by ApplyGravityAndDamping this step
+	bool m_velocitySetInStep;	// SetVelocity* since this step's ApplyGravityAndDamping
 	bool m_frictionless;
 	bool m_dragEnabled;
 	bool m_motionEnabled;

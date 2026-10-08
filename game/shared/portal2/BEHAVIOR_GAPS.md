@@ -404,3 +404,34 @@ Newest last. Each entry names the build and the check that passed.
   `GetEnemies()` is vtable 0x86c, and +0x11 is the map's count). Headless
   `sp_a2_turret_intro`: `ent_fire npc_portal_turret_floor ignite` burns and
   removes all 8 turrets. The co-op path is not run.
+- 2026-10-07, G04 (build-p2, Box3D + shape inertia, user report "can't pick
+  them up; physics wrong and they spawn in the wrong place; dead turrets go to
+  the caution-tape texture; defective turrets don't speak"):
+  - Pickup: the turret's `Use` called `PickupObject( this )` with the mass
+    limit on; a turret (`turret.phy` mass 100) is over the player's 85, so
+    every pickup was refused. It now passes `false`, as the base turret does.
+    Headless `sp_a2_turret_intro`: `ent_fire second_turret use` lifts it from
+    z -128 to -96 (a cube was the control).
+  - Creep: every resting turret walked ~13 u and turned ~7 degrees in 15 s on
+    Box3D (IVP and a plain `prop_physics` of the same model stayed put). Cause
+    in `vphysics_box3d`: a body with any motion controller (the turret's tip
+    controller) took a whole step of gravity into its velocity before the
+    step and none in the substeps, so it pressed on its contacts in one
+    substep only, never slept and slid. `ReturnStepGravity` gives that gravity
+    back to Box3D's substeps after the controllers when no controller set the
+    velocity (grab, shadow and player controllers keep IVP's order, so held
+    objects do not sag). All 8 turrets now hold their map origin and yaw;
+    `physics_conformance.py` matches its baseline (the same 3 pinned Box3D
+    gameplay fails, the same 3 divergences, 19/19 faults detected).
+  - Skins: `turret.mdl` skin 1 is `turret_broken`, the defective casing (2-5
+    are gel variants). The Portal 1 dead-eye `m_nSkin = 1` is now Portal 1
+    only, and the retail `SkinNumber` key sets the casing at spawn
+    (sp_a2_core's five and sp_a2_trust_fling's turret use 1).
+  - Defective voice: scene tables cast turrets with the `SetTarget1` input,
+    which our `CSceneEntity` lacked (`CSceneEntity unable to find actor named
+    "!target1"` for every line of sp_a2_core's `TurretScene`). SetTarget1-4
+    are ported from CS:GO; every line now starts on its turret, and a
+    defective line on a turret actor is audible (cross-correlation 0.52
+    against the VO file, 0.04 without it). sp_a2_trust_fling's catapulted
+    turret plays scene 439, which retail's `glados_scenetable_include.nut`
+    defines only for sp_a2_bts4, so retail's script fails there too.

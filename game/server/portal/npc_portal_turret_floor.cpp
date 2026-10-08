@@ -316,6 +316,7 @@ BEGIN_DATADESC( CNPC_Portal_FloorTurret )
 	DEFINE_KEYFIELD( m_bAllowShootThroughPortals, FIELD_BOOLEAN, "AllowShootThroughPortals" ),
 	DEFINE_KEYFIELD( m_bUseSuperDamageScale, FIELD_BOOLEAN, "UseSuperDamageScale" ),
 	DEFINE_KEYFIELD( m_bLoadAlternativeModels, FIELD_BOOLEAN, "LoadAlternativeModels" ),
+	DEFINE_KEYFIELD( m_nSkinNumber, FIELD_INTEGER, "SkinNumber" ),
 #endif
 
 END_DATADESC()
@@ -360,6 +361,7 @@ CNPC_Portal_FloorTurret::CNPC_Portal_FloorTurret( void )
 	m_bUseSuperDamageScale = false;
 	m_bLoadAlternativeModels = false;
 	m_nTurretModelIndex = TURRET_MODEL_NORMAL;
+	m_nSkinNumber = 0;
 	m_bDisableMotion = false;
 	m_iNextShootingBarrel = 0;
 #else
@@ -449,6 +451,10 @@ void CNPC_Portal_FloorTurret::Spawn( void )
 
 	if ( m_nCollisionType == 1 )
 		SetCollisionGroup( COLLISION_GROUP_DEBRIS_TRIGGER );
+
+	// SkinNumber picks the casing: 0 normal, 1 defective (turret_broken, the
+	// caution-tape casing of sp_a2_core's and sp_a2_trust_fling's turrets).
+	m_nSkin = m_nSkinNumber;
 #endif
 #ifdef FSTOP
 	// FIXME: Temp! (Valve's F-Stop: ten burn ticks before the turret explodes)
@@ -925,8 +931,12 @@ void CNPC_Portal_FloorTurret::SetEyeState( eyeState_t state )
 		m_hEyeGlow->SetScale( 0.1f, 3.0f );
 		m_hEyeGlow->SetBrightness( 0, 3.0f );
 
+#ifndef PORTAL2
+		// Portal 1's skin 1 is the dead eye. On the Portal 2 model skin 1 is
+		// the defective casing, and a dead turret keeps its casing.
 		if ( bNewState )
 			m_nSkin = 1;
+#endif
 		break;
 
 	case TURRET_EYE_DISABLED:
@@ -2062,7 +2072,9 @@ void CNPC_Portal_FloorTurret::Use( CBaseEntity *pActivator, CBaseEntity *pCaller
 {
 	if ( m_bPickupEnabled && pActivator && pActivator->IsPlayer() )
 	{
-		static_cast< CBasePlayer * >( pActivator )->PickupObject( this );
+		// As the base turret: a turret (mass 100) is over the player's lift
+		// limit (85), so the mass and size check is off.
+		static_cast< CBasePlayer * >( pActivator )->PickupObject( this, false );
 	}
 }
 

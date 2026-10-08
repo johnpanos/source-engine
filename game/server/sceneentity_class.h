@@ -106,6 +106,12 @@ public:
 
 	// Inputs
 	void InputStartPlayback( inputdata_t &inputdata );
+	// Portal 2 (as in CS:GO's sceneentity.cpp): retarget an actor slot by name.
+	void InputSetTarget1( inputdata_t &inputdata );
+	void InputSetTarget2( inputdata_t &inputdata );
+	void InputSetTarget3( inputdata_t &inputdata );
+	void InputSetTarget4( inputdata_t &inputdata );
+	void SetTargetSlot( string_t &iszTarget, CHandle< CBaseEntity > &hTarget, inputdata_t &inputdata );
 	void InputPausePlayback( inputdata_t &inputdata );
 	void InputResumePlayback( inputdata_t &inputdata );
 	void InputCancelPlayback( inputdata_t &inputdata );

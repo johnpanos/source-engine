@@ -165,6 +165,7 @@ private:
 	bool			m_bUseSuperDamageScale;			// UseSuperDamageScale
 	bool			m_bLoadAlternativeModels;		// LoadAlternativeModels
 	int				m_nTurretModelIndex;			// ModelIndex (TURRET_MODEL_*)
+	int				m_nSkinNumber;					// SkinNumber; 1 = defective casing
 	bool			m_bDisableMotion;				// DisableMotion
 	int				m_iNextShootingBarrel;			// retail fires one barrel per shot, in turn
 	EHANDLE			m_hPreviousHeldOwner;

@@ -58,7 +58,7 @@ CPhysicsObjectBox3D::CPhysicsObjectBox3D( CPhysicsEnvironmentBox3D *pEnv, const 
 	  m_volume( 0.0f ), m_buoyancyRatio( 1.0f ), m_friction( 0.8f ), m_restitution( 0.0f ), m_hingeAxis( -1 ),
 	  m_contents( CONTENTS_SOLID ), m_callbackFlags( kDefaultCallbacks ), m_gameFlags( 0 ), m_gameIndex( 0 ),
 	  m_isStatic( isStatic ), m_isTrigger( false ), m_collisionEnabled( pParams ? pParams->enableCollisions : true ),
-	  m_gravityEnabled( !isStatic ), m_stepGravity( false ), m_frictionless( false ), m_dragEnabled( false ), m_motionEnabled( true ), m_shadowTempGravityDisable( false ),
+	  m_gravityEnabled( !isStatic ), m_stepGravity( false ), m_velocitySetInStep( false ), m_frictionless( false ), m_dragEnabled( false ), m_motionEnabled( true ), m_shadowTempGravityDisable( false ),
 	  m_wasAwake( false ), m_reportPreStep( false ), m_hasTouchedDynamic( false ), m_asleepSinceCreation( true ),
 	  m_shapeInertia( !isStatic && pEnv->GetInertiaModel() == PHYSICS_INERTIA_SHAPE )
 {
@@ -831,6 +831,7 @@ void CPhysicsObjectBox3D::ApplyGravityAndDamping( float dt, const Vector &gravit
 		m_stepGravity = stepGravity;
 		ApplyGravityScale();
 	}
+	m_velocitySetInStep = false;
 	// IVP damps only through the gravity controller: an object with gravity
 	// off keeps its speed.
 	if ( !IsMoveable() || IsAsleep() || b3Body_GetType( m_body ) != b3_dynamicBody )
@@ -847,9 +848,23 @@ void CPhysicsObjectBox3D::ApplyGravityAndDamping( float dt, const Vector &gravit
 	float speedFactor = speed < 0.25f ? 1.0f - speed : expf( -speed );
 	linear *= speedFactor;
 	angular *= rotFactor;
-	if ( stepGravity )
+	if ( m_stepGravity )
 		linear += gravity * dt;
 	SetWorldVelocity( linear, angular );
+}
+
+void CPhysicsObjectBox3D::ReturnStepGravity( float dt, const Vector &gravity )
+{
+	// A controller that turned gravity or motion off, or slept the object,
+	// keeps this step's gravity as IVP would; Box3D adds none.
+	if ( !m_stepGravity || m_velocitySetInStep || !m_gravityEnabled || !IsMoveable() || IsAsleep() ||
+		 b3Body_GetType( m_body ) != b3_dynamicBody )
+		return;
+	Vector linear, angular;
+	GetWorldVelocity( &linear, &angular );
+	SetWorldVelocity( linear - gravity * dt, angular );
+	m_stepGravity = false;
+	ApplyGravityScale();
 }
 
 void CPhysicsObjectBox3D::ApplyDrag( float dt, float airDensity )
@@ -1005,6 +1020,7 @@ void CPhysicsObjectBox3D::SetVelocity( const Vector *velocity, const AngularImpu
 	if ( !IsMoveable() )
 		return;
 	Wake();
+	m_velocitySetInStep = true;
 	b3Quat rotation = BodyTransform( m_body ).q;
 	if ( velocity )
 		b3Body_SetLinearVelocity( m_body, ToB3( *velocity ) );

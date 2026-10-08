@@ -388,6 +388,10 @@ BEGIN_DATADESC( CSceneEntity )
 
 	// Inputs
 	DEFINE_INPUTFUNC( FIELD_VOID, "Start", InputStartPlayback ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetTarget1", InputSetTarget1 ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetTarget2", InputSetTarget2 ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetTarget3", InputSetTarget3 ),
+	DEFINE_INPUTFUNC( FIELD_STRING, "SetTarget4", InputSetTarget4 ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "Pause", InputPausePlayback ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "Resume", InputResumePlayback ),
 	DEFINE_INPUTFUNC( FIELD_VOID, "Cancel", InputCancelPlayback ),
@@ -1780,6 +1784,21 @@ void CSceneEntity::DoThink( float frametime )
 //-----------------------------------------------------------------------------
 // Purpose: Input handlers
 //-----------------------------------------------------------------------------
+// SetTarget1-4 (CS:GO and Portal 2): Portal 2's scene tables cast turrets
+// and other named actors this way (glados.nut's settarget1).
+void CSceneEntity::SetTargetSlot( string_t &iszTarget, CHandle< CBaseEntity > &hTarget, inputdata_t &inputdata )
+{
+	iszTarget = inputdata.value.StringID();
+	m_hActorList.Purge();
+	NetworkProp()->NetworkStateForceUpdate();
+	hTarget = FindNamedTarget( iszTarget, false );
+}
+
+void CSceneEntity::InputSetTarget1( inputdata_t &inputdata ) { SetTargetSlot( m_iszTarget1, m_hTarget1, inputdata ); }
+void CSceneEntity::InputSetTarget2( inputdata_t &inputdata ) { SetTargetSlot( m_iszTarget2, m_hTarget2, inputdata ); }
+void CSceneEntity::InputSetTarget3( inputdata_t &inputdata ) { SetTargetSlot( m_iszTarget3, m_hTarget3, inputdata ); }
+void CSceneEntity::InputSetTarget4( inputdata_t &inputdata ) { SetTargetSlot( m_iszTarget4, m_hTarget4, inputdata ); }
+
 void CSceneEntity::InputStartPlayback( inputdata_t &inputdata )
 {
 	// Already playing, ignore

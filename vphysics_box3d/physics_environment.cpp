@@ -992,13 +992,16 @@ void CPhysicsEnvironmentBox3D::PreStep( float dt )
 	}
 	for ( int i = 0; i < m_springs.Count(); i++ )
 		m_springs[i]->Simulate( dt );
-	// Objects a controller drives this step.
+	// Objects a controller drives this step; the player controller (and a
+	// shadow) sets the velocity, overriding the step's gravity.
 	CUtlVector<IPhysicsObject *> controlled;
 	for ( int i = 0; i < m_playerControllers.Count(); i++ )
 	{
 		if ( m_playerControllers[i]->GetObject() )
 			controlled.AddToTail( m_playerControllers[i]->GetObject() );
 	}
+	CUtlVector<IPhysicsObject *> overriding;
+	overriding.CopyArray( controlled.Base(), controlled.Count() );
 	for ( int i = 0; i < m_motionControllers.Count(); i++ )
 	{
 		int count = m_motionControllers[i]->CountObjects();
@@ -1044,6 +1047,8 @@ void CPhysicsEnvironmentBox3D::PreStep( float dt )
 		CPhysicsObjectBox3D *pObject = ToBox3D( m_objects[i] );
 		pObject->CommitVelocity();
 		pObject->CapturePreStepVelocity();
+		if ( !pObject->GetShadow() && overriding.Find( pObject ) == overriding.InvalidIndex() )
+			pObject->ReturnStepGravity( dt, m_gravity );
 		pObject->SetWasAwake( !pObject->IsAsleep() );
 	}
 }
