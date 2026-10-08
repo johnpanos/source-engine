@@ -51,7 +51,6 @@ import time
 import conformance
 import launch_sandbox
 import portal_view_trace
-import stage_portal2_runtime
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
 import sepipe_loader  # noqa: E402

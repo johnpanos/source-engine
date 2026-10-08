@@ -160,10 +160,8 @@ def states(args):
     for name, (state, commands, should_pass) in captures.items():
         target = out / name
         capture = [sys.executable, HERE / "gi_runtime.py", "capture", "--fixture", "room-states",
-                   "--map-build", map_build, "--out", target, "--build", args.build,
+                   "--map-build", map_build, "--out", target, *client_arguments(args),
                    "--capture-wait", str(max(gi_runtime.CAPTURE_WAIT, gi_runtime.PLACEMENT_FRAMES + args.warm + 120))]
-        if args.runtime:
-            capture += ["--runtime", args.runtime]
         for command in commands:
             capture += ["--console-command", command]
         booted = subprocess.run([str(part) for part in capture], capture_output=True, text=True,
@@ -181,9 +179,15 @@ def states(args):
                          "compare": gate.get("status"), "status": "pass" if ok else "fail",
                          "compare_log": compare.stdout[-2000:]}
     return write(out / "states.json", {"gate": "G4.3 states", "status":
-                                       "pass" if passed else "fail", "build": args.build,
+                                       "pass" if passed else "fail", "client_profile": args.client_profile, "client_flavor": args.client_flavor,
                                        "producer": args.producer, "warm_frames": args.warm,
                                        "captures": results})
+
+
+def client_arguments(args):
+    """gi_runtime's client override (its default is the map toolchain's)."""
+    return ((["--profile", args.client_profile] if args.client_profile else []) +
+            (["--flavor", args.client_flavor] if args.client_flavor else []))
 
 
 def main():
@@ -197,9 +201,9 @@ def main():
         if name == "budget":
             command.add_argument("--profile", default=DESKTOP)
         if name == "states":
-            command.add_argument("--build", default="build",
-                                 help="the client build tree carrying the producer")
-            command.add_argument("--runtime", help="base runtime (a private copy is booted)")
+            command.add_argument("--client-profile", help="kiln client profile carrying the "
+                                 "producer (default: the map toolchain's)")
+            command.add_argument("--client-flavor", help="its build flavor")
             command.add_argument("--producer", default="radiosity")
             command.add_argument("--warm", type=int, default=60,
                                  help="frames between selecting the producer and the toggle")

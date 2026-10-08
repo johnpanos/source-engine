@@ -27,7 +27,7 @@ plus straight up and down. Frame stats of each run are summarized so the
 evidence also shows what culling saves.
 
     python3 tools/quality/worldmesh_visibility_oracle.py \\
-        --runtime run/runtime-native --build build-rfc0008-staircase-lit-client \\
+        --profile portal \\
         --content-root quality-results/bedroom-map/content --map bedroom \\
         --collision-receipt quality-results/bedroom-map/collision/collision-receipt.json \\
         --out /tmp/claude-1000/wvo/bedroom
@@ -112,8 +112,8 @@ def run(args, mode, poses):
     out = args.out / mode
     scenario_path = args.out / ("%s.json" % mode)
     scenario_path.write_text(json.dumps(scenario(args.map, mode, poses), indent=1) + "\n")
-    command = [sys.executable, HERE / "frame_pacing.py", "--runtime", args.runtime,
-               "--build", args.build, "--content-root", args.content_root,
+    command = [sys.executable, HERE / "frame_pacing.py", "--profile", args.profile,
+               "--flavor", args.flavor, "--content-root", args.content_root,
                "--scenario", scenario_path, "--out", out, "--fps-max", "300",
                "--timeout", str(args.timeout)]
     result = subprocess.run([str(part) for part in command], capture_output=True, text=True)
@@ -135,8 +135,8 @@ def run(args, mode, poses):
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument("--build", type=Path, required=True)
+    parser.add_argument("--profile", default="portal", help="kiln profile (default portal)")
+    parser.add_argument("--flavor", default="dev", help="the profile's build flavor")
     parser.add_argument("--content-root", type=Path, required=True)
     parser.add_argument("--map", required=True)
     parser.add_argument("--collision-receipt", type=Path, required=True,
@@ -175,7 +175,7 @@ def main():
         failures.append("candidate run printed no culling report")
     evidence = {"schema": "worldmesh-visibility-oracle/v1",
                 "status": "fail" if failures else "pass", "failures": failures,
-                "map": args.map, "build": str(args.build.resolve()),
+                "map": args.map, "profile": args.profile, "flavor": args.flavor,
                 "content_root": str(args.content_root.resolve()),
                 "interior_source_units": interior, "views": len(poses),
                 "checked_frames": 2 * len(pairs),

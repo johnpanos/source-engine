@@ -631,10 +631,10 @@ VIEWS = [
 ]
 
 
-def capture(out, build):
+def capture(out, profile, flavor):
     """Boot the published chamber in Portal 2 and capture the review views."""
     import portal2_map_views
-    argv = ["--map", NAME, "--out", str(out), "--build", str(build)]
+    argv = ["--map", NAME, "--out", str(out), "--profile", profile, "--flavor", flavor]
     for step in VIEWS:
         argv += ["--step", step]
     sys.argv = ["portal2_map_views.py"] + argv
@@ -660,11 +660,11 @@ def main():
     parser.add_argument("--vmf-only", action="store_true", help="write the VMF and stop")
     parser.add_argument("--capture", type=Path, metavar="DIR",
                         help="only boot the published map and capture the review views")
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2",
-                        help="Portal 2 build for --capture")
+    parser.add_argument("--profile", default="portal2", help="kiln profile for --capture")
+    parser.add_argument("--flavor", default="dev", help="its build flavor")
     args = parser.parse_args()
     if args.capture:
-        return capture(args.capture.resolve(), args.build.resolve())
+        return capture(args.capture.resolve(), args.profile, args.flavor)
     out = args.out.resolve()
     if not (args.sdk / "instances").is_dir():
         parser.error("no Portal 2 SDK instances under %s (set --sdk or P2_STEAM_ROOT)" % args.sdk)
