@@ -25,7 +25,7 @@
       }
     ],
     "support_scope": "The editor's viewports: textured Source materials, captures, asset reload, resize, sharing one device between documents, and teardown. Not the full R25 editor workflow.",
-    "packaging": "hammer/gtk/build.sh: the Waf tools product with --render-core-vulkan=on in its own tree (build-hammer-gtk), copied to the path given; KTX2 previews with KTX_SOURCE_ROOT/KTX_BUILD_ROOT (build-hammer-gtk-ktx)"
+    "packaging": "`./kiln build hammer` (the retired hammer/gtk/build.sh did this before): the Waf tools product with --render-core-vulkan=on in its own tree (build-hammer-gtk), copied to the path given; KTX2 previews with KTX_SOURCE_ROOT/KTX_BUILD_ROOT (build-hammer-gtk-ktx)"
   },
   "toolchain": {
     "cxx": "g++",

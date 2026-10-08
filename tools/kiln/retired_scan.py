@@ -34,6 +34,9 @@ RETIRED = (
     "tools/video/transcode_av1.py", "tools/kiln/launch_equivalence.py", "tools/kiln/exec_capture.c",
     "scripts/build-ubuntu-amd64.sh", "scripts/build-ubuntu-i386.sh",
     "scripts/tests-ubuntu-amd64.sh", "scripts/tests-ubuntu-i386.sh",
+    # The Hammer build cohort: `kiln build hammer` builds hammer_gtk and
+    # hammer_gtk_shell.
+    "hammer/gtk/build.sh", "unittests/hammertest/adapters/build_gtk_shell.sh",
 )
 
 # How a caller names them: a launcher run from the root, or a helper's name.
@@ -45,7 +48,8 @@ NAMES = re.compile(
     r"|\b(?:render_flags|launcher_ccache)\.sh\b"
     r"|\b(?:ensure_configured|profile_extends|stage_runtime|stage_portal2_runtime|"
     r"stage_fstop_runtime|private_session|transcode_av1|launch_equivalence|exec_capture)\b"
-    r"|\bscripts/(?:build|tests)-ubuntu-(?:amd64|i386)\.sh\b")
+    r"|\bscripts/(?:build|tests)-ubuntu-(?:amd64|i386)\.sh\b"
+    r"|\bhammer/gtk/build\.sh\b|\bbuild_gtk_shell\.sh\b")
 
 # A provenance line: it records the retirement or what was ported.
 PROVENANCE = re.compile(r"\bretired\b|\bported from\b|\bport of\b|\bformerly\b", re.IGNORECASE)
@@ -131,6 +135,7 @@ def selftest():
         "hammer/gtk/app.cpp": '\tconst gchar *argv[] = { "./play", map.c_str(), nullptr };\n',
         "tools/quality/conf.py": "RUN_CONF = ROOT / 'run.conf'\n",
         "tools/quality/launcher.py": "launcher = ROOT / \"play\"\n",
+        "tools/quality/hammer_build.py": 'subprocess.run([ROOT / "hammer/gtk/build.sh"])\n',
     }
     found = {path for path, _, _ in callers(seeded)}
     for path in sorted(seeded):

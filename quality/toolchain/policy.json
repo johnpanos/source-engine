@@ -403,6 +403,10 @@
       "dialect": "cxx20",
       "rfc": "0002"
     },
+    "hammer_gtk_shell": {
+      "dialect": "cxx20",
+      "rfc": "0002"
+    },
     "hammer_mcp": {
       "dialect": "cxx20",
       "rfc": "0002"

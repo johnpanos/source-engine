@@ -110,13 +110,14 @@ what the tools product needs, including the pinned shader tools
 checkout:
 
 ```sh
-hammer/gtk/build.sh                 # builds hammer/gtk/hammer_gtk
-hammer/gtk/hammer_gtk --open hammer/gtk/samples/room.vmf
+./kiln build hammer                 # out/hammer/dev/install/hammer_gtk (and hammer_gtk_shell)
+out/hammer/dev/install/hammer_gtk --open hammer/gtk/samples/room.vmf
 ```
 
-`build.sh` builds the Waf target in its own tools tree (`build-hammer-gtk`,
-or `HAMMER_GTK_TREE`), configured with `--render-core-vulkan=on` when the tree
-is new or older than a `wscript`, and copies the program to the path given.
+The hammer kiln profile (RFC 0027) builds the Waf tools product with
+`--render-core-vulkan=on` in its own tree, reconfiguring when its options or a
+`wscript` change. It also builds `hammer_gtk_shell`, the thin editing sibling
+of `hammer/adapters/gtk`.
 
 The 3D preview uses the editor's fixed two-light shading. Once game assets are
 mounted ("Mount Game Assets…", or `--mount VPK[,VPK...]` at start), the camera view is
@@ -138,7 +139,8 @@ log line `hammer_gtk: viewport frames as ...` names the path in use.
 For KTX2 material previews, build with the pinned KTX reader:
 
 ```sh
-KTX_SOURCE_ROOT=/path/to/ktx KTX_BUILD_ROOT=/path/to/ktx/build hammer/gtk/build.sh
+python3 tools/quality/pbrt_map_toolchain.py provision --steps ktx-reader
+./kiln build hammer --flavor ktx
 ```
 
 Viewport frames are the view's logical size times the window's scale, which
@@ -204,7 +206,7 @@ judges what the live editor showed from them.
 | `app.cpp` | Window, classic layout, input translation, dialogs, async build, catalog menus |
 | `viewport_widget.{h,cpp}` | The viewport widget: shows the render core's frame for its view, reports size changes |
 | `offscreen.cpp` | Offscreen render through the render core for `--screenshot` / `--quad` / `--demo` |
-| `wscript`, `build.sh` | The Waf target and its build wrapper |
+| `wscript` | The Waf targets (`./kiln build hammer`) |
 | `samples/room.vmf` | A minimal valid Source room (floor/ceiling/walls/pillar) |
 | `tests/viewport_smoke.sh` | Build + render + content-assert smoke test |
 

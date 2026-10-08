@@ -14,7 +14,7 @@ A control judges the same samples against a limit no real run meets
 (0.001 ms), which must be rejected, so a judge that passes everything fails
 this suite.
 
-hammer_gtk is built with hammer/gtk/build.sh unless --gtk names a binary. The
+hammer_gtk is built by `kiln build hammer` unless --gtk names a binary. The
 run needs a Vulkan device and opens no window.
 
 Results are reported as checks-v1 (tools/quality/conformance_result.py).
@@ -87,13 +87,13 @@ def main():
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     if args.gtk is None:
-        args.gtk = out / "hammer_gtk"
-        built = subprocess.run([str(ROOT / "hammer/gtk/build.sh"), str(args.gtk)],
+        built = subprocess.run([str(ROOT / "kiln"), "build", "hammer"],
                                capture_output=True, text=True)
         (out / "build-gtk.log").write_text(built.stdout + built.stderr)
         checks.equal(built.returncode, 0, "shell.built")
         if built.returncode:
             return checks.report()
+        args.gtk = ROOT / "out/hammer/dev/install/hammer_gtk"
 
     budgets = json.loads(args.budgets.read_text())
     checks.equal(budgets.get("schema"), "hammer-viewport-budget/v1", "budgets.schema")

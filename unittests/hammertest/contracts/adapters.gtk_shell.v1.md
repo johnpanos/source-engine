@@ -3,7 +3,7 @@
 Module: `hammer.adapters.gtk` · Shell: `hammer/adapters/gtk/hammer_gtk_shell.cpp`
 Composition (headless, no GTK): `hammer::app::EditorDocument` +
 `hammer::adapters::platform::DiskFileStore` + `hammer::formats`
-Build recipe: `unittests/hammertest/adapters/build_gtk_shell.sh`
+Build: the `hammer_gtk_shell` Waf target (`./kiln build hammer`; hammer/gtk/wscript)
 Conformance suite (workflow): `unittests/hammertest/adapters/test_shell_workflow.cpp`
 Migration: `HAM-GTKSHELL-001`
 
@@ -39,10 +39,10 @@ Driving the composition the shell uses, the following must hold (verified by
 
 ## 3. Build obligation (the sibling binds only to the reusable libraries)
 
-`build_gtk_shell.sh` compiles and links the shell against
-`gtk4` + `libadwaita-1` and the reusable-library sources (`disk_file_store`,
-`editor_document`, `document_history`, `save_orchestrator`, `keyvalues`) — and
-nothing else. A successful link with no other first-party objects is the evidence
+The `hammer_gtk_shell` target compiles and links the shell against
+`gtk4` + `libadwaita-1` and the reusable libraries (`hammer_app`,
+`hammer_platform`, `kvtext`: `disk_file_store`, `editor_document`,
+`document_history`, `save_orchestrator`, `keyvalues`) — and nothing else. A successful link with no other first-party objects is the evidence
 that the shell holds no hidden editor logic and no MFC dependency. Verified with
 gtk4 4.22 / libadwaita 1.9 (D4 pins: GTK >= 4.12, libadwaita >= 1.4). Running the
 GUI needs a display and is not part of the headless gate.

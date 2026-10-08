@@ -18,9 +18,9 @@ WORK="$( mktemp -d )"
 trap 'rm -rf "$WORK"' EXIT
 
 if [ -z "$BIN" ]; then
-	BIN="$WORK/hammer_gtk"
-	echo "viewport_smoke: building shell..."
-	"$ROOT/hammer/gtk/build.sh" "$BIN" >/dev/null
+	echo "viewport_smoke: building the hammer profile (./kiln build hammer)..."
+	"$ROOT/kiln" build hammer >/dev/null
+	BIN="$ROOT/out/hammer/dev/install/hammer_gtk"
 fi
 
 PPM="$WORK/shot.ppm"

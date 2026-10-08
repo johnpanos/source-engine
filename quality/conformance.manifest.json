@@ -167,7 +167,6 @@
         "hammer/gtk/properties_dialog.cpp",
         "hammer/gtk/entity_schema.cpp",
         "hammer/gtk/wscript",
-        "hammer/gtk/build.sh",
         "hammer/adapters/render/viewport_renderer.cpp",
         "hammer/core/presenters/editor_workspace.cpp",
         "hammer/core/presenters/visgroup_panel.cpp",
@@ -214,7 +213,6 @@
         "hammer/gtk/visgroups_panel.cpp",
         "hammer/gtk/viewport_widget.cpp",
         "hammer/gtk/wscript",
-        "hammer/gtk/build.sh",
         "hammer/adapters/render/viewport_renderer.cpp",
         "hammer/core/presenters/editor_workspace.cpp",
         "hammer/core/presenters/visgroup_panel.cpp"
@@ -259,7 +257,6 @@
         "hammer/gtk/app.cpp",
         "hammer/gtk/viewport_widget.cpp",
         "hammer/gtk/wscript",
-        "hammer/gtk/build.sh",
         "hammer/adapters/render/viewport_renderer.cpp",
         "hammer/core/presenters/editor_workspace.cpp",
         "hammer/core/presenters/replace_textures.cpp"
@@ -306,7 +303,6 @@
         "hammer/gtk/app.cpp",
         "hammer/gtk/viewport_widget.cpp",
         "hammer/gtk/wscript",
-        "hammer/gtk/build.sh",
         "hammer/adapters/render/viewport_renderer.cpp",
         "hammer/core/presenters/editor_workspace.cpp",
         "hammer/core/presenters/replace_textures.cpp"
