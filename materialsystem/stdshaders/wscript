@@ -24,7 +24,7 @@ def build(bld):
 		'aftershock_helper.cpp',
 		'AccumBuff4Sample.cpp',
 		'BaseVSShader.cpp',
-		'black.cpp',
+		'fixed_state_shaders.cpp',
 		'bik_dx90.cpp',
 		'Bloom.cpp',
 		'BlurFilterX.cpp',
@@ -71,7 +71,6 @@ def build(bld):
 		#'morphaccumulate_dx9.cpp',					[$WIN32]
 		#'morphweight_dx9.cpp',						[$WIN32]
 		'motion_blur_dx9.cpp',
-		'occlusion_dx9.cpp',
 		'paintblob_dx9.cpp',
 		'paintblob_helper.cpp',
 		'particlesphere_dx9.cpp',
@@ -112,8 +111,6 @@ def build(bld):
 		'worldtwotextureblend.cpp',
 		'worldvertextransition.cpp',
 		'worldvertextransition_dx8_helper.cpp',
-		'writez_dx9.cpp',
-		'writestencil_dx9.cpp',
 		'eyeball.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]

@@ -78,6 +78,9 @@ NATIVE_EXTRA = "pbr_metalrough_native.cpp"
 REGISTRATION = re.compile(
     r"^\s*(BEGIN_VS_SHADER_FLAGS|BEGIN_VS_SHADER|BEGIN_SHADER_FLAGS|BEGIN_SHADER|"
     r"DEFINE_FALLBACK_SHADER)\s*\(\s*(\w+)\s*(?:,\s*(\w+))?", re.M)
+# A row of a table-driven shader source (fixed_state_shaders.cpp's kRows):
+# { "Name", "Fallback" or nullptr, ... }.
+TABLE_ROW = re.compile(r'^\s*\{\s*"(\w+)",\s*(?:"(\w+)"|nullptr)', re.M)
 
 
 class CorpusError(Exception):
@@ -108,6 +111,9 @@ def shader_names():
             target = (match.group(3) or "").lower() \
                 if match.group(1) == "DEFINE_FALLBACK_SHADER" else ""
             names.setdefault(name, target)
+        if "FixedStateRow" in text:
+            for match in TABLE_ROW.finditer(text):
+                names.setdefault(match.group(1).lower(), (match.group(2) or "").lower())
     return names
 
 
