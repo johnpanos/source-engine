@@ -80,6 +80,7 @@ struct RunState
 	std::map<std::string, fs::path> locations;
 	std::vector<std::string> mountSets;
 	fs::path sourceRoot;
+	std::optional<fs::path> runtime; // the request's package directory, if chosen
 };
 
 std::vector<std::string> StringList( const Value *value )
@@ -137,10 +138,8 @@ public:
 		product::PackageRequest request;
 		request.profile = m_State.profile;
 		request.cancel = inputs.Cancel();
-		const Value *packageSection = m_State.profile->document.Find( "package" );
-		const std::string *directory =
-		    packageSection ? packageSection->FindString( "directory" ) : nullptr;
-		request.output = m_State.tree / ( directory ? *directory : std::string( "package" ) );
+		request.output =
+		    m_State.runtime.value_or( m_State.tree / m_State.profile->PackageDirectoryName() );
 		request.locations = m_State.locations;
 		request.mountSets = m_State.mountSets;
 		request.sourceRoot = m_State.sourceRoot;
@@ -504,6 +503,7 @@ foundation::Expected<PipelineResult, Error> Session::Run( const PipelineRequest 
 		}
 		state.mountSets = request.mountSets;
 	}
+	state.runtime = request.runtime;
 
 	// Resolve every provider the request needs before touching anything.
 	auto toolchain = m_Catalog.Toolchain( profile.toolchain );

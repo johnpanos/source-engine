@@ -92,6 +92,9 @@ struct PipelineRequest
 	std::optional<std::string> device;  // a workspace device, for deploy and run
 	std::vector<std::string> arguments; // appended to the launch arguments
 	std::vector<std::string> mountSets; // content.mount_sets to package
+	// Package into this directory instead of the tree's own (a harness's
+	// private runtime); the same packager and steps.
+	std::optional<std::filesystem::path> runtime;
 	const product::ICancellation *cancel = nullptr;
 };
 
@@ -127,6 +130,9 @@ struct PlayRequest
 	std::optional<std::string> device;
 	std::vector<std::string> mountSets;
 	std::optional<std::string> displaySession; // overrides launch.display_session
+	// Launch from (and, for play, package into) this directory instead of
+	// the tree's own runtime.
+	std::optional<std::filesystem::path> runtime;
 	const product::ICancellation *cancel = nullptr;
 };
 

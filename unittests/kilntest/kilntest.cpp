@@ -732,6 +732,26 @@ void FixturePlatformChecks( const Workbench &bench, platform::IToolProcessProvid
 	    "fixture.content-synced-and-installed" );
 	Check( first.Value().package && first.Value().package->entries.size() >= 4,
 	    "fixture.package-manifest" );
+	{
+		// A caller-chosen runtime (a test's private one) gets the same package.
+		kiln::PipelineRequest privateRuntime = request;
+		privateRuntime.upTo = product::StageRole::kPackage;
+		privateRuntime.runtime = bench.root / "private-runtime";
+		auto packaged = session.Run( privateRuntime );
+		const auto artifact = packaged ? std::find_if( packaged.Value().artifacts.begin(),
+		                                     packaged.Value().artifacts.end(),
+		                                     []( const product::Artifact &item )
+		                                     {
+			                                     return item.name == "platform-package";
+		                                     } )
+		                               : decltype( packaged.Value().artifacts.end() ){};
+		Check(
+		    packaged && packaged.Value().package && artifact != packaged.Value().artifacts.end() &&
+		        artifact->path == bench.root / "private-runtime" &&
+		        fs::is_directory( bench.root / "private-runtime" ) &&
+		        packaged.Value().package->entries.size() == first.Value().package->entries.size(),
+		    "fixture.package-into-a-chosen-runtime" );
+	}
 	Check( fs::exists( first.Value().evidenceFile ), "fixture.evidence-written" );
 	const Value &evidence = first.Value().evidence;
 	Check( evidence.FindString( "revision" ) && evidence.FindString( "dirty_digest" ) &&
@@ -949,6 +969,14 @@ void LaunchPlanChecks( const Workbench &bench, platform::IToolProcessProvider &p
 	           plan.Value().environment[1].value == std::string( "demo" ) &&
 	           plan.Value().workingDirectory == bench.root / "out" / "game" / "runtime",
 	    "launch.environment-and-working-directory" );
+	kiln::PlayRequest chosen = Play( "game" );
+	chosen.runtime = bench.root / "elsewhere";
+	auto moved = session.PlanLaunch( chosen );
+	Check( moved && moved.Value().runtime == bench.root / "elsewhere" &&
+	           moved.Value().workingDirectory == bench.root / "elsewhere" &&
+	           moved.Value().environment[0].value ==
+	               ( bench.root / "elsewhere" ).string() + "/bin:{inherit}",
+	    "launch.chosen-runtime-is-the-working-directory-and-{runtime}" );
 
 	kiln::SessionConfig personal = config;
 	personal.workspaceText =

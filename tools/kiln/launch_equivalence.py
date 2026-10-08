@@ -53,6 +53,8 @@ RECORDED_ENV_DIFFERENCES = {
     "RUNTIME": "./play -> run.sh plumbing: the runtime directory",
     "BASE_RUNTIME": "./play -> run.sh plumbing: the seed runtime",
     "MAP": "./play -> run.sh plumbing: the map, an argv value",
+    "PLAY_BUILD_DIR": "./play_release -> ./play plumbing: the tree name (build-release); kiln selects the tree "
+                      "by --flavor, and no engine code reads the variable",
     "CCACHE_DIR": "launcher_ccache.sh exports the build's compiler cache, which the game inherits; "
                   "in kiln the compiler cache belongs to the engine stage (RFC 0027 shared concerns), "
                   "not the launch",
@@ -88,6 +90,13 @@ MODES = {
                          "portal2-linux-native-vulkan", "p2"),
     "play_p2-retail": (["./play_p2", "--retail", "-novid"], ["portal2-retail", "--", "-novid"], None, "retail"),
     "play_fstop": (["./play_fstop"], ["fstop"], "fstop-linux-native-vulkan", "fstop"),
+    # RFC 0023 release flavors: the old wrappers against kiln's release trees.
+    "play_release": (["./play_release"], ["portal", "--flavor", "release"], "portal-linux-native-vulkan",
+                     "play"),
+    "play_p2_release": (["./play_p2_release"], ["portal2", "--flavor", "release"],
+                        "portal2-linux-native-vulkan", "p2"),
+    "play_p2_fsr_release": (["./play_p2_fsr_release"], ["portal2-fsr", "--flavor", "release"], "portal2-fsr",
+                            "p2"),
     "play_fstop-map": (["./play_fstop", "+map", "lab_01"], ["fstop", "--", "+map", "lab_01"],
                        "fstop-linux-native-vulkan", "fstop"),
 }
@@ -150,6 +159,10 @@ def kiln(*args):
     return result.stdout
 
 
+def flavor_of(kiln_args):
+    return kiln_args[kiln_args.index("--flavor") + 1] if "--flavor" in kiln_args else "dev"
+
+
 def tree(profile, flavor="dev"):
     return ROOT / "out" / profile / flavor / "build"
 
@@ -177,7 +190,7 @@ def align_published_maps():
             local.symlink_to(MAIN_RUN / name, target_is_directory=True)
 
 
-def old_launch(mode, argv, profile, kind, extra_env):
+def old_launch(mode, argv, profile, kind, extra_env, flavor="dev"):
     capture = SCRATCH / ("capture-%s.bin" % mode)
     capture.unlink(missing_ok=True)
     runtime = SCRATCH / ("runtime-" + kind)
@@ -188,7 +201,9 @@ def old_launch(mode, argv, profile, kind, extra_env):
         # re-staging (a recorded defect kiln does not carry over), so the
         # reference is a freshly staged runtime.
         shutil.rmtree(runtime, ignore_errors=True)
-    build = tree(profile) if profile else None
+    build = tree(profile, flavor) if profile else None
+    if flavor != "dev":
+        runtime = Path(str(runtime) + "-" + flavor)
     env = {k: v for k, v in os.environ.items()
            if k not in ("SDL_VIDEODRIVER", "SDL_VIDEO_DRIVER", "LD_LIBRARY_PATH", "SteamAppId", "SteamGameId",
                         "WAFLOCK", "NO_LOCK_IN_TOP", "NO_LOCK_IN_RUN")}
@@ -198,8 +213,15 @@ def old_launch(mode, argv, profile, kind, extra_env):
     if kind == "play":
         env.update({"BUILD": "0", "PLAY_BUILD_DIR": str(build), "RUNTIME": str(runtime),
                     "BASE_RUNTIME": str(MAIN_RUN / "runtime")})
+        if flavor == "release":
+            # ./play_release names build-release itself (PLAY_BUILD_DIR is
+            # overwritten); point that name at kiln's release tree.
+            link = ROOT / "build-release"
+            if not link.exists() and not link.is_symlink():
+                link.symlink_to(build.relative_to(ROOT), target_is_directory=True)
+                aliases.append(link)
     elif kind == "p2":
-        flavor_lock = ".lock-waf-kilneq-" + profile
+        flavor_lock = ".lock-waf-kilneq-%s-%s" % (profile, flavor)
         aliases = lock_aliases(build, flavor_lock)
         env.update({"P2_BUILD_DIR": str(build), "P2_RUNTIME": str(runtime) + "-" + profile,
                     "P2_WAFLOCK": flavor_lock, "P2_AV1_MEDIA": str(MAIN_RUN / "media-av1")})
@@ -413,11 +435,12 @@ def check(selected, keep):
     for mode in [m for m in selected if m in MODES]:
         argv, kiln_args, profile, kind, *rest = MODES[mode]
         extra_env = rest[0] if rest else {}
-        if profile and profile not in built:
-            kiln("build", kiln_args[0])
-            built.add(profile)
+        flavor = flavor_of(kiln_args)
+        if profile and (profile, flavor) not in built:
+            kiln("build", kiln_args[0], "--flavor", flavor)
+            built.add((profile, flavor))
         try:
-            capture, runtime, base = old_launch(mode, argv, profile, kind, extra_env)
+            capture, runtime, base = old_launch(mode, argv, profile, kind, extra_env, flavor)
         except RuntimeError as error:
             record.check(False, mode + ": the old launcher reaches the game exec", str(error)[-600:])
             continue
@@ -427,10 +450,11 @@ def check(selected, keep):
         record.check(same_env, mode + ": and its environment", detail)
         record.check(same_cwd, mode + ": and its working directory")
         mounts = [kiln_args[i + 1] for i, arg in enumerate(kiln_args[:-1]) if arg == "--mounts"]
-        key = "+".join([profile or ""] + mounts)
+        key = "+".join([profile or "", flavor] + mounts)
         if profile and key not in packaged:
-            kiln("package", kiln_args[0], *[x for m in mounts for x in ("--mounts", m)])
-            packaged[key] = Path(json.loads(kiln("play", kiln_args[0], "--dry-run"))["runtime"])
+            kiln("package", kiln_args[0], "--flavor", flavor, *[x for m in mounts for x in ("--mounts", m)])
+            packaged[key] = Path(json.loads(kiln("play", kiln_args[0], "--flavor", flavor,
+                                                 "--dry-run"))["runtime"])
             old_count, new_count, problems = compare_manifests(runtime, packaged[key])
             evidence["manifests"][key] = {"old_entries": old_count, "kiln_entries": new_count,
                                           "differences": problems[:50]}

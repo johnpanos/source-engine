@@ -165,10 +165,12 @@ foundation::Expected<LaunchPlan, Error> Session::PlanLaunch( const PlayRequest &
 			return foundation::MakeUnexpected(
 			    Fail( "profile", "\"" + plan.flavor + "\" is not a flavor of " + profile.name ) );
 		plan.tree = m_Config.outRoot / profile.TreeName( plan.flavor );
-		plan.runtime = plan.tree / "runtime";
+		plan.runtime = plan.tree / profile.PackageDirectoryName();
 	}
 	else
 		plan.runtime = m_Config.outRoot / profile.name / "runtime";
+	if ( request.runtime )
+		plan.runtime = *request.runtime;
 	plan.workingDirectory = plan.runtime;
 	if ( const std::string *display = launch->FindString( "display_session" ) )
 		plan.displaySession = *display;
@@ -366,6 +368,7 @@ foundation::Expected<PipelineResult, Error> Session::BuildForPlay( const PlayReq
 	build.upTo = product::StageRole::kPackage;
 	build.device = request.device;
 	build.mountSets = request.mountSets;
+	build.runtime = request.runtime;
 	build.cancel = request.cancel;
 	return Run( build );
 }

@@ -186,6 +186,9 @@ struct ResolvedProfile
 
 	// The tree a flavor builds into, relative to the output root.
 	std::string TreeName( std::string_view flavor ) const;
+	// The package's directory inside a tree: `package.directory`, else
+	// "package". Packaging writes it and launches run from it.
+	std::string PackageDirectoryName() const;
 };
 
 // Merge, then validate. A v1 file of any schema family resolves for

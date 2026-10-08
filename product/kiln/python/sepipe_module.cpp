@@ -19,6 +19,7 @@
 #include <nanobind/stl/vector.h>
 
 #include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
 
@@ -87,7 +88,8 @@ private:
 kiln::PlayRequest MakePlay( const std::string &profile, std::optional<std::string> map,
     std::vector<std::string> switches, std::vector<std::string> arguments,
     std::optional<std::string> flavor, std::optional<std::string> display,
-    std::vector<std::string> mounts, std::optional<std::string> device )
+    std::vector<std::string> mounts, std::optional<std::string> device,
+    std::optional<std::string> runtime )
 {
 	kiln::PlayRequest request;
 	request.profile = profile;
@@ -98,6 +100,8 @@ kiln::PlayRequest MakePlay( const std::string &profile, std::optional<std::strin
 	request.displaySession = std::move( display );
 	request.mountSets = std::move( mounts );
 	request.device = std::move( device );
+	if ( runtime )
+		request.runtime = std::filesystem::absolute( *runtime );
 	return request;
 }
 
@@ -137,13 +141,16 @@ public:
 	}
 
 	nb::object Build( const std::string &profile, std::optional<std::string> flavor,
-	    const std::string &upTo, std::vector<std::string> mounts )
+	    const std::string &upTo, std::vector<std::string> mounts,
+	    std::optional<std::string> runtime )
 	{
 		kiln::PipelineRequest request;
 		request.profile = profile;
 		request.flavor = std::move( flavor );
 		request.upTo = RoleFor( upTo );
 		request.mountSets = std::move( mounts );
+		if ( runtime )
+			request.runtime = std::filesystem::absolute( *runtime );
 		foundation::Expected<kiln::PipelineResult, kiln::Error> result =
 		    foundation::MakeUnexpected( kiln::Error{} );
 		{
@@ -195,7 +202,8 @@ NB_MODULE( sepipe, m )
 	    .def( "switches", &Session::Switches, nb::arg( "profile" ) )
 	    .def( "doctor", &Session::Doctor, nb::arg( "profile" ) )
 	    .def( "build", &Session::Build, nb::arg( "profile" ), nb::arg( "flavor" ) = nb::none(),
-	        nb::arg( "up_to" ) = "engine", nb::arg( "mounts" ) = std::vector<std::string>{} );
+	        nb::arg( "up_to" ) = "engine", nb::arg( "mounts" ) = std::vector<std::string>{},
+	        nb::arg( "runtime" ) = nb::none() );
 
 	// plan, play and run take the same play request.
 	const auto request = []( auto method )
@@ -203,12 +211,13 @@ NB_MODULE( sepipe, m )
 		return [method]( Session &self, const std::string &profile, std::optional<std::string> map,
 		           std::vector<std::string> switches, std::vector<std::string> arguments,
 		           std::optional<std::string> flavor, std::optional<std::string> display,
-		           std::vector<std::string> mounts, std::optional<std::string> device )
+		           std::vector<std::string> mounts, std::optional<std::string> device,
+		           std::optional<std::string> runtime )
 		{
 			return method(
 			    self, MakePlay( profile, std::move( map ), std::move( switches ),
 			              std::move( arguments ), std::move( flavor ), std::move( display ),
-			              std::move( mounts ), std::move( device ) ) );
+			              std::move( mounts ), std::move( device ), std::move( runtime ) ) );
 		};
 	};
 	const auto define = [&]( const char *name, auto method, const char *doc )
@@ -217,7 +226,7 @@ NB_MODULE( sepipe, m )
 		    nb::arg( "switches" ) = std::vector<std::string>{},
 		    nb::arg( "arguments" ) = std::vector<std::string>{}, nb::arg( "flavor" ) = nb::none(),
 		    nb::arg( "display" ) = nb::none(), nb::arg( "mounts" ) = std::vector<std::string>{},
-		    nb::arg( "device" ) = nb::none(), doc );
+		    nb::arg( "device" ) = nb::none(), nb::arg( "runtime" ) = nb::none(), doc );
 	};
 	define(
 	    "plan",

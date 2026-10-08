@@ -500,3 +500,36 @@ Evidence:
   `external/portal2_steam2_decompiled` trees.
 - **Release trees.** The release-flavor trees of `portal`, `portal2` and
   `portal2-fsr` build. Their equivalence modes are next.
+
+### L1d (second slice): release equivalence and chosen runtimes
+
+- **Release modes.** `launch_equivalence.py` adds `play_release`,
+  `play_p2_release` and `play_p2_fsr_release`, each against kiln's release
+  tree (`--flavor release`).
+  - `./play_release` hard-codes `build-release`, so the check links that
+    name to kiln's tree for the run.
+  - One recorded environment difference: `PLAY_BUILD_DIR`, the wrapper's
+    tree name. No engine source reads it.
+- **Evidence.** The full suite passes 76/0: every launcher mode, runtime
+  manifests (including release), the live co-op pair and the seeded faults
+  (`kiln.launch-equivalence` minimum raised from 61 to 76).
+- **Chosen runtime.** `PipelineRequest::runtime` and `PlayRequest::runtime`
+  (CLI `--runtime <dir>`, `sepipe` `runtime=`) package into and launch from
+  a caller's directory with the same packager and steps. This is how
+  harnesses get a private runtime.
+  - `./kiln package portal --runtime <dir>` takes 2.3 s.
+  - `ResolvedProfile::PackageDirectoryName()` is now the one owner of the
+    package directory. The plan had hard-coded `<tree>/runtime` while the
+    package stage read `package.directory`.
+  - `kilntest` 134/0 on gcc and clang, with `fixture.package-into-a-chosen-runtime`
+    and `launch.chosen-runtime-is-the-working-directory-and-{runtime}`.
+- **Harness survey.** 34 modules import scripts that L1 deletes:
+  `private_session` 11, `stage_portal2_runtime` 15, `profile_extends` 9,
+  `stage_runtime` 3, `stage_fstop_runtime` 3, `ensure_configured` 1 and
+  `transcode_av1` 1.
+  - Three tools exec a launcher directly: `frame_floor.py`, `demo_frames.py`
+    and `term_sweep.py`.
+  - The rest of the 40 files that mention `./play*` print it as a usage hint.
+- **Open.** The tree's `kiln-evidence/package.json` is overwritten by a
+  chosen-runtime package. It should record the output directory or use its
+  own name.

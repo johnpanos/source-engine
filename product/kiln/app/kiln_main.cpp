@@ -39,7 +39,9 @@ constexpr const char *kUsage =
     "  switches <profile>             the profile's launch switches\n"
     "  play <profile> [map] [--set <switch>]... [--mounts <set>]... [--flavor <f>] [--dry-run] [-- "
     "args]\n"
-    "  run <profile> [map] [--set <switch>]... [--flavor <f>] [--dry-run] [-- args]\n";
+    "  run <profile> [map] [--set <switch>]... [--flavor <f>] [--dry-run] [-- args]\n"
+    "  package, play and run take --runtime <dir>: package into (and launch from) <dir> instead\n"
+    "  of the tree's runtime, e.g. a test's private runtime\n";
 
 class StderrSink final : public product::IDiagnosticSink
 {
@@ -211,6 +213,8 @@ int main( int argc, char **argv )
 				request.flavor = args[++i];
 			else if ( args[i] == "--mounts" && i + 1 < args.size() )
 				request.mountSets.push_back( args[++i] );
+			else if ( args[i] == "--runtime" && i + 1 < args.size() )
+				request.runtime = fs::absolute( args[++i] );
 			else
 				return Usage();
 		}
@@ -274,6 +278,8 @@ int main( int argc, char **argv )
 				request.displaySession = args[++i];
 			else if ( args[i] == "--mounts" && i + 1 < args.size() )
 				request.mountSets.push_back( args[++i] );
+			else if ( args[i] == "--runtime" && i + 1 < args.size() )
+				request.runtime = fs::absolute( args[++i] );
 			else if ( args[i] == "--dry-run" )
 				dryRun = true;
 			else if ( args[i].rfind( "-", 0 ) != 0 && !request.map )

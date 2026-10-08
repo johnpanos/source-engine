@@ -785,6 +785,13 @@ foundation::Expected<std::vector<std::string>, ProfileError> ResolvedProfile::Wa
 	return arguments;
 }
 
+std::string ResolvedProfile::PackageDirectoryName() const
+{
+	const foundation::json::Value *package = document.Find( "package" );
+	const std::string *directory = package ? package->FindString( "directory" ) : nullptr;
+	return directory ? *directory : std::string( "package" );
+}
+
 std::string ResolvedProfile::TreeName( std::string_view flavor ) const
 {
 	return name + "/" + std::string( flavor );
