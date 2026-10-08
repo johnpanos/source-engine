@@ -132,12 +132,25 @@ char *Plat_ctime( const time_t *timep, char *buf, size_t bufsize )
 		return buf;
 }
 
+bool Plat_GetModuleFileNameOf( const void *pAddress, char *pOut, int nMaxBytes )
+{
+	if ( !pOut || nMaxBytes <= 0 )
+		return false;
+	pOut[0] = 0;
+#ifdef PLATFORM_WINDOWS_PC
+	void *pModule = platform::Win32ModuleOfAddress( pAddress );
+	return pModule && platform::Win32ModuleFileNameA( pModule, pOut, nMaxBytes ) != 0;
+#else
+	(void)pAddress;
+	return false;
+#endif
+}
+
 void Plat_GetModuleFilename( char *pOut, int nMaxBytes )
 {
 #ifdef PLATFORM_WINDOWS_PC
-	SetLastError( ERROR_SUCCESS ); // clear the error code
-	GetModuleFileName( NULL, pOut, nMaxBytes );
-	if ( GetLastError() != ERROR_SUCCESS )
+	if ( nMaxBytes <= 0 ||
+	     platform::Win32ModuleFileNameA( nullptr, pOut, nMaxBytes ) >= (size_t)nMaxBytes )
 		Error( "Plat_GetModuleFilename: The buffer given is too small (%d bytes).", nMaxBytes );
 #else
 	// We shouldn't need this on POSIX.

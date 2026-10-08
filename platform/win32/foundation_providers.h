@@ -86,9 +86,26 @@ public:
 // provider while a started thread is unjoined aborts.
 [[nodiscard]] std::unique_ptr<IWin32Threads> CreateWin32Threads();
 
-// VirtualAlloc/VirtualProtect/VirtualFree. Destroying the provider releases any
+// The Win32 virtual-memory provider's backend-only extension (R103).
+class IWin32VirtualMemory : public IVirtualMemory
+{
+public:
+	// Reserves at exactly `address` rounded down to the allocation
+	// granularity (VirtualAlloc's rule), for `size` rounded up to pages.
+	// kOutOfMemory when that range is not free.
+	virtual MemoryResult ReserveAt( void *address, std::size_t size, MemoryRegion &out ) = 0;
+};
+
+// VirtualAlloc/VirtualProtect/VirtualFree. Its bookkeeping never touches the
+// CRT heap (a VirtualAlloc arena, a sorted reservation table, committed-page
+// bitmaps created on first commit). Destroying the provider releases any
 // reservation still held.
-[[nodiscard]] std::unique_ptr<IVirtualMemory> CreateWin32VirtualMemory();
+[[nodiscard]] std::unique_ptr<IWin32VirtualMemory> CreateWin32VirtualMemory();
+
+// The same provider as a process-wide instance in static storage: getting it
+// allocates nothing, so a heap implementation can back itself with it (Tier
+// 0's small-block heap). Never destroyed.
+IWin32VirtualMemory &Win32ProcessVirtualMemory();
 
 // A snapshot of GetCommandLineW (split as CommandLineToArgvW does) and the
 // environment block, converted to UTF-8. Names compare case-sensitively, as the
@@ -126,6 +143,16 @@ public:
 // Native paths from OS strings (null or empty: the empty path), and the
 // current directory.
 NativePath Win32NativePath( const wchar_t *units );
+
+// A loaded module's file name (GetModuleFileName's rule: `module` null is the
+// executable; the result is truncated to `size` and always terminated). The
+// length written, `size` when the name was truncated, 0 on failure. They allocate nothing, so allocators and
+// pre-Tier 0 bootstrap code may call them.
+std::size_t Win32ModuleFileNameA( void *module, char *buffer, std::size_t size );
+std::size_t Win32ModuleFileNameW( void *module, wchar_t *buffer, std::size_t size );
+
+// The module whose image contains `address`, or null.
+void *Win32ModuleOfAddress( const void *address );
 NativePath Win32CurrentDirectory();
 
 // RtlCaptureStackBackTrace. Safe from any thread.

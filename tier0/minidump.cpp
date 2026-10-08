@@ -88,10 +88,12 @@ bool WriteMiniDumpUsingExceptionInfo(
 		{
 			tchar rgchModuleName[MAX_PATH];
 			#ifdef TCHAR_IS_WCHAR
-				::GetModuleFileNameW( NULL, rgchModuleName, sizeof(rgchModuleName) / sizeof(tchar) );
-			#else
-				::GetModuleFileName( NULL, rgchModuleName, sizeof(rgchModuleName) / sizeof(tchar) );
-			#endif
+			platform::Win32ModuleFileNameW(
+			    nullptr, rgchModuleName, sizeof( rgchModuleName ) / sizeof( tchar ) );
+#else
+			platform::Win32ModuleFileNameA(
+			    nullptr, rgchModuleName, sizeof( rgchModuleName ) / sizeof( tchar ) );
+#endif
 
 			// strip off the rest of the path from the .exe name
 			tchar *pch = _tcsrchr( rgchModuleName, '.' );

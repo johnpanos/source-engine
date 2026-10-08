@@ -37,7 +37,9 @@
 #include "tier0/l2cache.h"
 #include "tier0/tslist.h"
 #include "tier0/dynfunction.h"
-
+#if defined( _WIN32 )
+#include "../platform/win32/foundation_providers.h"
+#endif
 
 #include "tier0/memdbgon.h"
 
@@ -1151,7 +1153,7 @@ static bool TelemetryInitialize()
 
 #if defined( IS_WINDOWS_PC )
 	char baseExeFilename[512];
-	if( GetModuleFileName ( GetModuleHandle( NULL ), baseExeFilename, sizeof( baseExeFilename ) ) )
+	if ( platform::Win32ModuleFileNameA( nullptr, baseExeFilename, sizeof( baseExeFilename ) ) )
 	{
 		char *pExt = strrchr( baseExeFilename, '.' );
 

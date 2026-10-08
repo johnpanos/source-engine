@@ -12,8 +12,6 @@
 #if defined( _WIN32 )
 #define WIN_32_LEAN_AND_MEAN
 #include <windows.h>
-#define VA_COMMIT_FLAGS MEM_COMMIT
-#define VA_RESERVE_FLAGS MEM_RESERVE
 #endif
 
 #ifdef OSX
@@ -31,7 +29,18 @@
 #include "tier0/threadtools.h"
 #include "mem_helpers.h"
 #include "memstd.h"
+#if defined( _WIN32 )
+#include "foundation_facade.h"
 
+// The small-block heap's address space comes from the process's Win32
+// virtual-memory provider, whose bookkeeping never re-enters this allocator.
+static bool SbhCommit( void *p, size_t n )
+{
+	const auto access = platform::PageAccess::kReadWrite;
+	return platform::Win32ProcessVirtualMemory().Commit( p, n, access ) ==
+	       platform::MemoryResult::kOk;
+}
+#endif
 
 // Force on redirecting all allocations to the process heap on Win64,
 // which currently means the GC.  This is to make AppVerifier more effective
@@ -401,7 +410,7 @@ static bool IsPageHeapEnabled( bool& bETWHeapEnabled )
 	if ( exeHandle )
 	{
 		char appName[ MAX_PATH ];
-		if ( GetModuleFileNameA( exeHandle, appName, ARRAYSIZE( appName ) ) )
+		if ( platform::Win32ModuleFileNameA( exeHandle, appName, ARRAYSIZE( appName ) ) )
 		{
 			// Guarantee null-termination -- not guaranteed on Windows XP!
 			appName[ ARRAYSIZE( appName ) - 1 ] = 0;
@@ -475,7 +484,8 @@ bool CheckWindowsAllocSettings( const char* upperCommandLine )
 	// We don't really care whether this allocation succeeds, but it's
 	// worth trying. Note that we do this in all cases -- whether we are using
 	// -processheap or not.
-	VirtualAlloc( (void*)0xFFEEFFEE, 1, MEM_RESERVE, PAGE_NOACCESS );
+	platform::MemoryRegion poison;
+	(void)platform::Win32ProcessVirtualMemory().ReserveAt( (void *)0xFFEEFFEE, 1, poison );
 
 	// Enable application termination (breakpoint) on heap corruption. This is
 	// better than trying to patch it up and continue, both from a security and
@@ -578,7 +588,7 @@ void CSmallBlockPool::Init( unsigned nBlockSize, byte *pBase, unsigned initialCo
 	if ( initialCommit )
 	{
 		initialCommit = MemAlign( initialCommit, SBH_PAGE_SIZE );
-		if ( !VirtualAlloc( m_pCommitLimit, initialCommit, VA_COMMIT_FLAGS, PAGE_READWRITE ) )
+		if ( !SbhCommit( m_pCommitLimit, initialCommit ) )
 		{
 			Assert( 0 );
 			return;
@@ -624,11 +634,11 @@ void *CSmallBlockPool::Alloc()
 							{
 					if ( pCommitLimit + COMMIT_SIZE <= m_pAllocLimit )
 								{
-						if ( !VirtualAlloc( pCommitLimit, COMMIT_SIZE, VA_COMMIT_FLAGS, PAGE_READWRITE ) )
-								{
-							Assert( 0 );
-							return NULL;
-							}
+						            if ( !SbhCommit( pCommitLimit, COMMIT_SIZE ) )
+						            {
+							            Assert( 0 );
+							            return NULL;
+						            }
 
 						m_pCommitLimit = pCommitLimit + COMMIT_SIZE;
 						}
@@ -720,7 +730,8 @@ int CSmallBlockPool::Compact()
 			if ( pNewCommitLimit < m_pCommitLimit )
 		{
 				nBytesFreed = m_pCommitLimit - pNewCommitLimit;
-				VirtualFree( pNewCommitLimit, nBytesFreed, MEM_DECOMMIT );
+				(void)platform::Win32ProcessVirtualMemory().Decommit(
+				    pNewCommitLimit, nBytesFreed );
 				m_pCommitLimit = pNewCommitLimit;
 		}
 	}
@@ -759,7 +770,11 @@ CSmallBlockHeap::CSmallBlockHeap()
 		return;
 	}
 
-	m_pBase = (byte *)VirtualAlloc( NULL, NUM_POOLS * MAX_POOL_REGION, VA_RESERVE_FLAGS, PAGE_NOACCESS );
+	platform::MemoryRegion pools;
+	m_pBase = platform::Win32ProcessVirtualMemory().Reserve( NUM_POOLS * MAX_POOL_REGION, pools ) ==
+	                  platform::MemoryResult::kOk
+	              ? (byte *)pools.base
+	              : NULL;
 	m_pLimit = m_pBase + NUM_POOLS * MAX_POOL_REGION;
 
 	// Build a lookup table used to find the correct pool based on size
@@ -1942,14 +1957,15 @@ void ReserveBottomMemory()
 	{
 		for (;;)
 		{
-			void* p = VirtualAlloc( 0, blockSize, MEM_RESERVE, PAGE_NOACCESS );
-			if ( !p )
+			platform::MemoryRegion region;
+			if ( platform::Win32ProcessVirtualMemory().Reserve( blockSize, region ) !=
+			     platform::MemoryResult::kOk )
 				break;
 
-			if ( (size_t)p >= LOW_MEM_LINE )
+			if ( (size_t)region.base >= LOW_MEM_LINE )
 			{
 				// We don't need this memory, so release it completely.
-				VirtualFree( p, 0, MEM_RELEASE );
+				(void)platform::Win32ProcessVirtualMemory().Release( region );
 				break;
 			}
 

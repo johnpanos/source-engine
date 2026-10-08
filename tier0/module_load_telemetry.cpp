@@ -23,6 +23,9 @@
 #include <link.h>
 #endif
 #endif
+#if defined( _WIN32 )
+#include "../platform/win32/foundation_providers.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -436,8 +439,8 @@ void ResolveNativeModulePath(
 	int nResolvedPathSize )
 {
 	CopyString( pResolvedPath, nResolvedPathSize, pRequestedPath );
-	if ( hModule && GetModuleFileNameA(
-		hModule, pResolvedPath, nResolvedPathSize ) == 0 )
+	if ( hModule &&
+	     platform::Win32ModuleFileNameA( hModule, pResolvedPath, nResolvedPathSize ) == 0 )
 	{
 		CopyString( pResolvedPath, nResolvedPathSize, pRequestedPath );
 	}

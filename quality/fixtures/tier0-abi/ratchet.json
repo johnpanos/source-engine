@@ -5,15 +5,7 @@
   "T3-process-environment": {},
   "T4-debug-output": {},
   "T5-crash-reporting": {},
-  "T6-memory-paths": {
-   "public/tier0/bootstrap_module_load_telemetry.h": 2,
-   "public/tier0/memoverride.cpp": 4,
-   "tier0/memstd.cpp": 8,
-   "tier0/minidump.cpp": 2,
-   "tier0/module_load_telemetry.cpp": 1,
-   "tier0/platform.cpp": 1,
-   "tier0/vprof.cpp": 1
-  }
+  "T6-memory-paths": {}
  },
  "schema": "tier0-ratchet/v1",
  "totals": {
@@ -22,6 +14,6 @@
   "T3-process-environment": 0,
   "T4-debug-output": 0,
   "T5-crash-reporting": 0,
-  "T6-memory-paths": 19
+  "T6-memory-paths": 0
  }
 }

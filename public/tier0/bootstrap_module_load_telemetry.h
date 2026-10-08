@@ -196,6 +196,9 @@ static void BootstrapModuleLoadTelemetry_Init(
 
 #if defined( _WIN32 )
 
+// The launcher roots link platform_foundation_win32 for this (R103).
+#include "../../platform/win32/foundation_providers.h"
+
 static void BootstrapWideToUtf8(
 	const wchar_t *pSource, char *pDestination, int nDestinationSize )
 {
@@ -233,8 +236,7 @@ static HMODULE BootstrapLoadLibraryExA(
 	char szResolved[2048];
 	char szError[512];
 	BootstrapModuleLoadCopy( szResolved, sizeof( szResolved ), pPath );
-	if ( hModule && !GetModuleFileNameA(
-		hModule, szResolved, sizeof( szResolved ) ) )
+	if ( hModule && !platform::Win32ModuleFileNameA( hModule, szResolved, sizeof( szResolved ) ) )
 		BootstrapModuleLoadCopy( szResolved, sizeof( szResolved ), pPath );
 	BootstrapWindowsErrorText( nError, szError, sizeof( szError ) );
 	BootstrapModuleLoadRemember( hModule, pRequester, nSourceLine,
@@ -254,8 +256,7 @@ static HMODULE BootstrapLoadLibraryExW(
 	char szResolved[2048];
 	char szError[512];
 	BootstrapModuleLoadCopy( szResolved, sizeof( szResolved ), szRequested );
-	if ( hModule && !GetModuleFileNameA(
-		hModule, szResolved, sizeof( szResolved ) ) )
+	if ( hModule && !platform::Win32ModuleFileNameA( hModule, szResolved, sizeof( szResolved ) ) )
 		BootstrapModuleLoadCopy( szResolved, sizeof( szResolved ), szRequested );
 	BootstrapWindowsErrorText( nError, szError, sizeof( szError ) );
 	BootstrapModuleLoadRemember( hModule, pRequester, nSourceLine,

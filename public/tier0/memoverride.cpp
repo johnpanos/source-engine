@@ -49,11 +49,8 @@ const char *MakeModuleFileName()
 	{
 		char *pszModuleName = (char *)HeapAlloc( GetProcessHeap(), 0, MAX_PATH ); // small leak, debug only
 
-		MEMORY_BASIC_INFORMATION mbi;
 		static int dummy;
-		VirtualQuery( &dummy, &mbi, sizeof(mbi) );
-
-		GetModuleFileName( reinterpret_cast<HMODULE>(mbi.AllocationBase), pszModuleName, MAX_PATH );
+		Plat_GetModuleFileNameOf( &dummy, pszModuleName, MAX_PATH );
 		char *pDot = strrchr( pszModuleName, '.' );
 		if ( pDot )
 		{
@@ -81,7 +78,7 @@ public:
 
 static CStaticConstructionCheck s_CheckStaticsConstructed;
 
-const char *GetModuleFileName()
+const char *MemOverrideModuleName()
 {
 #if !defined(_MSC_VER) || ( _MSC_VER >= 1900 ) //  VC 2015 and above, with the UCRT, will crash if you use a static before it is constructed
 	if ( !s_CheckStaticsConstructed.m_bConstructed )
@@ -95,7 +92,7 @@ const char *GetModuleFileName()
 
 static void *AllocUnattributed( size_t nSize )
 {
-	const char *pszOwner = GetModuleFileName();
+	const char *pszOwner = MemOverrideModuleName();
 
 	if ( !pszOwner )
 		return g_pMemAlloc->Alloc(nSize);
@@ -105,7 +102,7 @@ static void *AllocUnattributed( size_t nSize )
 
 static void *ReallocUnattributed( void *pMem, size_t nSize )
 {
-	const char *pszOwner = GetModuleFileName();
+	const char *pszOwner = MemOverrideModuleName();
 
 	if ( !pszOwner )
 		return g_pMemAlloc->Realloc(pMem, nSize);

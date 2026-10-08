@@ -153,4 +153,38 @@ std::unique_ptr<IPlatformPaths> CreateWin32PlatformPaths()
 	return paths;
 }
 
+std::size_t Win32ModuleFileNameA( void *module, char *buffer, std::size_t size )
+{
+	if ( buffer == nullptr || size == 0 )
+	{
+		return 0;
+	}
+	const DWORD capacity = size > MAXDWORD ? MAXDWORD : static_cast<DWORD>( size );
+	const DWORD n = GetModuleFileNameA( static_cast<HMODULE>( module ), buffer, capacity );
+	buffer[n < capacity ? n : capacity - 1] = 0; // XP leaves a full buffer unterminated
+	return n;
+}
+
+std::size_t Win32ModuleFileNameW( void *module, wchar_t *buffer, std::size_t size )
+{
+	if ( buffer == nullptr || size == 0 )
+	{
+		return 0;
+	}
+	const DWORD capacity = size > MAXDWORD ? MAXDWORD : static_cast<DWORD>( size );
+	const DWORD n = GetModuleFileNameW( static_cast<HMODULE>( module ), buffer, capacity );
+	buffer[n < capacity ? n : capacity - 1] = 0;
+	return n;
+}
+
+void *Win32ModuleOfAddress( const void *address )
+{
+	MEMORY_BASIC_INFORMATION info;
+	if ( VirtualQuery( address, &info, sizeof( info ) ) == 0 || info.Type != MEM_IMAGE )
+	{
+		return nullptr;
+	}
+	return info.AllocationBase;
+}
+
 } // namespace platform
