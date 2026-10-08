@@ -31,7 +31,7 @@ map     : testchmb_a_00 at: 0 x, 0 y, 0 z
 players : 1 humans, 0 bots (1 max)
 # 2 "unnamed" STEAM_ID_LAN 00:03 0 0 active loopback
 '''
-PROVIDERS = "RFC0001 renderer: provider=vulkan-compat\nRFC0001 window: provider=sdl3 driver=wayland\n"
+PROVIDERS = "[NativeVulkan] IShaderAPI::SetMode: device Fixture GPU up\nRFC0001 window: provider=sdl3 driver=wayland\n"
 
 
 class AcceptanceTests(unittest.TestCase):
@@ -88,7 +88,7 @@ class AcceptanceTests(unittest.TestCase):
         loaded = ("/usr/lib/libvulkan.so.1", "/usr/lib/libSDL3.so.0")
         self.assertEqual([], self.evaluate(log=native, requirements=("vulkan", "sdl3"),
                                           loaded=loaded, renderer="native-vulkan"))
-        self.assertTrue(self.evaluate(log=STATUS + PROVIDERS,
+        self.assertTrue(self.evaluate(log=STATUS + "RFC0001 window: provider=sdl3 driver=wayland\n",
                                       requirements=("vulkan", "sdl3"), loaded=loaded,
                                       renderer="native-vulkan"))
 
@@ -413,31 +413,6 @@ class StagingTests(unittest.TestCase):
             (build / "c4che/_cache.py").write_text("GAMES = %r\n" % games)
         return build, stage
 
-    def add_native_package(self, root, build):
-        profile = product_profile.load_profile()
-        dependency = profile["dependencies"]["dxvk_native"]
-        cache = root / "dependencies"
-        tree = cache / dependency["extracted_directory"]
-        prefix = tree / dependency["prefix"]
-        for relative in ("include/dxvk/d3d9.h", "include/dxvk/wsi/native_sdl3.h",
-                         "lib/libdxvk_d3d9.so.0.20701"):
-            path = prefix / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(relative.encode())
-        (prefix / "lib/libdxvk_d3d9.so.0").symlink_to("libdxvk_d3d9.so.0.20701")
-        (prefix / "lib/libdxvk_d3d9.so").symlink_to("libdxvk_d3d9.so.0")
-        archive = cache / dependency["cache_archive"]
-        with tarfile.open(archive, "w:gz") as stream:
-            stream.add(prefix, arcname="usr")
-        dependency["sha256"] = hashlib.sha256(archive.read_bytes()).hexdigest()
-        dependency["archive_bytes"] = archive.stat().st_size
-        profile_path = root / "profile.json"
-        profile_path.write_text(json.dumps(profile))
-        with (build / "c4che/_cache.py").open("a") as configuration:
-            configuration.write("LIBPATH_DXVK = %r\n" % [str(prefix / "lib")])
-            configuration.write("DXVK_ROOT = %r\n" % str(prefix))
-            configuration.write("PRODUCT_PROFILE = %r\n" % str(profile_path))
-        return prefix, dependency
 
     def test_unqualified_portal_game_outputs_are_installed_in_gamebin(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -583,41 +558,6 @@ class StagingTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "repository-relative"):
                 boot.host_tool_roots(root)
         self.assertIn(QUALITY.parents[1].resolve() / "build/toolchains", boot.host_tool_roots())
-
-    def test_native_sonames_are_staged_as_independent_verified_files(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            build, stage = self.make_build(root)
-            prefix, dependency = self.add_native_package(root, build)
-            installed = boot.install_build(build, stage)
-            for name in ("libdxvk_d3d9.so", "libdxvk_d3d9.so.0", "libdxvk_d3d9.so.0.20701"):
-                destination = stage / "bin" / name
-                self.assertFalse(destination.is_symlink())
-                self.assertEqual(destination.read_bytes(), (prefix / "lib" / name).read_bytes())
-                self.assertEqual(installed["bin/" + name]["sha256"], boot.sha256(destination))
-
-    def test_tampered_native_library_is_rejected_after_configuration(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            build, stage = self.make_build(root)
-            prefix, _ = self.add_native_package(root, build)
-            (prefix / "lib/libdxvk_d3d9.so.0.20701").write_bytes(b"tampered")
-            with self.assertRaisesRegex(ValueError, "differs from pinned archive"):
-                boot.install_build(build, stage)
-            self.assertFalse((stage / "bin/libdxvk_d3d9.so").exists())
-
-    def test_extra_native_search_path_cannot_replace_pinned_soname(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            build, stage = self.make_build(root)
-            prefix, _ = self.add_native_package(root, build)
-            other = root / "other"
-            other.mkdir()
-            (other / "libdxvk_d3d9.so").write_bytes(b"wrong provider")
-            with (build / "c4che/_cache.py").open("a") as configuration:
-                configuration.write("LIBPATH_DXVK = %r\n" % [str(other)])
-            with self.assertRaises(ValueError):
-                boot.install_build(build, stage)
 
     def test_mutable_files_are_independent_and_stale_screenshots_are_absent(self):
         with tempfile.TemporaryDirectory() as directory:

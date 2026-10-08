@@ -1,7 +1,7 @@
 {
   "schema": "source-product-fragment/v2",
   "id": "render-switches-v2",
-  "description": "The render switches of tools/quality/render_flags.sh as profile data (RFC 0027 decision 18). A launch passes the profile's arguments, then each selected switch's arguments; later console values win. Backend selection moved to profiles (portal-dxvk is a profile, a different tree); --null is the `null` switch. The defaults these switches override (+r_core_world 1, +r_indirect_producer baked, +r_core_runtime_direct 1, +r_core_area_lights 0) are in each game profile's launch.arguments. L1's launch-equivalence check compares them with the launchers.",
+  "description": "The render switches of tools/quality/render_flags.sh as profile data (RFC 0027 decision 18). A launch passes the profile's arguments, then each selected switch's arguments; later console values win. --native is the default and --null is the `null` switch; --dxvk went with DXVK Native (deleted 2026-10-07, RFC 0028 decision 10). The defaults these switches override (+r_core_world 1, +r_indirect_producer baked, +r_core_runtime_direct 1, +r_core_area_lights 0) are in each game profile's launch.arguments. L1's launch-equivalence check compares them with the launchers.",
   "launch": {
     "switches": {
       "null": {

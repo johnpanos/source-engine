@@ -1,9 +1,9 @@
 # RFC 0027 progress: One Product Pipeline and `kiln`
 
 Design: [RFC 0027](0027-product-pipeline-lowering-streaming-kiln.md).
-Roadmap: the RFC's L0/L1/L7 row (named R98 in the RFC's roadmap table, an id
-RFC 0026 also took for physics on 2026-10-07; the user ranks and renames the
-row). Nothing in this record ranks it.
+Roadmap: row R102, rank 75 (L0, L1, L7). The RFC first named it R98, an id
+RFC 0026 also took for physics on 2026-10-07; R102 and the rank are an agent
+placement (2026-10-07), movable by the user.
 
 ## L0: the pipeline library, profile schema v2 and `kiln build` (2026-10-07)
 
@@ -43,7 +43,7 @@ Also:
   source under `foundation`, `product`, `jobsystem`, `platform` or their
   public headers is newer than the binary, then execs it. A warm call takes
   about 30 ms.
-- `quality/product_profiles/`: three fragments and eleven schema v2 desktop
+- `quality/product_profiles/`: three fragments and ten schema v2 desktop
   profiles (below).
 - `tools/kiln/kiln_gate.py`: the gate checks that need the real repository
   (`parity`, `rebuild <profile>`, `selftest`).
@@ -61,8 +61,8 @@ Fragments (`source-product-fragment/v2`, no target):
   the `dev` and `release` flavors (RFC 0023: `product_flavor=release`,
   `enable_lto`), `pipeline.stages: ["waf-engine"]`.
 - `fragments/render-switches.json`: the 16 switches of `render_flags.sh`
-  as data (`--core-probe=MODE` became two switches; `--native` and
-  `--dxvk` became profiles), each with a description, arguments and
+  as data (`--core-probe=MODE` became two switches; `--native` is the
+  default; `--dxvk` went with DXVK Native, deleted on 2026-10-07), each with a description, arguments and
   conflicts.
 - `fragments/desktop-launch.json`: `ivp`, `serial-jobs`, `sync-queue` and
   `bink`, the environment variables of `run.conf` and `play_p2`.
@@ -72,7 +72,6 @@ Profiles (`source-product-profile/v2`), each with a host alias:
 | File | Alias | Tree |
 | --- | --- | --- |
 | `portal-linux-native-vulkan.json` (extends the v1 slice) | `portal` | `out/portal-linux-native-vulkan/<flavor>` |
-| `portal-linux-dxvk.json` (extends the v1 DXVK slice) | `portal-dxvk` | `out/portal-linux-dxvk/<flavor>` |
 | `portal2-linux-native-vulkan.json` | `portal2` | `out/portal2-linux-native-vulkan/<flavor>` |
 | `portal2-fsr.json` | `portal2-fsr` | `out/portal2-fsr/<flavor>` |
 | `portal2-high.json` (Portal 2 plus the v1 High profile) | `portal2-high` | `out/portal2-high/<flavor>` |
@@ -171,7 +170,6 @@ each):
 | `dedicated` | built after fix 3 below | no-op |
 | `tools` | built | no-op |
 | `hammer` | built | no-op |
-| `portal-dxvk` | 2,687 Waf tasks, after fixes 4 and 5 | no-op |
 
 `portal2-retail` declares nothing to build. No game was launched: launching
 is L1.
@@ -192,8 +190,12 @@ Defects the real builds found, fixed in this change:
    profiles, the fragment, the profile README and `test_product_profile.py`.
    The mobile profiles' SDL3 source-archive pins are separate and unchanged.
 5. The root wscript installed the DXVK library by absolute path string,
-   which Waf's `install_files` resolves relative to the source tree; it now
-   passes the node.
+   which Waf's `install_files` resolves relative to the source tree. Fixed
+   on `kiln-l0`, then superseded when merged onto `subsystem-refactor`,
+   which deleted DXVK Native (`0f9484583`, user decision 2026-10-07); the
+   `portal-dxvk` profile was built and gated on `kiln-l0` and removed in
+   the merge with its v1 parent. Fix 3 is the same change as the branch's
+   `c138bb967`.
 
 ### Not done or unavailable
 
@@ -208,8 +210,7 @@ Defects the real builds found, fixed in this change:
   product, whose configure needs the pinned shader toolchain
   (`python3 tools/render/shader_toolchain.py build`). In this worktree
   `dependencies/shader-toolchain`, `dependencies/vulkan-memory-allocator`
-  are links to the main checkout's (the DXVK package and its archive are copies,
-  because the wscript refuses a linked archive),
+  are links to the main checkout's 
   and the submodules are links marked `assume-unchanged`.
 - **No hosted CI run.** The manifest rows are local evidence.
 - **No `kiln deps`, `content`, `package`, `deploy`, `play`, `run`,

@@ -3846,21 +3846,7 @@ void CModelRender::StaticPropColorMeshCallback( void *pContext, const void *pDat
 			pOut = meshBuilder.Specular();
 		}
 
-#ifdef DX_TO_GL_ABSTRACTION
-		// OPENGL_SWAP_COLORS
-		for ( int i=0; i < (numVertexes * numLightingComponents ); i++ )
-		{
-			unsigned char red = *pIn++;
-			unsigned char green = *pIn++;
-			unsigned char blue = *pIn++;
-			*pOut++ = blue;
-			*pOut++ = green;
-			*pOut++ = red;
-			*pOut++ = *pIn++; // Alpha goes straight across
-		}
-#else
 		V_memcpy( pOut, pIn, numVertexes * 4 * numLightingComponents );
-#endif
 		meshBuilder.End();
 	}
 cleanUp:

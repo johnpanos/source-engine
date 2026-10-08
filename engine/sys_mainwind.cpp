@@ -17,7 +17,7 @@
 
 #endif
 
-#if defined( WIN32 ) && !defined( DX_TO_GL_ABSTRACTION )
+#if defined( WIN32 )
 #include "winlite.h"
 #include "xbox/xboxstubs.h"
 #endif
@@ -807,11 +807,7 @@ bool CGame::CreateGameWindow( void )
 
 	if ( IsOpenGL() )
 	{
-#ifdef TOGLES
-		V_strcat( windowName, " - OpenGLES", sizeof( windowName ) );
-#else
 		V_strcat( windowName, " - OpenGL", sizeof( windowName ) );
-#endif
 	}
 
 #if PIX_ENABLE || defined( PIX_INSTRUMENTATION )
@@ -1418,7 +1414,7 @@ void *CGame::GetMainWindow( void )
 
 void *CGame::GetMainDeviceWindow( void )
 {
-#if defined( USE_SDL ) && ( defined( DX_TO_GL_ABSTRACTION ) || defined( USE_DXVK ) )
+#if defined( USE_SDL ) && defined( USE_SDL3 )
 	return (void*)m_pSDLWindow;
 #else
 	return (void*)m_hWindow;

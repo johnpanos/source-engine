@@ -92,7 +92,7 @@ enum ImageFormat
 	NUM_IMAGE_FORMATS
 };
 
-#if ( defined( POSIX ) || defined( DX_TO_GL_ABSTRACTION ) ) && !defined( USE_DXVK )
+#if defined( POSIX ) && !defined( USE_SDL3 )
 typedef enum _D3DFORMAT
 	{
 		D3DFMT_INDEX16,
@@ -388,7 +388,7 @@ namespace ImageLoader
 	// convert back and forth from D3D format to ImageFormat, regardless of
 	// whether it's supported or not
 	//-----------------------------------------------------------------------------
-#if !defined( USE_DXVK )
+#if !defined( USE_SDL3 )
 	ImageFormat D3DFormatToImageFormat( D3DFORMAT format );
 	D3DFORMAT ImageFormatToD3DFormat( ImageFormat format );
 #endif

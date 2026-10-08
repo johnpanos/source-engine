@@ -1,7 +1,7 @@
 # Render backend switches for ./play and ./play_p2 (sourced, bash).
 #
 # render_flags_parse "$@" consumes the leading render flags and sets:
-#   RENDER_BACKEND      native | dxvk | null   (native unless a flag says otherwise)
+#   RENDER_BACKEND      native | null   (native unless a flag says otherwise)
 #   RENDER_GAME_ARGS    game arguments the flags imply (an array)
 #   RENDER_REST         the remaining arguments, unchanged (an array)
 #
@@ -13,7 +13,6 @@
 #
 # Flags (any order, before the map and game arguments):
 #   --native            native Vulkan renderer (shaderapivulkan): the default
-#   --dxvk              D3D9 renderer through DXVK Native (./play only)
 #   --null              no rendering (shaderapiempty), for headless checks
 #   --core-world        the render core draws the BSP world it can (RFC 0016 K5,
 #                       r_core_world 1, strict); legacy draws the rest. The
@@ -63,7 +62,6 @@ render_flags_parse()
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--native) RENDER_BACKEND=native ;;
-			--dxvk) RENDER_BACKEND=dxvk ;;
 			--null) RENDER_BACKEND=null ;;
 			--core-world) core_world=1 ;;
 			--no-core-world) core_world=0 ;;

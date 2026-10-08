@@ -15,14 +15,6 @@
 #include "tier0/threadtools.h"
 #include "appframework/IAppSystem.h"
 
-#if defined( DX_TO_GL_ABSTRACTION )
-
-#include "togl/linuxwin/glmgrbasics.h"
-#include "togl/linuxwin/glmdisplay.h"
-
-class GLMDisplayDB;
-class CShowPixelsParams;
-#endif
 
 // if you rev this version also update materialsystem/cmaterialsystem.cpp CMaterialSystem::Connect as it defines the string directly
 #define SDLMGR_INTERFACE_VERSION "SDLMgrInterface001"
@@ -74,17 +66,6 @@ public:
 	virtual void RenderedSize( uint &width, uint &height, bool set ) = 0;	// either set or retrieve rendered size value (from dxabstract)
 	virtual void DisplayedSize( uint &width, uint &height ) = 0;			// query backbuffer size (window size whether FS or windowed)
 	
-#if defined( DX_TO_GL_ABSTRACTION )
-	virtual PseudoGLContextPtr	GetMainContext() = 0;
-	// Get the NSGLContext for a window's main view - note this is the carbon windowref as an argument
-	virtual PseudoGLContextPtr GetGLContextForWindow( void* windowref ) = 0;
-	virtual PseudoGLContextPtr CreateExtraContext() = 0;
-	virtual void DeleteContext( PseudoGLContextPtr hContext ) = 0;
-	virtual bool MakeContextCurrent( PseudoGLContextPtr hContext ) = 0;
-	virtual GLMDisplayDB *GetDisplayDB( void ) = 0;
-	virtual void GetDesiredPixelFormatAttribsAndRendererInfo( uint **ptrOut, uint *countOut, GLMRendererInfoFields *rendInfoOut ) = 0;
-	virtual void ShowPixels( CShowPixelsParams *params ) = 0;
-#endif
 
 	virtual void GetStackCrawl( CStackCrawlParams *params ) = 0;	
 	

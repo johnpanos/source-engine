@@ -2320,16 +2320,14 @@
         {
           "id": "render-legacy",
           "owner": "R46",
-          "reason": "Legacy material system and shader API modules. materialsystem, shaderapivulkan and shaderapidx9 compile strict modules beside legacy code (the provider catalog links shaderapivulkan; R39), so no single module bounds them.",
+          "reason": "Legacy material system and shader API modules. materialsystem and shaderapivulkan compile strict modules beside legacy code (the provider catalog links shaderapivulkan; R39), so no single module bounds them.",
           "targets": [
             "materialsystem",
-            "shaderapidx9",
             "shaderapiempty",
             "shaderapivulkan",
             "shaderlib",
             "stdshader_dx9",
             "studiorender",
-            "togl",
             "vulkan_debug"
           ]
         },
@@ -2340,8 +2338,6 @@
           "targets": [
             "builtin_shader_conformance",
             "compute_native_conformance",
-            "dxvk_math_conformance",
-            "dxvk_presentation_conformance",
             "indirect_sdf_native_conformance",
             "legacy_render_provider_conformance",
             "material_binding_conformance",
@@ -2531,15 +2527,6 @@
           "reason": "The dedicated server module; no iOS profile ships the dedicated product.",
           "targets": [
             "dedicated"
-          ]
-        },
-        {
-          "id": "desktop-render-backends",
-          "owner": "R46",
-          "reason": "D3D9 and togl render backends; no iOS profile selects them (iOS renders through native Vulkan on MoltenVK).",
-          "targets": [
-            "shaderapidx9",
-            "togl"
           ]
         },
         {

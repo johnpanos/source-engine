@@ -820,9 +820,6 @@ public:
 	virtual void RefreshFrontBufferNonInteractive() {}
 
 
-#ifdef DX_TO_GL_ABSTRACTION
-	void									DoStartupShaderPreloading( void ) {};
-#endif
 
 	void									TextureManagerUpdate( void ) { }
 

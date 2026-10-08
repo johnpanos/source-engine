@@ -16199,7 +16199,7 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "TOOLCHAIN-M0",
-      "description": "Gap corpus (item 1): Clang/64-bit legacy sweep. Re-records compile commands (./waf clangdb, no build) in seven private trees (tests, tools, dedicated, portal-native, portal-dxvk [GCC-configured, compiled by Clang], hl2, portal2-native), then runs every recorded cxx20-permissive compile (~10,600 TUs) through clang++ -fsyntax-only with only the 64-bit hazard set enabled: the pointer-to-smaller-int cast error that GCC -fpermissive -w hides, -Wint-to-pointer-cast, -Wint-to-void-pointer-cast, LP64 printf width mismatches (-Wformat) and pointer-sized integers narrowed to 32 bits (-Wshorten-64-to-32 from intp/uintp/intptr_t/uintptr_t/VPANEL). Exact ratchet against quality/fixtures/corpus/clang64/sites.json: a new site, a stale site, or a permissive target entering or leaving coverage fails. About 6 minutes at 16 jobs. Setup (once): python3 tools/quality/corpus/clang64_sweep.py setup --dxvk-root <DXVK Native prefix>. Re-record after review: python3 tools/quality/corpus/clang64_sweep.py record.",
+      "description": "Gap corpus (item 1): Clang/64-bit legacy sweep. Re-records compile commands (./waf clangdb, no build) in six private trees (tests, tools, dedicated, portal-native, hl2, portal2-native), then runs every recorded cxx20-permissive compile (~10,600 TUs) through clang++ -fsyntax-only with only the 64-bit hazard set enabled: the pointer-to-smaller-int cast error that GCC -fpermissive -w hides, -Wint-to-pointer-cast, -Wint-to-void-pointer-cast, LP64 printf width mismatches (-Wformat) and pointer-sized integers narrowed to 32 bits (-Wshorten-64-to-32 from intp/uintp/intptr_t/uintptr_t/VPANEL). Exact ratchet against quality/fixtures/corpus/clang64/sites.json: a new site, a stale site, or a permissive target entering or leaving coverage fails. About 6 minutes at 16 jobs. Setup (once): python3 tools/quality/corpus/clang64_sweep.py setup. Re-record after review: python3 tools/quality/corpus/clang64_sweep.py record.",
       "command": [
         "{python}",
         "tools/quality/corpus/clang64_sweep.py",
@@ -16208,7 +16208,7 @@
         "{out}"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 20,
+      "min_checks": 18,
       "timeout_seconds": 2400,
       "requires": [
         "executable:clang++",
@@ -16216,7 +16216,6 @@
         "path:build-corpus-clang64-tools/toolchain-invocations.json",
         "path:build-corpus-clang64-dedicated/toolchain-invocations.json",
         "path:build-corpus-clang64-portal-native/toolchain-invocations.json",
-        "path:build-corpus-clang64-portal-dxvk/toolchain-invocations.json",
         "path:build-corpus-clang64-hl2/toolchain-invocations.json",
         "path:build-corpus-clang64-portal2-native/toolchain-invocations.json"
       ],

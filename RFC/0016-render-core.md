@@ -861,7 +861,8 @@ measured for this RFC; measured numbers are quoted from their records.
   have theirs.
 - Keeping any legacy backend. User decision (2026-10-07) reverses the
   2026-09-26 decision to keep ToGL: every legacy backend is deleted, under
-  the ratchet in [RFC 0028](0028-direct3d9-device-adapter.md) decision 10.
+  the ratchet in [RFC 0028](0028-direct3d9-device-adapter.md) decision 10. ToGL, ToGLES, DXVK
+  Native and `shaderapidx9` were deleted the same day.
 - Running D3D bytecode from mod shader DLLs on adapters other than D3D9
   (RFC 0028 runs it on the D3D9 adapter only)
   ([Mod shader DLLs](#mod-shader-dlls)).
@@ -1479,13 +1480,47 @@ establish those separately before a cohort is promoted.
 
 ### Mod shader DLLs
 
-Mod shader DLLs (`ShaderDLL004`) ship D3D shader bytecode, which the core
-does not run. On core profiles a mod shader DLL still loads through the
-existing extension host; its shaders register as `unsupported-on-profile`
-and their materials follow the missing-shader rule. The legacy D3D9
-profiles keep running them: native D3D9 on Windows, DXVK on Linux, and
-ToGL or ToGLES on the SDL2 legacy-renderer profiles. ToGL stays for exactly this reason (user decision,
-2026-09-26). Retiring it would be a separate decision about those profiles.
+Mod shader DLLs (`ShaderDLL004`) ship D3D shader bytecode, which the core's
+Vulkan, GL, D3D12 and Metal adapters do not run. On those profiles a mod
+shader DLL still loads through the existing extension host; its shaders
+register as `unsupported-on-profile` and their materials follow the
+missing-shader rule. Until 2026-10-07 the legacy D3D9 profiles (native D3D9
+on Windows, DXVK on Linux, ToGL/ToGLES on the SDL2 profiles) ran them; all
+were deleted that day (user decision), and mod bytecode moves to the D3D9
+device adapter ([RFC 0028](0028-direct3d9-device-adapter.md) decision 9).
+
+### Legacy device facade (user decision, 2026-10-07)
+
+`IShaderDeviceMgr` and `IShaderDevice` (frozen ABI) become a facade on the
+render core's device: device creation, adapter enumeration and identity,
+mode setting, presentation and loss/recovery are owned by `render.device.v2`
+adapters, their presentation bridges and the composition root; the frozen
+interfaces answer from them and own nothing. Slices, each with its old
+copy deleted in the change that replaces it:
+
+| Slice | Moves | State |
+| --- | --- | --- |
+| F1 | One `IShaderDeviceMgr` (`materialsystem/shader_device_facade.*`, `CShaderDeviceFacade`) answers adapter enumeration and identity, the recommended configuration (dxsupport policy) and video modes; identity comes from the core's adapter (`render::device::vulkan::DescribeHostAdapter`, the adapter the host-device factory selects or created the device on) through `LegacyShaderServices::coreAdapter`, set by the root through the legacy frontend (`RenderCore_SetLegacyAdapterSource`); the backends' adapter/mode/config code is deleted | done 2026-10-07 |
+| F2 | The root creates the device through the core's adapter before the material system sets a mode, and the backend borrows it; the backend's own pre-device adapter probe (`ProbeVulkanAdapter`, a second selection rule) is deleted | open |
+| F3 | Back buffer size, vsync, sample count, gamma ramp and mode-change callbacks through the SDL3 presentation bridge (`render.presentation.v1`); `SetMode`/`Present` on `IShaderDevice` become calls on the bridge | open |
+| F4 | `IShaderDevice`'s remaining device answers (back-buffer format, stencil bits, window size, views) from the core device and bridge; the backends implement neither interface | open |
+
+F1 evidence (2026-10-07, Linux, Radeon 8060S): `legacy_render_provider_conformance`
+(Waf target in the native Vulkan client tree) passes 156 checks, among them the
+facade against a forwarding backend manager: identity from the core source,
+semantic facts from the backend, an adapter either source refuses is not
+enumerated, modes only from the desktop display, no recommendation for a
+software adapter, lifecycle and bring-up forwarded. `portal_boot.py --headless`
+passes on `testchmb_a_01` with `native-vulkan` and `null`. The
+`testchmb_a_00` capture is the same washed-out frame with and without F1
+(mean difference 0.02/255; pre-existing, it passes or fails the scene-detail
+threshold by a few pixels). Behavior changes: the null backend now lists the
+desktop's video modes where a launcher exists (it listed none), and reports
+`m_nMaxDXSupportLevel` 90 (it reported 0). The suite is not in the
+conformance manifest, whose suites are source-built; it links the legacy
+module stack. Reproduce: `(cd build && python3 ../waf build --targets=legacy_render_provider_conformance)`
+then run `build/unittests/shaderextensiontest/legacy_render_provider_conformance`
+with the tree's library directories on `LD_LIBRARY_PATH`.
 
 ### The surface model: legacy definitions in the modern core (plan, 2026-09-28; amended 2026-10-03)
 

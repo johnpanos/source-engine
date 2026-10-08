@@ -46,7 +46,4 @@ void WindowProvider_ShowError( const char *title, const char *message )
 
 void WindowProvider_Prepare()
 {
-#if ( defined( LINUX ) || defined( PLATFORM_BSD ) ) && defined( TOGLES ) && !defined( ANDROID )
-	SDL_SetHint( SDL_HINT_VIDEO_X11_FORCE_EGL, "1" );
-#endif
 }

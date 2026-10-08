@@ -69,6 +69,19 @@ struct LegacyShaderServices
 	// semantic features. See LegacyRenderBackendProvider.
 	bool ( *describeAdapter )( int adapter, RenderAdapterInfo *info ) = nullptr;
 
+	// Optional (RFC 0016 legacy device facade, F1): the render core's
+	// identity (name, vendor, device, driver, device memory) of the adapters
+	// its device adapter creates the device on, set by the composition root
+	// through the legacy frontend. When set, the material system's device
+	// manager (CShaderDeviceFacade) takes identity from it and only the
+	// semantic facts from describeAdapter; false for an index the core does
+	// not enumerate.
+	struct CoreAdapterSource
+	{
+		void *context = nullptr;
+		bool ( *describe )( void *context, int adapter, RenderAdapterInfo *info ) = nullptr;
+	} coreAdapter;
+
 	bool IsComplete() const
 	{
 		return manager && api && device && shadow && hardware;
@@ -104,8 +117,6 @@ struct LegacyShaderProvider
 // dynamic linker would silently bind all callers to whichever module it resolved
 // first, making the other backends unselectable. No filename, native handle, or
 // untyped interface registry crosses this boundary.
-extern "C" const render::LegacyShaderProvider *Dx9ShaderBackend_Describe();
-extern "C" bool Dx9ShaderBackend_Create( render::LegacyShaderServices *services );
 extern "C" const render::LegacyShaderProvider *NativeVulkanShaderBackend_Describe();
 extern "C" bool NativeVulkanShaderBackend_Create( render::LegacyShaderServices *services );
 extern "C" const render::LegacyShaderProvider *NullShaderBackend_Describe();

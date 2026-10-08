@@ -75,6 +75,11 @@ public:
 	// slots in frame order for them; null when the backend has none.
 	virtual void SetForwardedRecorder( ICorePassRecorder *recorder ) = 0;
 	virtual ICorePassSlots *CorePassSlots() = 0;
+	// The render core's adapter identity the material system's device facade
+	// reports (RFC 0016 legacy device facade, F1): given to every backend the
+	// material system creates through this frontend from now on. The root
+	// sets it from the device adapter it composed; empty clears it.
+	virtual void SetCoreAdapterSource( const LegacyShaderServices::CoreAdapterSource &source ) = 0;
 };
 
 // backend: the linked legacy backend the frontend wraps; it outlives the

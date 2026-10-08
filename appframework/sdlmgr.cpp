@@ -12,17 +12,12 @@
 #include "appframework/ilaunchermgr.h"
 #include "inputsystem/ButtonCode.h"
 
-#include "togl/rendermechanism.h"
-
 #include "tier0/vprof_telemetry.h"
 #include "tier0/icommandline.h"
 
 #include "tier1/utllinkedlist.h"
 #include "tier1/convar.h"
 #include "tier0/native_module_load_telemetry.h"
-#ifdef TOGLES
-#include <EGL/egl.h>
-#endif
 
 // NOTE: This has to be the last file included! (turned off below, since this is included like a header)
 #include "tier0/memdbgon.h"
@@ -54,13 +49,10 @@ ConVar gl_finish( "gl_finish", "0" );
 ConVar sdl_double_click_size( "sdl_double_click_size", "2" );
 ConVar sdl_double_click_time( "sdl_double_click_time", "400" );
 
-#if defined( DX_TO_GL_ABSTRACTION )
-COpenGLEntryPoints *gGL = NULL;
-#endif
 
 const int kBogusSwapInterval = INT_MAX;
 
-#if defined ANDROID || defined TOGLES
+#if defined( ANDROID )
 static void *l_gl4es = NULL;
 static void *l_egl = NULL;
 static void *l_gles = NULL;
@@ -163,28 +155,6 @@ class LinuxAppFuncLogger
 #endif
 
 
-#if defined( DX_TO_GL_ABSTRACTION )
-void	CheckGLError( int line )
-{
-	SDLAPP_FUNC;
-
-	// Don't check this in enabled! glGetError() is extremely slow with threaded drivers.
-	return;
-	//char errbuf[1024];
-
-	//borrowed from GLMCheckError.. slightly different
-	
-	
-	GLenum errorcode = (GLenum)gGL->glGetError();
-	//GLenum errorcode2 = 0;
-	if ( errorcode != GL_NO_ERROR )
-	{
-		const char	*decodedStr = GLMDecode( eGL_ERROR, errorcode );
-
-		printf( "\n(%d) GL Error %08x = '%s'", line, errorcode, decodedStr );
-	}
-}
-#endif
 
 //-----------------------------------------------------------------------------
 #if !defined( DEDICATED )
@@ -193,15 +163,13 @@ void *VoidFnPtrLookup_GlMgr(const char *fn, bool &okay, const bool bRequired, vo
 {
 	void *retval = NULL;
 
-#ifndef TOGLES // TODO(nillerusr): remove this hack
 	if ((!okay) && (!bRequired))  // always look up if required (so we get a complete list of crucial missing symbols).
 		return NULL;
-#endif
 
 	// The SDL path would work on all these platforms, if we were using SDL there, too...
 
 
-#if defined ANDROID || defined TOGLES
+#if defined( ANDROID )
 	// SDL does the right thing, so we never need to use tier0 in this case.
 	if( _glGetProcAddress )
 	{
@@ -233,11 +201,7 @@ void *VoidFnPtrLookup_GlMgr(const char *fn, bool &okay, const bool bRequired, vo
 	//  You always have to check that the extension is supported;
 	//  an implementation MAY return NULL in this case, but it doesn't have to (and doesn't, with the DRI drivers).
 
-#ifdef TOGLES // TODO(nillerusr): remove this hack
-	okay = retval != NULL;
-#else
 	okay = (okay && (retval != NULL));
-#endif
 	if (bRequired && !okay)
 	{
 		// We can't continue execution, because one or more GL function pointers will be NULL.
@@ -295,19 +259,6 @@ public:
 	virtual void RenderedSize( uint &width, uint &height, bool set );	// either set or retrieve rendered size value (from dxabstract)
 	virtual void DisplayedSize( uint &width, uint &height );			// query backbuffer size (window size whether FS or windowed)
 
-#if defined( DX_TO_GL_ABSTRACTION )
-	virtual void GetDesiredPixelFormatAttribsAndRendererInfo( uint **ptrOut, uint *countOut, GLMRendererInfoFields *rendInfoOut );
-
-	virtual PseudoGLContextPtr	GetMainContext();
-	// Get the NSGLContext for a window's main view - note this is the carbon windowref as an argument
-	virtual PseudoGLContextPtr GetGLContextForWindow( void* windowref ) { return (PseudoGLContextPtr)m_GLContext; }
-	virtual PseudoGLContextPtr CreateExtraContext();
-	virtual void DeleteContext( PseudoGLContextPtr hContext );
-	virtual bool MakeContextCurrent( PseudoGLContextPtr hContext );
-	virtual GLMDisplayDB *GetDisplayDB( void );
-
-	virtual void ShowPixels( CShowPixelsParams *params );
-#endif
 
 	virtual void GetStackCrawl( CStackCrawlParams *params );
 
@@ -339,11 +290,6 @@ public:
 private:
 	void handleKeyInput( const SDL_Event &event );
 
-#if defined( DX_TO_GL_ABSTRACTION )
-	SDL_GLContext m_GLContext;
-	GLuint m_readFBO;
-	GLMDisplayDB *m_displayDB;
-#endif
 
 
 	uint m_nWindowRefCount;
@@ -517,19 +463,6 @@ InitReturnVal_t CSDLMgr::Init()
 		if (SDL_Init(SDL_INIT_VIDEO) == -1)
 			Error( "SDL_Init(SDL_INIT_VIDEO) failed: %s", SDL_GetError() );
 
-#if defined( DX_TO_GL_ABSTRACTION )
-		if ( CommandLine()->FindParm( "-gl_debug" ) )
-		{
-			SDL_GL_SetAttribute( SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG );
-		}
-
-#if defined( TOGLES )
-		if (SDL_GL_LoadLibrary("libGLESv3.so") == -1)
-#else
-		if (SDL_GL_LoadLibrary(NULL) == -1)
-#endif
-			Error( "SDL_GL_LoadLibrary(NULL) failed: %s", SDL_GetError() );
-#endif
 	}
 
 	fprintf(stderr, "SDL video target is '%s'\n", SDL_GetCurrentVideoDriver());
@@ -552,11 +485,6 @@ InitReturnVal_t CSDLMgr::Init()
 	m_keyModifiers = 0;
 	m_keyModifierMask = 0;
 	m_mouseButtons = 0;
-#if defined( DX_TO_GL_ABSTRACTION )
-	m_GLContext = NULL;
-	m_readFBO = 0;
-	m_displayDB = NULL;
-#endif
 	m_nWindowRefCount = 0;
 	m_Window = NULL;
 	m_bFullScreen = false;
@@ -600,31 +528,7 @@ InitReturnVal_t CSDLMgr::Init()
 	*(attCursor++) = (int) (value);
 
 
-#ifdef TOGLES
-	l_egl = dlopen("libEGL.so", RTLD_LAZY);
-	l_gles = dlopen("libGLESv3.so", RTLD_LAZY);
-
-	if( l_egl )
-	{
-		_glGetProcAddress = (t_glGetProcAddress)dlsym(l_egl, "eglGetProcAddress");
-	}
-
-	SET_GL_ATTR(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-	SET_GL_ATTR(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-	SET_GL_ATTR(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-
-	_eglInitialize = (t_eglInitialize)dlsym(l_egl, "eglInitialize");
-	_eglGetDisplay = (t_eglGetDisplay)dlsym(l_egl, "eglGetDisplay");
-	_eglQueryString = (t_eglQueryString)dlsym(l_egl, "eglQueryString");
-
-	if( _eglInitialize && _eglInitialize && _eglQueryString )
-	{
-		EGLDisplay display = _eglGetDisplay(EGL_DEFAULT_DISPLAY);
-		if( _eglInitialize(display, NULL, NULL) != -1
-			&& strstr(_eglQueryString(display, EGL_EXTENSIONS) ,"EGL_KHR_gl_colorspace") )
-				SET_GL_ATTR(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1)
-	}
-#elif ANDROID
+#if ANDROID
 	bool m_bOGL = false;
 
 	l_egl = dlopen("libEGL.so", RTLD_LAZY);
@@ -705,11 +609,7 @@ void CSDLMgr::Shutdown()
 	SDLAPP_FUNC;
 
 	if (gGL && m_readFBO)
-#ifdef TOGLES
-		gGL->glDeleteFramebuffers(1, &m_readFBO);
-#else
 		gGL->glDeleteFramebuffersEXT(1, &m_readFBO);
-#endif
 	m_readFBO = 0;
 
 	if ( m_Window )
@@ -799,12 +699,6 @@ bool CSDLMgr::CreateHiddenGameWindow( const char *pTitle, int width, int height 
 	m_bFullScreen = false;
 	sdl_displayindex_fullscreen.SetValue( -1 );
 
-#if defined( DX_TO_GL_ABSTRACTION )
-	// Set up GL context...
-	const int *attrib = m_pixelFormatAttribs;
-	for (int i = 0; i < m_pixelFormatAttribCount; i++, attrib += 2)
-		SDL_GL_SetAttribute((SDL_GLattr) attrib[0], attrib[1]);
-#endif
 
 	// no window yet? Create one now!
 	m_nWindowRefCount = 1;
@@ -812,9 +706,6 @@ bool CSDLMgr::CreateHiddenGameWindow( const char *pTitle, int width, int height 
 	int x = SDL_WINDOWPOS_CENTERED;
 	int y = SDL_WINDOWPOS_CENTERED;
 	int flags = SDL_WINDOW_HIDDEN;
-#if defined( DX_TO_GL_ABSTRACTION )
-	flags |= SDL_WINDOW_OPENGL;
-#endif
 	m_Window = SDL_CreateWindow( pTitle, x, y, width, height, flags );
 
 	if (m_Window == NULL)
@@ -822,84 +713,6 @@ bool CSDLMgr::CreateHiddenGameWindow( const char *pTitle, int width, int height 
 	SetAssertDialogParent( m_Window );
 
 
-#if defined( DX_TO_GL_ABSTRACTION )
-	m_GLContext = SDL_GL_CreateContext(m_Window);
-	if (m_GLContext == NULL)
-		Error( "Failed to create GL context: %s", SDL_GetError() );
-
-	SDL_GL_MakeCurrent(m_Window, m_GLContext);
-
-#if defined ANDROID && !defined TOGLES
-	if( l_gl4es )
-	{
-		_glGetProcAddress = (t_glGetProcAddress)dlsym(l_gl4es, "gl4es_GetProcAddress" );
-		void (*initialize_gl4es)( );
-		initialize_gl4es = (void(*)())dlsym(l_gl4es, "initialize_gl4es" );
-		initialize_gl4es();
-	}
-#endif
-
-	// !!! FIXME: note for later...we never delete this context anywhere, I think.
-	// !!! FIXME:  when we do get around to that, don't forget to delete/NULL gGL!
-
-	static CDynamicFunctionOpenGL< true, const GLubyte *( APIENTRY *)(GLenum name), const GLubyte * > glGetString("glGetString");
-	static CDynamicFunctionOpenGL< true, GLvoid ( APIENTRY *)(GLenum pname, GLint *params), GLvoid > glGetIntegerv("glGetIntegerv");
-
-#ifdef DBGFLAG_ASSERT
-	const char *pszString = ( const char * )glGetString(GL_VENDOR);
-	pszString = ( const char * )glGetString(GL_RENDERER);
-	pszString = ( const char * )glGetString(GL_VERSION);
-	pszString = ( const char * )glGetString(GL_EXTENSIONS);
-
-	// If we specified -gl_debug, make sure the extension string is present now.
-	if ( CommandLine()->FindParm( "-gl_debug" ) )
-	{
-#ifndef TOGLES
-		Assert( V_strstr(pszString, "GL_ARB_debug_output") );
-#endif
-	}
-#endif // DBGFLAG_ASSERT
-
-	gGL = GetOpenGLEntryPoints(VoidFnPtrLookup_GlMgr);
-
-	// It is now safe to call any base GL entry point that's supplied by gGL.
-	// You still need to explicitly test for extension entry points, though!
-
-	if ( CommandLine()->FindParm( "-gl_dump_strings" ) )
-	{
-		DebugPrintf("GL_RENDERER: %s\n", (const char *) gGL->glGetString(GL_RENDERER));
-		DebugPrintf("GL_VENDOR: %s\n", (const char *) gGL->glGetString(GL_VENDOR));
-		DebugPrintf("GL_VERSION: %s\n", (const char *) gGL->glGetString(GL_VERSION));
-		const char *exts = (const char *) gGL->glGetString(GL_EXTENSIONS);
-		DebugPrintf("GL_EXTENSIONS:%s\n", exts ? "" : NULL);
-		if (exts)
-		{
-			for (const char *ptr = exts; *ptr; ptr++)
-				DebugPrintf("%c", *ptr == ' ' ? '\n' : *ptr);
-			DebugPrintf("\n");
-		}
-		DebugPrintf("\n");
-	}
-
-#ifdef TOGLES
-	gGL->glGenFramebuffers(1, &m_readFBO);
-#else
-	gGL->glGenFramebuffersEXT(1, &m_readFBO);
-#endif
-
-	gGL->glViewport(0, 0, width, height);    /* Reset The Current Viewport And Perspective Transformation */
-	gGL->glScissor(0, 0, width, height);    /* Reset The Current Viewport And Perspective Transformation */
-
-	// Blank out the initial window, so we're not looking at uninitialized
-	//  video RAM trash until we start proper drawing.
-	gGL->glClearColor(0,0,0,0);
-	gGL->glClear(GL_COLOR_BUFFER_BIT);
-	SDL_GL_SwapWindow(m_Window);
-	gGL->glClear(GL_COLOR_BUFFER_BIT);
-	SDL_GL_SwapWindow(m_Window);
-	gGL->glClear(GL_COLOR_BUFFER_BIT);
-	SDL_GL_SwapWindow(m_Window);
-#endif // DX_TO_GL_ABSTRACTION
 
 	m_WindowWidth = width;
 	m_WindowHeight = height;
@@ -912,51 +725,6 @@ bool CSDLMgr::CreateHiddenGameWindow( const char *pTitle, int width, int height 
 	return true;
 }
 
-#if defined( DX_TO_GL_ABSTRACTION )
-
-PseudoGLContextPtr	CSDLMgr::GetMainContext()
-{
-	SDLAPP_FUNC;
-
-	return (PseudoGLContextPtr)m_GLContext;
-}
-
-PseudoGLContextPtr CSDLMgr::CreateExtraContext()
-{
-	SDLAPP_FUNC;
-
-	const int *attrib = m_pixelFormatAttribs;
-	for (int i = 0; i < m_pixelFormatAttribCount; i++, attrib += 2)
-		SDL_GL_SetAttribute((SDL_GLattr) attrib[0], attrib[1]);
-
-	return (PseudoGLContextPtr) SDL_GL_CreateContext(m_Window);
-}
-
-void CSDLMgr::DeleteContext( PseudoGLContextPtr hContext )
-{
-	SDLAPP_FUNC;
-	Assert( (SDL_GLContext)hContext != m_GLContext );
-	
-	// Don't delete the main one.
-	if ( (SDL_GLContext)hContext != m_GLContext )
-	{
-		if ( m_Window )
-		{
-			SDL_GL_MakeCurrent(m_Window, hContext);
-		}
-		SDL_GL_DeleteContext((SDL_GLContext) hContext);
-	}
-}
-
-bool CSDLMgr::MakeContextCurrent( PseudoGLContextPtr hContext )
-{
-	SDLAPP_FUNC;
-
-	// We only ever have one GL context on Linux at the moment, so don't spam these calls.
-	return SDL_GL_MakeCurrent(m_Window, (SDL_GLContext)hContext ) == 0;
-}
-
-#endif // DX_TO_GL_ABSTRACTION
 
 
 int CSDLMgr::GetEvents( CCocoaEvent *pEvents, int nMaxEventsToReturn, bool debugEvent )
@@ -1156,94 +924,6 @@ void CSDLMgr::OnFrameRendered()
 	}
 }
 
-#if defined( DX_TO_GL_ABSTRACTION )
-void CSDLMgr::ShowPixels( CShowPixelsParams *params )
-{
-	SDLAPP_FUNC;
-	
-	tmZone( TELEMETRY_LEVEL0, TMZF_NONE, __FUNCTION__ );
-
-	if (params->m_onlySyncView)
-		return;
-
-	int swapInterval	= 0;
-	int swapLimit		= 0;
-
-	if (gl_swapdebug.GetInt())
-	{
-		// just jam through these debug convars every frame
-		// but they will be shock absorbed below
-			
-		swapInterval	= gl_swapinterval.GetInt();
-		swapLimit		= gl_swaplimit.GetInt();
-	}
-	else
-	{
-		// jam through (sync&limit) = 1 or 0..
-		swapInterval	= params->m_vsyncEnable ? 1 : 0;
-		swapLimit		= 1; // params->m_vsyncEnable ? 1 : 0;	// no good reason to turn off swap limit in normal user mode
-
-		if (gl_swaptear.GetInt() && gGL->HasSwapTearExtension())
-		{
-			// For 0, do nothing. For 1, make it -1.
-			swapInterval = -swapInterval;
-		}
-	}
-		
-	// only touch them on changes, or right after a change in windowed/FS state
-	if ( (swapInterval!=m_lastKnownSwapInterval) || (swapLimit!=m_lastKnownSwapLimit) )
-	{
-		
-		if (swapInterval!=m_lastKnownSwapInterval)
-		{
-			// This code hits when we turn on vsync, if we're going to swap tear.
-			// We want to do one frame of real vsync to get the engine to sync at the top 
-			// of the frame refresh.
-			if (swapInterval < 0 && (m_lastKnownSwapInterval == 0 || m_lastKnownSwapInterval == kBogusSwapInterval))  {
-				swapInterval = -swapInterval;
-			}
-			SDL_GL_SetSwapInterval(swapInterval);
-		}
-
-		m_lastKnownSwapInterval = swapInterval;
-		m_lastKnownSwapLimit = swapLimit;
-
-		printf("\n ##### swap interval = %d     swap limit = %d #####\n", m_lastKnownSwapInterval, m_lastKnownSwapLimit );
-		fflush(stdout);
-
-	}
-
-
-	if ( gl_finish.GetInt() )
-	{
-		gGL->glFinish();
-	}
-	CheckGLError( __LINE__ );
-
-	CFastTimer tm;
-	tm.Start();
-
-	SDL_GL_SwapWindow( m_Window );
-
-	m_flPrevGLSwapWindowTime = tm.GetDurationInProgress().GetMillisecondsF();
-
-#ifdef ANDROID
-	// ADRENO GPU MOMENT, SKIP 5 FRAMES
-	if( m_bResetVsync )
-	{
-		if( m_nFramesToSkip <= 0 )
-		{
-			SDL_GL_SetSwapInterval(swapInterval);
-			m_bResetVsync = false;
-		}
-		else
-			m_nFramesToSkip--;
-	}
-#endif
-
-	CheckGLError( __LINE__ );
-}
-#endif // DX_TO_GL_ABSTRACTION
 
 
 void CSDLMgr::SetWindowFullScreen( bool bFullScreen, int nWidth, int nHeight )
@@ -1356,10 +1036,6 @@ void CSDLMgr::SizeWindow( int width, int tall )
 
 	SDL_SetWindowSize( m_Window, width, tall );
 
-#if defined( DX_TO_GL_ABSTRACTION )
-	gGL->glViewport(0, 0, (GLsizei) width, (GLsizei) tall);
-	gGL->glScissor( 0,0, (GLsizei) width, (GLsizei) tall );
-#endif
 
 	// If the Window hasn't been shown yet, show it now.
 	if ( !m_WindowShownAndRaised )
@@ -1794,31 +1470,6 @@ void CSDLMgr::DecWindowRefCount()
 
 	if ( !m_nWindowRefCount )
 	{
-#if defined( DX_TO_GL_ABSTRACTION )
-		if ( m_Window )
-		{
-			SDL_GL_MakeCurrent( m_Window, m_GLContext );
-		}
-
-		if ( gGL && m_readFBO )
-		{
-#ifdef TOGLES
-			gGL->glDeleteFramebuffers( 1, &m_readFBO );
-#else
-			gGL->glDeleteFramebuffersEXT( 1, &m_readFBO );
-#endif
-		}
-		m_readFBO = 0;
-								
-		SDL_GL_DeleteContext( m_GLContext );
-#if defined( DBGFLAG_ASSERT )
-		// Clear the GL entrypoint pointers, ensuring we crash if someone tries to call GL after we delete the context.
-		Msg( "%s: Calling ClearOpenGLEntryPoints. Should crash if someone calls GL after this.\n", __FUNCTION__ );
-		ClearOpenGLEntryPoints();
-#endif
-
-		m_GLContext = NULL;
-#endif // DX_TO_GL_ABSTRACTION
 
 		SDL_SetWindowFullscreen(m_Window, SDL_FALSE);  // just in case.
 		SDL_SetWindowGrab(m_Window, SDL_FALSE);  // just in case.
@@ -1949,69 +1600,5 @@ void CSDLMgr::SetGammaRamp( const uint16 *pRed, const uint16 *pGreen, const uint
 
 //===============================================================================
 
-#if defined( DX_TO_GL_ABSTRACTION )
-void CSDLMgr::GetDesiredPixelFormatAttribsAndRendererInfo( uint **ptrOut, uint *countOut, GLMRendererInfoFields *rendInfoOut )
-{
-	SDLAPP_FUNC;
-
-	Assert( m_pixelFormatAttribCount > 0 );
-
-	if (ptrOut) *ptrOut = (uint *) m_pixelFormatAttribs;
-	if (countOut) *countOut = m_pixelFormatAttribCount;
-	if (rendInfoOut)
-	{
-		GLMDisplayDB *db = GetDisplayDB();
-		*rendInfoOut = db->m_renderer.m_info;
-	}
-}
-
-
-
-GLMDisplayMode::GLMDisplayMode( uint width, uint height, uint refreshHz )
-{
-	SDLAPP_FUNC;
-
-	Init( width, height, refreshHz );
-}
-
-GLMDisplayMode::~GLMDisplayMode()
-{
-	SDLAPP_FUNC;
-	// empty
-}
-
-void GLMDisplayMode::Init( uint width, uint height, uint refreshHz )
-{
-	SDLAPP_FUNC;
-
-	m_info.m_modePixelWidth = width;
-	m_info.m_modePixelHeight = height;
-	m_info.m_modeRefreshHz = refreshHz;
-}
-
-void GLMDisplayMode::Dump( int which )
-{
-	SDLAPP_FUNC;
-
-	GLMPRINTF(("\n             # %-2d  width=%-4d  height=%-4d  refreshHz=%-2d",
-			   which, m_info.m_modePixelWidth, m_info.m_modePixelHeight, m_info.m_modeRefreshHz ));
-}
-
-GLMDisplayDB *CSDLMgr::GetDisplayDB( void )
-{
-	SDLAPP_FUNC;
-
-	if ( !m_displayDB )
-	{
-		m_displayDB = new GLMDisplayDB;		// creating the DB object does not do much other than init it to a good state.
-		m_displayDB->Populate();			// populate the tree
-	}
-	return m_displayDB;
-}
-
-#include "glmdisplaydb_linuxwin.inl"
-
-
-#endif // DX_TO_GL_ABSTRACTION
 
 #endif  // !DEDICATED

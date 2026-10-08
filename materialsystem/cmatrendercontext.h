@@ -574,9 +574,6 @@ public:
 	virtual void							Printf( PRINTF_FORMAT_STRING const char *fmt, ... );
 	virtual float							Knob( char *knobname, float *setvalue=NULL );
 
-#ifdef DX_TO_GL_ABSTRACTION
-	void									DoStartupShaderPreloading( void );
-#endif
 
 	virtual void							TextureManagerUpdate();
 

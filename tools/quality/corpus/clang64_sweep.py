@@ -88,28 +88,22 @@ CLANG = real_compiler(os.environ.get("CLANG64_CXX", "clang++"))
 # ---------------------------------------------------------------------------
 # Declared configurations: the R03 product trees (quality/baseline.json
 # `build.*` setup lines) replayed with Clang under private locks and output
-# directories, plus Portal 2 (./play_p2's configure line). The DXVK product
-# profile (tools/quality/product_profile.py) requires GCC, so that tree is
-# configured with GCC and its recorded argv is compiled by Clang: both record
-# the same flag set (no GCC-only options), which `translate_argv` checks.
+# directories, plus Portal 2 (./play_p2's configure line). A tree configured
+# with GCC has its recorded argv compiled by Clang; `translate_argv` checks
+# that it records no GCC-only options.
 # ---------------------------------------------------------------------------
-
-DXVK_ROOT_DEFAULT = "dependencies/dxvk-native-2.7.1/usr"
 
 CONFIGS = [
     {"name": "tests", "compiler": "clang",
-     "options": ["--tests", "--use-sdl=0", "--use-togl=0"]},
+     "options": ["--tests", "--use-sdl=0"]},
     {"name": "tools", "compiler": "clang",
      "options": ["--tools"]},
     {"name": "dedicated", "compiler": "clang",
-     "options": ["--dedicated", "--use-sdl=0", "--use-togl=0", "--build-games=portal",
+     "options": ["--dedicated", "--use-sdl=0", "--build-games=portal",
                  "--physics-backend=both"]},
     {"name": "portal-native", "compiler": "clang",
      "options": ["--platform-provider=sdl3", "--render-backend=native-vulkan",
                  "--build-games=portal", "--physics-backend=both"]},
-    {"name": "portal-dxvk", "compiler": "gcc",
-     "options": ["--platform-provider=sdl3", "--render-backend=vulkan",
-                 "--dxvk-root={dxvk_root}", "--build-games=portal"]},
     {"name": "hl2", "compiler": "clang",
      "options": ["--build-games=hl2"]},
     {"name": "portal2-native", "compiler": "clang",
@@ -123,7 +117,6 @@ DECLARED_GAPS = [
     {"scope": "game/client, game/server for --build-games=hl2mp, hl1, episodic, hl1mp, cstrike, dod",
      "reason": "each game compiles the shared client/server sources with its own defines "
                "(~1,500 TUs per game); only portal, hl2 and portal2 are swept"},
-    {"scope": "togles", "reason": "GLES translation layer; only Android (non-SDL3) selects it"},
     {"scope": "unicode", "reason": "its wscript builds nothing unless DEST_OS is win32"},
     {"scope": "engine/voice_codecs/celt, engine/voice_codecs/speex",
      "reason": "have wscripts but no root project list reaches them"},
@@ -275,10 +268,9 @@ def invocations_path(config):
     return os.path.join(tree_dir(config), "toolchain-invocations.json")
 
 
-def configure_argv(config, dxvk_root):
+def configure_argv(config):
     out = os.path.join(ROOT, tree_dir(config))
-    options = [o.replace("{dxvk_root}", dxvk_root) for o in config["options"]]
-    return [sys.executable, "./waf", "configure", *options, *COMMON_OPTIONS,
+    return [sys.executable, "./waf", "configure", *config["options"], *COMMON_OPTIONS,
             "-o", tree_dir(config), "--prefix=" + os.path.join(out, "install")]
 
 
@@ -611,9 +603,14 @@ def cmd_setup(args):
     status = 0
     for config in selected_configs(args.config):
         env = waf_env(config)
-        argv = configure_argv(config, args.dxvk_root)
+        argv = configure_argv(config)
         print("setup %s: %s" % (config["name"], shlex.join(argv)), flush=True)
-        for step in (argv, [sys.executable, "./waf", "clangdb"]):
+        steps = [argv, [sys.executable, "./waf", "clangdb"]]
+        # The render core's generated SPIR-V headers (spv/*.h) that recorded
+        # compiles include; every tree but the dedicated one builds them.
+        if config["name"] != "dedicated":
+            steps.append([sys.executable, "./waf", "build", "--targets=render_spv"])
+        for step in steps:
             proc = subprocess.run(step, cwd=ROOT, env=env, capture_output=True, text=True,
                                   check=False)
             if proc.returncode != 0:
@@ -870,8 +867,6 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("setup", help="configure the declared trees and record compile commands")
     p.add_argument("--config", action="append")
-    p.add_argument("--dxvk-root", default=DXVK_ROOT_DEFAULT,
-                   help="DXVK Native SDK prefix (default %(default)s)")
     for name in ("check", "record"):
         p = sub.add_parser(name)
         p.add_argument("--jobs", type=int, default=min(16, os.cpu_count() or 1))

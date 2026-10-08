@@ -29,9 +29,6 @@ def build(bld):
 	# mirrors the composition root's own link conditions and defines.
 	binding_use = ['materialsystem', 'shaderapiempty', 'tier0', 'vstdlib']
 	binding_defines = list(test_env.DEFINES)
-	if bld.env.DXVK:
-		binding_use += ['shaderapidx9']
-		binding_defines += ['LINKED_DX9_BACKEND']
 	if bld.env.NATIVE_VULKAN:
 		binding_use += ['shaderapivulkan']
 		binding_defines += ['LINKED_NATIVE_VULKAN_BACKEND']
@@ -56,7 +53,9 @@ def build(bld):
 		features='cxx', env=test_env.derive(),
 		source=['test_legacy_render_provider.cpp',
 			'../rendertest/conformance/render_backend_conformance.cpp',
-			'../../materialsystem/legacy_render_backend_provider.cpp'],
+			'../../materialsystem/legacy_render_backend_provider.cpp',
+			'../../materialsystem/shader_device_facade.cpp',
+			'../../materialsystem/dxsupport_keyvalues.cpp'],
 		target='legacy_render_provider_conformance',
 		name='legacy_render_provider_conformance',
 		includes=includes + ['../rendertest'], defines=provider_defines,
@@ -65,7 +64,7 @@ def build(bld):
 		# suite, and per-directory indices made both write one .o (every
 		# build recompiled it).
 		idx=bld.get_taskgen_count())
-	if not bld.env.DEDICATED and bld.env.SDL3 and ( bld.env.DXVK or bld.env.NATIVE_VULKAN ):
+	if not bld.env.DEDICATED and bld.env.SDL3 and bld.env.NATIVE_VULKAN:
 		# Per-material pixel conformance: the real material system, standard
 		# shaders and the render provider this tree links, composed like the
 		# launcher. It measures pixels in a staged game runtime; the oracle is
@@ -73,9 +72,6 @@ def build(bld):
 		pixel_use = ['appframework', 'materialsystem', 'shaderapiempty', 'stdshader_dx9',
 			'tier0', 'tier1', 'tier2', 'vstdlib', 'SDL3']
 		pixel_defines = list(test_env.DEFINES)
-		if bld.env.DXVK:
-			pixel_use += ['shaderapidx9']
-			pixel_defines += ['LINKED_DX9_BACKEND']
 		if bld.env.NATIVE_VULKAN:
 			pixel_use += ['shaderapivulkan', 'render_device_vulkan', 'render_device']
 			pixel_defines += ['LINKED_NATIVE_VULKAN_BACKEND']
@@ -97,15 +93,3 @@ def build(bld):
 			defines=['NATIVE_PBR_METALROUGH'] if bld.env.NATIVE_VULKAN else [],
 			use=['stdshader_dx9', 'tier1', 'tier0', 'vstdlib'],
 			install_path=None)
-	if bld.env.DXVK:
-		bld.program(
-			features='c cxx', env=test_env.derive(),
-			source=['test_dxvk_math.cpp', '../../materialsystem/shaderapidx9/dxvk_math.cpp'],
-			target='dxvk_math_conformance', name='dxvk_math_conformance',
-			includes=includes + bld.env.INCLUDES_DXVK, install_path=None)
-		bld.program(
-			features='c cxx', env=test_env.derive(),
-			source=['test_dxvk_presentation.cpp'],
-			target='dxvk_presentation_conformance', name='dxvk_presentation_conformance',
-			includes=includes + bld.env.INCLUDES_DXVK, use=['DXVK', 'SDL3'],
-			rpath=bld.env.LIBPATH_DXVK, install_path=None)

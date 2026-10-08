@@ -268,9 +268,6 @@ public:
 	virtual void RefreshFrontBufferNonInteractive( ) = 0;
 	virtual void HandleThreadEvent( uint32 threadEvent ) = 0;
 
-#ifdef DX_TO_GL_ABSTRACTION
-	virtual void DoStartupShaderPreloading( void ) = 0;
-#endif
 	virtual char *GetDisplayDeviceName() = 0;
 
 };

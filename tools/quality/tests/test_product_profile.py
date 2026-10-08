@@ -22,9 +22,14 @@ class ProductProfileTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.profile = copy.deepcopy(profile_tools.load_profile())
-        self.dependency = self.profile["dependencies"]["dxvk_native"]
-        self.dependency.update(cache_archive="fixture.tar.gz", extracted_directory="fixture",
-                               required_files=["include/fixture.h", "lib/libfixture.so"])
+        # A pinned archive dependency of the shape the profile schema declares.
+        self.dependency = {
+            "version": "1.0", "url": "https://example.test/fixture.tar.gz",
+            "sha256": "0" * 64, "archive_bytes": 1, "cache_archive": "fixture.tar.gz",
+            "extracted_directory": "fixture", "prefix": "usr",
+            "required_files": ["include/fixture.h", "lib/libfixture.so"],
+            "include_directory": "include", "library_directory": "lib"}
+        self.profile["dependencies"]["fixture"] = self.dependency
         self.archive = self.root / "fixture.tar.gz"
         self.entries = [
             ("usr", "directory", b""),
@@ -57,13 +62,13 @@ class ProductProfileTests(unittest.TestCase):
         self.dependency["archive_bytes"] = self.archive.stat().st_size
 
     def extract(self):
-        return profile_tools.fetch_dependency(self.profile, self.root)
+        return profile_tools.fetch_dependency(self.profile, self.root, "fixture")
 
     def test_exact_existing_archive_and_relative_soname_link_pass(self):
         prefix = self.extract()
         self.assertEqual((prefix / "lib/libfixture.so").read_bytes(), b"fixture library")
         self.assertEqual(prefix, self.extract())
-        result = profile_tools.verify_dependency(self.profile, "dxvk_native", prefix)
+        result = profile_tools.verify_dependency(self.profile, "fixture", prefix)
         self.assertEqual(result["members"], 4)
         self.assertEqual(result["sha256"], self.dependency["sha256"])
 
@@ -219,7 +224,7 @@ class ProductProfileTests(unittest.TestCase):
                              ("cache_archive", "../escape.tar.gz")):
             with self.subTest(field=field):
                 changed = copy.deepcopy(self.profile)
-                changed["dependencies"]["dxvk_native"][field] = value
+                changed["dependencies"]["fixture"][field] = value
                 profile_path.write_text(json.dumps(changed))
                 with self.assertRaises(profile_tools.ProfileError):
                     profile_tools.load_profile(profile_path)

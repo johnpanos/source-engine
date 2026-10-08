@@ -65,15 +65,9 @@ void GLMRendererInfo::Init( GLMRendererInfoFields *info )
                 m_info.m_hasNativeClipVertexMode = true;
         }
         
-#ifdef TOGLES
-        m_info.m_hasOcclusionQuery = true;
-        m_info.m_hasFramebufferBlit = true;
-        m_info.m_hasUniformBuffers = true;
-#else
         m_info.m_hasOcclusionQuery = gGL->m_bHave_GL_ARB_occlusion_query;
         m_info.m_hasFramebufferBlit = gGL->m_bHave_GL_EXT_framebuffer_blit || gGL->m_bHave_GL_ARB_framebuffer_object;
         m_info.m_hasUniformBuffers =  gGL->m_bHave_GL_ARB_uniform_buffer;
-#endif
 
         GLint nMaxAniso = 0;
         gGL->glGetIntegerv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &nMaxAniso );

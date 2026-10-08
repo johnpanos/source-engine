@@ -38,7 +38,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0024](RFC/0024-direct3d12-device-adapter.md) | Direct3D 12 adapter for `render.device.v2`: fences as completion tokens, bind groups as root-signature tables, HLSL artifacts compiled by the pinned DXC, SDL3–D3D12 bridge; Linux lane and X5 under MinGW + Wine/vkd3d-proton (proposed, user direction 2026-10-07; X0–X5 implemented: device suite 1,563/0, pixel families against Vulkan, render graph, SDL3–D3D12 presentation 64/0, resolution sweep on bazzite; no ranked row) |
 | [0025](RFC/0025-metal-device-adapter.md) | Metal device adapter for the render core: `render.device.metal` (Objective-C++), `kMsl` MSL 3.0 artifacts from the pinned SPIRV-Cross, bind groups as argument buffers, Metal 3 floor (proposed, user direction 2026-10-07; M0 partial, no device run) |
 | [0026](RFC/0026-box3d-beyond-ivp.md) | Box3D beyond IVP with IVP as the fallback: the IVP fallback guarantee (F1–F7), a measured "surpasses IVP" scoreboard, Box3D-only capabilities in order (B1 continuous collision, B2 capsules, B3 rolling resistance and surface velocity, B4 contact events, then joint drive, sensors, explosions, recording, runtime collision) through RFC 0013's mechanism, per-phase done checklist, six ratchets, published scenario maps (proposed, user direction 2026-10-07; scenario maps installed, no phase gate passed; row R98) |
-| [0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md) | One product pipeline in C++, libraries first: standalone public libraries (codecs, IRs, readers/writers, lowerings, graph, resolver, profiles, `kiln.api`) that tools, Hammer, bakers and Python (`sepipe`) use directly, with `kiln` as a thin CLI and an exported SDK; a breaking workflow change (`./kiln play <profile>` replaces `./play*`, `run.sh`, `run.conf` and the platform and CI scripts with no wrappers; trees move to `out/<profile>/<flavor>`); shared concerns lifted to one owner each; canonical texture encoders/decoders; texture, material and model IRs lowered per target as RFC 0015 compilers; streamable package units; extension by substitution (providers selected by name, shared suites with bad providers, a fixture platform through an unchanged core) (proposed, user direction 2026-10-07; [L0 implemented](RFC/0027-progress.md) 2026-10-07: `foundation.json`, `product.profile` schema v2, the product contracts with shared suites and bad providers, `kiln.core`/`kiln.api`, `kiln.composition`, the `./kiln` bootstrap and `kiln profiles|doctor|build` on the ten buildable desktop profiles (eleven declared); nothing deleted, L1 cutover not started; rows R98–R101 unranked) |
+| [0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md) | One product pipeline in C++, libraries first: standalone public libraries (codecs, IRs, readers/writers, lowerings, graph, resolver, profiles, `kiln.api`) that tools, Hammer, bakers and Python (`sepipe`) use directly, with `kiln` as a thin CLI and an exported SDK; a breaking workflow change (`./kiln play <profile>` replaces `./play*`, `run.sh`, `run.conf` and the platform and CI scripts with no wrappers; trees move to `out/<profile>/<flavor>`); shared concerns lifted to one owner each; canonical texture encoders/decoders; texture, material and model IRs lowered per target as RFC 0015 compilers; streamable package units; extension by substitution (providers selected by name, shared suites with bad providers, a fixture platform through an unchanged core) (proposed, user direction 2026-10-07; [L0 implemented](RFC/0027-progress.md) 2026-10-07: `foundation.json`, `product.profile` schema v2, the product contracts with shared suites and bad providers, `kiln.core`/`kiln.api`, `kiln.composition`, the `./kiln` bootstrap and `kiln profiles|doctor|build` on the nine buildable desktop profiles (ten declared); nothing deleted, L1 cutover not started; row R102 at rank 75, R99–R101 unranked) |
 | [0028](RFC/0028-direct3d9-device-adapter.md) | Direct3D 9 adapter for `render.device.v2`: D3D9Ex/SM3 floor, `kD3d9Bytecode` artifacts via SPIRV-Cross SM30 and the pinned FXC, graphics-only capability set with named refusals, mod `ShaderDLL004` bytecode on the core through the legacy frontend, `shaderapidx9` deleted once matched; DXVK Native and Wine lanes (proposed, user direction 2026-10-07, lifting RFC 0016's exclusion; nothing implemented, no ranked row) |
 
 RFC status and implementation status are separate. A proposed interface, tool,
@@ -207,15 +207,28 @@ platform acceptance.
     render core's long-term gain: adopt the core's new formats and
     contracts, drop shims kept only for them, delete what the core
     replaces. Favor progress over preserving a frozen path; never put new
-    work in the wrong place. This retires no backend or profile: D3D9 and
-    its DXVK profiles, ToGL and the others keep building and running until
-    their replacement lands. Each such commit carries a `Frozen-path:` line.
+    work in the wrong place. Each such commit carries a `Frozen-path:`
+    line.
   - The legacy backends are deleted completely (user decision, 2026-10-07):
     `shaderapidx9`, `shaderapivulkan`, `shaderapiempty`, `stdshaders`,
     ToGL and ToGLES, under the shrink-only ratchet
     `tools/render/retirement_scans.py legacy-backends` (RFC 0028
     decision 10). A change that deletes legacy backend code records it with
-    `--write --rev <commit>`; nothing grows them.
+    `--write --rev <commit>`; nothing grows them. ToGL, ToGLES, DXVK Native
+    and `shaderapidx9` are deleted (user decision, 2026-10-07), with the
+    client profiles that only they served: the SDL2/legacy-renderer Linux
+    client, `android-armv7a-legacy`, `freebsd-legacy`, the Windows client
+    and `linux-x86_64-portal-client-dxvk`. Clients render only through
+    native Vulkan; `--render-backend=legacy` means no client renderer and
+    is accepted only for dedicated, test and tool products.
+  - `IShaderDeviceMgr`/`IShaderDevice` become a facade on the render core's
+    device (user decision, 2026-10-07): device creation, adapter
+    enumeration, mode setting and loss/recovery are owned by
+    `render.device.v2` adapters and the composition root only; the frozen
+    interfaces answer from the core's device and own nothing. Slices F1–F4
+    are in [RFC 0016's legacy device facade](RFC/0016-render-core.md#legacy-device-facade-user-decision-2026-10-07);
+    F1 (one `IShaderDeviceMgr` answering adapters, recommended
+    configuration and modes from the core's adapter) is done.
   - New render work lands on the core in its owning module and is proven
     in `render_lab` before any integration.
   - The old copy is deleted in the change that replaces it.
@@ -677,17 +690,18 @@ marks no implementation gate done.
 | 72 / R37 | Physics parallel rollout and default gate; 0004 E | R20, R34 | Worker-count determinism, nested-work/callback/shutdown bridge, platform packaging, budgets and supported client/server combinations pass; IVP rollback tested | planned |
 | 73 / R67 | Opt-in Box3D capabilities; 0013 P0–P7 (phase prerequisites in the RFC) | R19 | Each capability has its own interface, contract with bad providers and required gate in `physics-v1.json`; parallel step passes on declared profiles; game opt-in only after its filter-threading policy and gameplay corpus pass | active ([0013 progress](RFC/0013-progress.md); P0–P3 on Linux desktop; pool step scheduler measured on Linux and the iPhone 16 Pro, 2026-09-26; from P4 on, order, done checklist and ratchets are RFC 0026's, row R98) |
 | 74 / R98 | Box3D beyond IVP, IVP kept as the fallback; 0026 B0–B9 (B9 with R59/R61/R45) | R19, R67 | B0: `physics.conformance` passes on the pinned Box3D and the six physics ratchets are installed with seeded violations; each capability B1–B8 has its versioned interface, contract with bad providers, required gate, a scoreboard metric where Box3D beats IVP on the same inputs, an IVP fallback clause, a real consumer and a published scenario map with a headless readout; the "surpasses IVP" claim holds on the Linux desktop and the Fold7; IVP stays linked, selectable and boots every scenario map ([done checklist](RFC/0026-box3d-beyond-ivp.md#what-done-looks-like-instructions-for-agents)) | active ([0026 progress](RFC/0026-progress.md); 2026-10-07: RFC and five published scenario maps on both providers; B0 and B1 next) |
-| 75 / R38 | Stateful scheduling migrations; 0003 G | R30, R35, R37 | Snapshot-send ownership and selected entity/physics cohorts preserve legacy observations/order or record intentional change; network/latency/lifetime gates pass | planned |
-| 76 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | active ([Phase D](RFC/0001-phase-b-progress.md#later-work-not-claimed-here)) |
-| 77 / R40 | Tool executable/process cleanup; 0001 rank 19 / retirement E | R11, R12, R22 | Launchable-DLL wrappers retired by cohort; structured argv/process protocol, outputs/cancellation and required compiler workflows pass; integrations tool-only | active ([Phase E](RFC/0001-phase-e-progress.md)) |
-| 78 / R41 | Extension hosts and public-loader removal; 0001 rank 20 / retirement F–G | R07, R11, R39, R40 | Family-owned versioned ABI/trust/lifetime fixtures pass; Waf enumerates boundaries; only approved hosts load; Tier1/filesystem general loader APIs retired | planned |
-| 79 / R42 | Scheduler consolidation; 0003 H | R35, R38 | Redundant queues/waits have zero consumers; process worker budget controlled; supported host modes retain correctness/latency and rollback evidence | planned |
-| 80 / R43 | Hammer legacy retirement; 0002 H7 | R33, R60 | Declared product parity/recovery gate met; old consumer counts zero; superseded shell/glue/build references and stale exceptions removed | planned |
-| 81 / R44 | IVP simulation retirement; 0004 F first gate | R37 | Declared profiles no longer depend on IVP simulation, while IVP stays built and selectable as the fallback provider (user direction 2026-10-07, [RFC 0026](RFC/0026-box3d-beyond-ivp.md#the-ivp-fallback-guarantee)); gameplay/save/package gates pass and rollback/support decision recorded; decoder dependency remains explicit; removing the IVP runtime from any profile needs a new user decision | planned |
-| 82 / R45 | Independent collision decoding/cooking; 0004 F second gate | R40, R44 | Legacy/native format corpus and tool compatibility pass without IVP code; dependency audit clean; schema and old-content policy explicit | planned |
-| 83 / R46 | Tier-global/domain retirement; 0001 rank 21 | R39, R41, R42, R43, R45 | All declared domain cohorts use explicit ownership; old globals have zero consumers; cohesive targets pass architecture/product gates; tiers removed only when empty | planned |
-| 84 / R93 | LAN discovery and Portal 2 co-op pairing; 0017 G0–G6 | R06, R10 (Apple/Android gates also R29) | `platform.lan-discovery.v1` suite catches its bad providers; Linux mDNS provider passes its fuzz corpus and coexists with Avahi; two `play_p2` processes pair through the real PC co-op menus (required UI-driven test) and reach a shared map, with wrong-code and lobby-full negative controls; Apple providers pass on device or stay unverified (optional runner); Android passes on the Fold7, or the row stays `partial` | planned ([RFC 0017](RFC/0017-lan-discovery-and-coop-pairing.md); rank is an agent placement, 2026-09-28, movable by the user) |
-| 85 / R94 | Frame-wide scheduling; 0003 I (goals J1–J5; J6–J7 ratchets) | R20, R21 | One continuous ready-driven executor on the engine pool in products (no wave barriers); declared regions overlap across host nodes; thread census shows no first-party compute threads outside declared owners; scheduling at most 5 % of pooled critical-path work; 1- and 2-worker configurations hold their budgets on desktop, the Fold7 and the iPhone; J6/J7 shrink-only ratchets installed | planned ([RFC 0003 goals](RFC/0003-dependency-aware-job-system.md#frame-wide-scheduling-goals-amended-2026-09-28); rank is an agent placement, 2026-09-28, movable by the user) |
+| 75 / R102 | One product pipeline and `kiln`; 0027 L0, L1, L7 | R02, R04, R10 | L0: profile schema v2, the product contracts with shared suites and bad providers, `kiln.api`, a fixture platform through an unchanged core, and `kiln build` with a no-op second build on every desktop profile; L1: `./kiln play` replaces `./play*`, `run.sh` and `run.conf` after the launch-equivalence check passes for every launcher mode, harnesses launch through `kiln.api`; L7: each platform's package, deploy and run through `kiln` with its scripts deleted ([RFC 0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md#phases-and-gates)) | active ([L0 done 2026-10-07](RFC/0027-progress.md); L1 next; id and rank are an agent placement, 2026-10-07, movable by the user) |
+| 76 / R38 | Stateful scheduling migrations; 0003 G | R30, R35, R37 | Snapshot-send ownership and selected entity/physics cohorts preserve legacy observations/order or record intentional change; network/latency/lifetime gates pass | planned |
+| 77 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | active ([Phase D](RFC/0001-phase-b-progress.md#later-work-not-claimed-here)) |
+| 78 / R40 | Tool executable/process cleanup; 0001 rank 19 / retirement E | R11, R12, R22 | Launchable-DLL wrappers retired by cohort; structured argv/process protocol, outputs/cancellation and required compiler workflows pass; integrations tool-only | active ([Phase E](RFC/0001-phase-e-progress.md)) |
+| 79 / R41 | Extension hosts and public-loader removal; 0001 rank 20 / retirement F–G | R07, R11, R39, R40 | Family-owned versioned ABI/trust/lifetime fixtures pass; Waf enumerates boundaries; only approved hosts load; Tier1/filesystem general loader APIs retired | planned |
+| 80 / R42 | Scheduler consolidation; 0003 H | R35, R38 | Redundant queues/waits have zero consumers; process worker budget controlled; supported host modes retain correctness/latency and rollback evidence | planned |
+| 81 / R43 | Hammer legacy retirement; 0002 H7 | R33, R60 | Declared product parity/recovery gate met; old consumer counts zero; superseded shell/glue/build references and stale exceptions removed | planned |
+| 82 / R44 | IVP simulation retirement; 0004 F first gate | R37 | Declared profiles no longer depend on IVP simulation, while IVP stays built and selectable as the fallback provider (user direction 2026-10-07, [RFC 0026](RFC/0026-box3d-beyond-ivp.md#the-ivp-fallback-guarantee)); gameplay/save/package gates pass and rollback/support decision recorded; decoder dependency remains explicit; removing the IVP runtime from any profile needs a new user decision | planned |
+| 83 / R45 | Independent collision decoding/cooking; 0004 F second gate | R40, R44 | Legacy/native format corpus and tool compatibility pass without IVP code; dependency audit clean; schema and old-content policy explicit | planned |
+| 84 / R46 | Tier-global/domain retirement; 0001 rank 21 | R39, R41, R42, R43, R45 | All declared domain cohorts use explicit ownership; old globals have zero consumers; cohesive targets pass architecture/product gates; tiers removed only when empty | planned |
+| 85 / R93 | LAN discovery and Portal 2 co-op pairing; 0017 G0–G6 | R06, R10 (Apple/Android gates also R29) | `platform.lan-discovery.v1` suite catches its bad providers; Linux mDNS provider passes its fuzz corpus and coexists with Avahi; two `play_p2` processes pair through the real PC co-op menus (required UI-driven test) and reach a shared map, with wrong-code and lobby-full negative controls; Apple providers pass on device or stay unverified (optional runner); Android passes on the Fold7, or the row stays `partial` | planned ([RFC 0017](RFC/0017-lan-discovery-and-coop-pairing.md); rank is an agent placement, 2026-09-28, movable by the user) |
+| 86 / R94 | Frame-wide scheduling; 0003 I (goals J1–J5; J6–J7 ratchets) | R20, R21 | One continuous ready-driven executor on the engine pool in products (no wave barriers); declared regions overlap across host nodes; thread census shows no first-party compute threads outside declared owners; scheduling at most 5 % of pooled critical-path work; 1- and 2-worker configurations hold their budgets on desktop, the Fold7 and the iPhone; J6/J7 shrink-only ratchets installed | planned ([RFC 0003 goals](RFC/0003-dependency-aware-job-system.md#frame-wide-scheduling-goals-amended-2026-09-28); rank is an agent placement, 2026-09-28, movable by the user) |
 
 R39–R46 describe completion gates, not a reason to retain dead code until late.
 Delete each unused adapter/global/queue when its bounded cohort has passed its
@@ -729,8 +743,9 @@ Keep the table concise and link details below or from the domain progress file.
   faults, 25 bad providers rejected, the fixture platform end to end through
   `kiln.core`, archlint CAP011 rules for the core, the thin application and
   platform literals, and a no-op second build per desktop profile
-  ([record](RFC/0027-progress.md)). The RFC's roadmap names this row R98,
-  which RFC 0026 also uses; the user decides its id and rank.
+  ([record](RFC/0027-progress.md)). Its row is R102 at rank 75 (agent placement,
+  2026-10-07: the RFC's R98 was also RFC 0026's id; ranks from R38 down
+  moved by one; movable by the user).
 
 - R67 (RFC 0013): added 2026-09-24 at the user's direction, `active`. The
   `box3d-optin` branch is merged (2026-09-25), and work continues on the
@@ -1252,8 +1267,9 @@ Keep the table concise and link details below or from the domain progress file.
     usages, fixed conventions, capability negotiation, per-target shader
     artifacts through pinned SPIRV-Cross). Vulkan is the first adapter and
     OpenGL 4.5 the second (K10, row R92, ranked after R88 as the RFC 0001
-    step 10 proof). ToGL stays on the SDL2 legacy-renderer profiles for mod
-    shader DLLs (user decision, 2026-09-26).
+    step 10 proof). ToGL was kept for mod shader DLLs (user decision,
+    2026-09-26) until its deletion on 2026-10-07; mod bytecode moves to RFC
+    0028's D3D9 adapter.
   - Layout and layers: `public/render/<module>/` and `render/<module>/`;
     eight declared layers plus an adapter column, enforced by a new archlint
     rule CAP011 (down-only edges, independent siblings, no portable edge to
@@ -1536,17 +1552,14 @@ Keep the table concise and link details below or from the domain progress file.
     every declared SDL3 profile, SDL is off generic include paths (the
     `platform/sdl3/legacy_include` adapter's callers are migrated), and the
     SDL2 legacy profiles still build. SDL2 behavior parity is not required.
-  - SDL2 stays only as the provider for the legacy compatibility profiles
-    (the Windows client, `linux-i386-legacy`, `android-armv7a-legacy`,
-    `freebsd-legacy`). It gets no further work, and
-    `platform/sdl2/window_system` needs no suite. Retiring those profiles, or
-    SDL2 itself, is a separate user decision.
+  - SDL2 stays only for products without a client renderer (dedicated,
+    tests, tools, `linux-i386-legacy`'s dedicated and tests). Its client
+    profiles were retired with ToGL (2026-10-07). It gets no further work,
+    and `platform/sdl2/window_system` needs no suite.
   - Waf defaults (2026-09-26, user direction): `--render-backend` is `auto`,
-    selecting `native-vulkan` for 64-bit Linux, Android and iOS/tvOS clients
-    and `legacy` for dedicated, test and tool products, 32-bit, GLES, other
-    OSes and an explicit `--platform-provider=sdl2`.
-    `scripts/build-ubuntu-amd64.sh` pins `--render-backend=legacy` for the
-    legacy client lane. `--physics-backend` defaults to `box3d` but is not
+    selecting `native-vulkan` for clients and `legacy` (no client renderer)
+    for dedicated, test and tool products; since 2026-10-07 any other client
+    configuration fails configure. `--physics-backend` defaults to `box3d` but is not
     read by the build (both providers are always linked; existing trees
     stored the old `ivp`, so wiring it would drop Box3D from them).
   - `--platform-provider` defaults to `auto`: `sdl3` for every Vulkan

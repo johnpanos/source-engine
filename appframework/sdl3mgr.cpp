@@ -17,9 +17,6 @@
 
 #include "tier0/memdbgon.h"
 
-#if defined( DX_TO_GL_ABSTRACTION )
-#error The SDL3 Vulkan launcher provider must not be compiled with the OpenGL launcher ABI.
-#endif
 
 namespace
 {

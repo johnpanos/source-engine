@@ -248,9 +248,6 @@ static const char *s_pRegistryConVars[] =
 #elif defined( POSIX )
 	#define MOD_VIDEO_CONFIG_SETTINGS "videoconfig_linux.cfg"
 	#define USE_VIDEOCONFIG_FILE 1
-#elif defined( DX_TO_GL_ABSTRACTION )
-	#define MOD_VIDEO_CONFIG_SETTINGS "videoconfig_gl.cfg"
-	#define USE_VIDEOCONFIG_FILE 1
 #else
 	#define MOD_VIDEO_CONFIG_SETTINGS "videoconfig.cfg"
 	#define USE_VIDEOCONFIG_FILE 0

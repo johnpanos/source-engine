@@ -1472,14 +1472,12 @@ void CShaderSystem::DrawElements( IShader *pShader, IMaterialVar **params,
 	}
 
 	// FIXME: need one conditional that we calculate once a frame for debug or not with everything debug under that.
-#ifndef DX_TO_GL_ABSTRACTION
 	if (  ( ( g_config.bMeasureFillRate || g_config.bVisualizeFillRate ) &&
 		( ( materialVarFlags & MATERIAL_VAR_USE_IN_FILLRATE_MODE ) == 0 ) ) )
 	{
 		DrawMeasureFillRate( pRenderState, mod, vertexCompression );
 	}
 	else 
-#endif
 		if( ( g_config.bShowNormalMap || g_config.nShowMipLevels == 2 ) && 
 		( IsFlag2Set( params, MATERIAL_VAR2_LIGHTING_BUMPED_LIGHTMAP ) ||
 		  IsFlag2Set( params, MATERIAL_VAR2_DIFFUSE_BUMPMAPPED_MODEL ) ) )

@@ -23,7 +23,7 @@ jobs:
           if [ "${{ matrix.compiler }}" = clang ]; then
             export CC=clang CXX=clang++
           fi
-          WAFLOCK=.lock-waf-r03-ci ./waf configure --tests --use-sdl=0 --use-togl=0 \
+          WAFLOCK=.lock-waf-r03-ci ./waf configure --tests --use-sdl=0 \
             --disable-warns -T release -o build-r03-ci --prefix="$PWD/build-r03-ci/install"
           WAFLOCK=.lock-waf-r03-ci ./waf build -j4
       - name: Verify final commands and frozen consumers

@@ -22,15 +22,16 @@
 
 ## Why
 
-The core runs on Vulkan, GL/GLES, D3D12 and Metal, while the D3D9 path is
-still the frozen `shaderapidx9` backend beside the core (native on Windows,
-DXVK Native on Linux, ToGL on the SDL2 legacy profiles). Two things follow:
+The core runs on Vulkan, GL/GLES, D3D12 and Metal. Until 2026-10-07 the
+D3D9 path was the frozen `shaderapidx9` backend beside the core (native on
+Windows, DXVK Native on Linux, ToGL on the SDL2 legacy profiles); all three
+were deleted that day (decision 10), so the engine has no D3D9 path until
+this adapter lands. Two things follow:
 
 - Mod shader DLLs (`ShaderDLL004`) ship D3D9 bytecode, which no core adapter
   runs, so on core profiles their materials follow the missing-shader rule.
-- `shaderapidx9` and `materialsystem/stdshaders/` are a second render stack
-  that RFC 0016's "old copy deleted" rule cannot retire while it is the only
-  way to run D3D9.
+- `materialsystem/stdshaders/` is still a second shader stack, and mods
+  have no D3D9 path at all.
 
 A D3D9 adapter makes D3D9 one more provider under the same port: the core
 draws through it, mod bytecode runs on it, and the legacy backend becomes a
@@ -48,8 +49,8 @@ candidate for deletion once the adapter and the frontend carry its users.
    what DXVK implements. Plain `IDirect3D9` fails creation with
    `kUnsupported`.
 3. **Lanes.** Windows native (MSVC runner, optional per AGENTS.md); Linux
-   through DXVK Native (the pinned DXVK SDK the legacy profiles already use)
-   and MinGW + Wine, as RFC 0024's X-lane. The Linux lanes prove the
+   through MinGW + Wine/Proton (its PE d3d9), as RFC 0024's X-lane. DXVK
+   Native is not used (deleted 2026-10-07). The Linux lane proves the
    adapter's contract, not Windows driver behavior.
 4. **Shaders.** New `ArtifactFormat::kD3d9Bytecode`: SM 3.0 bytecode built
    from the same SPIR-V by the pinned SPIRV-Cross HLSL backend
@@ -95,16 +96,20 @@ candidate for deletion once the adapter and the frontend carry its users.
     `tools/render/legacy_backends_ratchet.json`) records each directory's
     files and lines exactly: growth fails, deletions are recorded in the
     deleting change, and the goal is an empty ledger (329,467 lines in six
-    directories at 2026-10-07).
+    directories at 2026-10-07). The same day ToGL, ToGLES, DXVK Native and
+    `shaderapidx9` were deleted (user direction: "nuke ToGL and ToGLES given
+    our native backends for those, plus DXVK Native"), with the client
+    profiles only they served; `shaderapidx9`'s only Waf build was the DXVK
+    product. 219,322 lines in three directories remain.
 
 ## Gates
 
 | Gate | Done looks like | State |
 | --- | --- | --- |
 | D9-0 | Module, provider, Waf target, composition entry; `kD3d9Bytecode` artifacts for every translatable core program, the rest refused by name; archlint clean | open |
-| D9-1 | Shared `render.device.v2` suite and bad adapters pass for every claimed capability on DXVK Native and Wine (D3D9 debug runtime or DXVK validation silent), conventions section included | open |
+| D9-1 | Shared `render.device.v2` suite and bad adapters pass for every claimed capability on Wine/Proton (validation silent), conventions section included | open |
 | D9-2 | `render.graph.v1` on the adapter; capability negotiation selects declared fallbacks or fails composition by name for every core pass | open |
 | D9-3 | SDL3–D3D9Ex presentation bridge passes the shared presentation suite (resize, loss, zero size) | open |
 | D9-4 | The core pixel families within recorded cross-backend tolerance of Vulkan for every family the adapter claims | open |
-| D9-5 | Legacy frontend on the adapter: material pixel families and the 268-case legacy shader set match the `shaderapidx9` references; a mod `ShaderDLL004` fixture draws through the bytecode path with a seeded register-binding defect caught | open |
-| D9-6 | Resolution-sweep frame times against `shaderapidx9` on the same host; old backend deleted | open |
+| D9-5 | Legacy frontend on the adapter: material pixel families and the 268-case legacy shader set match the recorded D3D9 references (`quality/fixtures/material-pixels/*-dx9-*`, rendered by `shaderapidx9` before its deletion at `c3c4c5134`); a mod `ShaderDLL004` fixture draws through the bytecode path with a seeded register-binding defect caught | open |
+| D9-6 | Resolution-sweep frame times against native Vulkan on the same host | open |

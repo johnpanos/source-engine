@@ -1852,16 +1852,16 @@ encoding where a target's facts select it.
 
 ## Roadmap
 
-AGENTS.md owns ranks and states. Proposed rows, unranked (ranking is a
-user decision):
+AGENTS.md owns ranks and states. R102 is ranked; the other rows are
+unranked (ranking is a user decision):
 
 | Phases | Proposed row |
 | --- | --- |
-| L0, L1, L7 | R98: the pipeline library, profile schema v2, the `kiln` CLI, the desktop cutover and the platform cutovers |
+| L0, L1, L7 | R102 (was R98, which RFC 0026 also took; ranked 75 in AGENTS.md, 2026-10-07): the pipeline library, profile schema v2, the `kiln` CLI, the desktop cutover and the platform cutovers |
 | L2, L3 | R99: canonical codecs, texture IR and lowering |
 | L4, L5 | R100: material and model lowering |
 | L6 | R101: streaming units and residency, a child of R89/R91 with RFC 0016 |
-| L8 | under R98–R100, as their consumer cohorts and the SDK |
+| L8 | under R102 and R99–R100, as their consumer cohorts and the SDK |
 
 ## Proposed decision
 

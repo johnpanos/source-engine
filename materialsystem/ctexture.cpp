@@ -2103,14 +2103,6 @@ ImageFormat CTexture::ComputeActualFormat( ImageFormat srcFormat )
 	// NOTE: Below this piece of code is only called when compressed textures are
 	// turned off, or if the source texture is not compressed.
 
-#ifdef DX_TO_GL_ABSTRACTION
-	if ( ( srcFormat == IMAGE_FORMAT_UVWQ8888 ) || ( srcFormat == IMAGE_FORMAT_UV88 ) || ( srcFormat == IMAGE_FORMAT_UVLX8888 )  )
-	{
-		// Danger, this is going to blow up on the Mac.  You better know what you're
-		// doing with these exotic formats...which were introduced in 1999
-		Assert( 0 );
-	}
-#endif
 
 	// We use the TEXTUREFLAGS_EIGHTBITALPHA and TEXTUREFLAGS_ONEBITALPHA flags
 	// to decide how many bits of alpha we need; vtex checks the alpha channel
@@ -2119,11 +2111,7 @@ ImageFormat CTexture::ComputeActualFormat( ImageFormat srcFormat )
 		( srcFormat == IMAGE_FORMAT_UVLX8888 ) || ( srcFormat == IMAGE_FORMAT_RGBA16161616 ) ||
 		( srcFormat == IMAGE_FORMAT_RGBA16161616F ) )
 	{
-#ifdef DX_TO_GL_ABSTRACTION		
-		dstFormat = g_pShaderAPI->GetNearestSupportedFormat( srcFormat, false );  // Stupid HACK!
-#else
 		dstFormat = g_pShaderAPI->GetNearestSupportedFormat( srcFormat, true );  // Stupid HACK!
-#endif
 	} 
 	else if ( m_nFlags & ( TEXTUREFLAGS_EIGHTBITALPHA | TEXTUREFLAGS_ONEBITALPHA ) )
 	{
@@ -4362,7 +4350,7 @@ int ComputeActualMipCount( const TexDimensions_t& actualDims, unsigned int nFlag
 	// POSIX builds keep every mip as the retail Linux/Mac (togl) builds do:
 	// stopping at 32x32 is the Windows D3D rule, and it aliases distant
 	// surfaces (Portal 2's detail dot grids shimmer instead of resolving).
-#if defined( DX_TO_GL_ABSTRACTION ) || defined( POSIX )
+#if defined( POSIX )
 	if ( ( false && !g_bForceTextureAllMips && !( nFlags & TEXTUREFLAGS_ALL_MIPS ) ) || ( true && ( nFlags & TEXTUREFLAGS_BORDER ) ) )
 #else
 	if ( ( true && !g_bForceTextureAllMips && !( nFlags & TEXTUREFLAGS_ALL_MIPS ) ) || ( false && ( nFlags & TEXTUREFLAGS_BORDER ) ) )

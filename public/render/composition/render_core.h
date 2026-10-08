@@ -159,5 +159,10 @@ extern "C" unsigned int RenderCore_GetLegacyProviderCreates( const RenderCore *c
 // which the capabilities order their calls on; it must outlive the core.
 extern "C" void RenderCore_BindRenderCallQueue(
     RenderCore *core, const render::legacy::RenderCallQueueHost *host );
+// The adapter identity the material system's device facade reports for the
+// backend composed through the frontend (RFC 0016 legacy device facade, F1);
+// set before the material system creates the backend.
+extern "C" void RenderCore_SetLegacyAdapterSource(
+    RenderCore *core, const render::LegacyShaderServices::CoreAdapterSource *source );
 
 #endif // RENDER_COMPOSITION_RENDER_CORE_H

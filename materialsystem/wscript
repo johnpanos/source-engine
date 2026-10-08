@@ -40,6 +40,8 @@ def build(bld):
 		'builtin_shader_catalog.cpp',
 		'shaderextension_compatibility_host.cpp',
 		'legacy_render_backend_provider.cpp',
+		'shader_device_facade.cpp',
+		'dxsupport_keyvalues.cpp',
 		'texturemanager.cpp',
 		'pch_materialsystem.cpp',
 		'cmaterialdict.cpp',
@@ -74,9 +76,6 @@ def build(bld):
 	else:
 		libs += ['stdshader_dx9']
 		defines += ['LINKED_STANDARD_SHADERS']
-		if bld.env.DXVK:
-			libs += ['shaderapidx9']
-			defines += ['LINKED_DX9_BACKEND']
 		if bld.env.NATIVE_VULKAN:
 			libs += ['shaderapivulkan']
 			defines += ['LINKED_NATIVE_VULKAN_BACKEND']

@@ -52,9 +52,6 @@ void Check( bool passed, const char *condition, int line )
 void CheckProviderCatalogIsDistinct()
 {
 	const render::LegacyShaderProvider *catalog[] = {
-#if defined( LINKED_DX9_BACKEND )
-	    Dx9ShaderBackend_Describe(),
-#endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 	    NativeVulkanShaderBackend_Describe(),
 #endif
@@ -241,9 +238,7 @@ void Run()
 	CheckProviderCatalogIsDistinct();
 	// The graphics backend this product actually linked, whichever it is.
 	const render::LegacyShaderProvider *actual =
-#if defined( LINKED_DX9_BACKEND )
-	    Dx9ShaderBackend_Describe();
-#elif defined( LINKED_NATIVE_VULKAN_BACKEND )
+#if defined( LINKED_NATIVE_VULKAN_BACKEND )
 	    NativeVulkanShaderBackend_Describe();
 #else
 	    NullShaderBackend_Describe();

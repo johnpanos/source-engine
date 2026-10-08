@@ -79,9 +79,6 @@ int g_DirectXLevels[] =
 	80,
 	81,
 	90,
-#if DX_TO_GL_ABSTRACTION
-	92,
-#endif
 	95,
 };
 
@@ -1450,42 +1447,6 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 	// Multimonitor under Direct3D requires you to destroy and recreate the device, 
 	// which is an operation we don't support as it currently stands. The user can 
 	// pass -adapter N to use a different device.
-#if defined( USE_SDL ) && defined( DX_TO_GL_ABSTRACTION )
-	int numVideoDisplays = SDL_GetNumVideoDisplays();
-
-	m_pWindowed = new vgui::ComboBox( this, "DisplayModeCombo", 5 + numVideoDisplays, false );
-
-	if ( numVideoDisplays <= 1 )
-	{
-		m_pWindowed->AddItem( "#GameUI_Fullscreen", NULL );
-#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
-		m_pWindowed->AddItem( "Borderless windowed", NULL );
-#endif
-		m_pWindowed->AddItem( "#GameUI_Windowed", NULL );
-	}
-	else
-	{
-		// Add something like this:
-		//   Full Screen (0)
-		//   Full Screen (1)
-		//   Windowed
-		wchar_t *fullscreenText = g_pVGuiLocalize->Find( "#GameUI_Fullscreen" );
-
-		for ( int i = 0; i < numVideoDisplays; i++ )
-		{
-			wchar_t ItemText[ 256 ];
-
-			V_swprintf_safe( ItemText, L"%ls (%d)", fullscreenText, i );
-			m_pWindowed->AddItem( ItemText, NULL );
-		}
-
-#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
-		m_pWindowed->AddItem( "Borderless windowed", NULL );
-#endif
-		m_pWindowed->AddItem( "#GameUI_Windowed", NULL );
-	}
-
-#else
 	m_pWindowed = new vgui::ComboBox( this, "DisplayModeCombo", 6, false );
 
 	m_pWindowed->AddItem( "#GameUI_Fullscreen", NULL );
@@ -1493,7 +1454,6 @@ COptionsSubVideo::COptionsSubVideo(vgui::Panel *parent) : PropertyPage(parent, N
 	m_pWindowed->AddItem( "Borderless windowed", NULL );
 #endif
 	m_pWindowed->AddItem( "#GameUI_Windowed", NULL );
-#endif
 
 #ifdef MOBILE_VIDEO_OPTIONS
 	m_pWindowed->SetEnabled( false );
@@ -1576,11 +1536,7 @@ void COptionsSubVideo::PrepareResolutionList()
 	if ( bFullScreenWithMultipleDisplays )
 	{
 		SDL_Rect rect;
-#if defined( DX_TO_GL_ABSTRACTION )
-		int displayIndex = m_pWindowed->GetActiveItem();
-#else
 		int displayIndex = materials->GetCurrentAdapter();
-#endif
 
 		if ( !SDL_GetDisplayBounds( displayIndex, &rect ) )
 		{
@@ -1759,39 +1715,12 @@ void COptionsSubVideo::OnResetData()
 	ConVarRef mat_borderless( "mat_borderless" );
 
 	// reset UI elements
-#if defined( USE_SDL ) && defined( DX_TO_GL_ABSTRACTION )
-	int ItemIndex;
-
-	if ( config.Windowed() )
-	{
-		// Last item in the combobox is Windowed.
-		ItemIndex = m_pWindowed->GetItemCount() - 1;
-#if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
-		if ( mat_borderless.IsValid() && mat_borderless.GetBool() )
-			--ItemIndex;
-#endif
-	}
-	else
-	{
-		// Check which fullscreen displayindex is currently selected, and pick it.
-		ItemIndex = getSDLDisplayIndex();
-
-		if ( ( ItemIndex < 0 ) || ItemIndex >= ( m_pWindowed->GetItemCount() - 1 ) )
-		{
-			Assert( 0 );
-			ItemIndex = 0;
-		}
-	}
-
-    m_pWindowed->ActivateItem( ItemIndex );
-#else
 	int ItemIndex = config.Windowed() ? m_pWindowed->GetItemCount() - 1 : 0;
 #if defined( USE_SDL3 ) && !defined( MOBILE_VIDEO_OPTIONS )
 	if ( config.Windowed() && mat_borderless.IsValid() && mat_borderless.GetBool() )
 		--ItemIndex;
 #endif
 	m_pWindowed->ActivateItem( ItemIndex );
-#endif
 
 	// reset gamma control
 #ifdef MOBILE_VIDEO_OPTIONS
@@ -1939,11 +1868,7 @@ void COptionsSubVideo::SetCurrentResolutionComboItem()
 
 #if defined( USE_SDL )
 		SDL_Rect rect;
-#if defined( DX_TO_GL_ABSTRACTION )
-		int displayIndex = getSDLDisplayIndex();
-#else
 		int displayIndex = materials->GetCurrentAdapter();
-#endif
 
 		if ( !SDL_GetDisplayBounds( displayIndex, &rect ) )
 		{

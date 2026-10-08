@@ -7,8 +7,10 @@
 
 #include "vulkan_device.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 
 namespace render::device::vulkan
 {
@@ -245,9 +247,36 @@ private:
 	bool m_Fsr;
 };
 
+HostAdapterIdentity Identify( VkPhysicalDevice physical )
+{
+	HostAdapterIdentity identity;
+	VkPhysicalDeviceProperties properties{};
+	vkGetPhysicalDeviceProperties( physical, &properties );
+	Copy( identity.name, sizeof( identity.name ), properties.deviceName );
+	identity.vendorId = properties.vendorID;
+	identity.deviceId = properties.deviceID;
+	identity.driverVersion = properties.driverVersion;
+	VkPhysicalDeviceMemoryProperties memory{};
+	vkGetPhysicalDeviceMemoryProperties( physical, &memory );
+	for ( std::uint32_t i = 0; i < memory.memoryHeapCount; ++i )
+	{
+		if ( memory.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT )
+			identity.deviceLocalBytes =
+			    std::max<std::uint64_t>( identity.deviceLocalBytes, memory.memoryHeaps[i].size );
+	}
+	return identity;
+}
+
 class Factory final : public IHostDeviceFactory
 {
 	bool m_Fsr;
+	// The adapter the factory creates devices on (DescribeHostAdapter):
+	// the last created device's, else the probe's. Guarded by m_Mutex, as
+	// devices may be created on any thread.
+	mutable std::mutex m_Mutex;
+	mutable HostAdapterIdentity m_Identity;
+	mutable bool m_HasDevice = false;
+	mutable bool m_Probed = false;
 
 public:
 	explicit Factory( bool fsr ) : m_Fsr( fsr ) {}
@@ -256,7 +285,39 @@ public:
 	{
 		auto selected = request;
 		selected.fsr411 = m_Fsr;
-		return MakeDevice( selected, nullptr, error, errorSize );
+		std::unique_ptr<IHostDevice> device = MakeDevice( selected, nullptr, error, errorSize );
+		if ( device )
+		{
+			const HostAdapterIdentity identity = Identify( device->Info().physical );
+			std::lock_guard<std::mutex> lock( m_Mutex );
+			m_Identity = identity;
+			m_HasDevice = true;
+		}
+		return device;
+	}
+
+	bool DescribeAdapter( HostAdapterIdentity *out ) const override
+	{
+		std::lock_guard<std::mutex> lock( m_Mutex );
+		if ( !m_HasDevice && !m_Probed )
+		{
+			m_Probed = true;
+			std::uint32_t apiVersion = 0;
+			auto instance = CreateHostInstance( HostDeviceRequest{}, &apiVersion );
+			if ( instance )
+			{
+				const DeviceResult<AdapterChoice> choice =
+				    SelectAdapter( instance.Value()->instance, -1 );
+				if ( choice )
+				{
+					m_Identity = Identify( choice.Value().physical );
+					m_HasDevice = false;
+					m_Probed = true;
+				}
+			}
+		}
+		*out = m_Identity;
+		return m_Identity.name[0] != '\0';
 	}
 
 	std::unique_ptr<IHostInstance> CreateInstance(
@@ -282,6 +343,12 @@ const IHostDeviceFactory &HostDeviceFactory( bool fsr411 )
 {
 	static const Factory normal( false ), temporal( true );
 	return fsr411 ? temporal : normal;
+}
+
+bool DescribeHostAdapter( const IHostDeviceFactory &factory, int adapter, HostAdapterIdentity *out )
+{
+	*out = HostAdapterIdentity();
+	return adapter == 0 && factory.DescribeAdapter( out );
 }
 
 } // namespace render::device::vulkan

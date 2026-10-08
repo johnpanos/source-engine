@@ -4,7 +4,7 @@
 //
 //=============================================================================//
 
-#if defined( _WIN32 ) && !defined( DX_TO_GL_ABSTRACTION )
+#if defined( _WIN32 )
 #include <windows.h>
 #include "../dx9sdk/include/d3d9types.h"
 #endif
@@ -281,23 +281,16 @@ int GetNumMipMapLevels( int width, int height, int depth )
 // convert back and forth from D3D format to ImageFormat, regardless of
 // whether it's supported or not
 //-----------------------------------------------------------------------------
-#if !defined( USE_DXVK )
+#if !defined( USE_SDL3 )
 ImageFormat D3DFormatToImageFormat( D3DFORMAT format )
 {
 
 	switch ( format )
 	{
-#ifdef TOGLES
-	case D3DFMT_R8G8B8:
-		return IMAGE_FORMAT_RGB888;
-	case D3DFMT_A8R8G8B8:
-		return IMAGE_FORMAT_RGBA8888;
-#else
 	case D3DFMT_R8G8B8:
 		return IMAGE_FORMAT_BGR888;
 	case D3DFMT_A8R8G8B8:
 		return IMAGE_FORMAT_BGRA8888;
-#endif
 	case D3DFMT_X8R8G8B8:
 		return IMAGE_FORMAT_BGRX8888;
 	case D3DFMT_R5G6B5:

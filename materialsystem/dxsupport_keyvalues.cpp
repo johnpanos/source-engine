@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -188,7 +187,7 @@ int SystemRamMegabytes()
 	{
 		char line[256];
 		const char *pKey = "MemTotal:";
-		const size_t keyLength = strlen( pKey );
+		const size_t keyLength = Q_strlen( pKey );
 		while ( fgets( line, sizeof( line ), pMemInfo ) )
 		{
 			if ( !V_strnicmp( pKey, line, keyLength ) )

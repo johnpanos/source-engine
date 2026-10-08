@@ -5,12 +5,20 @@
  "provenance": {
   "schema": "corpus-provenance/v1",
   "suite": "corpus.clang64.sweep",
-  "source_revision": "294066c6572fdd34a0aef28b58d16013d31287ed",
+  "source_revision": "7f5eb530e8434dd1d125aa775e7b1dd1e2cb8bab",
   "dirty": true,
-  "dirty_digest": "f32bc83fb0ea0a0c1d938f7a0523b4297ae6908ecb99ff7ba501337d754a3799",
+  "dirty_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "submodules": {
    "box3d": {
-    "revision": "9e5a4cde862fba95ff19f096b79567f3ea6c01fd",
+    "revision": "78c90a09ec420aad9432db8ad63e8ed2c3871372",
+    "state": "clean"
+   },
+   "external/fsr-vulkan-headers": {
+    "revision": "c46850864f4661461b0f6cb9922c058ffea4915e",
+    "state": "clean"
+   },
+   "external/fsr411": {
+    "revision": "fdb181b7b57c233c72158a6fcfba4cc87da55594",
     "state": "clean"
    },
    "ivp": {
@@ -26,14 +34,14 @@
     "state": "clean"
    }
   },
-  "python": "3.14.7",
+  "python": "3.14.8",
   "python_executable": "/usr/bin/python3",
   "tools": {
    "clang++": "clang version 22.1.8 (Fedora 22.1.8-4.fc44)",
-   "python3": "3.14.7"
+   "python3": "3.14.8"
   },
   "inputs": {},
-  "reproduce": "cd /home/john/src/source-engine-corpus && /usr/bin/python3 tools/quality/corpus/clang64_sweep.py record",
+  "reproduce": "cd /home/john/src/source-engine && /usr/bin/python3 tools/quality/corpus/clang64_sweep.py record",
   "setup": "python3 tools/quality/corpus/clang64_sweep.py setup",
   "check": "python3 tools/quality/conformance.py check --suite corpus.clang64.sweep --out -"
  },
@@ -119,7 +127,7 @@
    "tests": {
     "recorded_compiler": "clang++",
     "recorded_compiler_version": "22.1.8",
-    "permissive_tus": 169,
+    "permissive_tus": 172,
     "permissive_targets": [
      "appframework",
      "appsystemgrouptest",
@@ -154,7 +162,7 @@
    "tools": {
     "recorded_compiler": "clang++",
     "recorded_compiler_version": "22.1.8",
-    "permissive_tus": 447,
+    "permissive_tus": 454,
     "permissive_targets": [
      "bitmap",
      "fgdlib",
@@ -183,7 +191,7 @@
    "dedicated": {
     "recorded_compiler": "clang++",
     "recorded_compiler_version": "22.1.8",
-    "permissive_tus": 1137,
+    "permissive_tus": 1152,
     "permissive_targets": [
      "appframework",
      "bitmap",
@@ -196,6 +204,7 @@
      "materialsystem",
      "mathlib",
      "particles",
+     "responserules_runtime",
      "scenefilecache",
      "server",
      "shaderapiempty",
@@ -218,7 +227,7 @@
    "portal-native": {
     "recorded_compiler": "clang++",
     "recorded_compiler_version": "22.1.8",
-    "permissive_tus": 2219,
+    "permissive_tus": 2330,
     "permissive_targets": [
      "GameUI",
      "ServerBrowser",
@@ -258,6 +267,7 @@
      "particles",
      "pbr_native_pixel_conformance",
      "queued_mesh_contract_vulkan_conformance",
+     "responserules_runtime",
      "scenefilecache",
      "sdl3_launcher_conformance",
      "sdl3_voice_record_test",
@@ -290,15 +300,16 @@
      "vtex",
      "vtex_dll",
      "vtf",
+     "vtf_decompress_conformance",
      "vulkan_debug",
      "world_glass_native_pixel_conformance",
      "world_pbr_native_pixel_conformance"
     ]
    },
-   "portal-dxvk": {
-    "recorded_compiler": "g++",
-    "recorded_compiler_version": "16.2.1",
-    "permissive_tus": 2139,
+   "hl2": {
+    "recorded_compiler": "clang++",
+    "recorded_compiler_version": "22.1.8",
+    "permissive_tus": 2236,
     "permissive_targets": [
      "GameUI",
      "ServerBrowser",
@@ -310,33 +321,42 @@
      "builtin_shader_conformance",
      "choreoobjects",
      "client",
+     "compute_native_conformance",
      "datacache",
      "datamodel",
      "dmxloader",
-     "dxvk_math_conformance",
-     "dxvk_presentation_conformance",
      "engine",
      "filesystem_stdio",
      "hl2_launcher",
+     "indirect_sdf_native_conformance",
+     "indirect_switching_native_conformance",
      "inputsystem",
+     "ktx2_native_pixel_conformance",
      "launcher",
      "legacy_render_provider_conformance",
      "material_binding_conformance",
+     "material_equivalence_vulkan_conformance",
+     "material_facing_vulkan_conformance",
      "material_pixel_conformance",
      "materialsystem",
      "mathlib",
      "matsys_controls",
+     "model_pbr_native_pixel_conformance",
      "moduleloadfixture",
      "moduleloadshutdownfixture",
      "mp3_provider_conformance",
+     "native_vulkan_bringup_conformance",
      "particles",
+     "pbr_native_pixel_conformance",
+     "queued_mesh_contract_vulkan_conformance",
+     "responserules_runtime",
      "scenefilecache",
      "sdl3_launcher_conformance",
      "sdl3_voice_record_test",
      "server",
      "shader_extension_conformance",
-     "shaderapidx9",
      "shaderapiempty",
+     "shaderapivulkan",
      "shaderlib",
      "soundemittersystem",
      "stdshader_dx9",
@@ -361,67 +381,17 @@
      "vstdlib",
      "vtex",
      "vtex_dll",
-     "vtf"
-    ]
-   },
-   "hl2": {
-    "recorded_compiler": "clang++",
-    "recorded_compiler_version": "22.1.8",
-    "permissive_tus": 2010,
-    "permissive_targets": [
-     "GameUI",
-     "ServerBrowser",
-     "appframework",
-     "bitmap",
-     "choreoobjects",
-     "client",
-     "datacache",
-     "datamodel",
-     "dmxloader",
-     "engine",
-     "filesystem_stdio",
-     "hl2_launcher",
-     "inputsystem",
-     "launcher",
-     "materialsystem",
-     "mathlib",
-     "matsys_controls",
-     "particles",
-     "scenefilecache",
-     "server",
-     "shaderapiempty",
-     "shaderlib",
-     "soundemittersystem",
-     "stdshader_dx9",
-     "steam_api",
-     "studiorender",
-     "tier0",
-     "tier1",
-     "tier2",
-     "tier3",
-     "togl",
-     "vaudio_minimp3",
-     "vgui2",
-     "vgui_controls",
-     "vgui_surfacelib",
-     "vguimatsurface",
-     "video_provider_catalog_test",
-     "video_service_catalog_test",
-     "video_services",
-     "vphysics",
-     "vphysics_box3d",
-     "vphysics_conformance",
-     "vpklib",
-     "vstdlib",
-     "vtex",
-     "vtex_dll",
-     "vtf"
+     "vtf",
+     "vtf_decompress_conformance",
+     "vulkan_debug",
+     "world_glass_native_pixel_conformance",
+     "world_pbr_native_pixel_conformance"
     ]
    },
    "portal2-native": {
     "recorded_compiler": "clang++",
     "recorded_compiler_version": "22.1.8",
-    "permissive_tus": 2497,
+    "permissive_tus": 2608,
     "permissive_targets": [
      "GameUI",
      "ServerBrowser",
@@ -462,6 +432,7 @@
      "particles",
      "pbr_native_pixel_conformance",
      "queued_mesh_contract_vulkan_conformance",
+     "responserules_runtime",
      "scenefilecache",
      "sdl3_launcher_conformance",
      "sdl3_voice_record_test",
@@ -496,6 +467,7 @@
      "vtex",
      "vtex_dll",
      "vtf",
+     "vtf_decompress_conformance",
      "vulkan_debug",
      "world_glass_native_pixel_conformance",
      "world_pbr_native_pixel_conformance"
@@ -508,7 +480,6 @@
     "configure": [
      "--tests",
      "--use-sdl=0",
-     "--use-togl=0",
      "--disable-warns",
      "-T",
      "release"
@@ -528,7 +499,6 @@
     "configure": [
      "--dedicated",
      "--use-sdl=0",
-     "--use-togl=0",
      "--build-games=portal",
      "--physics-backend=both",
      "--disable-warns",
@@ -543,18 +513,6 @@
      "--render-backend=native-vulkan",
      "--build-games=portal",
      "--physics-backend=both",
-     "--disable-warns",
-     "-T",
-     "release"
-    ]
-   },
-   "portal-dxvk": {
-    "compiler": "gcc",
-    "configure": [
-     "--platform-provider=sdl3",
-     "--render-backend=vulkan",
-     "--dxvk-root={dxvk_root}",
-     "--build-games=portal",
      "--disable-warns",
      "-T",
      "release"
@@ -576,7 +534,7 @@
      "--render-backend=native-vulkan",
      "--build-games=portal2",
      "--physics-backend=both",
-     "--video-provider=bink",
+     "--video-provider=ffmpeg",
      "--disable-warns",
      "-T",
      "release"
@@ -587,10 +545,6 @@
    {
     "scope": "game/client, game/server for --build-games=hl2mp, hl1, episodic, hl1mp, cstrike, dod",
     "reason": "each game compiles the shared client/server sources with its own defines (~1,500 TUs per game); only portal, hl2 and portal2 are swept"
-   },
-   {
-    "scope": "togles",
-    "reason": "GLES translation layer; only Android (non-SDL3) selects it"
    },
    {
     "scope": "unicode",
@@ -623,42 +577,42 @@
   ]
  },
  "stats": {
-  "tus": 10618,
-  "wall_seconds": 397.3,
-  "jobs": 16,
+  "tus": 8952,
+  "wall_seconds": 614.1,
+  "jobs": 12,
   "slowest": [
    {
-    "seconds": 4.4,
-    "config": "portal2-native",
+    "seconds": 9.2,
+    "config": "portal-native",
+    "source": "materialsystem/shaderapivulkan/vulkan_device.cpp"
+   },
+   {
+    "seconds": 8.4,
+    "config": "portal-native",
     "source": "materialsystem/shaderapivulkan/shaderapivulkan.cpp"
    },
    {
-    "seconds": 4.1,
-    "config": "portal2-native",
-    "source": "unittests/shaderapivulkantest/test_indirect_sdf.cpp"
-   },
-   {
-    "seconds": 4.0,
+    "seconds": 7.8,
     "config": "portal2-native",
     "source": "materialsystem/shaderapivulkan/vulkan_device.cpp"
    },
    {
-    "seconds": 3.3,
-    "config": "portal2-native",
+    "seconds": 7.5,
+    "config": "portal-native",
     "source": "materialsystem/shaderapivulkan/vulkan_device.cpp"
    },
    {
-    "seconds": 3.3,
-    "config": "hl2",
+    "seconds": 7.2,
+    "config": "portal2-native",
     "source": "engine/indirect_light_host.cpp"
    }
   ]
  },
  "summary": {
-  "sites": 132,
+  "sites": 127,
   "blocking_errors": 2,
   "by_diagnostic": {
-   "-Wformat": 31,
+   "-Wformat": 26,
    "-Wshorten-64-to-32:pointer-sized": 101
   },
   "by_directory": {
@@ -668,7 +622,6 @@
    "public": 14,
    "vscript/languages": 14,
    "game/client": 5,
-   "materialsystem/shaderapidx9": 5,
    "tier1": 5,
    "game/shared": 3,
    "utils/vrad": 3,
@@ -691,6 +644,7 @@
    "dedicated:engine": 30,
    "dedicated:materialsystem": 2,
    "dedicated:particles": 1,
+   "dedicated:responserules_runtime": 1,
    "dedicated:server": 16,
    "dedicated:studiorender": 2,
    "dedicated:tier0": 1,
@@ -709,6 +663,7 @@
    "hl2:materialsystem": 2,
    "hl2:matsys_controls": 1,
    "hl2:particles": 1,
+   "hl2:responserules_runtime": 1,
    "hl2:server": 15,
    "hl2:studiorender": 2,
    "hl2:tier0": 1,
@@ -720,27 +675,6 @@
    "hl2:vphysics": 3,
    "hl2:vphysics_box3d": 1,
    "hl2:vphysics_conformance": 1,
-   "portal-dxvk:ServerBrowser": 26,
-   "portal-dxvk:client": 6,
-   "portal-dxvk:datacache": 4,
-   "portal-dxvk:datamodel": 2,
-   "portal-dxvk:engine": 39,
-   "portal-dxvk:filesystem_stdio": 2,
-   "portal-dxvk:materialsystem": 2,
-   "portal-dxvk:matsys_controls": 1,
-   "portal-dxvk:particles": 1,
-   "portal-dxvk:server": 16,
-   "portal-dxvk:shaderapidx9": 6,
-   "portal-dxvk:studiorender": 2,
-   "portal-dxvk:tier0": 1,
-   "portal-dxvk:tier1": 6,
-   "portal-dxvk:tier2": 2,
-   "portal-dxvk:tier3": 1,
-   "portal-dxvk:vgui2": 2,
-   "portal-dxvk:vgui_controls": 3,
-   "portal-dxvk:vphysics": 3,
-   "portal-dxvk:vphysics_box3d": 1,
-   "portal-dxvk:vphysics_conformance": 1,
    "portal-native:ServerBrowser": 26,
    "portal-native:client": 6,
    "portal-native:datacache": 4,
@@ -750,6 +684,7 @@
    "portal-native:materialsystem": 2,
    "portal-native:matsys_controls": 1,
    "portal-native:particles": 1,
+   "portal-native:responserules_runtime": 1,
    "portal-native:server": 16,
    "portal-native:studiorender": 2,
    "portal-native:tier0": 1,
@@ -771,6 +706,7 @@
    "portal2-native:materialsystem": 2,
    "portal2-native:matsys_controls": 1,
    "portal2-native:particles": 1,
+   "portal2-native:responserules_runtime": 1,
    "portal2-native:server": 17,
    "portal2-native:studiorender": 2,
    "portal2-native:tier0": 1,
@@ -801,44 +737,43 @@
   "advisory": {
    "-Wshorten-64-to-32": {
     "note": "unique file:line:column occurrences; recorded, not gated",
-    "total": 1276,
+    "total": 1278,
     "by_directory": {
-     "game/client": 190,
+     "game/client": 192,
      "vscript/languages": 176,
-     "engine": 120,
+     "engine": 121,
      "common": 82,
-     "game/shared": 78,
+     "game/shared": 79,
      "tier1": 68,
      "vgui2/vgui_controls": 55,
-     "game/server": 42,
+     "game/server": 43,
+     "public": 43,
      "vgui2/src": 40,
-     "public": 39,
      "vgui2/vgui_surfacelib": 31,
+     "engine/audio": 30,
      "filesystem": 30,
      "particles": 29,
      "utils/vrad": 26,
-     "togl/linuxwin": 25,
-     "engine/audio": 19,
+     "utils/vbsp": 20,
      "utils/common": 19,
      "tier0": 18,
-     "utils/vbsp": 17,
      "gameui": 15,
      "thirdparty/minimp3": 12,
      "materialsystem": 11,
-     "materialsystem/shaderapidx9": 11,
-     "public/tier1": 9,
-     "vguimatsurface": 9,
+     "public/tier1": 10,
+     "responserules/runtime": 10,
+     "vguimatsurface": 10,
      "utils/vvis": 8,
+     "materialsystem/shaderapivulkan": 7,
      "utils/vtex": 7,
      "vpklib": 7,
+     "vtf": 7,
      "dmxloader": 6,
      "vgui2/matsys_controls": 6,
      "meshutils": 5,
      "serverbrowser": 5,
      "unittests/jobsystemtest": 5,
      "vphysics": 5,
-     "vtf": 5,
-     "inputsystem": 4,
      "dedicated/console": 3,
      "dedicated": 3,
      "engine/voice_codecs": 3,
@@ -847,15 +782,14 @@
      "bitmap": 2,
      "datamodel": 2,
      "launcher": 2,
-     "materialsystem/shaderapivulkan": 2,
      "public/fgdlib": 2,
      "public/tier0": 2,
      "soundemittersystem": 2,
-     "studiorender": 2,
+     "unittests/tier1test": 2,
      "vstdlib": 2,
-     "appframework": 1,
      "dedicated_main": 1,
      "fgdlib": 1,
+     "inputsystem": 1,
      "launcher_main": 1,
      "matchmaking/portal2": 1,
      "public/vscript": 1,
@@ -864,15 +798,16 @@
      "video/video_bink": 1
     },
     "by_source_type": {
-     "size_t": 546,
-     "__ptrdiff_t": 257,
+     "size_t": 558,
+     "__ptrdiff_t": 250,
      "SQRESULT": 113,
-     "unsigned long": 54,
+     "unsigned long": 48,
      "SQInteger": 48,
-     "long": 42,
+     "long": 45,
      "HKeySymbol": 29,
      "HFont": 28,
      "ssize_t": 19,
+     "size_type": 14,
      "HTexture": 14,
      "HPanel": 12,
      "StringIndex_t": 11,
@@ -881,13 +816,10 @@
      "uint64": 10,
      "__size_t": 7,
      "int64": 7,
-     "vgui::HFont": 6,
+     "vgui::HFont": 7,
      "ThreadId_t": 5,
-     "size_type": 5,
      "vgui::HTexture": 5,
      "uint64_t": 4,
-     "LONG": 4,
-     "SDL_FingerID": 3,
      "long long": 3,
      "FT_Pos": 3,
      "png_size_t": 2,
@@ -895,14 +827,12 @@
      "VertexFormat_t": 2,
      "HScheme": 2,
      "ulg": 2,
-     "__off_t": 2,
      "AGFixed": 1,
+     "std::size_t": 1,
      "ShaderAPITextureHandle_t": 1,
-     "VertexShader_t": 1,
-     "PixelShader_t": 1,
      "uLong": 1,
+     "__off_t": 1,
      "SizeT": 1,
-     "GLsizeiptr": 1,
      "__time_t": 1
     }
    }
@@ -920,18 +850,16 @@
    "targets": [
     "dedicated:datacache",
     "hl2:datacache",
-    "portal-dxvk:datacache",
     "portal-native:datacache",
     "portal2-native:datacache"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -945,18 +873,16 @@
    "targets": [
     "dedicated:datacache",
     "hl2:datacache",
-    "portal-dxvk:datacache",
     "portal-native:datacache",
     "portal2-native:datacache"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -970,18 +896,16 @@
    "targets": [
     "dedicated:datacache",
     "hl2:datacache",
-    "portal-dxvk:datacache",
     "portal-native:datacache",
     "portal2-native:datacache"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -994,17 +918,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:datamodel",
-    "portal-dxvk:datamodel",
     "portal-native:datamodel",
     "portal2-native:datamodel"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -1017,17 +939,15 @@
    "width": "4 vs 8 bytes",
    "targets": [
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -1041,18 +961,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1066,18 +984,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1091,18 +1007,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1116,18 +1030,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1141,18 +1053,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 10,
+   "tus": 8,
    "classification": "unreviewed"
   },
   {
@@ -1166,18 +1076,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1191,18 +1099,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1216,23 +1122,21 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
    "file": "engine/host_saverestore.cpp",
-   "line": 137,
+   "line": 140,
    "column": 64,
    "diagnostic": "-Wformat",
    "message": "format specifies type 'int' but the argument has type 'ThreadId_t' (aka 'unsigned long long')",
@@ -1240,22 +1144,20 @@
    "width": "4 vs 8 bytes",
    "targets": [
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
    "file": "engine/host_saverestore.cpp",
-   "line": 657,
+   "line": 668,
    "column": 60,
    "diagnostic": "-Wformat",
    "message": "format specifies type 'int' but the argument has type 'ThreadId_t' (aka 'unsigned long long')",
@@ -1263,22 +1165,20 @@
    "width": "4 vs 8 bytes",
    "targets": [
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
    "file": "engine/modelloader.cpp",
-   "line": 4304,
+   "line": 4317,
    "column": 21,
    "diagnostic": "-Wshorten-64-to-32:pointer-sized",
    "message": "implicit conversion loses integer precision: 'intptr_t' (aka 'long') to 'int'",
@@ -1287,18 +1187,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1311,17 +1209,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -1334,17 +1230,15 @@
    "width": "from intp",
    "targets": [
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -1357,17 +1251,15 @@
    "width": "from intp",
    "targets": [
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -1380,17 +1272,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -1403,17 +1293,15 @@
    "width": "from intp",
    "targets": [
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -1427,23 +1315,21 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
    "file": "engine/sv_main.cpp",
-   "line": 1675,
+   "line": 1744,
    "column": 9,
    "diagnostic": "-Wformat",
    "message": "format specifies type 'int' but the argument has type 'size_t' (aka 'unsigned long')",
@@ -1452,23 +1338,21 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
    "file": "engine/sv_main.cpp",
-   "line": 1680,
+   "line": 1749,
    "column": 97,
    "diagnostic": "-Wformat",
    "message": "format specifies type 'int' but the argument has type 'size_t' (aka 'unsigned long')",
@@ -1477,23 +1361,21 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
    "file": "engine/sv_main.cpp",
-   "line": 1691,
+   "line": 1760,
    "column": 7,
    "diagnostic": "-Wformat",
    "message": "format specifies type 'int' but the argument has type 'size_t' (aka 'unsigned long')",
@@ -1502,18 +1384,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1527,18 +1407,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1552,18 +1430,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1576,22 +1452,20 @@
    "width": "4 vs 8 bytes",
    "targets": [
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
    "file": "filesystem/QueuedLoader.cpp",
-   "line": 492,
+   "line": 499,
    "column": 61,
    "diagnostic": "-Wformat",
    "message": "format specifies type 'unsigned int' but the argument has type 'ThreadId_t' (aka 'unsigned long long')",
@@ -1600,7 +1474,6 @@
    "targets": [
     "dedicated:dedicated",
     "hl2:filesystem_stdio",
-    "portal-dxvk:filesystem_stdio",
     "portal-native:filesystem_stdio",
     "portal2-native:filesystem_stdio",
     "tests:filesystem_stdio",
@@ -1609,13 +1482,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 7,
+   "tus": 6,
    "classification": "unreviewed"
   },
   {
@@ -1629,7 +1501,6 @@
    "targets": [
     "dedicated:dedicated",
     "hl2:filesystem_stdio",
-    "portal-dxvk:filesystem_stdio",
     "portal-native:filesystem_stdio",
     "portal2-native:filesystem_stdio",
     "tests:filesystem_stdio",
@@ -1641,13 +1512,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 10,
+   "tus": 9,
    "classification": "unreviewed"
   },
   {
@@ -1660,22 +1530,20 @@
    "width": "4 vs 8 bytes",
    "targets": [
     "hl2:client",
-    "portal-dxvk:client",
     "portal-native:client",
     "portal2-native:client"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
    "file": "game/client/c_rope.cpp",
-   "line": 1694,
+   "line": 1710,
    "column": 23,
    "diagnostic": "-Wshorten-64-to-32:pointer-sized",
    "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
@@ -1683,22 +1551,20 @@
    "width": "from intp",
    "targets": [
     "hl2:client",
-    "portal-dxvk:client",
     "portal-native:client",
     "portal2-native:client"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
    "file": "game/client/clientleafsystem.cpp",
-   "line": 1348,
+   "line": 1352,
    "column": 57,
    "diagnostic": "-Wshorten-64-to-32:pointer-sized",
    "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'CBucketHandlePram' (aka 'int')",
@@ -1706,17 +1572,15 @@
    "width": "from intp",
    "targets": [
     "hl2:client",
-    "portal-dxvk:client",
     "portal-native:client",
     "portal2-native:client"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -1746,22 +1610,20 @@
    "width": "from intp",
    "targets": [
     "hl2:client",
-    "portal-dxvk:client",
     "portal-native:client",
     "portal2-native:client"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
    "file": "game/server/ai_basenpc.h",
-   "line": 693,
+   "line": 701,
    "column": 65,
    "diagnostic": "-Wshorten-64-to-32:pointer-sized",
    "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'AI_TaskFailureCode_t' (aka 'int')",
@@ -1770,18 +1632,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 870,
+   "tus": 688,
    "classification": "unreviewed"
   },
   {
@@ -1795,18 +1655,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1820,18 +1678,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1845,18 +1701,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1870,18 +1724,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1895,18 +1747,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1920,18 +1770,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1945,18 +1793,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1970,18 +1816,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -1995,18 +1839,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2020,18 +1862,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2044,15 +1884,13 @@
    "width": "from intp",
    "targets": [
     "dedicated:server",
-    "portal-dxvk:server",
     "portal-native:server"
    ],
    "configs": [
     "dedicated",
-    "portal-dxvk",
     "portal-native"
    ],
-   "tus": 3,
+   "tus": 2,
    "classification": "unreviewed"
   },
   {
@@ -2066,16 +1904,14 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2089,18 +1925,16 @@
    "targets": [
     "dedicated:server",
     "hl2:server",
-    "portal-dxvk:server",
     "portal-native:server",
     "portal2-native:server"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2159,7 +1993,7 @@
   },
   {
    "file": "materialsystem/cmatrendercontext.cpp",
-   "line": 2152,
+   "line": 2167,
    "column": 21,
    "diagnostic": "-Wshorten-64-to-32:pointer-sized",
    "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
@@ -2168,7 +2002,6 @@
    "targets": [
     "dedicated:materialsystem",
     "hl2:materialsystem",
-    "portal-dxvk:materialsystem",
     "portal-native:materialsystem",
     "portal2-native:materialsystem",
     "tools:materialsystem"
@@ -2176,102 +2009,16 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tools"
    ],
-   "tus": 6,
-   "classification": "unreviewed"
-  },
-  {
-   "file": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
-   "line": 2196,
-   "column": 133,
-   "diagnostic": "-Wformat",
-   "message": "format specifies type 'unsigned long' but the argument has type 'HRESULT' (aka 'int')",
-   "line_text": "\"http://support.steampowered.com/cgi-bin/steampowered.cfg/php/enduser/std_adp.php?p_faqid=772\\n\", IsOpenGL() ? \"OpenGL\" : \"D3D\", hr, pszMoreInfo );",
-   "width": "8 vs 4 bytes",
-   "targets": [
-    "portal-dxvk:shaderapidx9"
-   ],
-   "configs": [
-    "portal-dxvk"
-   ],
-   "tus": 1,
-   "classification": "unreviewed"
-  },
-  {
-   "file": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
-   "line": 2201,
-   "column": 133,
-   "diagnostic": "-Wformat",
-   "message": "format specifies type 'unsigned long' but the argument has type 'HRESULT' (aka 'int')",
-   "line_text": "\"http://support.steampowered.com/cgi-bin/steampowered.cfg/php/enduser/std_adp.php?p_faqid=772\\n\", IsOpenGL() ? \"OpenGL\" : \"D3D\", hr );",
-   "width": "8 vs 4 bytes",
-   "targets": [
-    "portal-dxvk:shaderapidx9"
-   ],
-   "configs": [
-    "portal-dxvk"
-   ],
-   "tus": 1,
-   "classification": "unreviewed"
-  },
-  {
-   "file": "materialsystem/shaderapidx9/shaderdevicedx8.cpp",
-   "line": 2664,
-   "column": 59,
-   "diagnostic": "-Wformat",
-   "message": "format specifies type 'unsigned long' but the argument has type 'HRESULT' (aka 'int')",
-   "line_text": "Warning( \"ResizeWindow: Reset failed, hr = 0x%08lX.\\n\", hr );",
-   "width": "8 vs 4 bytes",
-   "targets": [
-    "portal-dxvk:shaderapidx9"
-   ],
-   "configs": [
-    "portal-dxvk"
-   ],
-   "tus": 1,
-   "classification": "unreviewed"
-  },
-  {
-   "file": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
-   "line": 3514,
-   "column": 82,
-   "diagnostic": "-Wformat",
-   "message": "format specifies type 'unsigned int' but the argument has type 'VertexShader_t' (aka 'long long')",
-   "line_text": "Msg( \"vsh 0x%8.8x: static combo:%9d dynamic combos:%6d refcount:%4d \\\"%s\\\"\\n\", vshIndex,",
-   "width": "4 vs 8 bytes",
-   "targets": [
-    "portal-dxvk:shaderapidx9"
-   ],
-   "configs": [
-    "portal-dxvk"
-   ],
-   "tus": 1,
-   "classification": "unreviewed"
-  },
-  {
-   "file": "materialsystem/shaderapidx9/vertexshaderdx8.cpp",
-   "line": 3530,
-   "column": 82,
-   "diagnostic": "-Wformat",
-   "message": "format specifies type 'unsigned int' but the argument has type 'PixelShader_t' (aka 'long long')",
-   "line_text": "Msg( \"psh 0x%8.8x: static combo:%9d dynamic combos:%6d refcount:%4d \\\"%s\\\"\\n\", pshIndex,",
-   "width": "4 vs 8 bytes",
-   "targets": [
-    "portal-dxvk:shaderapidx9"
-   ],
-   "configs": [
-    "portal-dxvk"
-   ],
-   "tus": 1,
+   "tus": 5,
    "classification": "unreviewed"
   },
   {
    "file": "particles/particles.cpp",
-   "line": 1009,
+   "line": 1038,
    "column": 19,
    "diagnostic": "-Wshorten-64-to-32:pointer-sized",
    "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
@@ -2280,18 +2027,16 @@
    "targets": [
     "dedicated:particles",
     "hl2:particles",
-    "portal-dxvk:particles",
     "portal-native:particles",
     "portal2-native:particles"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2305,18 +2050,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2330,18 +2073,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2355,18 +2096,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2380,18 +2119,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2405,18 +2142,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2430,18 +2165,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2455,18 +2188,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2480,18 +2211,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2505,18 +2234,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2530,18 +2257,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2555,18 +2280,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2580,18 +2303,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2605,18 +2326,16 @@
    "targets": [
     "dedicated:engine",
     "hl2:engine",
-    "portal-dxvk:engine",
     "portal-native:engine",
     "portal2-native:engine"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -2629,6 +2348,7 @@
    "width": "from uintp",
    "targets": [
     "dedicated:engine",
+    "dedicated:responserules_runtime",
     "dedicated:server",
     "dedicated:studiorender",
     "dedicated:tier3",
@@ -2637,24 +2357,17 @@
     "hl2:client",
     "hl2:engine",
     "hl2:matsys_controls",
+    "hl2:responserules_runtime",
     "hl2:server",
     "hl2:studiorender",
     "hl2:tier3",
     "hl2:vphysics",
     "hl2:vphysics_box3d",
     "hl2:vphysics_conformance",
-    "portal-dxvk:client",
-    "portal-dxvk:engine",
-    "portal-dxvk:matsys_controls",
-    "portal-dxvk:server",
-    "portal-dxvk:studiorender",
-    "portal-dxvk:tier3",
-    "portal-dxvk:vphysics",
-    "portal-dxvk:vphysics_box3d",
-    "portal-dxvk:vphysics_conformance",
     "portal-native:client",
     "portal-native:engine",
     "portal-native:matsys_controls",
+    "portal-native:responserules_runtime",
     "portal-native:server",
     "portal-native:studiorender",
     "portal-native:tier3",
@@ -2665,6 +2378,7 @@
     "portal2-native:engine",
     "portal2-native:matchmaking_portal2",
     "portal2-native:matsys_controls",
+    "portal2-native:responserules_runtime",
     "portal2-native:server",
     "portal2-native:studiorender",
     "portal2-native:tier3",
@@ -2680,13 +2394,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 6005,
+   "tus": 4893,
    "classification": "unreviewed"
   },
   {
@@ -2712,15 +2425,6 @@
     "hl2:server",
     "hl2:studiorender",
     "hl2:tier1",
-    "portal-dxvk:client",
-    "portal-dxvk:datacache",
-    "portal-dxvk:datamodel",
-    "portal-dxvk:engine",
-    "portal-dxvk:materialsystem",
-    "portal-dxvk:server",
-    "portal-dxvk:shaderapidx9",
-    "portal-dxvk:studiorender",
-    "portal-dxvk:tier1",
     "portal-native:client",
     "portal-native:datacache",
     "portal-native:datamodel",
@@ -2745,13 +2449,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 107,
+   "tus": 81,
    "classification": "unreviewed"
   },
   {
@@ -2764,17 +2467,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2787,17 +2488,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2810,17 +2509,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2833,17 +2530,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2856,17 +2551,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2879,17 +2572,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2902,17 +2593,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2925,17 +2614,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2948,17 +2635,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2971,17 +2656,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -2994,17 +2677,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3017,17 +2698,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3040,17 +2719,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3063,17 +2740,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3086,17 +2761,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3109,17 +2782,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3132,17 +2803,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3155,17 +2824,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3178,17 +2845,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3201,17 +2866,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3224,17 +2887,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3247,17 +2908,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3270,17 +2929,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3293,17 +2950,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3316,17 +2971,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3339,17 +2992,15 @@
    "width": "from uintp",
    "targets": [
     "hl2:ServerBrowser",
-    "portal-dxvk:ServerBrowser",
     "portal-native:ServerBrowser",
     "portal2-native:ServerBrowser"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3363,7 +3014,6 @@
    "targets": [
     "dedicated:tier0",
     "hl2:tier0",
-    "portal-dxvk:tier0",
     "portal-native:tier0",
     "portal2-native:tier0",
     "tests:tier0",
@@ -3372,13 +3022,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 7,
+   "tus": 6,
    "classification": "unreviewed"
   },
   {
@@ -3392,7 +3041,6 @@
    "targets": [
     "dedicated:tier1",
     "hl2:tier1",
-    "portal-dxvk:tier1",
     "portal-native:tier1",
     "portal2-native:tier1",
     "tests:tier1",
@@ -3401,13 +3049,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 7,
+   "tus": 6,
    "classification": "unreviewed"
   },
   {
@@ -3421,7 +3068,6 @@
    "targets": [
     "dedicated:tier1",
     "hl2:tier1",
-    "portal-dxvk:tier1",
     "portal-native:tier1",
     "portal2-native:tier1",
     "tests:tier1",
@@ -3430,13 +3076,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 7,
+   "tus": 6,
    "classification": "unreviewed"
   },
   {
@@ -3450,7 +3095,6 @@
    "targets": [
     "dedicated:tier1",
     "hl2:tier1",
-    "portal-dxvk:tier1",
     "portal-native:tier1",
     "portal2-native:tier1",
     "tests:tier1",
@@ -3459,13 +3103,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 7,
+   "tus": 6,
    "classification": "unreviewed"
   },
   {
@@ -3479,7 +3122,6 @@
    "targets": [
     "dedicated:tier1",
     "hl2:tier1",
-    "portal-dxvk:tier1",
     "portal-native:tier1",
     "portal2-native:tier1",
     "tests:tier1",
@@ -3488,13 +3130,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 7,
+   "tus": 6,
    "classification": "unreviewed"
   },
   {
@@ -3508,7 +3149,6 @@
    "targets": [
     "dedicated:tier1",
     "hl2:tier1",
-    "portal-dxvk:tier1",
     "portal-native:tier1",
     "portal2-native:tier1",
     "tests:tier1",
@@ -3517,13 +3157,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 7,
+   "tus": 6,
    "classification": "unreviewed"
   },
   {
@@ -3537,7 +3176,6 @@
    "targets": [
     "dedicated:tier2",
     "hl2:tier2",
-    "portal-dxvk:tier2",
     "portal-native:tier2",
     "portal2-native:tier2",
     "tests:tier2",
@@ -3546,13 +3184,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 7,
+   "tus": 6,
    "classification": "unreviewed"
   },
   {
@@ -3566,7 +3203,6 @@
    "targets": [
     "dedicated:tier2",
     "hl2:tier2",
-    "portal-dxvk:tier2",
     "portal-native:tier2",
     "portal2-native:tier2",
     "tests:tier2",
@@ -3575,13 +3211,12 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tests",
     "tools"
    ],
-   "tus": 7,
+   "tus": 6,
    "classification": "unreviewed"
   },
   {
@@ -3645,17 +3280,15 @@
    "width": "from intp",
    "targets": [
     "hl2:vgui2",
-    "portal-dxvk:vgui2",
     "portal-native:vgui2",
     "portal2-native:vgui2"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3668,17 +3301,15 @@
    "width": "from intp",
    "targets": [
     "hl2:vgui2",
-    "portal-dxvk:vgui2",
     "portal-native:vgui2",
     "portal2-native:vgui2"
    ],
    "configs": [
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 4,
+   "tus": 3,
    "classification": "unreviewed"
   },
   {
@@ -3692,18 +3323,16 @@
    "targets": [
     "dedicated:vgui_controls",
     "hl2:vgui_controls",
-    "portal-dxvk:vgui_controls",
     "portal-native:vgui_controls",
     "portal2-native:vgui_controls"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -3717,18 +3346,16 @@
    "targets": [
     "dedicated:vgui_controls",
     "hl2:vgui_controls",
-    "portal-dxvk:vgui_controls",
     "portal-native:vgui_controls",
     "portal2-native:vgui_controls"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
@@ -3742,23 +3369,21 @@
    "targets": [
     "dedicated:vgui_controls",
     "hl2:vgui_controls",
-    "portal-dxvk:vgui_controls",
     "portal-native:vgui_controls",
     "portal2-native:vgui_controls"
    ],
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native"
    ],
-   "tus": 5,
+   "tus": 4,
    "classification": "unreviewed"
   },
   {
    "file": "vphysics/main.cpp",
-   "line": 198,
+   "line": 205,
    "column": 26,
    "diagnostic": "-Wshorten-64-to-32:pointer-sized",
    "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
@@ -3767,7 +3392,6 @@
    "targets": [
     "dedicated:vphysics",
     "hl2:vphysics",
-    "portal-dxvk:vphysics",
     "portal-native:vphysics",
     "portal2-native:vphysics",
     "tools:vphysics"
@@ -3775,17 +3399,16 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tools"
    ],
-   "tus": 6,
+   "tus": 5,
    "classification": "unreviewed"
   },
   {
    "file": "vphysics/main.cpp",
-   "line": 211,
+   "line": 218,
    "column": 34,
    "diagnostic": "-Wshorten-64-to-32:pointer-sized",
    "message": "implicit conversion loses integer precision: 'intp' (aka 'long long') to 'int'",
@@ -3794,7 +3417,6 @@
    "targets": [
     "dedicated:vphysics",
     "hl2:vphysics",
-    "portal-dxvk:vphysics",
     "portal-native:vphysics",
     "portal2-native:vphysics",
     "tools:vphysics"
@@ -3802,12 +3424,11 @@
    "configs": [
     "dedicated",
     "hl2",
-    "portal-dxvk",
     "portal-native",
     "portal2-native",
     "tools"
    ],
-   "tus": 6,
+   "tus": 5,
    "classification": "unreviewed"
   },
   {
@@ -4052,11 +3673,11 @@
  "blocking_errors": [
   {
    "file": "video/video_bink/bink_material.cpp",
-   "line": 930,
-   "column": 17,
+   "line": 1009,
+   "column": 14,
    "diagnostic": "error:other",
    "message": "no matching function for call to 'av_image_alloc'",
-   "line_text": "size_t size = av_image_alloc(m_AVVideoData, m_AVVideoLinesize,",
+   "line_text": "int size = av_image_alloc( m_AVVideoData, m_AVVideoLinesize, m_VideoFrameWidth,",
    "targets": [
     "portal2-native:video_bink"
    ],
@@ -4068,11 +3689,11 @@
   },
   {
    "file": "video/video_bink/bink_material.cpp",
-   "line": 933,
+   "line": 1012,
    "column": 15,
    "diagnostic": "error:other",
    "message": "assigning to 'uint8_t *' (aka 'unsigned char *') from incompatible type 'void *'",
-   "line_text": "m_RGBData = calloc( m_VideoFrameWidth*m_VideoFrameHeight*3, 1 );",
+   "line_text": "m_RGBData = calloc( m_VideoFrameWidth * m_VideoFrameHeight * 3, 1 );",
    "targets": [
     "portal2-native:video_bink"
    ],
