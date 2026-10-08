@@ -14,7 +14,8 @@
 //			then the child over the result. Objects merge member by member and
 //			any other value replaces. Existing members keep their position and
 //			new ones append, as Python's dict update does, so a resolved v1
-//			profile equals tools/quality/profile_extends.py's.
+//			profile equals the retired tools/quality/profile_extends.py's
+//			(kiln_gate.py parity keeps an independent reference).
 //
 //=============================================================================//
 
@@ -143,6 +144,8 @@ struct Switch
 	std::string description;
 	std::vector<std::string> arguments;
 	std::vector<std::string> conflicts;
+	// Launch variables the switch sets (launch.variables names them).
+	std::map<std::string, std::vector<std::string>> sets;
 };
 
 // A validated schema v2 profile and its derived facts. Everything here is a
@@ -166,6 +169,8 @@ struct ResolvedProfile
 	std::string defaultFlavor;
 	std::vector<std::string> stages;
 	std::vector<Switch> switches;
+	// launch.variables: named argument lists the launch templates splice.
+	std::map<std::string, std::vector<std::string>> launchVariables;
 
 	bool Buildable() const { return !fragment && !toolchain.empty(); }
 	const Flavor *FindFlavor( std::string_view flavor ) const;
@@ -182,6 +187,9 @@ struct ResolvedProfile
 
 	// The tree a flavor builds into, relative to the output root.
 	std::string TreeName( std::string_view flavor ) const;
+	// The package's directory inside a tree: `package.directory`, else
+	// "package". Packaging writes it and launches run from it.
+	std::string PackageDirectoryName() const;
 };
 
 // Merge, then validate. A v1 file of any schema family resolves for

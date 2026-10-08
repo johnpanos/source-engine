@@ -286,7 +286,7 @@ Evidence and findings: `RFC/0001-native-vulkan-frame-pacing-progress.md`.
 
 `demo_frames.py` plays a recorded Portal 2 demo
 ([`portal2-intro4-demo-v1`](../../quality/workloads/portal2-intro4-demo-v1/workload.json),
-the user's `sp_a1_intro4_relit` recording) in real time through `./play_p2` in a
+the user's `sp_a1_intro4_relit` recording) in real time through `./kiln play portal2` in a
 private headless mutter and the launch sandbox, and reports every presented
 frame of the playback window: percentiles, 1%/0.1% lows, hitch counts, the
 GPU-bound share, CPU costs and worst frames. The effective settings are queried

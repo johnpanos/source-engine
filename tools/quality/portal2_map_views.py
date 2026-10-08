@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Boot a Portal 2 map headless and capture a scripted set of views.
 
-The Portal 2 build (`build-p2`) is staged into a private runtime (never the
-user's run/runtime-p2, whose cfg a headless run would overwrite) with the
+The portal2 kiln profile is packaged into a private runtime (never the
+player's `kiln play` runtime, whose cfg a headless run would overwrite) with the
 map pipeline's published maps mounted, and runs offscreen (SDL's offscreen
 video driver: no window reaches the desktop). A step list drives it after the
 map loads:
@@ -25,8 +25,6 @@ import json
 import os
 import re
 import shutil
-import signal
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -35,9 +33,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import launch_sandbox  # noqa: E402
-import playable_maps  # noqa: E402
-import portal_boot  # noqa: E402
-import stage_portal2_runtime  # noqa: E402
+import portal2_scenarios  # noqa: E402
+sepipe_loader = portal2_scenarios.sepipe_loader
 
 ROOT = HERE.parents[1]
 SCHEMA = "portal2-map-views/v1"
@@ -93,11 +90,13 @@ def write_cfg(path, steps, settle, shot_frames):
     path.write_text("\n".join(lines) + "\n")
 
 
-def stage(runtime, steam_root, build):
-    stage_portal2_runtime.stage_content(steam_root, runtime, mount_custom=True)
-    portal_boot.install_build(build, runtime, game="portal2")
-    mounted, _ = playable_maps.mount(runtime, game="portal2")
-    return sorted(mounted)
+def stage(runtime, client):
+    """The client profile packaged into the private runtime; the published
+    maps it mounts (portal2/custom/pbrt-<map>)."""
+    portal2_scenarios.package_runtime(client, runtime)
+    custom = runtime / "portal2/custom"
+    return sorted(path.name[len("pbrt-"):] for path in custom.glob("pbrt-*")) \
+        if custom.is_dir() else []
 
 
 def run(args):
@@ -110,9 +109,9 @@ def run(args):
         lines = [line.strip() for line in args.steps_file.read_text().splitlines()
                  if line.strip() and not line.strip().startswith("#")] + lines
     steps = [parse_step(s) for s in lines]
-    # Checked before staging, which rewrites the runtime: never ./play_p2's.
+    # Checked before packaging, which rewrites the runtime: never a player's.
     sandbox = launch_sandbox.Sandbox(out / "sandbox", write_paths=[runtime])
-    mounted = stage(runtime, args.steam_root, args.build.resolve())
+    mounted = stage(runtime, (args.profile, args.flavor))
     sandbox.check_write_paths([runtime])
     game = runtime / "portal2"
     shots = game / "screenshots"
@@ -121,30 +120,15 @@ def run(args):
     console = game / "console.log"
     console.unlink(missing_ok=True)
     environment = sandbox.environment(os.environ)
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
-    environment.update({"SteamAppId": "620", "SteamGameId": "620",
-                        "LD_LIBRARY_PATH": str(runtime / "bin"),
-                        "SDL_VIDEODRIVER": "offscreen", "SDL_VIDEO_DRIVER": "offscreen"})
-    command = [str(runtime / "hl2_launcher"), "-game", "portal2", "-multirun", "-novid",
-               "-insecure", "-windowed", "-w", str(args.width), "-h", str(args.height),
-               "-condebug", "-physics", args.physics, "+volume", "0", *args.engine_arg,
-               "+map", args.map, "+wait", str(args.start_frames), "+exec", CFG]
+    arguments = ["-game", "portal2", "-multirun", "-novid", "-insecure", "-windowed",
+                 "-w", str(args.width), "-h", str(args.height), "-condebug",
+                 "-physics", args.physics, "+volume", "0", *args.engine_arg,
+                 "+map", args.map, "+wait", str(args.start_frames), "+exec", CFG]
     started = time.monotonic()
-    timed_out = False
-    with (out / "stdout.log").open("wb") as stream:
-        process = subprocess.Popen(command, cwd=runtime, env=environment, stdout=stream,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
-        try:
-            process.wait(timeout=args.timeout)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+    returncode, timed_out, _, error = sepipe_loader.run_test(
+        args.profile, args.flavor, runtime, arguments, out / "stdout.log", args.timeout,
+        environment=environment)
+    command = {"profile": args.profile, "flavor": args.flavor, "arguments": arguments}
     log = console.read_text(errors="replace") if console.is_file() else ""
     (out / "console.log").write_text(log)
     names = [s["name"] for s in steps if s["kind"] == "view"]
@@ -169,7 +153,7 @@ def run(args):
     result = {"schema": SCHEMA, "map": args.map, "status": "fail" if failures else "pass",
               "failures": failures, "notes": notes, "views": captured, "steps": steps,
               "mounted_maps": len(mounted), "seconds": round(time.monotonic() - started, 1),
-              "returncode": process.returncode, "command": command,
+              "returncode": returncode, "command": command, "kiln_error": error,
               "sandbox": sandbox.finish()}
     (out / "views.json").write_text(json.dumps(result, indent=2) + "\n")
     return result
@@ -183,11 +167,9 @@ def main():
     parser.add_argument("--step", action="append", default=[], help="view, do or wait step")
     parser.add_argument("--steps-file", type=Path,
                         help="a fixture's steps, one per line (before any --step)")
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2")
+    portal2_scenarios.sepipe_loader.add_arguments(parser, "portal2")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-views",
-                        help="private staged runtime (created on first use)")
-    parser.add_argument("--steam-root", type=Path, default=Path(os.environ.get(
-        "P2_STEAM_ROOT", Path.home() / ".local/share/Steam/steamapps/common/Portal 2")))
+                        help="private runtime kiln packages the profile into")
     parser.add_argument("--physics", default="vphysics_box3d")
     parser.add_argument("--engine-arg", action="append", default=[])
     parser.add_argument("--width", type=int, default=1600)

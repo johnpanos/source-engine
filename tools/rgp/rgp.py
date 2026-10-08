@@ -414,27 +414,23 @@ def outer(args, argv):
     find_rgp()
     if not Path(args.trace).is_file():
         raise RgpError("no trace %s" % args.trace)
-    for tool in ("mutter", "dbus-run-session", "xclip"):
-        if not shutil.which(tool):
-            raise RgpError("%s is not installed" % tool)
-    sys.path.insert(0, str(ROOT / "tools/quality"))
-    import private_session
-    environment = dict(os.environ)
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
+    if not shutil.which("xclip"):
+        raise RgpError("xclip is not installed")
+    sys.path.insert(0, str(ROOT / "tools/kiln"))
+    import sepipe_loader
     inner_argv = [a if a != args.out else str(out) for a in argv]
     inner_argv = [str(Path(a).resolve()) if a == args.trace else a for a in inner_argv]
-    command = private_session.dbus_run_session(out / "bus") + [
-        "mutter", "--headless", "--virtual-monitor", "%dx%d@60" % (WIDTH, HEIGHT),
-        "--wayland-display", "rgp-%d" % os.getpid(), "--",
-        sys.executable, str(Path(__file__).resolve()), "--inner", *inner_argv]
+    command = [sys.executable, str(Path(__file__).resolve()), "--inner", *inner_argv]
     budget = args.load_timeout + 90 * len(args.event or [1])
-    with open(out / "session.log", "w") as log:
-        try:
-            subprocess.run(command, env=environment, stdout=log, stderr=subprocess.STDOUT,
-                           timeout=budget, start_new_session=True)
-        except subprocess.TimeoutExpired:
-            raise RgpError("the RGP session exceeded %d s (see %s)" % (budget, out / "session.log"))
+    # kiln's private-x11 session: a private bus and headless mutter whose
+    # Xwayland RGP and xclip use.
+    try:
+        sepipe_loader.run_under_display("private-x11", out / "display", (WIDTH, HEIGHT, 60),
+                                        command, os.environ, out / "session.log", budget)
+    except subprocess.TimeoutExpired:
+        raise RgpError("the RGP session exceeded %d s (see %s)" % (budget, out / "session.log"))
+    except sepipe_loader.LoadError as error:
+        raise RgpError(str(error)) from error
     result_path = out / "result.json"
     if not result_path.is_file():
         raise RgpError("the session wrote no result (see %s)" % (out / "session.log"))

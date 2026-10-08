@@ -27,7 +27,8 @@ one of three combinations:
                  scene is derived from it (`legacy-scene`), with `legacy_game`, the
                  compile's game directory searched for materials first, and
                  `legacy_runtime`, the staged game runtime the materials come from
-                 (run/runtime-p2 for a Portal 2 map) in place of the toolchain's
+                 (for a Portal 2 map the portal2 profile's packaged runtime,
+                 out/portal2-linux-native-vulkan/dev/runtime) in place of the toolchain's
     bsp + scene  a compiled BSP lit with an authored scene in the map's space
 
 An optional `medium` (participating_medium.py: scattering_per_m,
@@ -122,7 +123,7 @@ so a failed rebuild never leaves a step without its last good outputs.
 A failing pixel gate stops the build unless `--keep-going` is given; then the
 map is still finished, build.json reports `gate-failed` and the exit is nonzero.
 A finished map is published to run/maps/<map> (`playable_maps.py`), so
-`./play <map>` loads it; `--no-publish` skips that.
+`./kiln play portal <map>` loads it; `--no-publish` skips that.
 """
 
 import argparse
@@ -847,6 +848,15 @@ class Pipeline:
                       "--out-stage", p["stage"]] + simplify_args))
         self.scene = map_scene.parse(model)
 
+    def boot_target(self):
+        """portal_boot.py's target: the toolchain's kiln client profile (RFC 0027)."""
+        return ["--profile", self.tools["client_profile"], "--flavor", self.tools["client_flavor"]]
+
+    def boot_key(self):
+        """The boot steps' cache key for that target."""
+        return {"client": [self.tools["client_profile"], self.tools["client_flavor"]],
+                "runtime": self.tools["runtime"]}
+
     def legacy_scene(self):
         """`legacy-scene` step: the compiled map's world as an authored scene."""
         p = self.paths
@@ -855,8 +865,7 @@ class Pipeline:
         # The game content the materials come from (VPK directories), after
         # the compile's own game directory (vrad's -game) when it has one.
         content = sorted(runtime.resolve().glob("*/*_dir.vpk"))
-        model_tool = Path(self.tools["client_build"]) / "mdl" / (
-            "mdl_mesh_export.exe" if os.name == "nt" else "mdl_mesh_export")
+        model_tool = Path(self.tools["model_tool"])
         settings = {"runtime": str(runtime), "model_tool": str(model_tool)}
         game_args = []
         texture_decoder = self.tools.get("texture_decoder")
@@ -1583,11 +1592,10 @@ class Pipeline:
                                                "--out", p["content"]] + sky_args))
         if self.boot:
             content_files = sorted(f for f in p["content"].rglob("*") if f.is_file())
-            self.step("boot", content_files, {"build": self.tools["client_build"]},
+            self.step("boot", content_files, self.boot_key(),
                       ["portal_boot.py"], [p["boot"]],
                       lambda: self.run("boot", [sys.executable, HERE / "portal_boot.py",
-                                                "--runtime", self.tools["runtime"],
-                                                "--build", self.tools["client_build"],
+                                                *self.boot_target(),
                                                 "--content-root", p["content"],
                                                 "--renderer", "native-vulkan", "--headless",
                                                 "--map", self.map, "--console-command",
@@ -1595,15 +1603,14 @@ class Pipeline:
         runtime_gate = self.runtime_gate
         if self.boot and reference:
             commands, _ = reference_compare.camera_commands(self.scene)
-            boot_args = ["--runtime", self.tools["runtime"], "--build",
-                         self.tools["client_build"], "--content-root", p["content"],
+            boot_args = [*self.boot_target(), "--content-root", p["content"],
                          "--renderer", "native-vulkan", "--headless", "--map", self.map,
                          "--out", p["camera_boot"]]
             for command in commands:
                 boot_args += ["--console-command", command]
             content_files = sorted(f for f in p["content"].rglob("*") if f.is_file())
             self.step("camera-boot", content_files,
-                      {"build": self.tools["client_build"], "commands": commands},
+                      dict(self.boot_key(), commands=commands),
                       ["portal_boot.py", "reference_compare.py"], [p["camera_boot"]],
                       lambda: self.run("camera-boot", [sys.executable, HERE / "portal_boot.py"] +
                                        boot_args))
@@ -1625,11 +1632,10 @@ class Pipeline:
             probe_commands = pbrt_traversal.commands(json.loads(receipt_path.read_text()))
             content_files = sorted(f for f in p["content"].rglob("*") if f.is_file())
             self.step("traversal-boot", content_files + [receipt_path],
-                      {"build": self.tools["client_build"], "commands": probe_commands},
+                      dict(self.boot_key(), commands=probe_commands),
                       ["portal_boot.py", "pbrt_traversal.py"], [p["traversal_boot"]],
                       lambda: self.run("traversal-boot", [
-                          sys.executable, HERE / "portal_boot.py", "--runtime",
-                          self.tools["runtime"], "--build", self.tools["client_build"],
+                          sys.executable, HERE / "portal_boot.py", *self.boot_target(),
                           "--content-root", p["content"], "--renderer", "native-vulkan",
                           "--headless", "--map", self.map, "--console-command",
                           probe_commands[0], "--out", p["traversal_boot"]]))
@@ -1686,7 +1692,7 @@ class Pipeline:
             playable_maps.publish(summary, sidecars={
                 MEDIUM_SIDECAR: json.dumps(baked_medium, indent=2, sort_keys=True) + "\n"}
                 if baked_medium else None)
-            print("published to %s; play it with ./play %s" %
+            print("published to %s; play it with ./kiln play portal %s" %
                   (playable_maps.STORE / self.map, self.map))
         if self.failed_gates:
             print("gate findings (reported, not fatal): " + ", ".join(self.failed_gates))
@@ -1710,7 +1716,7 @@ def main():
                         help="finish the map when a pixel gate fails; build.json records "
                              "status gate-failed and the exit status stays nonzero")
     parser.add_argument("--no-publish", action="store_true",
-                        help="do not publish the finished map to run/maps for ./play")
+                        help="do not publish the finished map to run/maps for ./kiln play portal")
     parser.add_argument("--check-toolchain", action="store_true")
     args = parser.parse_args()
     profile, _ = pbrt_map_toolchain.load_profiles()

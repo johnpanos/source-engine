@@ -45,8 +45,9 @@ PipelineId DebugOverlays::PipelineFor(
 	    tint ? "render/pass/debug/tint.frag" : "render/pass/debug/hatch.frag" } );
 	recipe.topology = PrimitiveTopology::kTriangleList;
 	recipe.raster.cull = CullMode::kNone;
-	recipe.colorFormats = { target.format };
-	recipe.blends = { tint ? BlendMode::kAlpha : BlendMode::kOpaque };
+	// assign(1, ...): GCC 13 misreports a one-element initializer list (-Warray-bounds).
+	recipe.colorFormats.assign( 1, target.format );
+	recipe.blends.assign( 1, tint ? BlendMode::kAlpha : BlendMode::kOpaque );
 	recipe.sampleCount = target.samples;
 	recipe.debugName = tint ? "render.pass.debug.tint" : "render.pass.debug.hatch";
 	auto resolved =

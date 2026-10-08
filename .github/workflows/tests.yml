@@ -54,24 +54,56 @@ jobs:
     timeout-minutes: 60
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Run tests linux-i386
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+    - name: Install build dependencies
       run: |
-        scripts/tests-ubuntu-i386.sh
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install -y g++ pkg-config cmake ninja-build g++-multilib gcc-multilib \
+          libbz2-dev:i386 zlib1g-dev libbz2-dev
+    # RFC 0016 K4: the render core embeds SPIR-V the build generates with the
+    # pinned shader tools (built once from sha256-pinned sources).
+    - name: Build the pinned shader tools
+      run: python3 tools/render/shader_toolchain.py build
+    - name: Build tests linux-i386 (kiln profile ci-tests-linux-i386)
+      env:
+        PKG_CONFIG_PATH: /usr/lib/i386-linux-gnu/pkgconfig
+      run: ./kiln build ci-tests-linux-i386
+    - name: Run tests linux-i386
+      working-directory: out/ci-tests-linux-i386/dev/install
+      run: |
+        ./unittest
+        LD_LIBRARY_PATH=bin/ ./unittest_legacy
 
   tests-linux-amd64:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Run tests linux-amd64
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+    - name: Install build dependencies
       run: |
-        scripts/tests-ubuntu-amd64.sh
+        sudo apt-get update
+        sudo apt-get install -y g++ pkg-config cmake ninja-build libbz2-dev zlib1g-dev
+    # RFC 0016 K4: the render core embeds SPIR-V the build generates with the
+    # pinned shader tools (built once from sha256-pinned sources).
+    - name: Build the pinned shader tools
+      run: python3 tools/render/shader_toolchain.py build
+    - name: Build tests linux-amd64 (kiln profile ci-tests-linux)
+      run: ./kiln build ci-tests-linux
+    - name: Run tests linux-amd64
+      working-directory: out/ci-tests-linux/dev/install
+      run: |
+        ./unittest
+        LD_LIBRARY_PATH=bin/ ./unittest_legacy
     - name: Check the built tree's include closure, target owners and link graph (RFC 0001)
       run: |
-        python3 tools/archlint/archlint.py check --all --compile-deps build
-        python3 tools/archlint/archlint.py targets --verify --partial build
+        python3 tools/archlint/archlint.py check --all --compile-deps out/ci-tests-linux/dev/build
+        python3 tools/archlint/archlint.py targets --verify --partial out/ci-tests-linux/dev/build
 
   tests-windows-i386:
     runs-on: windows-2022

@@ -19,8 +19,8 @@ named here rather than copying their rules.
 
 | Source | Where it comes from | Notes |
 | --- | --- | --- |
-| Portal 2 retail VPKs | `~/.local/share/Steam/steamapps/common/Portal 2`, staged into `run/runtime-p2*/` by [`stage_portal2_runtime.py`](../../tools/quality/stage_portal2_runtime.py) | The staged `portal2/gameinfo.txt` search order is `custom/*`, then `update`, `portal2_dlc2`, `portal2_dlc1` and `portal2` (each with its `pak01` VPK ahead of its loose files) |
-| Portal / HL2 VPKs | The Portal install, through `run.sh`/`./play` | The same search-path rules |
+| Portal 2 retail VPKs | `~/.local/share/Steam/steamapps/common/Portal 2`, packaged into the portal2 profile's runtime by kiln's linux-dir packager (`./kiln package portal2`) | The staged `portal2/gameinfo.txt` search order is `custom/*`, then `update`, `portal2_dlc2`, `portal2_dlc1` and `portal2` (each with its `pak01` VPK ahead of its loose files) |
+| Portal / HL2 VPKs | The Portal install (kiln's portal-base content location), through `./kiln play portal` | The same search-path rules |
 | Map pak lumps | Inside each BSP | Compile-time copies, such as `maps/<map>/...` cubemap-patched materials, override the VPK copy for that map |
 | Published built maps | `run/maps/<map>/materials`, mounted as `custom/pbrt-<map>` | Output of the map pipelines ([PBRT map pipeline](../../quality/fixtures/pbrt-maps/README.md)), which this repository owns |
 | P2:CE / Workshop PBR packs | Planned: read-only external mounts (AGENTS.md, "P2:CE high-quality PBR content mounts") | No mount manifest is installed yet |
@@ -52,7 +52,7 @@ provenance.
 
 ## 2. Interpretation: how a VMT becomes pixels
 
-### The render core (`r_core_world 1`, the default for `./play` and `./play_p2`)
+### The render core (`r_core_world 1`, the default for `./kiln play portal` and `./kiln play portal2`)
 
 | Concern | Owner |
 | --- | --- |

@@ -41,7 +41,7 @@ materials and lights. Front ends differ only in how they make the BSP:
 
 ```sh
 python3 tools/quality/map_lighting.py --bsp maps/room.bsp --map room \
-  [--scene room.usda] [--quality legacy-relight-preview] [--runtime run/runtime-p2]
+  [--scene room.usda] [--quality legacy-relight-preview] [--runtime out/portal2-linux-native-vulkan/dev/runtime]
 ```
 
 The back end bakes only through one seam, `light_baker.py` (the lightmap
@@ -58,18 +58,18 @@ in git history, and its recorded RFC 0008 evidence stays valid as recorded.
 ## Playing a map
 
 A finished build is published to `run/maps/<map>/` (untracked), and every
-`./play` mounts all published maps into its runtime as
+`./kiln play portal` mounts all published maps into its runtime as
 `portal/custom/pbrt-<map>`, so this works immediately:
 
 ```sh
-./play living_room        # also staircase2_pbrt, bedroom
+./kiln play portal living_room        # also staircase2_pbrt, bedroom
 python3 tools/quality/playable_maps.py list                 # what is published
 python3 tools/quality/playable_maps.py publish quality-results/living-room-map
 python3 tools/quality/playable_maps.py remove bedroom
 ```
 
 A build that failed a gate under `--keep-going` is still published, and
-`list` and `./play` show its failed gates. `--no-publish` skips publishing. The
+`list` shows its failed gates. `--no-publish` skips publishing. The
 engine draws a map's WMSH/LMAP world by default (`r_worldmesh_draw 2`, not a
 cheat), so a published map also draws correctly when loaded from the console or
 a menu; `r_worldmesh_draw 0` shows the legacy compile brushes for comparison. A
@@ -134,7 +134,7 @@ lighting and keeps its gameplay:
 
 ```sh
 python3 tools/quality/legacy_bsp_relight.py testchmb_a_00 --boot
-./play testchmb_a_00_relit
+./kiln play portal testchmb_a_00_relit
 ```
 
 It writes a `legacy_bsp` manifest to `<out>/manifest.json`
@@ -162,8 +162,9 @@ cone, and its light cells use the map's PVS, so `r_indirect_producer sdf`
 traces only the lights near each probe. The producer updates the probes
 around the camera every update and the rest in turn (`r_indirect_focus`,
 `r_indirect_probe_budget`). `--quality legacy-relight-preview` builds in
-minutes instead of hours. Boot on a client with the RTRN/SDFV loaders, such
-as `--build build`: the toolchain's `client_build` offers only `baked`.
+minutes instead of hours. Boot on a client with the RTRN/SDFV loaders: the
+boot tools take the toolchain's kiln client profile (`runtime.client_profile`
+in `pbrt-map-linux-tools.json`, `portal` by default) or `--profile`/`--flavor`.
 
 The engine replaces only the opaque world with the relit world mesh. Brush
 entities, displacements, water and translucent faces keep their vrad
@@ -182,27 +183,27 @@ staged Portal 2 runtime its materials come from (manifest key
 
 ```sh
 python3 tools/quality/legacy_bsp_relight.py --bsp path/to/map.bsp --map-name my_map \
-  --runtime run/runtime-p2
-./play_p2 +map my_map
+  --runtime out/portal2-linux-native-vulkan/dev/runtime
+./kiln play portal2 my_map
 ```
 
-`./play_p2` mounts every published map as `portal2/custom/pbrt-<map>`
-(`stage_portal2_runtime.py --mount-published`), as `./play` does for Portal.
+`./kiln play portal2` mounts every published map as `portal2/custom/pbrt-<map>`
+(the profile's published-maps package step), as `./kiln play portal` does for Portal.
 The Portal 2 client tree needs the KTX reader too
-(`pbrt_map_toolchain.py configure-client --build build-p2`).
+(`pbrt_map_toolchain.py configure-client --profile portal2`).
 
 ### The GI test chamber
 
 `portal2_gi_chamber.py` authors `sp_gi_chamber_01`, a clean Aperture test
 chamber, and builds it end to end: VMF, `vmf_map_build.py` (full
-vbsp/vvis/vrad against run/runtime-p2), then the one lighting back end with the scene derived from the BSP
+vbsp/vvis/vrad against the portal2 profile's packaged runtime), then the one lighting back end with the scene derived from the BSP
 (`vmf_map_build.light`), then publishing.
 
 ```sh
 python3 tools/quality/portal2_gi_chamber.py            # about an hour on the CPU
 python3 tools/quality/portal2_gi_chamber.py --relight-quality legacy-relight-preview
 python3 tools/quality/portal2_gi_chamber.py --capture quality-results/sp_gi_chamber_01-views
-./play_p2 +map sp_gi_chamber_01
+./kiln play portal2 sp_gi_chamber_01
 ```
 
 It uses the Portal 2 SDK's own pieces (door frames, cube dropper, fizzler,
@@ -245,7 +246,7 @@ T=build/toolchains/pbrt-map-tools
 $T/vbsp -game "$GAME" maps/mymap
 $T/vvis -game "$GAME" maps/mymap
 tools/quality/vrad_cycles.py -game "$GAME" -final maps/mymap   # was: $T/vrad ...
-./play mymap_relit
+./kiln play portal mymap_relit
 ```
 
 It runs the real vrad with every argument except its own `--cycles-*`
@@ -461,7 +462,7 @@ host yet.
 | SDFV light cells (range, side, PVS culling) | `tools/quality/sdf_light_cells.py` (tests: `tests/test_sdf_light_cells.py`) |
 | Traced producers' probe focus, independent of the engine host | `tools/quality/gi_focus.py` |
 | Bake progress from Cycles' log | `tools/quality/bake_progress.py` (tests: `tests/test_bake_progress.py`) |
-| Publishing to `./play` (store, mounts, launch arguments) | `tools/quality/playable_maps.py` (tests: `tests/test_playable_maps.py`) |
+| Publishing for `kiln play` (store, mounts) | `tools/quality/playable_maps.py` (tests: `tests/test_playable_maps.py`) |
 | The lighting back end's front door (BSP + optional scene) | `tools/quality/map_lighting.py` (tests: `tests/test_lighting_back_end.py`) |
 | The baker seam: every light-transport operation and its provider | `tools/quality/light_baker.py` (tests: `tests/test_lighting_back_end.py`) |
 | Gameplay identity gate (legacy lumps carried byte for byte) | `tools/quality/gameplay_identity.py` (tests: `tests/test_legacy_relight.py`) |

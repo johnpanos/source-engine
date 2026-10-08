@@ -29,6 +29,8 @@ from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageStat
 
 ROOT = Path(__file__).resolve().parents[2]
 PORTAL_BOOT = ROOT / "tools" / "quality" / "portal_boot.py"
+sys.path.insert(0, str(ROOT / "tools" / "kiln"))
+import sepipe_loader  # noqa: E402
 DEFAULT_MAP = "sp_a2_laser_intro_source2"
 DEFAULT_CAMERAS = (
     "chamber:-440,0,-100:0,0,0",
@@ -200,11 +202,9 @@ def assemble(boot, out, shots, cameras, map_name, game, view_scale):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--map", default=DEFAULT_MAP)
-    parser.add_argument("--game", choices=("portal", "portal2"), default="portal2")
     parser.add_argument("--content-root", type=Path,
                         help="defaults to run/maps/<map>/published.json's content_root")
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run" / "runtime-p2")
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2")
+    sepipe_loader.add_arguments(parser, "portal2")
     parser.add_argument("--camera", action="append", type=camera_arg,
                         help="repeat for each pose; laser intro defaults to three poses")
     parser.add_argument("--out", type=Path,
@@ -237,8 +237,7 @@ def main():
     if boot.exists():
         parser.error("output boot already exists: " + str(boot))
     content = content_overlay(args.content_root.resolve(), out)
-    command = [sys.executable, str(PORTAL_BOOT), "--runtime", str(args.runtime.resolve()),
-               "--build", str(args.build.resolve()), "--game", args.game,
+    command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
                "--content-root", str(content),
                "--renderer", "native-vulkan", "--require-vulkan", "--headless",
                "--map", args.map, "--out", str(boot), "--timeout", str(args.timeout),

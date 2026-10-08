@@ -50,7 +50,8 @@ import sys
 
 import conformance
 import ios_device
-import profile_extends
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
 import toolchain_policy
 
 ROOT = Path(conformance.repo_root())
@@ -94,7 +95,7 @@ def use_app(profile, name):
         raise SystemExit("%s declares no app %s (apps: %s)" % (
             profile["id"], name, ", ".join(sorted(apps)) or "none"))
     app = apps[name]
-    product = profile_extends.load_profile(ROOT / app["product_profile"])
+    product = sepipe_loader.resolve_profile(ROOT / app["product_profile"])
     merged = dict(profile)
     merged.update({
         "product_profile": app["product_profile"],
@@ -110,7 +111,7 @@ def use_app(profile, name):
 
 def target_os(profile):
     """The product profile's target OS: "ios" or "tvos"."""
-    product = profile_extends.load_profile(ROOT / profile["product_profile"])
+    product = sepipe_loader.resolve_profile(ROOT / profile["product_profile"])
     return product["target"]["os"]
 
 
@@ -573,7 +574,7 @@ def link_app(env, profile, built, suites, link_flags, programs=(), product_modul
     ok, output = run_logged(command, log)
     if not ok:
         raise SystemExit("app link failed (%s):\n%s" % (log, output[-3000:]))
-    product = profile_extends.load_profile(ROOT / profile["product_profile"])
+    product = sepipe_loader.resolve_profile(ROOT / profile["product_profile"])
     os_name = product["target"]["os"]
     os_keys = product[os_name]
     platform = {"ios": "iPhoneOS", "tvos": "AppleTVOS"}[os_name]

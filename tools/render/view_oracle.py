@@ -62,7 +62,6 @@ import datetime
 import gzip
 import hashlib
 import json
-import os
 from pathlib import Path
 import random
 import shutil
@@ -74,6 +73,8 @@ QUALITY = ROOT / "tools/quality"
 sys.path.insert(0, str(QUALITY))
 import conformance  # noqa: E402
 import conformance_result  # noqa: E402
+sys.path.insert(0, str(QUALITY.parent / "kiln"))
+import sepipe_loader  # noqa: E402
 import draw_state_diff  # noqa: E402
 import legacy_ports_views  # noqa: E402
 
@@ -108,7 +109,6 @@ CAPTURE_SOURCES = ("engine/gl_rmain.cpp", "engine/gl_rsurf.cpp", "engine/sys_dll
                    "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
                    "tools/quality/portal_boot.py", "tools/render/view_oracle.py",
                    "quality/workloads/render-view-oracles-v1.json")
-DEFAULT_STEAM_P2 = Path.home() / ".local/share/Steam/steamapps/common/Portal 2"
 
 
 class OracleError(ValueError):
@@ -435,15 +435,19 @@ def sources_identity():
     return identity
 
 
+def game_profile(scenario, args):
+    """The kiln profile a scenario's game boots (RFC 0027)."""
+    return args.portal2_profile if scenario["game"] == "portal2" else args.portal_profile
+
+
+def boot_target(scenario, args):
+    """portal_boot.py's --profile/--flavor for a scenario."""
+    return ["--profile", game_profile(scenario, args), "--flavor", args.flavor]
+
+
 def prepare_runtime(scenario, args, out):
-    """The runtime portal_boot stages from: Portal's, or a Portal 2 content runtime."""
-    if scenario["game"] == "portal":
-        return Path(args.runtime)
-    runtime = Path(args.p2_runtime) if args.p2_runtime else out / "p2content"
-    if not runtime.exists():
-        import stage_portal2_runtime  # noqa: E402 (needs the Steam install only here)
-        stage_portal2_runtime.stage_content(args.steam_root, runtime)
-    return runtime
+    """The scenario game's packaged kiln runtime: the content its captures read."""
+    return sepipe_loader.packaged_runtime(game_profile(scenario, args), args.flavor)
 
 
 def capture_scenario(scenario, workload, args, out):
@@ -455,20 +459,19 @@ def capture_scenario(scenario, workload, args, out):
         shutil.rmtree(directory)
     directory.parent.mkdir(parents=True, exist_ok=True)
     runtime = prepare_runtime(scenario, args, out)
-    build = args.p2_build if scenario["game"] == "portal2" else args.build
     width, height = scenario.get("size", common["size"])
     engine_args = common.get("engine_args", []) + scenario.get("engine_args", [])
     startup = common.get("startup_commands", []) + scenario.get("startup_commands", [])
     physics = scenario.get("physics", common["physics"])
     if scenario.get("settings") == "legacy-ports":
-        # The legacy-ports view set's own settings (run.conf's), from its one
+        # The legacy-ports view set's own settings (the portal profile's), from its one
         # authority; the workload's determinism settings stay.
         width, height = legacy_ports_views.WIDTH, legacy_ports_views.HEIGHT
         engine_args = common.get("engine_args", []) + list(legacy_ports_views.ENGINE_ARGS)
         startup = common.get("startup_commands", []) + list(legacy_ports_views.STARTUP_COMMANDS)
         physics = "vphysics_box3d"
-    command = [sys.executable, str(PORTAL_BOOT), "--game", scenario["game"],
-               "--runtime", str(runtime), "--build", str(build), "--out", str(directory),
+    command = [sys.executable, str(PORTAL_BOOT), *boot_target(scenario, args),
+               "--out", str(directory),
                "--headless", "--renderer", common["renderer"], "--map", scenario["map"],
                "--physics", physics,
                "--width", str(width), "--height", str(height),
@@ -499,7 +502,7 @@ def capture_scenario(scenario, workload, args, out):
     record = {"schema": CAPTURE_SCHEMA, "scenario": scenario["id"], "game": scenario["game"],
               "map": scenario["map"], "started_utc": started, "source": sources_identity(),
               "runtime": runtime_identity(runtime, scenario["game"], scenario["map"]),
-              "build": {"path": str(Path(build).resolve()),
+              "build": {"client": boot_target(scenario, args),
                         "executables_sha256": hashlib.sha256(json.dumps(
                             evidence.get("executables", {}), sort_keys=True).encode()).hexdigest()},
               "queue_mode": queue_mode,
@@ -852,22 +855,15 @@ def common_arguments(parser):
                         help="only this scenario (repeatable)")
 
 
+def client_arguments(parser):
+    """The kiln profiles a capture boots, one per game."""
+    parser.add_argument("--portal-profile", default="portal", help="kiln profile for Portal")
+    parser.add_argument("--portal2-profile", default="portal2", help="kiln profile for Portal 2")
+    parser.add_argument("--flavor", default="dev", help="the profiles' build flavor")
+
+
 def run_arguments(parser):
-    parser.add_argument("--runtime", type=Path,
-                        default=Path(os.environ.get("SOURCE_PORTAL_RUNTIME",
-                                                    ROOT / "run/runtime")),
-                        help="installed Portal runtime (immutable assets are shared)")
-    parser.add_argument("--build", type=Path,
-                        default=Path(os.environ.get("SOURCE_VIEW_ORACLE_BUILD", ROOT / "build")),
-                        help="Portal client Waf tree or install (native Vulkan, SDL3)")
-    parser.add_argument("--p2-build", type=Path,
-                        default=Path(os.environ.get("SOURCE_PORTAL2_BUILD", ROOT / "build-p2")),
-                        help="Portal 2 client Waf tree or install (native Vulkan, SDL3)")
-    parser.add_argument("--steam-root", type=Path,
-                        default=Path(os.environ.get("SOURCE_PORTAL2_STEAM_ROOT",
-                                                    DEFAULT_STEAM_P2)))
-    parser.add_argument("--p2-runtime", type=Path,
-                        help="private staged Portal 2 content runtime (default <out>/p2content)")
+    client_arguments(parser)
     parser.add_argument("--queue-mode", type=int, choices=(0, 2),
                         help="override every scenario's mat_queue_mode")
     parser.add_argument("--engine-arg", action="append", default=[],

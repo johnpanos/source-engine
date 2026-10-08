@@ -44,6 +44,8 @@ from PIL import Image, ImageChops, ImageEnhance, ImageStat
 
 ROOT = Path(__file__).resolve().parents[2]
 BOOT = ROOT / "tools/quality/portal_boot.py"
+sys.path.insert(0, str(ROOT / "tools/kiln"))
+import sepipe_loader  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from view_oracle import console_script, script_frames
 # Retained comparison and survey cameras, deduplicated. Survey player origins
@@ -94,8 +96,8 @@ def verify_fizzler(boot):
                 return {"entity": "fizzler_brush", "disabled": True,
                         "settle_frames": FIZZLER_SETTLE_FRAMES, "log": str(path)}
     raise ValueError("first fizzler did not confirm disabled before capture")
-sys.path.insert(0, str(ROOT / "tools/quality"))
-import private_session
+sys.path.insert(0, str(ROOT / "tools/kiln"))
+import sepipe_loader
 
 
 def parse_pose(value):
@@ -166,8 +168,7 @@ def side_settings(side, args):
 def capture(map_name, side, content, args, out, poses=None):
     startup_commands, engine_args = side_settings(side, args)
     boot = out / (side + "-boot")
-    command = [sys.executable, str(BOOT), "--runtime", str(args.runtime),
-               "--build", str(args.build), "--game", "portal2",
+    command = [sys.executable, str(BOOT), *sepipe_loader.boot_arguments(args),
                "--renderer", "native-vulkan", "--require-vulkan", "--require-wayland",
                "--view-oracle", "--map", map_name, "--out", str(boot),
                "--width", str(args.width), "--height", str(args.height),
@@ -269,7 +270,7 @@ def capture(map_name, side, content, args, out, poses=None):
                 raise ValueError("%s screenshot has wrong dimensions" % name)
             image.convert("RGB").save(target)
         records[name] = {"map": map_name, "content_root": str(content) if content else None,
-            "renderer": "native-vulkan", "build": str(args.build),
+            "renderer": "native-vulkan", "client": sepipe_loader.boot_arguments(args),
             "image": target.name, "boot_evidence": str(evidence_path),
             "source_image": str(source), "view_oracle": str(oracle),
             "startup_commands": list(startup_commands),
@@ -561,8 +562,7 @@ def main(argv=None):
     parser.add_argument("--content-root-b", type=Path)
     parser.add_argument("--panel-relay", action="append", default=[],
                         help="activate a named test chamber panel relay on both maps; repeatable")
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-fsr")
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2-fsr")
+    sepipe_loader.add_arguments(parser, "portal2-fsr")
     parser.add_argument("--width", type=int, default=7680)
     parser.add_argument("--height", type=int, default=4320)
     parser.add_argument("--timeout", type=int, default=1800)
@@ -575,9 +575,11 @@ def main(argv=None):
         parser.error("timeout must be positive")
     if not (64 <= args.width <= 8192 and 64 <= args.height <= 8192):
         parser.error("capture dimensions must be between 64 and 8192")
-    if not any(re.search(r"^GAMES = ['\"]portal2['\"]$", path.read_text(), re.M)
-               for path in (args.build / "c4che").glob("*_cache.py")):
-        parser.error("--build must be configured for Portal 2")
+    try:
+        if sepipe_loader.game_of(args.profile) != "portal2":
+            parser.error("--profile must launch Portal 2")
+    except sepipe_loader.LoadError as error:
+        parser.error("kiln: %s" % error)
     if any(not re.fullmatch(r"[A-Za-z0-9_@-]+", name) for name in args.panel_relay):
         parser.error("panel relay names may contain only letters, digits, _, @, and -")
     if args.all_captures and (args.map_a, args.map_b) != ("sp_a1_intro4", "sp_a1_intro4_relit"):
@@ -594,28 +596,20 @@ def main(argv=None):
         if not args.rerun_b and out.exists() and any(out.iterdir()):
             parser.error("output directory is not empty: " + str(out))
         out.mkdir(parents=True, exist_ok=True)
-        environment = dict(os.environ)
-        environment["SDL_VIDEODRIVER"] = "wayland"
-        environment["SDL_VIDEO_DRIVER"] = "wayland"
-        for name in ("DISPLAY", "WAYLAND_DISPLAY"):
-            environment.pop(name, None)
-        command = private_session.dbus_run_session(out / "dbus") + [
-            "mutter", "--headless", "--wayland", "--virtual-monitor",
-            "%dx%d@60" % (args.width, args.height),
-            "--wayland-display", "map-swipe-%d" % os.getpid(), "--",
-            sys.executable, str(Path(__file__).resolve()), *(argv if argv is not None else sys.argv[1:]),
-            "--in-compositor"]
-        with (out / "compositor.log").open("a" if args.rerun_b else "w") as log:
-            result = subprocess.run(command, env=environment, stdout=log,
-                                    stderr=subprocess.STDOUT, timeout=args.timeout * 2 + 120)
-        if result.returncode:
+        # kiln's private display session: a private bus and headless mutter.
+        command = [sys.executable, str(Path(__file__).resolve()),
+                   *(argv if argv is not None else sys.argv[1:]), "--in-compositor"]
+        returncode = sepipe_loader.run_under_display(
+            "private", out / "display", (args.width, args.height, 60), command, os.environ,
+            out / "compositor.log", args.timeout * 2 + 120, append=args.rerun_b)
+        if returncode:
             print("map_swipe_compare: compositor run failed; see " + str(out / "compositor.log"),
                   file=sys.stderr)
         else:
             print(out / ("index.html" if args.all_captures else "compare.html"))
-        return result.returncode
+        return returncode
     if not args.rerun_b and out.exists() and any(out.iterdir()):
-        allowed = {"dbus", "compositor.log"}
+        allowed = {"display", "compositor.log"}
         if any(item.name not in allowed for item in out.iterdir()):
             parser.error("output directory is not empty: " + str(out))
     out.mkdir(parents=True, exist_ok=True)

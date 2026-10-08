@@ -20,7 +20,7 @@ walker places each entity's brushes at its current origin. They are derived
 at run time: nothing from the map is stored in the repository.
 
 A scenario may run on a published derivative of a shipped map (the map
-pipeline's run/maps, mounted as ./play_p2 mounts it): "map" names the
+pipeline's run/maps, mounted as ./kiln play portal2 mounts it): "map" names the
 published map this build plays, "retail_map" the shipped map retail plays
 and whose BSP gives the collision. A relit map keeps every gameplay lump
 byte-identical, so both sides play the same chamber.
@@ -79,11 +79,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import conformance  # noqa: E402
 import conformance_result  # noqa: E402
 import legacy_bsp  # noqa: E402
-import playable_maps  # noqa: E402
 import portal2_material_shots as shots  # noqa: E402
 import portal2_scenarios  # noqa: E402
-import private_session  # noqa: E402
-import stage_portal2_runtime  # noqa: E402
+import portal2_retail  # noqa: E402
 
 
 ROOT = Path(conformance.repo_root())
@@ -109,7 +107,7 @@ HEIGHT_TOLERANCE = 160.0
 # set the pitch every frame.
 WALKER_ENGINE_ARGS = ["+cl_mouselook", "0", "+joystick", "0"]
 # Retail runs its user config (the mirror's own cfg/config.cfg; see
-# stage_portal2_runtime.RETAIL_ENGINE_ARGS) at every map start, after the
+# portal2_retail.RETAIL_ENGINE_ARGS) at every map start, after the
 # command line: the walker's settings go into that file too.
 RETAIL_WALKER_CONFIG = {"cl_mouselook": "0", "cl_mouselook2": "0", "joystick": "0"}
 
@@ -290,23 +288,19 @@ def capture_build(args, workload, scenarios):
         list(args.extra_arg)
     capture = {"schema": shots.CAPTURE_SCHEMA, "side": "build", "status": "incomplete",
                "started_utc": now_iso(), "source": conformance.source_identity(str(ROOT)),
-               "build": str(args.build), "extra_args": extra,
+               "client": [args.profile, args.flavor], "extra_args": extra,
                "selected": [s["name"] for s in scenarios], "scenarios": {}}
     runtime = Path(args.runtime).resolve()
     published = [s["map"] for s in scenarios if s["map"] != portal2_scenarios.retail_map(s)]
-    stage_portal2_runtime.stage_content(args.steam_root, runtime, mount_custom=bool(published))
+    capture["installed"] = portal2_scenarios.package_runtime((args.profile, args.flavor), runtime)
     if published:
-        # The map pipeline's published maps (run/maps), mounted as ./play_p2
-        # mounts them: portal2/custom/pbrt-<map>.
-        mounted, skipped = playable_maps.mount(runtime, game="portal2")
-        missing = [name for name in published if name not in mounted]
+        # The profile's package mounts the map pipeline's published maps
+        # (portal2/custom/pbrt-<map>), as `kiln play portal2` does.
+        missing = [name for name in published
+                   if not (runtime / "portal2/custom" / ("pbrt-" + name)).exists()]
         if missing:
-            raise BeatError("published map not mounted: %s" % "; ".join(
-                "%s (%s)" % (name, skipped.get(name, "not published")) for name in missing))
-        capture["published_maps"] = {name: {key: mounted[name].get(key) for key in (
-            "status", "failed_gates", "bsp2_sha256", "published")} for name in published}
-    capture["installed"] = stage_portal2_runtime.portal_boot.install_build(
-        args.build, runtime, game="portal2")
+            raise BeatError("published map not mounted: %s" % "; ".join(missing))
+        capture["published_maps"] = published
     portal2_scenarios.install_scripts(args.workload, workload, runtime)
     capture["seed_fault"] = getattr(args, "seed_fault", None)
     capture["player_clips"] = install_clips(
@@ -322,7 +316,7 @@ def capture_build(args, workload, scenarios):
         started = time.time()
         result = portal2_scenarios.run_scenario(
             scenario, runtime, out / name, args.start_frames, shots.WIDTH, shots.HEIGHT, tools,
-            extra_args=extra)
+            extra_args=extra, client=(args.profile, args.flavor))
         record = shots.finish_scenario(out / name, name, result, screenshots, started,
                                        (out / name / "stdout.log").read_text(errors="replace"))
         capture["scenarios"][name] = record
@@ -349,22 +343,12 @@ def capture_retail(args, workload, scenarios):
     for scenario in scenarios:
         inner += ["--scenario", scenario["name"]]
     inner += ["--engine-arg=" + arg for arg in WALKER_ENGINE_ARGS]
-    config = out / "compositor-config"
-    config.mkdir(parents=True, exist_ok=True)
-    environment = dict(os.environ, XDG_CONFIG_HOME=str(config))
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
-    command = private_session.dbus_run_session(out / "dbus") + [
-        "mutter", "--headless", "--wayland", "--virtual-monitor", "1920x1080@60",
-        "--wayland-display", "p2-storybeats-%d" % os.getpid(), "--"] + inner
     print("== retail %s" % ", ".join(s["name"] for s in scenarios), flush=True)
-    with (out / "compositor.log").open("wb") as log:
-        process = subprocess.run(command, env=environment, stdout=log,
-                                 stderr=subprocess.STDOUT, timeout=args.session_timeout)
+    returncode = shots.run_retail_session(inner, out, args.session_timeout)
     path = out / "capture.json"
     if not path.is_file():
         raise BeatError("the retail session wrote no capture (exit %d); see %s"
-                        % (process.returncode, out / "compositor.log"))
+                        % (returncode, out / "compositor.log"))
     capture = json.loads(path.read_text())
     capture["player_clips"] = count
     shots.write_capture(out, capture)
@@ -681,8 +665,7 @@ def main(argv=None):
                    help="only this scenario (repeatable)")
     p.add_argument("--out", type=Path, required=True, help="new capture directory")
     p.add_argument("--steam-root", type=Path, default=steam)
-    p.add_argument("--build", type=Path,
-                   default=Path(os.environ.get("SOURCE_PORTAL2_BUILD") or ROOT / "build-p2"))
+    portal2_scenarios.sepipe_loader.add_arguments(p, "portal2")
     p.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-storybeats")
     p.add_argument("--mirror", type=Path, default=ROOT / "run/retail-p2-storybeats")
     p.add_argument("--start-frames", type=int, default=300)
@@ -720,8 +703,7 @@ def main(argv=None):
     p.add_argument("--out", type=Path, help="capture directory (default: $CONFORMANCE_OUT or "
                                             "quality-results/portal2-storybeats-<time>)")
     p.add_argument("--steam-root", type=Path, default=steam)
-    p.add_argument("--build", type=Path,
-                   default=Path(os.environ.get("SOURCE_PORTAL2_BUILD") or ROOT / "build-p2"))
+    portal2_scenarios.sepipe_loader.add_arguments(p, "portal2")
     p.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-storybeats")
     p.add_argument("--start-frames", type=int, default=300)
     p.add_argument("--extra-arg", action="append", default=[])

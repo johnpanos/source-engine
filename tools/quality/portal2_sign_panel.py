@@ -61,7 +61,6 @@ SOURCE_PORTAL2_BUILD) and a licensed Portal 2 install
 import argparse
 import datetime
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -75,10 +74,12 @@ sys.path.insert(0, str(QUALITY))
 
 import conformance_result  # noqa: E402
 
+sys.path.insert(0, str(QUALITY.parent / "kiln"))
+import sepipe_loader  # noqa: E402
+
 ROOT = QUALITY.parents[1]
 PORTAL_BOOT = QUALITY / "portal_boot.py"
 SCHEMA = "portal2-sign-panel-evidence/v1"
-DEFAULT_STEAM_P2 = Path.home() / ".local/share/Steam/steamapps/common/Portal 2"
 MAP = "sp_a1_intro6"
 SIGN = "info_panel-info_panel"
 WIDTH, HEIGHT = 1024, 720
@@ -137,8 +138,8 @@ def console_lines(path):
 
 
 def boot(args, path, out):
-    command = [sys.executable, str(PORTAL_BOOT), "--game", "portal2", "--runtime",
-               str(args.p2_runtime), "--build", str(args.p2_build), "--out", str(out),
+    command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
+               "--out", str(out),
                "--headless", "--map", MAP, "--renderer", "native-vulkan", "--require-vulkan",
                "--physics", "vphysics_box3d", "--width", str(WIDTH), "--height", str(HEIGHT),
                "--capture-wait", "1500", "--timeout", str(args.timeout)]
@@ -451,14 +452,9 @@ def legacy_close(run, core_close_report):
 def cmd_suite(args):
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    if args.p2_runtime is None:
-        args.p2_runtime = out / "p2content"
-        if not args.p2_runtime.exists():
-            import stage_portal2_runtime  # noqa: E402 (needs the Steam install only here)
-            stage_portal2_runtime.stage_content(args.steam_root, args.p2_runtime)
     checks = conformance_result.Checks()
     evidence = {"schema": SCHEMA, "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "p2_build": str(args.p2_build.resolve()), "runs": []}
+                "client": sepipe_loader.boot_arguments(args), "runs": []}
     core_run = boot(args, "core", out / "core")
     legacy_run = boot(args, "legacy", out / "legacy")
     for run in (core_run, legacy_run):
@@ -546,11 +542,7 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     suite = sub.add_parser("suite")
     suite.add_argument("--out", type=Path, required=True)
-    suite.add_argument("--p2-build", type=Path,
-                       default=Path(os.environ.get("SOURCE_PORTAL2_BUILD", ROOT / "build-p2")))
-    suite.add_argument("--p2-runtime", type=Path, default=None)
-    suite.add_argument("--steam-root", type=Path,
-                       default=Path(os.environ.get("SOURCE_PORTAL2_STEAM_ROOT", DEFAULT_STEAM_P2)))
+    sepipe_loader.add_arguments(suite, "portal2")
     suite.add_argument("--timeout", type=int, default=900)
     suite.add_argument("--verbose", action="store_true")
     sub.add_parser("selftest")

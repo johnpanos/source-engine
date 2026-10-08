@@ -564,39 +564,19 @@ def command_compare(args):
 # Capture through portal_boot
 
 
-def portal_runtime():
-    return Path(os.environ.get("SOURCE_PORTAL_RUNTIME") or
-                ROOT.parent / "source-engine" / "run" / "runtime")
-
-
-def default_build(game):
-    """The render-core trees' installs ($SOURCE_PORTAL_BUILD, $SOURCE_PORTAL2_BUILD)."""
-    if game == "portal":
-        return Path(os.environ.get("SOURCE_PORTAL_BUILD") or ROOT / "build-rc-client" / "install")
-    return Path(os.environ.get("SOURCE_PORTAL2_BUILD") or ROOT / "build-rc-p2" / "install")
-
-
-def default_runtime(game, build):
-    if game == "portal":
-        return portal_runtime()
-    return Path(os.environ.get("SOURCE_PORTAL2_RUNTIME") or ROOT / "build-rc-p2" / "p2content")
-
-
-def run_capture(game, out, build=None, runtime=None, timeout=900):
-    """Boot the game once; returns the two captures' paths and the evidence."""
+def run_capture(game, out, profile=None, flavor="dev", timeout=900):
+    """Boot the game once (its kiln profile, by default named after the
+    game); returns the two captures' paths and the evidence."""
     out = Path(out)
     content = out / "content"
     write_materials(content)
-    build = Path(build or default_build(game))
-    runtime = Path(runtime or default_runtime(game, build))
     boot = out / "boot"
     # One line: separate cfg lines run at once, and the wait must hold the
     # second capture back.
     commands = ["mat_proxy_capture proxy_capture_0.jsonl %s; wait 40; "
                 "mat_proxy_capture proxy_capture_1.jsonl %s" % (PATTERN, PATTERN)]
     argv = [sys.executable, str(ROOT / "tools" / "quality" / "portal_boot.py"),
-            "--runtime", str(runtime), "--build", str(build), "--game", game,
-            "--map", MAPS[game], "--headless", "--renderer", "native-vulkan",
+            "--profile", profile or game, "--flavor", flavor, "--map", MAPS[game], "--headless", "--renderer", "native-vulkan",
             "--material-root", str(content), "--out", str(boot), "--capture-wait", "120",
             "--timeout", str(timeout), "--startup-command", "host_framerate 0.015",
             "--engine-arg=-deterministicrender", "--engine-arg=-nosound"]
@@ -612,7 +592,7 @@ def run_capture(game, out, build=None, runtime=None, timeout=900):
 def command_capture(args):
     checks = Checks()
     out = Path(args.out)
-    captures, status = run_capture(args.game, out, args.build, args.runtime)
+    captures, status = run_capture(args.game, out, args.profile, args.flavor)
     present = [path for path in captures if path.is_file()]
     if not checks.check(len(present) == 2, "%s.captured" % args.game,
                         "portal_boot exited %d; captures %s (see %s)" % (
@@ -781,10 +761,8 @@ def main(argv=None):
     cap = commands.add_parser("capture", help="capture and check the legacy proxy values")
     cap.add_argument("--game", choices=sorted(CLIENT_PROJECTS), required=True)
     cap.add_argument("--out", required=True)
-    cap.add_argument("--build", help="the game's install (default build-rc-client/install or "
-                                     "build-rc-p2/install)")
-    cap.add_argument("--runtime", help="the staged runtime (default ../source-engine/run/runtime "
-                                       "or build-rc-p2/p2content)")
+    cap.add_argument("--profile", help="kiln profile to boot (default: the game's own)")
+    cap.add_argument("--flavor", default="dev", help="the profile's build flavor")
     cap.add_argument("--record", action="store_true", help="record the captures as the fixture")
     cap.add_argument("--core", action="store_true",
                      help="also check the frontend's family blocks against the legacy values")

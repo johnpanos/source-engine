@@ -10,7 +10,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import ios_frame_pacing as pacing  # noqa: E402
-from profile_extends import load_profile  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "kiln"))
+from sepipe_loader import resolve_profile as load_profile  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[3]
 SCENARIO = {"map": "testchmb_a_02", "host_framerate": 60}

@@ -20,7 +20,7 @@ struct MapBuildRequest
 {
 	std::string vmfPath;      // the saved map, as the file store names it
 	bool fullQuality = false; // release lighting instead of the fast edit loop
-	bool publish = false;     // make it playable (./play <map>)
+	bool publish = false;     // make it playable (./kiln play portal <map>)
 	// Light the compiled map with the one lighting back end
 	// (tools/quality/map_lighting.py) under this export profile, e.g.
 	// "legacy-relight-preview"; empty keeps vrad's lighting.

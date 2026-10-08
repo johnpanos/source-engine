@@ -16,7 +16,7 @@ What it does:
   GTK/fontconfig settings, Steam API client state (steam_api finds the client
   through ~/.steam) and anything else a library saves under $HOME land there.
   XDG_RUNTIME_DIR is kept: it holds sockets (Wayland, PipeWire, D-Bus), not
-  saved state; private_session.py owns the private D-Bus session.
+  saved state; kiln's private display session owns the private D-Bus session.
 - XDG_CACHE_HOME points at a shared harness cache
   (<real cache>/source-engine-harness), not the player's: driver shader caches
   (Mesa, RADV) are content-addressed and change timing only, and frame-time
@@ -25,7 +25,8 @@ What it does:
 - Every declared write path (a staged runtime, a retail mirror's write
   directories) must resolve outside the player's real locations: the real
   XDG config/data/state directories (which hold the Steam install), ~/.steam
-  and the player runtimes that ./play, ./play_p2 and ./play_fstop use. For a
+  and the player runtimes `kiln play` uses (out/<profile>/<flavor>/runtime),
+  plus the run/ runtimes the retired launchers used. For a
   directory tree, the engine's standard write subdirectories (cfg, save,
   screenshots, platform config) of each real top-level directory are checked
   too, so a cfg/ linked into a Steam install is refused before the launch.
@@ -56,9 +57,10 @@ SCHEMA = "launch-sandbox/v1"
 ROOT = Path(__file__).resolve().parents[2]
 PROTECTED_VARIABLE = "SOURCE_HARNESS_PROTECTED"
 GRANTS = ("real-home", "steam", "player-write-paths")
-# The runtimes the interactive launchers play from (./play, run.sh, ./play_p2,
-# ./play_fstop). Harness runtimes under run/ (runtime-p2-audio, retail-p2-*)
-# belong to their harnesses and are not listed.
+# The runtimes the retired launchers (./play, run.sh, ./play_p2, ./play_fstop)
+# played from; a player's saved state may still live there. Harness runtimes
+# under run/ (runtime-p2-audio, retail-p2-*) belong to their harnesses and are
+# not listed. kiln's player runtimes are out/<profile>/<flavor>/runtime.
 PLAYER_RUNTIMES = ("runtime", "runtime-native", "runtime-dxvk", "runtime-p2", "runtime-fstop")
 # Engine write directories inside a game or platform directory: cfg/config.cfg
 # and the other archived settings, saves (retail Portal 2 uses SAVE),
@@ -96,6 +98,7 @@ def protected_locations(environ=None, repo=ROOT):
     real = real_locations(environ)
     paths = [real[variable] for variable, _ in XDG_PRIVATE] + [real["steam_dot"]]
     paths += [Path(repo) / "run" / name for name in PLAYER_RUNTIMES]
+    paths += sorted((Path(repo) / "out").glob("*/*/runtime"))
     paths += [Path(entry) for entry in environ.get(PROTECTED_VARIABLE, "").split(os.pathsep)
               if entry]
     unique = []

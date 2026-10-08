@@ -35,7 +35,7 @@ lights against the stage's lights.
 renderer plus projectors and media). `build` makes each map: the scene front
 end's collision VMF (`pbrt_collision_vmf.py`) plus the fixture's entities,
 compiled by `vmf_map_build.py`, then lit with the authored scene by the one
-lighting back end (`map_lighting.py`) and published (./play <map>); a state
+lighting back end (`map_lighting.py`) and published (./kiln play portal <map>); a state
 that owns a map (`lighting.state_maps`, a medium state) gets the same BSP lit
 again with its medium in the lightmap bake (`map_lighting.light(medium=...)`).
 `check` validates fixture data and historical references. Product parity uses

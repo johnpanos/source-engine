@@ -2,7 +2,7 @@
 """render.lab.transmission (RFC 0016 K11/K12): scene color in render_lab's map renderer.
 
     python3 tools/render/lab_transmission.py [--tree build-rc-lab] [--out DIR]
-        [--runtime run/runtime-p2/portal2] [--map run/maps/sp_a1_intro4_relit]
+        [--runtime <portal2 runtime>/portal2] [--map run/maps/sp_a1_intro4_relit]
 
 The map renderer (render_lab --map) draws its opaque world and models, takes
 the view's scene color through render.graph's capture owner
@@ -24,7 +24,7 @@ Seeded defects that must fail the interior check (render_lab
 opaque draws, and the transmitting draws rasterized at a viewport offset by
 an eighth of the target that the frame's viewport term does not describe.
 
-The content is the user's installed Portal 2 runtime (run/runtime-p2) and the
+The content is the portal2 profile's packaged runtime (kiln package portal2) and the
 published relit map; neither is in the repository. The suite builds a private
 loose-file overlay of both (render_lab reads loose files from one game root)
 and extracts the few VPK-only files the frame reads (flashlight cookies, the
@@ -160,10 +160,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--tree", default="build-rc-lab")
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run" / "runtime-p2" / "portal2")
+    parser.add_argument("--runtime", type=Path,
+                        help="the Portal 2 game directory (default: the portal2 profile's "
+                             "packaged runtime's portal2/)")
     parser.add_argument("--map", type=Path, default=ROOT / "run" / "maps" / MAP)
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
+    if args.runtime is None:
+        sys.path.insert(0, str(ROOT / "tools" / "kiln"))
+        import sepipe_loader
+        args.runtime = sepipe_loader.packaged_runtime("portal2") / "portal2"
     checks = Checks()
     binary = lab_binary(args.tree)
     if not checks.check(binary.exists(), "lab.binary", "%s is not built" % binary):

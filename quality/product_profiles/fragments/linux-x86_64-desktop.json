@@ -38,7 +38,7 @@
     "default_flavor": "dev",
     "flavors": {
       "dev": {
-        "description": "Development instrumentation kept (the trees ./play and ./play_p2 build today)",
+        "description": "Development instrumentation kept (the trees the retired ./play and ./play_p2 built)",
         "configure_options": {}
       },
       "release": {
@@ -46,6 +46,13 @@
         "configure_options": {
           "product_flavor": "release",
           "enable_lto": true
+        }
+      },
+      "ktx": {
+        "description": "dev with the pinned KTX2 reader (RFC 0008 F3): KTX2 textures in native Vulkan clients and the Hammer shell's previews. Provision the reader first: pbrt_map_toolchain.py provision --steps ktx-reader",
+        "configure_options": {
+          "ktx_source_root": "dependencies/pbrt-map/ktx-software",
+          "ktx_build_root": "dependencies/pbrt-map/ktx-reader-build"
         }
       }
     }

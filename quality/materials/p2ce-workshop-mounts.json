@@ -1,6 +1,6 @@
 {
   "format": "p2ce-workshop-mounts/v1",
-  "description": "Opt-in read-only P2:CE Workshop content mounted ahead of retail Portal 2 by tools/quality/stage_portal2_runtime.py --workshop (./play_p2 --workshop). Earlier packs win. Only paths under 'include' are taken; maps, scripts and VScripts the packs also ship are never mounted. A model is taken whole (mdl/vvd/vtx/phy) from the first pack that ships any of its files. Nothing here is redistributed; the bytes stay in the user's Steam installation. The stager refuses a selected collision model that is not VPHY version 0x0100.",
+  "description": "Opt-in read-only P2:CE Workshop content mounted ahead of retail Portal 2 by the portal2 profile's p2ce-workshop mount set (kiln play portal2 --mounts p2ce-workshop). Earlier packs win. Only paths under 'include' are taken; maps, scripts and VScripts the packs also ship are never mounted. A model is taken whole (mdl/vvd/vtx/phy) from the first pack that ships any of its files. Nothing here is redistributed; the bytes stay in the user's Steam installation. The stager refuses a selected collision model that is not VPHY version 0x0100.",
   "steam_app": 440000,
   "decision": "User direction 2026-10-07: enable the Tier 1 packs of the workshop review except November Doors.",
   "packs": [

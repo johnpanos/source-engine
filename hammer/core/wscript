@@ -94,7 +94,7 @@ def build(bld):
 		features  = 'cxx',
 		includes  = [ '../../public', '../..' ],
 		defines   = [],
-		use       = [ 'hammer_ports', 'hammer_scene', 'vmf', 'kvtext', 'mapgeometry', 'vtf_container' ],
+		use       = [ 'hammer_ports', 'hammer_scene', 'vmf', 'kvtext', 'mapgeometry', 'vtf_container', 'content_vpk' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)

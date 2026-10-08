@@ -29,7 +29,7 @@
 //
 //			Build (headless compile/link is sufficient to prove the sibling binds
 //			to the libraries; running needs a display). See
-//			unittests/hammertest/adapters/build_gtk_shell.sh for the exact command,
+//			the hammer_gtk_shell target (`./kiln build hammer`, hammer/gtk/wscript),
 //			and unittests/hammertest/adapters/test_shell_workflow.cpp for the
 //			headless verification of the composition this shell drives.
 //

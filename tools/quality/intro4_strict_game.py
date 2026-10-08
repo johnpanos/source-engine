@@ -15,11 +15,13 @@ import sys
 
 from intro4_material_check import commands
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--runtime', type=Path, required=True)
-    parser.add_argument('--build', type=Path, help='optional built product overlay; omit to test installed runtime')
+    sepipe_loader.add_arguments(parser, 'portal2-fsr')
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--fsr-assets', type=Path, required=True)
     parser.add_argument('--fsr-scale', choices=('0.5', '0.588235', '0.666667', '1'),
@@ -41,16 +43,14 @@ def main():
     for mode, scale in (('fsr-on', args.fsr_scale), ('fsr-off', '0')):
         capture = args.out / mode
         boot = [sys.executable, str(root / 'tools/quality/portal_boot.py'),
-                '--runtime', str(args.runtime.resolve()),
-                '--out', str(capture.resolve()), '--game', 'portal2',
+                *sepipe_loader.boot_arguments(args),
+                '--out', str(capture.resolve()),
                 '--renderer', 'native-vulkan', '--require-vulkan',
                 '--map', 'sp_a1_intro4_relit', '--timeout', str(args.timeout),
                 '--map-after-start',
                 '--capture-wait', '120', '--allow-user-display', '--no-mouse',
                 '--physics', 'vphysics_box3d', '--engine-arg=-physics_shape_inertia',
                 '--engine-arg=-vkemitparallel', '--engine-arg=1']
-        if args.build is not None:
-            boot.extend(['--build', str(args.build.resolve())])
         if mode == 'fsr-on':
             boot.extend(['--engine-arg=-fsr', '--engine-arg=-fsr-assets',
                          f'--engine-arg={args.fsr_assets.resolve()}'])

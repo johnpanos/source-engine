@@ -23,7 +23,7 @@
       ],
       "gpu": "OpenGL via GtkGLArea (bridge under R1)",
       "toolchain": "GTK4 >= 4.12, libadwaita >= 1.4 (minimums pinned at H5); verified building with GTK4 4.22.5 + libadwaita 1.9.3",
-      "note": "GTK shell delivery profile. A thin GTK4/libadwaita UI sibling (hammer/adapters/gtk/hammer_gtk_shell.cpp, HAM-GTKSHELL-001) now COMPILES and LINKS to a real binary against the reusable editor libraries + a real disk IFileStore provider (build_gtk_shell.sh), and its delegated New/SetKey/Save/Open/Undo/Redo workflow is verified headlessly (adapters.gtk_shell.v1). Not yet 'verified': running the GUI needs a display (no headless display here), and full H5 editor parity (multi-view, inspector, textures, real renderer viewport R1) is not built. Still gated on R1 + H2-H4 feature depth for the delivery claim."
+      "note": "GTK shell delivery profile. A thin GTK4/libadwaita UI sibling (hammer/adapters/gtk/hammer_gtk_shell.cpp, HAM-GTKSHELL-001) now COMPILES and LINKS to a real binary against the reusable editor libraries + a real disk IFileStore provider (the hammer_gtk_shell Waf target; formerly the retired build_gtk_shell.sh), and its delegated New/SetKey/Save/Open/Undo/Redo workflow is verified headlessly (adapters.gtk_shell.v1). Not yet 'verified': running the GUI needs a display (no headless display here), and full H5 editor parity (multi-view, inspector, textures, real renderer viewport R1) is not built. Still gated on R1 + H2-H4 feature depth for the delivery claim."
     },
     {
       "id": "windows-pe-core",

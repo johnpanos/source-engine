@@ -7,14 +7,14 @@
     "arch": "x86_64",
     "render_provider": "d3d12",
     "window_provider": "sdl3",
-    "support_scope": "Adapter, bridge and lab verification lane; no product (play, play_p2) composes the d3d12 device before R91."
+    "support_scope": "Adapter, bridge and lab verification lane; no product (the portal and portal2 kiln profiles) composes the d3d12 device before R91."
   },
   "intent": "RFC 0024 gates X0-X5",
   "host_toolchain": {
     "cxx": "x86_64-w64-mingw32-g++",
     "dialect": "cxx20",
     "runtime": ["wine-11.0-staging", "vkd3d-proton (newest host Proton build, printed with every run)"],
-    "session": "mutter --headless with a private D-Bus session (tools/quality/private_session.py): windows never reach the user's display"
+    "session": "mutter --headless with a private D-Bus session (kiln's private-x11 display session): windows never reach the user's display"
   },
   "dependencies": {
     "dxc": {

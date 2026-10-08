@@ -36,6 +36,9 @@ sys.path.insert(0, str(HERE))
 
 from conformance_result import Checks  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 ROOT = HERE.parents[1]
 MAP = "testchmb_a_01"
 PHYSICS = ("vphysics", "vphysics_box3d")
@@ -104,14 +107,12 @@ def judge(checks, placements, label):
     return shots
 
 
-def boot(runtime, build, out, physics, renderer, timeout):
+def boot(target, out, physics, renderer, timeout):
     """Runs the product once; returns (returncode, combined log text)."""
-    command = [sys.executable, str(HERE / "portal_boot.py"), "--runtime", str(runtime),
+    command = [sys.executable, str(HERE / "portal_boot.py"), *target,
                "--out", str(out), "--headless", "--map", MAP, "--physics", physics,
                "--capture-wait", str(CAPTURE_WAIT), "--timeout", str(timeout),
                "--startup-command=sv_portal_placement_log 1"]
-    if build:
-        command += ["--build", str(build)]
     if renderer:
         command += ["--renderer", renderer]
     result = subprocess.run(command, capture_output=True, text=True)
@@ -129,10 +130,7 @@ def boot(runtime, build, out, physics, renderer, timeout):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime",
-                        help="staged Portal runtime with content (portal_boot.py --runtime)")
-    parser.add_argument("--build", type=Path,
-                        help="Waf output to overlay on the runtime (portal_boot.py --build)")
+    sepipe_loader.add_arguments(parser, "portal")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--physics", action="append", choices=PHYSICS,
                         help="physics provider (repeatable; default: both)")
@@ -146,7 +144,8 @@ def main(argv=None):
         out = args.out / physics
         if (out / "evidence.json").exists():
             parser.error("%s already holds a run; use a new --out" % out)
-        code, text = boot(args.runtime, args.build, out, physics, args.renderer, args.timeout)
+        code, text = boot(sepipe_loader.boot_arguments(args), out, physics, args.renderer,
+                          args.timeout)
         checks.check(code == 0, physics + ".boot", "portal_boot.py exited %d (%s.log)" % (code, out))
         shots = judge(checks, parse_placements(text), physics)
         for shot in shots:

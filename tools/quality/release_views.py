@@ -13,14 +13,12 @@ auto-exposure). A view passes when dev-versus-release stays within the fraction
 limit or within NOISE_FACTOR times that view's own noise. The negative control
 compares two different views and must exceed CONTROL_MINIMUM.
 
-  release_views.py --game portal --dev-build build --release-build build-release \\
-      --runtime run/runtime --out /tmp/claude-1000/rv-p1
-  release_views.py --game portal2 --map sp_a1_intro4 --dev-build build-p2 \\
-      --release-build build-p2-release --dev-runtime RT_DEV --release-runtime RT_REL \\
-      --out /tmp/claude-1000/rv-p2
+  release_views.py --profile portal --out /tmp/claude-1000/rv-p1
+  release_views.py --profile portal2 --map sp_a1_intro4 --out /tmp/claude-1000/rv-p2
 
-Portal 2 runtimes come from stage_portal2_runtime.py (retail content). Keep --out
-short: the engine refuses command lines over 512 characters.
+Both flavors are the kiln profile's (`kiln build <profile> --flavor dev|release`);
+each boot packages its own private runtime. Keep --out short: the engine
+refuses command lines over 512 characters.
 """
 
 import argparse
@@ -34,6 +32,7 @@ import numpy
 from PIL import Image
 
 import legacy_ports_views as views
+sepipe_loader = views.sepipe_loader
 
 SCHEMA = "release-views/v1"
 DEFAULT_MAP = {"portal": "testchmb_a_01", "portal2": "sp_a1_intro4"}
@@ -62,11 +61,8 @@ def load_temporal(prefix):
 
 def boot(args, name, out):
     flavor = "release" if name == "release" else "dev"
-    build = args.release_build if flavor == "release" else args.dev_build
-    runtime = (args.release_runtime if flavor == "release" else args.dev_runtime) or args.runtime
-    command = [sys.executable, str(views.PORTAL_BOOT), "--runtime", str(runtime),
-               *(("--build", str(build)) if build else ()), "--out", str(out), "--headless", "--game", args.game,
-               "--map", args.map, "--renderer", "native-vulkan", "--physics", "vphysics_box3d",
+    command = [sys.executable, str(views.PORTAL_BOOT), "--profile", args.profile, "--flavor", flavor,
+               "--out", str(out), "--headless", "--map", args.map, "--renderer", "native-vulkan", "--physics", "vphysics_box3d",
                "--require-vulkan", "--width", str(views.WIDTH), "--height", str(views.HEIGHT),
                "--capture-wait", str(views.capture_frames()), "--timeout", str(args.timeout),
                ]
@@ -86,7 +82,7 @@ def boot(args, name, out):
                  if (out / "runtime" / ("rvc_" + n + ".output.rgba16f")).exists()]
     else:
         shots = sorted((out / "runtime" / args.game / "screenshots").glob("*.tga"))
-    return {"run": name, "build": str(build), "returncode": completed.returncode,
+    return {"run": name, "flavor": flavor, "returncode": completed.returncode,
             "boot_tail": completed.stdout[-400:] + completed.stderr[-400:],
             "screenshots": {n: str(path) for n, path in zip(names, shots)},
             "screenshot_count": len(shots)}
@@ -95,15 +91,9 @@ def boot(args, name, out):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--game", choices=("portal", "portal2"), default="portal")
+    parser.add_argument("--profile", default="portal",
+                        help="kiln profile whose dev and release flavors are compared")
     parser.add_argument("--map")
-    parser.add_argument("--dev-build", type=Path,
-                        help="omit when --dev-runtime is already staged from the dev tree")
-    parser.add_argument("--release-build", type=Path,
-                        help="omit when --release-runtime is already staged from the release tree")
-    parser.add_argument("--runtime", type=Path, help="runtime for both flavors")
-    parser.add_argument("--dev-runtime", type=Path)
-    parser.add_argument("--release-runtime", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--engine-arg", action="append", default=[],
@@ -117,12 +107,11 @@ def main(argv=None):
     parser.add_argument("--startup-command", action="append", default=[],
                         help="extra startup cfg line for every run, e.g. 'r_core_world 1'")
     args = parser.parse_args(argv)
+    try:
+        args.game = sepipe_loader.game_of(args.profile)
+    except Exception as error:  # sepipe_loader.LoadError, sepipe.KilnError
+        parser.error("kiln: %s" % error)
     args.map = args.map or DEFAULT_MAP[args.game]
-    if not args.dev_build and not args.dev_runtime or \
-            not args.release_build and not args.release_runtime:
-        parser.error("each flavor needs its build or its own staged runtime")
-    if not args.runtime and not (args.dev_runtime and args.release_runtime):
-        parser.error("give --runtime, or both --dev-runtime and --release-runtime")
     out = args.out.resolve()
     if (out / "evidence.json").exists():
         parser.error("evidence already exists; use a new output directory")

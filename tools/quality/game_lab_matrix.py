@@ -23,6 +23,9 @@ import sys
 import game_lab_compare as comparison
 import lighting_fixtures as lf
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 
 PORTAL_SCENES = {"portal-chamber", "portal2-chamber"}
 LEGACY_SAMPLE_FRAMES = 30
@@ -118,8 +121,7 @@ def capture(args, fixture_name):
         boot = out / "boot"
         stats = boot / "runtime/portal2/legacy-stream.jsonl"
         command = [sys.executable, str(lf.ROOT / "tools/quality/portal_boot.py"),
-                   "--runtime", str(args.runtime), "--build", str(args.build),
-                   "--game", "portal2", "--content-root", str(content),
+                   *sepipe_loader.boot_arguments(args), "--content-root", str(content),
                    "--renderer", "native-vulkan", "--headless", "--view-oracle",
                    "--startup-command", "r_core_world 1",
                    "--engine-arg=-vkframestats",
@@ -191,8 +193,7 @@ def matrix_failures(record, require_zero_legacy=False, require_image_parity=Fals
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument("--build", type=Path, required=True)
+    sepipe_loader.add_arguments(parser, "portal2")
     parser.add_argument("--lab", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--fixture", action="append",
@@ -209,8 +210,6 @@ def main():
     parser.add_argument("--process-timeout", type=int, default=240,
                         help="seconds allowed for the complete staged boot")
     args = parser.parse_args()
-    args.runtime = args.runtime.resolve()
-    args.build = args.build.resolve()
     args.lab = args.lab.resolve()
     args.out = args.out.resolve()
     if args.diagnostic and args.require_image_parity:
@@ -223,8 +222,8 @@ def main():
                                    (lf.ROOT / "quality/fixtures/lighting").glob("*/fixture.json")
                                    if args.include_portal_scenes or path.parent.name not in PORTAL_SCENES)
     args.out.mkdir(parents=True)
-    record = {"schema": "render-game-lab-matrix/v1", "runtime": str(args.runtime),
-              "build": str(args.build), "lab": str(args.lab),
+    record = {"schema": "render-game-lab-matrix/v1",
+              "client": sepipe_loader.boot_arguments(args), "lab": str(args.lab),
               "lab_sha256": comparison.sha256(args.lab),
               "image_gate": "diagnostic" if args.diagnostic else "required", "fixtures": {}}
     try:

@@ -2,7 +2,7 @@
 """Static props' baked per-vertex lighting from the map's Cycles bake.
 
     python3 tools/quality/prop_vertex_light.py points --bsp map.bsp \\
-        --runtime run/runtime-p2 --model-tool build/mdl/mdl_mesh_export \\
+        --runtime out/portal2-linux-native-vulkan/dev/runtime --model-tool build/mdl/mdl_mesh_export \\
         --out work/prop_vertices.npz
     (bake: pbrt_lightmap_bake.py --prop-vertices work/prop_vertices.npz
            --prop-vertex-light work/prop_vertex_light.npy)

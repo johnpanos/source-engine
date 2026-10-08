@@ -3,16 +3,13 @@
 """Run the installed Portal product in an isolated, evidenced writable tree."""
 
 import argparse
-import ast
 import datetime
-import errno
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import shutil
-import signal
 import struct
 import subprocess
 import sys
@@ -21,16 +18,13 @@ import time
 import conformance
 import launch_sandbox
 import render_trace
-import product_profile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
 
 
 SHADER_REGEN = (Path(__file__).resolve().parents[2] /
                 "materialsystem/shaderapivulkan/shaders/regen_material_spv.py")
-IMMUTABLE_ASSETS = {
-    ".vpk", ".bsp", ".vtf", ".vmt", ".mdl", ".vvd", ".vtx", ".phy",
-    ".wav", ".mp3", ".ogg", ".webm", ".bik",
-}
-EXCLUDED_DIRECTORIES = {"screenshots", "save", "logs", "dumps"}
 # The sizes exercise grow, shrink, aspect changes and non-aligned dimensions.
 # Version 2 fixes the frame time and waits several frames per step (see
 # resize_commands) and adds the queued settle sweep.
@@ -54,66 +48,6 @@ def sha256(path):
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def copy_private_file(source, target):
-    """Clone a writable runtime file when possible; never share its inode."""
-    if sys.platform.startswith("linux"):
-        import fcntl
-
-        try:
-            with open(source, "rb") as original, open(target, "wb") as private:
-                # FICLONE creates independent copy-on-write extents on Btrfs.
-                fcntl.ioctl(private.fileno(), 0x40049409, original.fileno())
-            shutil.copystat(source, target, follow_symlinks=True)
-            return
-        except OSError as error:
-            if error.errno not in (errno.EINVAL, errno.ENOTTY, errno.EOPNOTSUPP,
-                                   errno.EXDEV):
-                raise
-    shutil.copy2(source, target, follow_symlinks=True)
-
-
-def stage_runtime(runtime, stage, game="portal", content_only=False):
-    """Only immutable asset files are shared; every writable directory is private."""
-    runtime, stage = Path(runtime).resolve(), Path(stage).resolve()
-    if not runtime.is_dir() or not (runtime / game / "gameinfo.txt").is_file():
-        raise ValueError("runtime must contain %s/gameinfo.txt" % game)
-    if stage == runtime or runtime in stage.parents:
-        raise ValueError("staging directory must be outside the original runtime")
-    stage.mkdir(parents=True, exist_ok=False)
-    count = {"copied": 0, "shared_assets": 0}
-    for directory, directories, filenames in os.walk(runtime, followlinks=False):
-        relative = Path(directory).relative_to(runtime)
-        if content_only:
-            if relative == Path("."):
-                directories[:] = [name for name in directories if name in {game, "platform"}]
-                filenames = []
-            elif relative == Path(game):
-                directories[:] = [name for name in directories if name != "bin"]
-        directories[:] = sorted(name for name in directories
-                                if name.lower() not in EXCLUDED_DIRECTORIES)
-        # A linked directory (a staged Portal 2 runtime links its retail
-        # overlays) stays one link; os.walk would otherwise stage it empty.
-        linked = sorted(name for name in directories if (Path(directory) / name).is_symlink())
-        directories[:] = [name for name in directories if name not in linked]
-        destination = stage / relative
-        destination.mkdir(parents=True, exist_ok=True)
-        for name in linked:
-            (destination / name).symlink_to((Path(directory) / name).resolve(),
-                                            target_is_directory=True)
-        for name in sorted(filenames):
-            source = Path(directory) / name
-            if source.suffix.lower() in {".log", ".dmp"}:
-                continue
-            target = destination / name
-            if source.suffix.lower() in IMMUTABLE_ASSETS:
-                target.symlink_to(source.resolve())
-                count["shared_assets"] += 1
-            else:
-                copy_private_file(source, target)
-                count["copied"] += 1
-    return count
 
 
 def content_files(content_root, require_map=True):
@@ -156,92 +90,6 @@ def install_content(content_root, stage, game="portal", require_map=True, mount=
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         installed[str(relative)] = {"source": str(source), "sha256": sha256(target)}
-    return installed
-
-
-def host_tool_roots(source_root=None):
-    """Install roots that host-tool profiles declare; they hold no game products."""
-    source_root = Path(source_root or conformance.repo_root()).resolve()
-    roots = set()
-    for path in sorted((source_root / "quality/product_profiles").glob("*.json")):
-        profile = json.loads(path.read_text())
-        if profile.get("schema") != "source-host-tool-profile/v1":
-            continue
-        root = profile.get("layout", {}).get("root")
-        if root is not None:
-            if not isinstance(root, str) or Path(root).is_absolute():
-                raise ValueError("host-tool layout root must be repository-relative: " + path.name)
-            roots.add((source_root / root).resolve())
-    return roots
-
-
-def install_build(build, stage, game="portal", launcher_name="hl2_launcher", tool_roots=None):
-    """Overlay Waf products, keeping game modules in the selected gamebin."""
-    if launcher_name not in {"hl2_launcher", "dedicated_launcher"}:
-        raise ValueError("unsupported launcher: " + launcher_name)
-    build, stage = Path(build).resolve(), Path(stage)
-    if not build.is_dir():
-        raise ValueError("build output directory is missing")
-    # Some workflows keep independent Waf profiles below the primary output
-    # tree (for example build/pbr-native), and host-tool profiles may install
-    # below it (build/toolchains). Neither holds products of this build, so
-    # neither may participate in its staging plan. Nor may the conformance
-    # runner's output (suite fixtures and runtimes staged by command suites).
-    excluded = {cache.parent for cache in build.rglob("c4che")
-                if cache.is_dir() and cache.parent != build}
-    excluded.add(Path(conformance.default_build_dir()).resolve())
-    excluded |= {Path(root).resolve() for root in
-                 (host_tool_roots() if tool_roots is None else tool_roots)}
-
-    def belongs_to_active_build(path):
-        return not any(root in path.parents for root in excluded)
-
-    products = sorted(path for path in build.rglob("*.so")
-                      if path.is_file() and belongs_to_active_build(path))
-    launchers = sorted(path for path in build.rglob(launcher_name)
-                       if path.is_file() and belongs_to_active_build(path))
-    if not products or len(launchers) != 1:
-        raise ValueError("build must contain shared libraries and exactly one " + launcher_name)
-    sources = {}
-    # Waf gives single-game products an unqualified game/client output path.
-    # Read only its literal game selection, never execute the Python cache.
-    selected_games = set()
-    for cache in (build / "c4che").rglob("*_cache.py"):
-        for line in cache.read_text().splitlines():
-            key, separator, literal = line.partition(" = ")
-            if not separator or key != "GAMES":
-                continue
-            try:
-                value = ast.literal_eval(literal)
-            except (ValueError, SyntaxError) as error:
-                raise ValueError("invalid literal Waf setting: " + key) from error
-            if not isinstance(value, str):
-                raise ValueError("invalid literal Waf setting: " + key)
-            selected_games.add(value)
-    for source in products + launchers:
-        relative = source.relative_to(build)
-        if source.name == launcher_name:
-            destination = stage / source.name
-        elif source.name in {"client.so", "libclient.so", "server.so", "libserver.so"}:
-            if game not in relative.parts and not (
-                    relative.parts[:2] in (("game", "client"), ("game", "server"))
-                    and len(relative.parts) == 3 and selected_games == {game}):
-                continue
-            destination = stage / game / "bin" / source.name
-        else:
-            destination = stage / "bin" / source.name
-        key = str(destination.relative_to(stage))
-        if key in sources:
-            raise ValueError("ambiguous build output for " + key)
-        sources[key] = source
-    # Validate the full plan before replacing any staged product.
-    installed = {}
-    for key, source in sources.items():
-        destination = stage / key
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.unlink(missing_ok=True)
-        shutil.copy2(source, destination)
-        installed[key] = {"source": str(source), "sha256": sha256(destination)}
     return installed
 
 
@@ -695,32 +543,33 @@ def inspect_render_trace(path, report_path):
     return report
 
 
-def run_product(command, stage, environment, timeout, output):
+def run_kiln(args, exact_arguments, stage, environment, timeout, output):
+    """The kiln.api run of the profile from the private runtime (RFC 0027):
+    the harness owns its test command (exact arguments) and sandbox
+    variables; kiln owns the program, display session and run provider.
+    Watches the game's mapped files (the loaded-module evidence)."""
+    wrapper = []
+    if exact_arguments[0] != "./hl2_launcher":
+        index = exact_arguments.index("./hl2_launcher")
+        wrapper, exact_arguments = exact_arguments[:index], exact_arguments[index:]
     loaded = set()
-    started = time.monotonic()
-    timed_out = False
-    with Path(output).open("wb") as stream:
-        process = subprocess.Popen(command, cwd=stage, env=environment, stdout=stream,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
-        while process.poll() is None:
-            try:
-                for line in Path("/proc/%d/maps" % process.pid).read_text().splitlines():
-                    fields = line.split(None, 5)
-                    if len(fields) == 6 and fields[5].startswith("/"):
-                        loaded.add(fields[5])
-            except OSError:
-                pass
-            if time.monotonic() - started > timeout:
-                timed_out = True
-                os.killpg(process.pid, signal.SIGTERM)
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                break
-            time.sleep(0.1)
-        returncode = process.wait()
-    return returncode, timed_out, sorted(loaded), time.monotonic() - started
+
+    def watch(pid):
+        try:
+            for line in Path("/proc/%d/maps" % pid).read_text().splitlines():
+                fields = line.split(None, 5)
+                if len(fields) == 6 and fields[5].startswith("/"):
+                    loaded.add(fields[5])
+        except OSError:
+            pass
+    code, timed_out, seconds, error = sepipe_loader.run_test(
+        args.profile, args.flavor, stage, exact_arguments[1:], output, timeout,
+        environment=environment, wrapper=wrapper, display="none" if args.headless else "user",
+        watch=watch)
+    if error:
+        with Path(output).open("a") as stream:
+            stream.write("\nkiln: %s\n" % error)
+    return code, timed_out, sorted(loaded), seconds
 
 
 def login_session_displays():
@@ -749,8 +598,10 @@ def user_display_in_use(environment, login):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument("--build", type=Path)
+    parser.add_argument("--profile", required=True,
+                        help="kiln profile (e.g. portal, portal2): kiln packages it into the "
+                             "private runtime and the game runs through kiln.api (RFC 0027)")
+    parser.add_argument("--flavor", default="dev", help="the kiln profile's build flavor")
     parser.add_argument("--content-root", type=Path,
                         help="private maps/ and materials/ files added to the staged game")
     parser.add_argument("--material-root", type=Path,
@@ -792,8 +643,8 @@ def main(argv=None):
                              "quit (a longer cfg sequence, e.g. several screenshots, needs more)")
     parser.add_argument("--allow-user-display", action="store_true",
                         help="permit a window on the login session's own display; without it a "
-                             "windowed run must be inside a private compositor (private_session."
-                             "dbus_run_session plus mutter --headless)")
+                             "windowed run must be inside a private compositor (kiln's private "
+                             "display session, sepipe_loader.Display)")
     parser.add_argument("--headless", action="store_true",
                         help="render offscreen on the GPU (SDL offscreen driver) with the "
                              "volume muted")
@@ -805,9 +656,6 @@ def main(argv=None):
     parser.add_argument("--map-after-start", action="store_true",
                         help="wait in the running menu before loading the map; exercises "
                              "renderer state retained across a menu-to-game transition")
-    parser.add_argument("--game", choices=("portal", "portal2"), default="portal",
-                        help="game directory; portal2 needs a runtime staged by "
-                             "stage_portal2_runtime.py (retail content) and a Portal 2 build")
     parser.add_argument("--engine-arg", action="append", default=[],
                         help="extra launcher argument placed before +map (repeatable), e.g. "
                              "'-hostframetrace' '<file>'")
@@ -825,6 +673,14 @@ def main(argv=None):
     for name in ("vulkan", "sdl3", "wayland"):
         parser.add_argument("--require-" + name, action="store_true")
     args = parser.parse_args(argv)
+    try:
+        args.sepipe = sepipe_loader.load()
+        args.session = args.sepipe.Session(str(conformance.repo_root()))
+        args.game = sepipe_loader.game_of(args.profile)
+    except (sepipe_loader.LoadError, KeyError) as error:
+        parser.error("kiln: %s" % error)
+    except Exception as error:  # sepipe.KilnError
+        parser.error("kiln: %s" % error)
     if args.timeout <= 0 or not re.fullmatch(r"[a-zA-Z0-9_]+", args.map):
         parser.error("timeout must be positive and map must be a simple map name")
     if not re.fullmatch(r"[a-zA-Z0-9_]+", args.physics):
@@ -840,13 +696,19 @@ def main(argv=None):
     evidence = {"schema": "portal-boot-evidence/v1", "status": "fail",
                 "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "source": conformance.source_identity(conformance.repo_root()),
-                "runtime": str(args.runtime.resolve()), "map": args.map, "game": args.game,
+                "kiln": {"profile": args.profile, "flavor": args.flavor},
+                "map": args.map, "game": args.game,
                 "requested_resolution": [args.width, args.height]}
     try:
         stage = output / "runtime"
         game = args.game
-        evidence["staging"] = stage_runtime(args.runtime, stage, game=game)
-        evidence["build_overrides"] = install_build(args.build, stage, game=game) if args.build else {}
+        # The profile's own package (RFC 0027 linux-dir) in this private runtime.
+        shutil.rmtree(stage, ignore_errors=True)
+        built = args.session.build(args.profile, flavor=args.flavor, up_to="package",
+                                   runtime=str(stage))
+        evidence["staging"] = {"kiln": {stage_["name"]: stage_["summary"]
+                                        for stage_ in built["stages"]},
+                               "tree": built["tree"]}
         private_content = "custom/portal-boot-content"
         if args.content_root or args.material_root:
             gameinfo = stage / game / "gameinfo.txt"
@@ -989,14 +851,14 @@ def main(argv=None):
         if shared and not args.allow_user_display:
             raise ValueError("this run would open a window on the user's live desktop (%s); use "
                              "--headless, or run inside a private compositor "
-                             "(private_session.dbus_run_session plus mutter --headless), or pass "
+                             "(kiln's private display session, sepipe_loader.Display), or pass "
                              "--allow-user-display" % ", ".join(shared))
         evidence["command"] = command
         evidence["requirements"] = requirements
         evidence["display_environment"] = {key: environment.get(key) for key in
                                            ("DISPLAY", "WAYLAND_DISPLAY", "SDL_VIDEODRIVER", "GDK_BACKEND")}
-        code, timed_out, loaded, seconds = run_product(command, stage, environment,
-                                                       args.timeout, output / "stdout.log")
+        code, timed_out, loaded, seconds = run_kiln(args, command, stage, environment,
+                                                    args.timeout, output / "stdout.log")
         evidence["sandbox"] = sandbox.finish()
         log_paths = [output / "stdout.log", stage / "engine.log", stage / game / "console.log"]
         log = "\n".join(path.read_text(errors="replace") for path in log_paths if path.is_file())

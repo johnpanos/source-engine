@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """RFC 0027 L0 gate checks that need the real repository and a built kiln.
 
-    kiln_gate.py parity [--kiln PATH]     `kiln profiles resolve` equals
-                                          profile_extends.py on every profile
+    kiln_gate.py parity [--kiln PATH]     `kiln profiles resolve` equals this
+                                          gate's own reference merge on every profile
     kiln_gate.py rebuild PROFILE [--kiln PATH]
                                           a second `kiln build` of an unchanged
                                           profile neither reconfigures nor rebuilds
+    kiln_gate.py coop                     a real co-op pair starts headless and connects
     kiln_gate.py selftest                 the comparators catch seeded divergence
 
 Each prints one `CONFORMANCE <checks> <failures>` record (checks-v1).
@@ -20,10 +21,39 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tools" / "quality"))
-import profile_extends  # noqa: E402  (the reference implementation)
-
 PROFILES = ROOT / "quality" / "product_profiles"
+
+
+# The parity oracle: an independent implementation of the extends rule that
+# kiln's product.profile owns (RFC 0027). It is a test reference, not a second
+# resolver; nothing else imports it.
+def reference_merge(base, derived):
+    """derived over base: objects merge key by key, any other value replaces."""
+    merged = dict(base)
+    for key, value in derived.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = reference_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def reference_profile(path, _chain=()):
+    """A profile with its "extends" chain (one parent, or a list merged left to
+    right before the child; paths relative to the profile) resolved."""
+    path = Path(path).resolve()
+    if path in _chain:
+        raise ValueError("extends cycle: " + " -> ".join(str(p) for p in (*_chain, path)))
+    profile = json.loads(path.read_text())
+    parents = profile.pop("extends", None)
+    if parents is None:
+        return profile
+    if isinstance(parents, str):
+        parents = [parents]
+    merged = {}
+    for parent in parents:
+        merged = reference_merge(merged, reference_profile(path.parent / parent, (*_chain, path)))
+    return reference_merge(merged, profile)
 
 
 class Record:
@@ -71,9 +101,9 @@ def parity(kiln):
         if result.returncode != 0:
             record.check(False, f"kiln resolves {name}", result.stderr.strip()[-300:])
             continue
-        expected = json.dumps(profile_extends.load_profile(path))
+        expected = json.dumps(reference_profile(path))
         record.check(same_document(ordered(result.stdout), ordered(expected)),
-                     f"{name}: kiln profiles resolve equals profile_extends.py (values and member order)")
+                     f"{name}: kiln profiles resolve equals the reference merge (values and member order)")
     return record.report()
 
 
@@ -109,6 +139,24 @@ def rebuild(kiln, profile):
     return record.report()
 
 
+def coop(kiln):
+    """kiln play portal2-coop, headless (display none, null renderer), until the
+    client joins: the live half of the coop-pair gate."""
+    record = Record()
+    result = subprocess.run([str(kiln), "play", "portal2-coop", "--display", "none", "--set", "null",
+                             "--set", "until-joined"], cwd=ROOT, capture_output=True, text=True, timeout=1800)
+    output = result.stdout + result.stderr
+    record.check(result.returncode == 0, "the co-op pair runs and stops", output[-800:])
+    record.check("[run] host answers at" in output, "the host's server answers the engine challenge")
+    record.check("[run] connected:" in output, "the client joins over the LAN")
+    plan = json.loads(run_kiln(kiln, "play", "portal2-coop", "--dry-run").stdout)
+    log = Path(plan["runtime"]) / "engine.log"
+    text = log.read_text(errors="replace") if log.is_file() else ""
+    record.check(" connected (" in text and "loopback" not in text.split(" connected (")[-1][:10],
+                 "the host's engine.log records the remote join", str(log))
+    return record.report()
+
+
 def selftest():
     """Seeded divergences the comparators must catch (sensitivity)."""
     record = Record()
@@ -133,7 +181,7 @@ def selftest():
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("parity", "rebuild"):
+    for name in ("parity", "rebuild", "coop"):
         command = sub.add_parser(name)
         command.add_argument("--kiln", type=Path, default=ROOT / "kiln", help="the kiln bootstrap or binary")
         if name == "rebuild":
@@ -144,6 +192,8 @@ def main(argv=None):
         return parity(args.kiln)
     if args.command == "rebuild":
         return rebuild(args.kiln, args.profile)
+    if args.command == "coop":
+        return coop(args.kiln)
     return selftest()
 
 

@@ -71,11 +71,17 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--workload", type=Path, default=WORKLOAD)
     parser.add_argument("--toolchain", type=Path, default=vmf_map_build.TOOLCHAIN)
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime")
-    parser.add_argument("--boot-runtime", type=Path, default=ROOT / "run/runtime-native")
+    parser.add_argument("--runtime", type=Path,
+                        help="content runtime for the compile (default: the --boot-profile's "
+                             "kiln package)")
+    parser.add_argument("--boot-profile", default="portal", help="kiln profile the map boots in")
+    parser.add_argument("--boot-flavor", default="dev", help="its build flavor")
     parser.add_argument("--no-boot", action="store_true",
                         help="compile only (no GPU runtime); the boot checks are skipped")
     args = parser.parse_args()
+    if args.runtime is None:
+        args.runtime = vmf_map_build.sepipe_loader.packaged_runtime(args.boot_profile,
+                                                                    args.boot_flavor)
 
     checks = Checks()
     tools = Path(json.loads(args.toolchain.read_text())["compile_tools"])
@@ -94,7 +100,8 @@ def main():
         record = vmf_map_build.build(vmf, work / "map", tools, args.runtime.resolve(),
                                      name="hammer_loop_" + name)
         if boot and record["status"] == "pass" and not args.no_boot:
-            record["boot"] = vmf_map_build.boot(record, work / "map", args.boot_runtime.resolve())
+            record["boot"] = vmf_map_build.boot(record, work / "map", args.boot_profile,
+                                                args.boot_flavor)
             vmf_map_build.finish(work / "map", record)
         record["elapsed_seconds"] = round(time.monotonic() - started, 2)
         results[name] = record

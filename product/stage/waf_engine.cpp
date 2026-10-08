@@ -24,9 +24,9 @@ constexpr const char *kLockName = ".lock-waf-kiln";
 constexpr const char *kStampName = ".kiln-configure.json";
 
 // Configuration inputs besides the wscripts Waf recorded (the same set
-// tools/quality/ensure_configured.py watches).
+// the retired tools/quality/ensure_configured.py watched).
 constexpr const char *kInputRoots[] = { "waf", "scripts/waifulib", "quality/toolchain",
-    "quality/profiles", "architecture/modules.json" };
+    "quality/profiles", "quality/product_profiles", "architecture/modules.json" };
 
 std::string ReadFile( const fs::path &path )
 {
@@ -214,7 +214,10 @@ public:
 			    inputs.Toolchain()->wafOptions.begin(), inputs.Toolchain()->wafOptions.end() );
 
 		const fs::path source = inputs.SourceRoot();
-		const fs::path tree = inputs.TreeRoot();
+		// out/<profile>/<flavor>/: the Waf tree (and its lock) in build/, the
+		// installed products in install/, beside the runtime and artifacts.
+		const fs::path tree = inputs.TreeRoot() / "build";
+		const fs::path prefix = inputs.TreeRoot() / "install";
 		std::error_code ec;
 		fs::create_directories( tree, ec );
 		if ( ec )
@@ -236,20 +239,25 @@ public:
 			reason = "first configure";
 		else if ( *recorded != digest )
 			reason = "configure options or toolchain changed";
+		else if ( const std::string *cache = stamp.FindString( "cache_digest" );
+		    !cache || *cache != HashHex( ReadFile( tree / "c4che" / "_cache.py" ) ) )
+			reason = "the tree was configured outside kiln";
 		else if ( auto stale = StaleInput( source, tree ) )
 			reason = "configuration input changed: " + *stale;
 
 		Value evidence = Value::Object();
-		Value &argumentList = evidence.Set( "configure_arguments", Value::Array() );
+		// A value, not a reference into `evidence`: later Set calls may move it.
+		Value argumentList = Value::Array();
 		for ( const std::string &argument : arguments.Value() )
 			argumentList.Push( Value::String( argument ) );
+		evidence.Set( "configure_arguments", argumentList );
 		evidence.Set( "configure_digest", Value::String( digest ) );
 		evidence.Set( "tree", Value::String( tree.string() ) );
 
 		if ( !reason.empty() )
 		{
 			std::vector<std::string> argv = { m_Python, ( source / "waf" ).string(), "configure",
-			    "-o", tree.string(), "--prefix=" + ( tree / "install" ).string() };
+			    "-o", tree.string(), "--prefix=" + prefix.string() };
 			argv.insert( argv.end(), arguments.Value().begin(), arguments.Value().end() );
 			if ( inputs.Diagnostics() )
 				inputs.Diagnostics()->Report(
@@ -261,6 +269,8 @@ public:
 			newStamp.Set( "digest", Value::String( digest ) );
 			newStamp.Set( "arguments", argumentList );
 			newStamp.Set( "toolchain", Value::String( identity ) );
+			newStamp.Set( "cache_digest",
+			    Value::String( HashHex( ReadFile( tree / "c4che" / "_cache.py" ) ) ) );
 			if ( !WriteFileAtomic( tree / kStampName, newStamp.WritePretty() + "\n" ) )
 				return foundation::MakeUnexpected(
 				    ProviderError{ "io", "cannot record the configure digest" } );
@@ -282,7 +292,7 @@ public:
 		Artifact install;
 		install.name = std::string( kEngineInstallArtifact );
 		install.type = "install";
-		install.path = tree / "install";
+		install.path = prefix;
 		install.digest = InstallDigest( install.path );
 		install.facts.Set( "tree", Value::String( tree.string() ) );
 		outputs.Publish( std::move( install ) );

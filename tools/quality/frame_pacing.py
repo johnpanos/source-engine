@@ -27,6 +27,9 @@ import conformance
 import launch_sandbox
 import portal_boot
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 
 SCENARIO_SCHEMA = "frame-pacing-scenario/v1"
 # Games a scenario may name, with their Steam app ids.
@@ -464,9 +467,10 @@ def print_report(report):
                      costs or "no named backend cost"))
 
 
-def run_once(args, scenario, passes, build, output, extra_args=()):
-    """One launch of the product on `build`; returns its evidence. `extra_args`
-    are engine arguments for this launch only (an A/B round's B switch)."""
+def run_once(args, scenario, passes, client, output, extra_args=()):
+    """One launch of the kiln `client` (profile, flavor); returns its evidence.
+    `extra_args` are engine arguments for this launch only (an A/B round's B
+    switch)."""
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     if (output / "evidence.json").exists():
@@ -474,15 +478,17 @@ def run_once(args, scenario, passes, build, output, extra_args=()):
     evidence = {"schema": EVIDENCE_SCHEMA, "status": "fail",
                 "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "source": conformance.source_identity(conformance.repo_root()),
-                "runtime": str(args.runtime.resolve()), "build": str(build.resolve()),
+                "client": list(client),
                 "scenario": {"path": str(args.scenario.resolve()), "id": scenario["id"],
                              "sha256": portal_boot.sha256(args.scenario), "passes": passes}}
     failures = []
     try:
         stage = output / "runtime"
         game = scenario.get("game", "portal")
-        evidence["staging"] = portal_boot.stage_runtime(args.runtime, stage, game=game)
-        evidence["build_overrides"] = portal_boot.install_build(build, stage, game=game)
+        # The client profile's package in this private runtime (RFC 0027).
+        built = sepipe_loader.session().build(client[0], flavor=client[1], up_to="package",
+                                              runtime=str(stage))
+        evidence["staging"] = {item["name"]: item["summary"] for item in built["stages"]}
         if args.content_root:
             # A map built outside the runtime (e.g. pbrt_map_build.py content/).
             evidence["content_overrides"] = portal_boot.install_content(args.content_root, stage, game=game)
@@ -500,7 +506,7 @@ def run_once(args, scenario, passes, build, output, extra_args=()):
         evidence["pipeline_store"] = {
             "directory": str(store), "shared": bool(args.pipeline_store),
             "keys_at_start": max(0, len(keys.read_text().splitlines()) - 1) if keys.is_file() else 0}
-        command = [str(stage / "hl2_launcher"), "-game", game, "-renderer", args.renderer,
+        command = ["./hl2_launcher", "-game", game, "-renderer", args.renderer,
                    "-windowed", "-w", str(args.width), "-h", str(args.height), "-multirun",
                    "-novid", "-insecure", "-console", "-condebug", "-dev", "-physics", args.physics,
                    "-vkframestats", str(stats_path)] + (
@@ -541,8 +547,11 @@ def run_once(args, scenario, passes, build, output, extra_args=()):
                 environment.pop(variable, None)
         evidence["command"] = command
         evidence["host_load_before"] = list(portal_boot.os.getloadavg())
-        code, timed_out, _, seconds = portal_boot.run_product(
-            command, stage, environment, args.timeout, output / "stdout.log")
+        code, timed_out, seconds, error = sepipe_loader.run_test(
+            client[0], client[1], stage, command[1:], output / "stdout.log", args.timeout,
+            environment=environment, display="user" if args.windowed else "none")
+        if error:
+            failures.append("kiln: " + error)
         evidence["sandbox"] = sandbox.finish()
         evidence["host_load_after"] = list(portal_boot.os.getloadavg())
         evidence.update(returncode=code, timed_out=timed_out, elapsed_seconds=round(seconds, 1))
@@ -609,13 +618,12 @@ def ab_summary(runs):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--runtime", type=Path, required=True, help="installed Portal runtime")
-    parser.add_argument("--build", type=Path, required=True, help="Waf output tree to overlay")
-    parser.add_argument("--ab-build", type=Path,
-                        help="second build tree (B) to compare with --build (A) in alternating rounds")
+    sepipe_loader.add_arguments(parser, "portal")
+    parser.add_argument("--ab-profile", help="kiln profile of the B runs (default: --profile)")
+    parser.add_argument("--ab-flavor", help="build flavor of the B runs (default: --flavor)")
     parser.add_argument("--ab-extra-arg", action="append", default=[],
-                        help="engine argument for the B runs only (repeatable); with --ab-build equal "
-                             "to --build this compares one build with and without a switch")
+                        help="engine argument for the B runs only (repeatable); with no other B "
+                             "option this compares one build with and without a switch")
     parser.add_argument("--rounds", type=int, default=3, help="A/B rounds (each runs A then B)")
     parser.add_argument("--scenario", type=Path,
                         default=Path(conformance.repo_root()) / "quality/workloads/portal-frame-pacing-v1.json")
@@ -658,11 +666,13 @@ def main(argv=None):
     passes = args.passes or scenario.get("passes", 1)
     output = args.out.resolve()
 
-    if args.ab_build:
+    client_a = (args.profile, args.flavor)
+    client_b = (args.ab_profile or args.profile, args.ab_flavor or args.flavor)
+    if args.ab_profile or args.ab_flavor or args.ab_extra_arg:
         runs = {"a": [], "b": []}
         for index in range(1, args.rounds + 1):
-            for label, build, extra in (("a", args.build, ()), ("b", args.ab_build, args.ab_extra_arg)):
-                evidence = run_once(args, scenario, passes, build, output / ("%s-%d" % (label, index)),
+            for label, client, extra in (("a", client_a, ()), ("b", client_b, args.ab_extra_arg)):
+                evidence = run_once(args, scenario, passes, client, output / ("%s-%d" % (label, index)),
                                     extra)
                 runs[label].append(evidence)
                 warm = evidence.get("analysis", {}).get("passes", [{}])[-1].get("summary", {})
@@ -672,8 +682,8 @@ def main(argv=None):
                          warm.get("cpu_median_ms"), warm.get("emit_median_ms"),
                          warm.get("emit_convert_median_ms"), warm.get("p99_ms"),
                          evidence.get("host_load_after", [0])[0]))
-        summary = {"schema": EVIDENCE_SCHEMA + "+ab", "a": str(args.build.resolve()),
-                   "b": str(args.ab_build.resolve()), "b_extra_args": args.ab_extra_arg,
+        summary = {"schema": EVIDENCE_SCHEMA + "+ab", "a": list(client_a),
+                   "b": list(client_b), "b_extra_args": args.ab_extra_arg,
                    "rounds": args.rounds,
                    "failures": [failure for label in runs for run in runs[label] for failure in run["failures"]],
                    "summary": ab_summary(runs)}
@@ -685,7 +695,7 @@ def main(argv=None):
             print("  " + failure)
         return 1 if summary["failures"] else 0
 
-    evidence = run_once(args, scenario, passes, args.build, output)
+    evidence = run_once(args, scenario, passes, client_a, output)
     if args.baseline and "analysis" in evidence:
         evidence["baseline"] = {"path": str(args.baseline.resolve()),
                                 "passes": compare(evidence["analysis"], json.loads(args.baseline.read_text()))}

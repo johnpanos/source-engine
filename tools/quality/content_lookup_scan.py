@@ -56,8 +56,8 @@ RATCHET = "tools/quality/content_lookup_ratchet.json"
 # external/ is vendored (VPC).
 SKIPPED = ("unittests/", "utils/vpk/", "external/")
 # The readers' own implementations, which the VPK package source will wrap.
-VPK_IMPLEMENTATION = ("vpklib/", "public/vpklib/", "hammer/core/formats/vpk_archive.cpp",
-                      "public/hammer/formats/vpk_archive.h")
+VPK_IMPLEMENTATION = ("vpklib/", "public/vpklib/", "content/vpk_archive.cpp", "public/content/vpk_archive.h",
+                      "hammer/core/formats/vpk_archive.cpp", "public/hammer/formats/vpk_archive.h")
 
 PATH_BUILD = re.compile(r'"materials/(?:"|[^"\n]*%s)', re.I)
 VPK_DIRECT = re.compile(r"\b(?:CPackedStore|VpkArchive)\b")

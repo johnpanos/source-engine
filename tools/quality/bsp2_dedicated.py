@@ -3,7 +3,7 @@
 """Run the same Portal map probes on VBSP and BSP2 products.
 
 Licensed content is a required local input. Each run uses a private staged
-runtime; source content and the selected Waf build are never modified.
+runtime; source content and the kiln profile's tree are never modified.
 """
 
 import argparse
@@ -22,8 +22,9 @@ import bsp2_server_compare
 import bsp2_reader
 import conformance
 import launch_sandbox
-import portal_boot
-import stage_runtime
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
 
 
 SCHEMA = "bsp2-dedicated-cases/v1"
@@ -231,7 +232,9 @@ def main(argv=None):
     parser.add_argument("--runtime", required=True, help="private Portal content root")
     parser.add_argument("--map-source-root", help="separate map corpus for engine-only compatibility checks")
     parser.add_argument("--product", choices=("dedicated", "client"), default="dedicated")
-    parser.add_argument("--build", required=True, help="Waf --dedicated --build-games=portal output")
+    parser.add_argument("--profile", help="kiln profile of the product (default dedicated-linux, "
+                        "or portal for --product client)")
+    parser.add_argument("--flavor", default="dev", help="the profile's build flavor")
     parser.add_argument("--tool", required=True, help="built bsp2tool executable")
     parser.add_argument("--cases", default="quality/fixtures/bsp2-dedicated-cases.json")
     parser.add_argument("--source-inventory", help="versioned map names, versions and hashes")
@@ -242,11 +245,11 @@ def main(argv=None):
     output = Path(args.out).resolve()
     source_runtime = Path(args.runtime).resolve()
     source_maps = Path(args.map_source_root).resolve() if args.map_source_root else source_runtime / "portal/maps"
-    build = Path(args.build).resolve()
+    profile = args.profile or ("dedicated-linux" if args.product == "dedicated" else "portal")
     tool = Path(args.tool).resolve()
     schema = EVIDENCE_SCHEMA if args.product == "dedicated" else "bsp2-client-evidence/v1"
     evidence = {"schema": schema, "source": conformance.source_identity(conformance.repo_root()),
-                "inputs": {"runtime": str(source_runtime), "build": str(build),
+                "inputs": {"runtime": str(source_runtime), "profile": profile, "flavor": args.flavor,
                            "tool": str(tool), "cases": str(Path(args.cases).resolve()),
                            "source_maps": str(source_maps),
                            "foreign_game_content": bool(args.map_source_root),
@@ -272,10 +275,7 @@ def main(argv=None):
         output.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="bsp2-dedicated-") as scratch:
             stage = Path(scratch) / "runtime"
-            portal_boot.stage_runtime(source_runtime, stage)
-            launcher = "dedicated_launcher" if args.product == "dedicated" else "hl2_launcher"
-            installed = portal_boot.install_build(build, stage, launcher_name=launcher)
-            stage_runtime.sanitize(stage)
+            installed = sepipe_loader.package_into(profile, stage, args.flavor)
             if "portal/bin/libserver.so" not in installed or "bin/libengine.so" not in installed:
                 raise ValueError("build has no Portal server or engine product")
             if args.product == "client" and "portal/bin/libclient.so" not in installed:
@@ -293,7 +293,7 @@ def main(argv=None):
                     result.update({"status": "fail", "error": str(error)})
                     evidence["cases"].append(result)
                     evidence["failures"].append("%s: %s" % (case["map"], error))
-    except (OSError, ValueError, json.JSONDecodeError) as error:
+    except (OSError, ValueError, json.JSONDecodeError, sepipe_loader.LoadError) as error:
         evidence["failures"].append(str(error))
     evidence["status"] = "pass" if evidence["cases"] and not evidence["failures"] else "fail"
     output.mkdir(parents=True, exist_ok=True)

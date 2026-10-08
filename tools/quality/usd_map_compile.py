@@ -51,7 +51,7 @@
 #             what publishes, its provenance extended by a `lighting` record;
 #   publish   the commit: the content root with provenance.json and build.json
 #             goes to the published-map store in one rename
-#             (playable_maps.publish), so `./play <map>` loads it.
+#             (playable_maps.publish), so `./kiln play portal <map>` loads it.
 #
 # A failure at any stage, with a code from
 # quality/usd_authoring/source_compile_v1.json, publishes nothing and leaves
@@ -719,7 +719,7 @@ def main(argv=None):
         if not args.no_publish:
             publish(result, args.map, store)
             outcome["published"] = str(Path(store) / args.map)
-            print("published %s; play it with ./play %s" % (outcome["published"], args.map))
+            print("published %s; play it with ./kiln play portal %s" % (outcome["published"], args.map))
         print("compiled %s: %d output checks passed" % (args.map, result["check"]["checks"]))
         status = 0
     except CompileError as error:

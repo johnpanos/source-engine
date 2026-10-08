@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import threading
+import types
 import unittest
 from unittest import mock
 
@@ -13,7 +15,8 @@ import frame_floor
 
 def arguments(**overrides):
     values = dict(floor_fps=None, low_1pct_fps=None, low_01pct_fps=None,
-                  width=1920, height=1080, display="compositor", render_switch=[], extra_arg=[])
+                  width=1920, height=1080, display="compositor", set=[], extra_arg=[],
+                  kiln_profile="portal2", flavor="dev", session=mock.Mock(**{"plan.return_value": {}}))
     values.update(overrides)
     return argparse.Namespace(**values)
 
@@ -58,12 +61,25 @@ class FrameFloorTest(unittest.TestCase):
             self.assertIn("render_budget_high", command)
             self.assertEqual("4", command[command.index("+mat_antialias") + 1])
 
-    def test_wrapper_exit_does_not_leave_its_game_running(self):
-        process = mock.Mock(pid=1234)
-        process.poll.return_value = 0
-        with mock.patch.object(frame_floor.os, "killpg") as kill:
-            frame_floor.stop(process)
-        kill.assert_called_once_with(1234, frame_floor.signal.SIGKILL)
+    def test_stopping_a_run_cancels_it_and_waits_for_it(self):
+        # Stopping the game's programs is the run provider's (kiln clause N4,
+        # with a bad provider that ignores cancellation); the harness must
+        # cancel the request and wait for the run to return.
+        class Cancellation:
+            def __init__(self):
+                self.event = threading.Event()
+
+            def cancel(self):
+                self.event.set()
+
+        fake = types.SimpleNamespace(Cancellation=Cancellation, KilnError=RuntimeError)
+        session = mock.Mock()
+        session.run.side_effect = lambda profile, cancel, **options: (cancel.event.wait(30), 130)[1]
+        run = frame_floor.sepipe_loader.Run(fake, session, "run", "portal2", runtime="/r")
+        self.assertIsNone(run.poll())
+        run.stop(timeout=10)
+        self.assertEqual(130, run.poll())
+        self.assertEqual("/r", session.run.call_args.kwargs["runtime"])
 
     def test_one_slow_frame_fails_even_with_fast_p99(self):
         watcher = self.watcher()
@@ -109,12 +125,11 @@ class FrameFloorTest(unittest.TestCase):
                 (output / "stdout.log").write_text("")
                 (output / "frames.jsonl").write_text(
                     '{"f":1,"interval":9000,"mark":"floor_begin,floor_end"}\n')
-                process = mock.Mock(returncode=0, pid=1234)
+                process = mock.Mock(returncode=0, error=None)
                 process.poll.return_value = 0
-                return process, mock.Mock()
+                return process
 
             with mock.patch.object(frame_floor, "launch", side_effect=launch), \
-                    mock.patch.object(frame_floor.os, "killpg"), \
                     mock.patch.object(frame_floor, "host_context", return_value={}), \
                     mock.patch.object(frame_floor.portal2_scenarios, "evaluate",
                                       return_value={"failures": [], "checks": []}):
@@ -190,7 +205,7 @@ class FrameFloorTest(unittest.TestCase):
     def test_small_drawable_and_quality_overrides_cannot_qualify(self):
         for overrides in ({"width": 1024, "height": 768}, {"display": "offscreen"},
                           {"extra_arg": ["+r_core_shadow_pcss", "0"]},
-                          {"render_switch": ["--no-core-world"]}):
+                          {"set": ["no-core-world"]}):
             with self.subTest(overrides=overrides), self.assertRaises(frame_floor.FloorError):
                 frame_floor.configure_budget(self.workload, arguments(**overrides))
 

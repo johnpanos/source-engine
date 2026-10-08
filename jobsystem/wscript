@@ -53,3 +53,19 @@ def build(bld):
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)
+	# The same source at the toolchain-default dual ABI, for strict consumers
+	# that pass standard-library types across its API (kiln, RFC 0027):
+	# quality/toolchain/policy.json forbids mixing the values across a link.
+	bld.stlib(
+		env       = bld.strict_cpp20_env(),
+		source    = source,
+		target    = 'jobsystem_defaultabi',
+		name      = 'jobsystem_defaultabi',
+		arch_module = 'jobs.graph',
+		features  = 'cxx capability_strict',
+		includes  = includes,
+		defines   = [],
+		use       = [],
+		subsystem = bld.env.MSVC_SUBSYSTEM,
+		idx       = bld.get_taskgen_count()
+	)

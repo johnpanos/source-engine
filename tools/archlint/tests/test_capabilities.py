@@ -931,7 +931,7 @@ class KilnContractTest(unittest.TestCase):
         errors = self.errors()
         self.assertEqual([e for e in errors if e.startswith('CAP011 rule 6')],
                          ['CAP011 rule 6 kiln.app: edge to product.profile is above its ceiling '
-                          '(kiln.core, kiln.composition, foundation.json)'])
+                          '(kiln.core, kiln.composition, foundation.json, platform.posix)'])
 
     def test_application_naming_a_provider_fails(self):
         self.module('kiln.app')['allowedEdges'].append('product.stage.waf')

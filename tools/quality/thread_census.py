@@ -2,7 +2,7 @@
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 """RFC 0003 J3 runtime thread census, with a shrink-only ratchet.
 
-    python3 tools/quality/thread_census.py run --runtime run/runtime --build build \\
+    python3 tools/quality/thread_census.py run [--profile portal] \\
         --out <dir> [--compute-workers N] [--map testchmb_a_00] [--write]
     python3 tools/quality/thread_census.py check --log <console.log> [--compute-workers N]
     python3 tools/quality/thread_census.py sensitivity
@@ -136,7 +136,7 @@ def check(text, declaration, checks, compute_workers=None, root=None, write=Fals
 def run(args, checks):
     out = Path(args.out)
     command = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
-               "--runtime", args.runtime, "--build", args.build, "--out", str(out),
+               "--profile", args.profile, "--flavor", args.flavor, "--out", str(out),
                "--headless", "--renderer", "native-vulkan", "--map", args.map,
                "--console-command", "thread_census"]
     if args.compute_workers is not None:
@@ -214,8 +214,8 @@ def main(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run")
-    r.add_argument("--runtime", required=True)
-    r.add_argument("--build", required=True)
+    r.add_argument("--profile", default="portal", help="kiln profile (default portal)")
+    r.add_argument("--flavor", default="dev", help="the profile's build flavor")
     r.add_argument("--out", required=True)
     r.add_argument("--map", default="testchmb_a_00")
     r.add_argument("--compute-workers", type=int)

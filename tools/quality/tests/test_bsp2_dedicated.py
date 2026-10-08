@@ -31,7 +31,6 @@ class Bsp2DedicatedTests(unittest.TestCase):
             root = Path(directory)
             result = bsp2_dedicated.main([
                 "--runtime", str(root / "missing-runtime"),
-                "--build", str(root / "missing-build"),
                 "--tool", str(root / "missing-tool"),
                 "--out", str(root / "evidence")])
             self.assertEqual(result, 1)

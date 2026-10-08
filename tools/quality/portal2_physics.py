@@ -23,7 +23,7 @@ Commands:
   record   run retail (--runs N) and write the reference file
            (quality/workloads/portal2-physics-v1/retail-reference.json).
   run      run one target (retail or ours) and write evidence.
-  check    run this build (--physics box3d|ivp, default box3d, as ./play_p2)
+  check    run this build (--physics box3d|ivp, default box3d, as ./kiln play portal2)
            and judge it against the reference; prints one checks-v1 record.
            --seed-fault injects a known defect as a negative control.
            --target retail judges retail itself: the reference is current.
@@ -45,16 +45,14 @@ import os
 from pathlib import Path
 import re
 import shutil
-import signal
-import subprocess
 import sys
 import time
 
 import conformance
 import conformance_result
 import portal2_scenarios
-import private_session
-import stage_portal2_runtime
+sepipe_loader = portal2_scenarios.sepipe_loader
+import portal2_retail
 
 
 ROOT = Path(conformance.repo_root())
@@ -63,7 +61,7 @@ REFERENCE_SCHEMA = "portal2-physics-reference/v1"
 EVIDENCE_SCHEMA = "portal2-physics-evidence/v1"
 METRIC_LINE = re.compile(r"^QA_METRIC (\S+) (-?[0-9.]+(?:e[-+]?[0-9]+)?|nan|-?inf)\s*$")
 COMPILE_FAILURE = "FAILED to compile and execute script file named scripts/vscripts/qa/"
-# ./play_p2's physics selection: Box3D with RFC 0013 shape inertia (its
+# the portal2 profile's physics selection: Box3D with RFC 0013 shape inertia (its
 # PHYSICS and PHYSICS_ARGS defaults). IVP is PHYSICS=vphysics.
 PHYSICS_ARGS = {
     "box3d": ["-physics", "vphysics_box3d", "-physics_shape_inertia"],
@@ -161,12 +159,12 @@ def make_retail_mirror(steam_root, mirror):
         raise PhysicsError("%s has no portal2_linux" % steam_root)
     (mirror / "portal2").mkdir(parents=True, exist_ok=True)
     for entry in steam_root.iterdir():
-        if entry.name in ("portal2", "portal2_linux", stage_portal2_runtime.RETAIL_WRITE_DIR):
+        if entry.name in ("portal2", "portal2_linux", portal2_retail.RETAIL_WRITE_DIR):
             continue
         link = mirror / entry.name
         if not link.is_symlink():
             link.symlink_to(entry)
-    stage_portal2_runtime.private_retail_write_dir(steam_root, mirror)
+    portal2_retail.private_retail_write_dir(steam_root, mirror)
     if not (mirror / "portal2_linux").is_file():
         shutil.copy2(steam_root / "portal2_linux", mirror / "portal2_linux")
     for entry in (steam_root / "portal2").iterdir():
@@ -205,54 +203,39 @@ def run_retail_scenario(scenario, mirror, output, tool_directory, extra_args=())
     console.unlink(missing_ok=True)
     output.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
     xdg = output / "xdg"
     xdg.mkdir(exist_ok=True)
     environment.update({
         "SteamAppId": "620", "SteamGameId": "620",
         "SDL_AUDIO_DRIVER": "dummy",
-        # Xwayland, as the earlier retail comparisons ran it.
-        "SDL_VIDEODRIVER": "x11",
         "XDG_CONFIG_HOME": str(xdg),
 
         "LD_LIBRARY_PATH": os.pathsep.join([str(mirror / "bin/linux32")] +
                                            retail_libraries(mirror)),
         "PATH": str(tool_directory) + os.pathsep + environment.get("PATH", ""),
     })
-    display = "wl-p2phys-%d" % os.getpid()
-    game = ["./portal2_linux", "-game", "portal2", "-novid", "-multirun", "-condebug",
+    arguments = ["-game", "portal2", "-novid", "-multirun", "-condebug",
             "-windowed", "-w", "1024", "-h", "768", "+snd_mute_losefocus", "0", "+volume", "0",
             *extra_args, "+map", scenario["map"]]
-    command = private_session.dbus_run_session(output / "dbus") + [
-        "mutter", "--headless", "--wayland", "--virtual-monitor", "1024x768@60",
-        "--wayland-display", display, "--", *game]
     started = time.monotonic()
-    timed_out = False
-    with (output / "stdout.log").open("wb") as stream:
-        process = subprocess.Popen(command, cwd=mirror, env=environment, stdout=stream,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
-        deadline = started + scenario["timeout_seconds"] + 60
-        done_at = None
-        while process.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.5)
-            if not console.is_file():
-                continue
+    done_at = []
+
+    def finished():
+        # The driver quits the game; mutter lingers a moment after it.
+        if not done_at and console.is_file():
             text = console.read_text(errors="replace")
-            if done_at is None and ("QA_DONE " in text or COMPILE_FAILURE in text or
-                                    portal2_scenarios.DRIVER_LOAD_FAILURE in text):
-                done_at = time.monotonic()
-            # The driver quits the game; mutter lingers a moment after it.
-            if done_at is not None and time.monotonic() > done_at + 20:
-                break
-        if process.poll() is None:
-            timed_out = done_at is None
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+            if ("QA_DONE " in text or COMPILE_FAILURE in text or
+                    portal2_scenarios.DRIVER_LOAD_FAILURE in text):
+                done_at.append(time.monotonic())
+        return bool(done_at) and time.monotonic() > done_at[0] + 18
+
+    # kiln's retail-mirror profile on its private-x11 session (Xwayland, as
+    # the earlier retail comparisons ran it).
+    _, timed_out, _, _ = sepipe_loader.run_test(
+        "portal2-retail-mirror", None, mirror, arguments, output / "stdout.log",
+        scenario["timeout_seconds"] + 60, environment=environment, display="private-x11",
+        stop_when=finished, poll_seconds=0.5, display_mode=(1024, 768, 60))
+    timed_out = timed_out and not done_at
     log = console.read_text(errors="replace") if console.is_file() else ""
     (output / "console.log").write_text(log)
     # Exit status belongs to the compositor session, not the game.
@@ -286,12 +269,11 @@ def run_target(args, workload, target, output, physics="box3d", fault=None):
         evidence["mirror"] = str(mirror)
     else:
         runtime = args.runtime.resolve()
-        stage_portal2_runtime.stage_content(args.steam_root, runtime)
-        evidence["installed"] = stage_portal2_runtime.portal_boot.install_build(
-            args.build, runtime, game="portal2")
+        evidence["installed"] = portal2_scenarios.package_runtime((args.profile, args.flavor),
+                                                                  runtime)
         portal2_scenarios.install_scripts(args.workload, workload, runtime)
         evidence["runtime"] = str(runtime)
-        evidence["build"] = str(Path(args.build).resolve())
+        evidence["client"] = [args.profile, args.flavor]
     for scenario in scenarios:
         for run in range(args.runs):
             label = scenario["name"] + ("" if args.runs == 1 else "-%d" % run)
@@ -302,7 +284,7 @@ def run_target(args, workload, target, output, physics="box3d", fault=None):
             else:
                 result = portal2_scenarios.run_scenario(
                     scenario, runtime, output / label, args.start_frames, 1024, 768, tools,
-                    extra_args=PHYSICS_ARGS[physics] + extra)
+                    extra_args=PHYSICS_ARGS[physics] + extra, client=(args.profile, args.flavor))
             log = (output / label / "console.log").read_text(errors="replace")
             if COMPILE_FAILURE in log:
                 result["failures"].append("scenario script failed to compile")
@@ -473,15 +455,14 @@ def main(argv=None):
     parser.add_argument("--reference", type=Path,
                         help="retail reference (default: retail-reference.json beside the workload)")
     parser.add_argument("--steam-root", type=Path, default=steam_root_default())
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2",
-                        help="Waf output configured with --build-games=portal2")
+    portal2_scenarios.sepipe_loader.add_arguments(parser, "portal2")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-physics",
                         help="private staged runtime for this build (created on first use)")
     parser.add_argument("--mirror", type=Path,
                         help="retail symlink mirror (default: <out>/retail-mirror)")
     parser.add_argument("--target", choices=("ours", "retail"), default="ours")
     parser.add_argument("--physics", choices=sorted(PHYSICS_ARGS), default="box3d",
-                        help="VPhysics provider for this build (default box3d, as ./play_p2)")
+                        help="VPhysics provider for this build (default box3d, as ./kiln play portal2)")
     parser.add_argument("--seed-fault", choices=sorted(SEED_FAULTS),
                         help="negative control: inject a known defect")
     parser.add_argument("--scenario", action="append", default=[])

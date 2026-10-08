@@ -2,7 +2,7 @@
 """Author an OpenUSD scene from a compiled legacy BSP, for relighting it.
 
     <usd python> tools/quality/legacy_bsp_scene.py --bsp maps/testchmb_a_00.bsp \\
-        --runtime run/runtime-native --out <dir>
+        --runtime out/portal-linux-native-vulkan/dev/runtime --out <dir>
 
 The scene is what `pbrt_map_build.py` bakes when a manifest names a
 `legacy_bsp` (the relight path, `legacy_bsp_relight.py`): the map's own
@@ -504,7 +504,7 @@ def elevator_video_override(resolver, map_name):
         return {}, None
     script = data.decode("utf-8", "replace")
     names = [map_name]
-    for suffix in ("_relit", "_source2", "_probe64"):
+    for suffix in ("_relit", "_source2"):
         if map_name.endswith(suffix) and len(map_name) > len(suffix):
             names.append(map_name[:-len(suffix)])
             break

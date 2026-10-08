@@ -26,9 +26,10 @@ class MapSwipeTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.build = self.root / "build"
-        (self.build / "c4che").mkdir(parents=True)
-        (self.build / "c4che/_cache.py").write_text("RENDER_FSR411 = True\nGAMES = 'portal2'\n")
+        # The tool asks kiln which game its profile launches.
+        game = patch.object(swipe.sepipe_loader, "game_of", lambda profile: "portal2")
+        game.start()
+        self.addCleanup(game.stop)
         self.out = self.root / "captures"
         self.calls = []
         self.barrier = threading.Barrier(2)
@@ -105,7 +106,7 @@ class MapSwipeTests(unittest.TestCase):
     def run_gallery(self):
         with patch.object(swipe.subprocess, "run", self.boot):
             return swipe.main(["--all-captures", "--in-compositor", "--width", "64",
-                               "--height", "64", "--build", str(self.build),
+                               "--height", "64",
                                "--content-root-a", str(self.root),
                                "--content-root-b", str(self.root), "--out", str(self.out)])
 
@@ -149,7 +150,7 @@ class MapSwipeTests(unittest.TestCase):
         self.barrier = threading.Barrier(1)
         with patch.object(swipe.subprocess, "run", self.boot):
             return swipe.main(["--all-captures", "--rerun-b", "--in-compositor",
-                               "--width", "64", "--height", "64", "--build", str(self.build),
+                               "--width", "64", "--height", "64",
                                "--content-root-b", str(self.root), "--out", str(self.out)])
 
     def test_rerun_b_keeps_a_and_archives_previous_b(self):

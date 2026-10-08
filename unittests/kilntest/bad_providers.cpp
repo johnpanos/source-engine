@@ -366,8 +366,9 @@ public:
 	std::string_view Name() const noexcept override { return "bad-display"; }
 	bool ClaimsIsolation() const noexcept override { return true; }
 	foundation::Expected<product::DisplayEnvironment, ProviderError> Open(
-	    const product::ICancellation *cancel ) override
+	    const product::DisplayRequest &request ) override
 	{
+		const product::ICancellation *cancel = request.cancel;
 		if ( m_Fault != DisplayFault::kIgnoresCancel && Cancelled( cancel ) )
 			return foundation::MakeUnexpected(
 			    ProviderError{ std::string( product::kCancelled ), "" } );
@@ -397,7 +398,48 @@ private:
 	bool m_Open = false;
 };
 
+class BadRun final : public product::IRunProvider
+{
+public:
+	explicit BadRun( RunFault fault ) : m_Fault( fault ) {}
+	std::string_view Name() const noexcept override { return "bad-run"; }
+	foundation::Expected<int, ProviderError> Run( const product::RunRequest &request ) override
+	{
+		if ( request.launches.size() != 1 || !request.spawner )
+			return foundation::MakeUnexpected( ProviderError{ "invalid-request", "" } );
+		platform::SpawnRequest spawn;
+		spawn.argv = request.display.commandPrefix;
+		spawn.argv.insert(
+		    spawn.argv.end(), request.launches[0].argv.begin(), request.launches[0].argv.end() );
+		spawn.workingDirectory = request.launches[0].workingDirectory.string();
+		spawn.environment = request.launches[0].environment;
+		if ( m_Fault == RunFault::kLaunchOverridesDisplay )
+			spawn.environment.insert( spawn.environment.begin(),
+			    request.display.environment.begin(), request.display.environment.end() );
+		else
+			spawn.environment.insert( spawn.environment.end(), request.display.environment.begin(),
+			    request.display.environment.end() );
+		if ( m_Fault != RunFault::kDropsLog )
+			spawn.outputFile = request.launches[0].outputFile.string();
+		std::string error;
+		const platform::SpawnedProcess process = request.spawner->Spawn( spawn, error );
+		if ( request.started && m_Fault != RunFault::kSilentStart )
+			request.started( request.launches[0].name, process );
+		if ( m_Fault == RunFault::kReturnsBeforeExit )
+			return 0;                            // leaves the program running
+		return request.spawner->Wait( process ); // never looks at cancellation
+	}
+
+private:
+	RunFault m_Fault;
+};
+
 } // namespace
+
+std::unique_ptr<product::IRunProvider> RunProvider( RunFault fault )
+{
+	return std::make_unique<BadRun>( fault );
+}
 
 std::unique_ptr<product::ITargetToolchain> Toolchain(
     ToolchainFault fault, platform::IToolProcessProvider &processes )

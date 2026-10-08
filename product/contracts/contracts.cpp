@@ -250,14 +250,10 @@ foundation::Expected<void, CatalogError> ProviderCatalog::Add(
 {
 	return AddUnique( m_DisplaySessions, std::move( provider ), "display session" );
 }
-foundation::Expected<void, CatalogError> ProviderCatalog::AddRunProviderName( std::string name )
+foundation::Expected<void, CatalogError> ProviderCatalog::Add(
+    std::unique_ptr<IRunProvider> provider )
 {
-	if ( name.empty() ||
-	     std::find( m_RunProviders.begin(), m_RunProviders.end(), name ) != m_RunProviders.end() )
-		return foundation::MakeUnexpected(
-		    CatalogError{ "run", name, "empty or already in the catalog" } );
-	m_RunProviders.push_back( std::move( name ) );
-	return {};
+	return AddUnique( m_RunProviders, std::move( provider ), "run" );
 }
 
 foundation::Expected<ITargetToolchain *, CatalogError> ProviderCatalog::Toolchain(
@@ -285,6 +281,12 @@ foundation::Expected<IDeployTransport *, CatalogError> ProviderCatalog::Transpor
 {
 	return FindNamed( m_Transports, name, "transport" );
 }
+foundation::Expected<IRunProvider *, CatalogError> ProviderCatalog::RunProvider(
+    std::string_view name ) const
+{
+	return FindNamed( m_RunProviders, name, "run" );
+}
+
 foundation::Expected<IDisplaySession *, CatalogError> ProviderCatalog::DisplaySession(
     std::string_view name ) const
 {
@@ -299,7 +301,7 @@ ProviderNames ProviderCatalog::Names() const
 	names.packagers = NamesOf( m_Packagers );
 	names.transports = NamesOf( m_Transports );
 	names.displaySessions = NamesOf( m_DisplaySessions );
-	names.runProviders.insert( m_RunProviders.begin(), m_RunProviders.end() );
+	names.runProviders = NamesOf( m_RunProviders );
 	return names;
 }
 

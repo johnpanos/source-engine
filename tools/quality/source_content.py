@@ -4,7 +4,7 @@
 
 `ContentResolver(runtime)` searches a staged runtime in portal/gameinfo.txt
 order (Portal VPK, Portal loose files, the shared HL2 texture and misc VPKs
-and loose files). A staged Portal 2 runtime (tools/quality/stage_portal2_runtime.py)
+and loose files). A staged Portal 2 runtime (kiln package portal2)
 is searched in portal2/gameinfo.txt order instead. Shared by the physics corpus
 harness, the map pipeline's dynamic-model step, the legacy relight scene and
 the VMF compile (tools/quality/vmf_map_build.py).
@@ -96,7 +96,7 @@ class VpkDirectory:
             return preload + stream.read(length)
 
 
-# A staged F-Stop runtime (tools/quality/stage_fstop_runtime.py) is searched in
+# A staged F-Stop runtime (kiln package fstop) is searched in
 # fstop/gameinfo.txt order: the fstop game directory, the Portal order, then
 # Valve's F-Stop-era depot content (lower-case mirrors).
 FSTOP_SEARCH_PATHS = [("dir", "fstop")] + SEARCH_PATHS + [

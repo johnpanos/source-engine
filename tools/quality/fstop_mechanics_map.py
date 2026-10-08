@@ -9,7 +9,7 @@ code), with its entities' DATADESC keyfields and inputs set up so each one
 does what its code does. Every shop front is a mall entrance: glass display
 windows (Portal's chamber glass) either side of a Portal 2 test chamber door
 (retail Portal 2's portal_door_combined, staged by
-tools/quality/stage_fstop_runtime.py), which a player trigger opens
+kiln package fstop), which a player trigger opens
 (OnStartTouch) and closes once nobody is in it (OnEndTouchAll). Invisible
 sliding leaves (func_door) carry the door's collision. Shops with something
 that shoots or hunts the player (the hover turret, the androids, the
@@ -48,11 +48,12 @@ RFC 0002 R08-MCP): create_block, tie_to_entity, place_entity, set_key,
 add_output, check_map, then save and build_map, which compiles it with
 tools/quality/vmf_map_build.py against the staged F-Stop runtime (Portal and
 HL2 plus the depot's materials) and installs it into the F-Stop game directory
-(run/runtime-fstop/fstop/maps), which the Portal map store is not mounted in.
+(the fstop profile's packaged runtime, fstop/maps), which the Portal map store
+is not mounted in.
 
     python3 tools/quality/fstop_mechanics_map.py          author, build and install
     python3 tools/quality/fstop_mechanics_map.py --vmf-only
-    ./play_fstop +map fstop_mechanics
+    ./kiln play fstop fstop_mechanics
 """
 
 import argparse
@@ -68,10 +69,16 @@ sys.path.insert(0, str(HERE))
 
 from source_content import ContentResolver  # noqa: E402
 
+sys.path.insert(0, str(HERE.parent / "kiln"))
+import sepipe_loader  # noqa: E402
+
 ROOT = HERE.parents[1]
-CLI = ROOT / "build-r03-tools/hammer/cli/hammer_cli"
-RUNTIME = ROOT / "run/runtime-fstop"
-GAME_DIR = RUNTIME / "fstop"
+PROFILE = "fstop"
+
+
+def runtime():
+    """The fstop profile's packaged runtime (`kiln package fstop`)."""
+    return sepipe_loader.packaged_runtime(PROFILE)
 NAME = "fstop_mechanics"
 
 # F-Stop-era Portal 2 materials (depot 852, mounted as fstop_valve), then
@@ -223,7 +230,7 @@ def texture_size(material):
     """The (width, height) in texels of a material's base texture, from its VTF."""
     if material not in _TEXTURE_SIZES:
         if not _RESOLVER:
-            _RESOLVER.append(ContentResolver(str(RUNTIME)))
+            _RESOLVER.append(ContentResolver(str(runtime())))
         size = (512, 512)
         vmt, _ = _RESOLVER[0].read("materials/%s.vmt" % material.lower())
         if vmt:
@@ -940,15 +947,21 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, default=ROOT / "quality-results/fstop-maps" / NAME)
-    parser.add_argument("--cli", type=Path, default=CLI, help="the built hammer_cli")
-    parser.add_argument("--runtime", type=Path, default=RUNTIME,
-                        help="staged F-Stop runtime the map's materials come from")
-    parser.add_argument("--game-dir", type=Path, default=GAME_DIR,
-                        help="staged F-Stop game directory the map is installed into")
+    parser.add_argument("--cli", type=Path, help="the built hammer_cli (default: the hammer "
+                        "profile's install)")
+    parser.add_argument("--runtime", type=Path, help="F-Stop runtime the map's materials come "
+                        "from (default: the fstop profile's packaged runtime)")
+    parser.add_argument("--game-dir", type=Path, help="F-Stop game directory the map is "
+                        "installed into (default: <runtime>/fstop)")
     parser.add_argument("--quality", choices=("fast", "full"), default="full")
     parser.add_argument("--vmf-only", action="store_true", help="save the VMF and stop")
     args = parser.parse_args()
 
+    if args.cli is None:
+        args.cli = sepipe_loader.installed("hammer") / "hammer_cli"
+    if not args.vmf_only:
+        args.runtime = args.runtime or runtime()
+        args.game_dir = args.game_dir or args.runtime / "fstop"
     out = args.out.resolve()
     work = out / "hammer"
     work.mkdir(parents=True, exist_ok=True)

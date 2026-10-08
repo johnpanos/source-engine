@@ -17,7 +17,7 @@ session only with the user's consent (an isolated headless compositor has no
 planes, which is a valid negative control: no scanout tranche, no new FBs).
 
   scanout_probe.py planes
-  scanout_probe.py run --seconds 20 --out DIR -- ./play_p2 -fullscreen ...
+  scanout_probe.py run --seconds 20 --out DIR -- ./kiln play portal2 -- -fullscreen ...
 """
 import argparse
 import array

@@ -96,12 +96,12 @@ done
 [ -n "$PROFILE" ] || die "no --profile (use build-macos-app.sh, build-ios-app.sh or build-tvos-app.sh)"
 [ -f "$PROFILE" ] || die "missing profile $PROFILE"
 # The profile with its "extends" chain resolved (a derived product such as
-# Portal 2 names the profile that owns the shared pins); profile_extends.py
-# owns the rule.
+# Portal 2 names the profile that owns the shared pins); kiln's
+# product.profile owns the rule (RFC 0027).
 PROFILE_SOURCE="$PROFILE"
 PROFILE="$(mktemp --suffix=.json)"
 trap 'rm -f "$PROFILE"' EXIT
-python3 "$ROOT/tools/quality/profile_extends.py" resolve "$PROFILE_SOURCE" > "$PROFILE" ||
+"$ROOT/kiln" profiles resolve "$(basename "$PROFILE_SOURCE")" > "$PROFILE" ||
 	die "could not resolve $PROFILE_SOURCE"
 p() { jq -er "$1" "$PROFILE"; }
 
@@ -510,7 +510,7 @@ if target['os'] == 'ios':
         'UILaunchScreen': {},
         'UIRequiresFullScreen': True,
         'UIStatusBarHidden': True,
-        # Co-op (./play_p2_coop) and LAN games reach other devices on the
+        # Co-op (kiln play portal2-coop) and LAN games reach other devices on the
         # local network; iOS asks the player first and shows this reason.
         'NSLocalNetworkUsageDescription':
             'Multiplayer connects to games on your local network.',

@@ -1,0 +1,38 @@
+{
+  "schema": "source-product-fragment/v2",
+  "id": "linux-ci-ubuntu-24.04-v2",
+  "description": "Build facts of the hosted CI lanes (GitHub's ubuntu-24.04 runners, RFC 0027 L1): the distribution's GCC 13.3.0 and the linux-gcc provider, one dev flavor, the waf-engine stage. The desktop fragment pins the developer host's GCC 16; these lanes record the runner's compiler instead. Clang lanes override toolchain and build.toolchain.",
+  "target": {
+    "os": "linux",
+    "architecture": "x86_64"
+  },
+  "toolchain": {
+    "cc": "gcc",
+    "cxx": "g++",
+    "family": "gcc",
+    "version": "13.3.0",
+    "standard_library": "libstdc++",
+    "dialect_policy": "quality/toolchain/policy.json",
+    "glibcxx_cxx11_abi": 0,
+    "build_type": "release"
+  },
+  "configure_options": {
+    "build_type": "release",
+    "disable_warns": true
+  },
+  "build": {
+    "toolchain": "linux-gcc",
+    "default_flavor": "dev",
+    "flavors": {
+      "dev": {
+        "description": "The CI configuration as recorded per lane",
+        "configure_options": {}
+      }
+    }
+  },
+  "pipeline": {
+    "stages": [
+      "waf-engine"
+    ]
+  }
+}

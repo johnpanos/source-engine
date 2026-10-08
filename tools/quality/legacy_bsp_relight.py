@@ -26,7 +26,7 @@ from the toolchain's game runtime, or any v20/v21 `--bsp`) goes to
     difference fails the run.
 
 The map is published as `<map>_relit` (not over the shipped map), so
-`./play testchmb_a_00_relit` runs it; its level changes lead to the shipped
+`./kiln play portal testchmb_a_00_relit` runs it; its level changes lead to the shipped
 maps. `--boot` also boots it headless on native Vulkan. Build steps are
 cached in `<out>/steps.json` like any pipeline map; `--from STEP` forces one.
 """
@@ -126,7 +126,7 @@ def main():
     parser.add_argument("--toolchain", type=Path)
     parser.add_argument("--runtime", type=Path,
                         help="staged game runtime the materials come from (default: the "
-                             "toolchain's; run/runtime-p2 for a Portal 2 map)")
+                             "toolchain's; for a Portal 2 map the portal2 profile's packaged runtime, out/portal2-linux-native-vulkan/dev/runtime)")
     parser.add_argument("--from", dest="force_from", choices=pbrt_map_build.STEPS)
     parser.add_argument("--boot", action="store_true",
                         help="boot the relit map headless on native Vulkan")

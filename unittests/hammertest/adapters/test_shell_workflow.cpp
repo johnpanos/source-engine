@@ -11,7 +11,7 @@
 //			workflow the shell exposes, with no GTK dependency. It proves the
 //			sibling's behavior is correct independently of the toolkit; the shell
 //			binary itself is separately proven to compile+link against these
-//			libraries (build_gtk_shell.sh).
+//			libraries (the hammer_gtk_shell target, `./kiln build hammer`).
 //
 //=============================================================================//
 

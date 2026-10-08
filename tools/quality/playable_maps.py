@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Published PBRT maps for the dev launcher (./play, ./run.sh).
+"""Published PBRT maps for the dev launcher (./kiln play portal).
 
 `pbrt_map_build.py` publishes each map it builds to run/maps/<map>/ (a copy of
-its content root plus published.json; untracked). Every ./play launch mounts
+its content root plus published.json; untracked). Every ./kiln play portal launch mounts
 all published maps into its runtime as portal/custom/pbrt-<map>, a symlink that
 the gameinfo's `portal/custom/*` search path loads at boot, so
 
-    ./play living_room
+    ./kiln play portal living_room
 
 loads the newest build. The engine draws the map's WMSH/LMAP world by default,
 so a map needs no launch settings and also draws when loaded from the console.

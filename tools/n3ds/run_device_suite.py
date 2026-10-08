@@ -60,19 +60,20 @@ SENSITIVITY = {
 @contextlib.contextmanager
 def compositor():
     """A private headless mutter for the OpenGL renderer; yields its Wayland
-    display name. Its D-Bus session is the repository's private one
-    (tools/quality/private_session.py): it never starts the document portal,
-    whose shared mount a private session would otherwise take down."""
-    sys.path.insert(0, str(ROOT / "tools/quality"))
-    import private_session
+    display name. It is kiln's private display session (RFC 0027): its
+    D-Bus session never starts the document portal, whose shared mount a
+    private session would otherwise take down. The compositor stands for the
+    suite, so it runs a placeholder child until it is stopped."""
+    sys.path.insert(0, str(ROOT / "tools/kiln"))
+    import sepipe_loader
     home = azahar_ns.HOME / "compositor"
     home.mkdir(parents=True, exist_ok=True)
-    display = "n3ds-%s" % (azahar_ns.NAME or "shared")
+    session = sepipe_loader.Display("private", home / "display", (800, 600, 60))
+    prefix = session.prefix()
+    display = prefix[prefix.index("--wayland-display") + 1]
     socket = Path(os.environ.get("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())) / display
-    command = private_session.dbus_run_session(home) + [
-        "mutter", "--headless", "--wayland", "--no-x11", "--virtual-monitor", "800x600",
-        "--wayland-display=%s" % display]
-    process = subprocess.Popen(command, stdout=open(home / "mutter.log", "w"),
+    command, environment = session.wrap(["sleep", "infinity"], os.environ)
+    process = subprocess.Popen(command, env=environment, stdout=open(home / "mutter.log", "w"),
                                stderr=subprocess.STDOUT, start_new_session=True)
     try:
         for _ in range(100):
@@ -85,6 +86,7 @@ def compositor():
     finally:
         os.killpg(process.pid, signal.SIGTERM)
         process.wait(timeout=10)
+        session.close()
 
 
 def run(variant, timeout, display=None):

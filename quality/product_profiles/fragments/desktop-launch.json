@@ -1,24 +1,49 @@
 {
   "schema": "source-product-fragment/v2",
   "id": "desktop-launch-v2",
-  "description": "Desktop launch switches for the physics, job, queue and video defaults that run.conf and play_p2 set by environment variable (PHYSICS=vphysics, JOB_ARGS=, QUEUE_ARGS=, VIDEO_ARGS=). The defaults themselves are each game profile's launch.arguments.",
+  "description": "Desktop launch defaults that the retired run.conf and play_p2 set by environment variable, as variables and switches: physics (PHYSICS, PHYSICS_ARGS), the job graphs (JOB_ARGS), the queued material system (QUEUE_ARGS / +mat_queue_mode in EXTRA_ARGS). Each game profile sets the values its launcher uses and splices them where its launcher puts them.",
   "launch": {
+    "display_session": "user",
+    "run": "single",
+    "variables": {
+      "physics": [
+        "vphysics_box3d"
+      ],
+      "physics_args": [
+        "-physics_shape_inertia"
+      ],
+      "job_args": [],
+      "queue": [
+        "+mat_queue_mode",
+        "2"
+      ]
+    },
     "switches": {
       "ivp": {
         "description": "IVP physics instead of Box3D (PHYSICS=vphysics)",
-        "arguments": ["-physics", "vphysics"]
+        "set": {
+          "physics": [
+            "vphysics"
+          ]
+        }
+      },
+      "no-shape-inertia": {
+        "description": "The legacy per-axis inertia (PHYSICS_ARGS=)",
+        "set": {
+          "physics_args": []
+        }
       },
       "serial-jobs": {
-        "description": "The job graphs off: engine defaults (JOB_ARGS=)",
-        "arguments": ["+cl_render_start_graph", "0", "+sv_querycache_job_graph", "0", "-vkemitparallel", "0"]
+        "description": "The job graphs at the engine defaults (JOB_ARGS=)",
+        "set": {
+          "job_args": []
+        }
       },
       "sync-queue": {
-        "description": "The material system unqueued (+mat_queue_mode 0)",
-        "arguments": ["+mat_queue_mode", "0"]
-      },
-      "bink": {
-        "description": "Retail Bink movies instead of the AV1 transcodes (-video-provider bink)",
-        "arguments": ["-video-provider", "bink"]
+        "description": "The material system unqueued (QUEUE_ARGS=, mat_queue_mode at its saved value)",
+        "set": {
+          "queue": []
+        }
       }
     }
   }

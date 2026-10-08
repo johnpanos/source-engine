@@ -8,8 +8,8 @@
   },
   "intent": {
     "support_scope": "tvOS build slice for the separate Portal 2 target (user direction, 2026-09-28: 'build portal 2 for tvos and deploy enough to boot sp_a2_core'). Product scope like the Portal tvOS profile; nothing of that profile's device evidence carries over.",
-    "packaging": ".app assembled on Linux, signed and installed on the Mac by ios-deploy.sh --profile with this profile. Licensed retail Portal 2 content is staged from a Steam installation by tools/quality/stage_portal2_runtime.py and copied into the app's Library/Caches separately.",
-    "physics_provider": "vphysics_box3d (Box3D), as in ./play_p2 and the Portal tvOS profile (launcher_main/apple_main.cpp)",
+    "packaging": ".app assembled on Linux, signed and installed on the Mac by ios-deploy.sh --profile with this profile. Licensed retail Portal 2 content is packaged from a Steam installation by kiln package portal2-content.",
+    "physics_provider": "vphysics_box3d (Box3D), as in the desktop portal2 profile and the Portal tvOS profile (launcher_main/apple_main.cpp)",
     "video_provider": "none: the Bink provider needs FFmpeg, which no Apple profile pins; the menu uses the staged background image"
   },
   "tvos": {
@@ -30,7 +30,7 @@
   },
   "content": {
     "stage_directory": "build-ios-p2-content",
-    "staging": "tools/quality/stage_portal2_runtime.py --mount-custom, shared with the Portal 2 iOS profile (the same retail search paths and staged directory)",
+    "staging": "kiln package portal2-content (the portal2 profile's retail seed, links and search paths with custom/* mounted, no engine), shared with the Portal 2 iOS profile (the same retail search paths and staged directory)",
     "directories": [
       "platform",
       "retail_platform",

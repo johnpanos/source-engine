@@ -18,7 +18,12 @@ def build(bld):
 		('product_contracts', 'contracts/contracts.cpp', 'product.contracts', ['product_profile', 'foundation_json']),
 		('product_toolchain_linux', 'toolchain/linux.cpp', 'product.toolchain.linux', ['product_contracts']),
 		('product_toolchain_n3ds', 'toolchain/n3ds.cpp', 'product.toolchain.n3ds', ['product_contracts']),
-		('product_stage_waf', 'stage/waf_engine.cpp', 'product.stage.waf', ['product_contracts'])):
+		('product_stage_waf', 'stage/waf_engine.cpp', 'product.stage.waf', ['product_contracts']),
+		('product_stage_fstop', 'stage/fstop_content.cpp', 'product.stage.fstop', ['product_contracts', 'content_vpk']),
+		('product_stage_video_av1', 'stage/video_av1.cpp', 'product.stage.video-av1', ['product_contracts']),
+		('product_display_desktop', 'display/desktop.cpp', 'product.display.desktop', ['product_contracts']),
+		('product_run_desktop', 'run/desktop.cpp', 'product.run.desktop', ['product_contracts']),
+		('product_package_linux_dir', 'package/linux_dir.cpp', 'product.package.linux-dir', ['product_contracts', 'content_vpk'])):
 		bld.stlib(env=strict, source=[source], target=target, name=target,
 			arch_module=module, features='cxx', includes=['../public'], use=use,
 			install_path=None)

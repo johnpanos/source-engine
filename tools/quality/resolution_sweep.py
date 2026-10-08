@@ -105,7 +105,7 @@ def command_run(args):
     plan = {"workload": str(args.workload), "resolutions": ["%dx%d" % r for r in resolutions],
             "variants": arguments, "repeats": args.repeats, "warmup": args.warmup,
             "retries": args.retries,
-            "build": str(args.build) if args.build else None, "runtime": str(args.runtime),
+            "kiln_profile": args.kiln_profile, "flavor": args.flavor, "runtime": str(args.runtime),
             "order": [["r%d" % r, "%dx%d" % res, v]
                       for r, res, v in run_order(args.repeats, resolutions, names)]}
     (out / "plan.json").write_text(json.dumps(plan, indent=2) + "\n")
@@ -114,8 +114,9 @@ def command_run(args):
                    "--workload", str(args.workload), "--no-stage",
                    "--width", str(resolution[0]), "--height", str(resolution[1]),
                    "--runtime", str(args.runtime), "--out", str(directory)]
-        if args.build:
-            command += ["--build", str(args.build)]
+        if args.kiln_profile:
+            command += ["--kiln-profile", args.kiln_profile]
+        command += ["--flavor", args.flavor]
         command += ["--extra-arg=" + argument for argument in arguments[variant]]
         with log_path.open("wb") as log:
             return subprocess.run(command, stdout=log, stderr=subprocess.STDOUT).returncode
@@ -267,9 +268,11 @@ def main(argv=None):
     run.add_argument("--retries", type=int, default=0,
                      help="replay a run up to N times while another game process shares the host")
     run.add_argument("--workload", type=Path, default=DEFAULT_WORKLOAD)
-    run.add_argument("--build", type=Path, help="Waf tree (default: the workload's)")
+    run.add_argument("--kiln-profile", help="kiln profile (default: the workload's)")
+    run.add_argument("--flavor", default="dev", help="the profile's build flavor")
     run.add_argument("--runtime", type=Path, required=True,
-                     help="private runtime, staged beforehand (stage_portal2_runtime.py)")
+                     help="private runtime, packaged beforehand (kiln package <profile> "
+                          "--runtime DIR)")
     run.set_defaults(handler=command_run)
     report = commands.add_parser("report", help="report an existing sweep")
     report.add_argument("out")

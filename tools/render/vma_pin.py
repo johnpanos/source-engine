@@ -12,92 +12,32 @@ unpacked file to match its recorded digest. Nothing here ever reads an
 unpinned copy.
 """
 import argparse
-import hashlib
-import json
-import shutil
 import sys
-import tarfile
-import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "quality"))
+import source_pin  # noqa: E402  (the one owner of pinned source archives)
+
 PIN = ROOT / "quality" / "toolchain" / "vulkan-memory-allocator.json"
-SCHEMA = "vulkan-memory-allocator-pin/v1"
-
-
-class PinError(Exception):
-    pass
-
-
-def sha256(path):
-    digest = hashlib.sha256()
-    with open(path, "rb") as stream:
-        for block in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()
+PinError = source_pin.PinError
 
 
 def load_pin(path=PIN):
-    pin = json.loads(Path(path).read_text())
-    if pin.get("schema") != SCHEMA:
-        raise PinError("%s: schema %r is not %s" % (path, pin.get("schema"), SCHEMA))
-    for key in ("directory", "archive_cache", "component", "files"):
-        if not pin.get(key):
-            raise PinError("%s: no %r" % (path, key))
-    for key in ("commit", "url", "sha256", "cache_archive", "extracted_directory"):
-        if not pin["component"].get(key):
-            raise PinError("%s: component has no %r" % (path, key))
-    return pin
+    return source_pin.load_pin(path)
 
 
 def include_directory(pin=None, root=ROOT):
-    pin = pin or load_pin()
-    return Path(root) / pin["directory"] / "include"
+    return source_pin.directory(pin or load_pin(), root) / "include"
 
 
 def verify(pin=None, root=ROOT):
     """Problems with the unpacked copy; empty when every file matches the pin."""
-    pin = pin or load_pin()
-    problems = []
-    for relative, expected in sorted(pin["files"].items()):
-        path = Path(root) / pin["directory"] / relative
-        if not path.is_file():
-            problems.append("%s is missing; run 'python3 tools/render/vma_pin.py fetch'" % path)
-        elif sha256(path) != expected:
-            problems.append("%s: sha256 %s does not match the pin %s" % (path, sha256(path), expected))
-    return problems
+    return source_pin.verify(pin or load_pin(), root)
 
 
 def fetch(pin=None, root=ROOT):
-    pin = pin or load_pin()
-    component = pin["component"]
-    archives = Path(root) / pin["archive_cache"]
-    archives.mkdir(parents=True, exist_ok=True)
-    archive = archives / component["cache_archive"]
-    if not archive.is_file():
-        print("vma_pin: downloading " + component["url"], file=sys.stderr)
-        partial = archive.with_suffix(archive.suffix + ".partial")
-        with urllib.request.urlopen(component["url"]) as response, open(partial, "wb") as out:
-            shutil.copyfileobj(response, out)
-        partial.rename(archive)
-    actual = sha256(archive)
-    if actual != component["sha256"]:
-        raise PinError("%s: sha256 %s does not match the pin %s" % (archive, actual, component["sha256"]))
-    target = Path(root) / pin["directory"]
-    with tarfile.open(archive, "r:gz") as tar:
-        for relative in sorted(pin["files"]):
-            member = tar.getmember(component["extracted_directory"] + "/" + relative)
-            source = tar.extractfile(member)
-            if source is None:
-                raise PinError("%s: %s is not a file" % (archive, relative))
-            destination = target / relative
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            with open(destination, "wb") as out:
-                shutil.copyfileobj(source, out)
-    problems = verify(pin, root)
-    if problems:
-        raise PinError("; ".join(problems))
-    return target
+    return source_pin.fetch(pin or load_pin(), root)
 
 
 def main(argv=None):

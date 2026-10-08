@@ -9,15 +9,16 @@ import unittest
 QUALITY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(QUALITY))
 
-import profile_extends  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "kiln"))
+import sepipe_loader  # noqa: E402
 
 PROFILES = QUALITY.parents[1] / "quality/product_profiles"
 
 
 class Portal2IosProfileTests(unittest.TestCase):
     def setUp(self):
-        self.base = profile_extends.load_profile(PROFILES / "portal-ios-native-vulkan.json")
-        self.derived = profile_extends.load_profile(PROFILES / "portal2-ios-native-vulkan.json")
+        self.base = sepipe_loader.resolve_profile(PROFILES / "portal-ios-native-vulkan.json")
+        self.derived = sepipe_loader.resolve_profile(PROFILES / "portal2-ios-native-vulkan.json")
 
     def test_pins_come_from_the_portal_profile(self):
         for key in ("target", "sdk", "host_toolchain", "dependencies"):

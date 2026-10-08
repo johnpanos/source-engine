@@ -88,7 +88,7 @@ CLANG = real_compiler(os.environ.get("CLANG64_CXX", "clang++"))
 # ---------------------------------------------------------------------------
 # Declared configurations: the R03 product trees (quality/baseline.json
 # `build.*` setup lines) replayed with Clang under private locks and output
-# directories, plus Portal 2 (./play_p2's configure line). A tree configured
+# directories, plus Portal 2 (the portal2 profile's configure options). A tree configured
 # with GCC has its recorded argv compiled by Clang; `translate_argv` checks
 # that it records no GCC-only options.
 # ---------------------------------------------------------------------------

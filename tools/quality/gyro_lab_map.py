@@ -34,9 +34,9 @@ starts once at map load. The bodies have no damping or drag
 
     python3 tools/quality/gyro_lab_map.py              both maps
     python3 tools/quality/gyro_lab_map.py --map dzhanibekov
-    ./play dzhanibekov                 Box3D, shape inertia (-physics_shape_inertia)
-    PHYSICS_ARGS= ./play dzhanibekov   Box3D, legacy inertia
-    PHYSICS=vphysics ./play gyro_lab   IVP
+    ./kiln play portal dzhanibekov                 Box3D, shape inertia (-physics_shape_inertia)
+    ./kiln play portal dzhanibekov --set no-shape-inertia   Box3D, legacy inertia
+    ./kiln play portal gyro_lab --set ivp   IVP
 
 The map compiles with the pinned legacy vbsp/vvis/vrad of the PBRT map
 toolchain (build/toolchains/pbrt-map-toolchain.json) against the staged Portal
@@ -83,7 +83,7 @@ SPIN_SECONDS = 0.5
 # legacy inertia model keeps only per-axis inertia in the entity frame (IVP's
 # compact surface has no principal-axis rotation), so it just spins; with the
 # shape inertia model (RFC 0013 vphysics.shape-inertia.v1, -physics_shape_inertia,
-# the ./play default) its products of inertia make it tumble.
+# the ./kiln play portal default) its products of inertia make it tumble.
 BAYS = [
     # name, x, world torque axis (normalized when written), box angles
     ("tilted", -440, (0.0, 0.0, 1.0), (35.0, 30.0, 20.0)),

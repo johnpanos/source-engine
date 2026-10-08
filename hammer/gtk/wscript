@@ -5,7 +5,7 @@
 # over presenters::EditorWorkspace whose viewports draw through the RFC 0016
 # render core (RenderCore_Create with the Vulkan device). Built with the tools
 # product when the root finds GTK 4, libadwaita and the core's Vulkan adapter
-# (hammer_gtk_projects in the top-level wscript); hammer/gtk/build.sh drives it.
+# (hammer_gtk_projects in the top-level wscript); `./kiln build hammer` builds it.
 
 top = '.'
 
@@ -41,7 +41,26 @@ def build(bld):
 		includes  = [ '../../public', '../..', '.' ],
 		defines   = defines,
 		use       = use,
-		install_path = None,
+		install_path = bld.env.BINDIR,
 		subsystem = 'CONSOLE',
 		idx       = bld.get_taskgen_count()
 	)
+
+	# The thin editing sibling (RFC 0002 HAM-GTKSHELL-001,
+	# hammer/adapters/gtk): a GTK shell over the headless document libraries
+	# with no renderer; its delegated behaviour is covered headlessly by
+	# unittests/hammertest/adapters/test_shell_workflow.cpp.
+	bld.program(
+		env       = bld.strict_cpp20_env(),
+		source    = [ '../adapters/gtk/hammer_gtk_shell.cpp' ],
+		target    = 'hammer_gtk_shell',
+		name      = 'hammer_gtk_shell',
+		arch_module = 'hammer.adapters.gtk',
+		features  = 'cxx cxxprogram',
+		includes  = [ '../../public', '../..' ],
+		use       = [ 'hammer_app', 'hammer_platform', 'kvtext', 'GTK4', 'ADWAITA' ],
+		install_path = bld.env.BINDIR,
+		subsystem = 'CONSOLE',
+		idx       = bld.get_taskgen_count()
+	)
+

@@ -183,11 +183,12 @@ const std::set<std::string> kBuildKeys = {
     "toolchain", "flavors", "default_flavor", "compiler_cache", "host_tool_profile" };
 const std::set<std::string> kFlavorKeys = { "description", "configure_options" };
 const std::set<std::string> kPipelineKeys = { "stages" };
-const std::set<std::string> kPackageKeys = { "form" };
+const std::set<std::string> kPackageKeys = { "form", "directory", "steps" };
 const std::set<std::string> kDeployKeys = { "transport", "content_root", "capabilities" };
-const std::set<std::string> kLaunchKeys = { "game", "default_map", "executable", "arguments",
-    "environment", "display_session", "run", "switches" };
-const std::set<std::string> kSwitchKeys = { "description", "arguments", "conflicts" };
+const std::set<std::string> kLaunchKeys = { "game", "default_map", "executable",
+    "working_directory", "arguments", "environment", "display_session", "run", "switches",
+    "variables", "map_arguments", "peers", "facts" };
+const std::set<std::string> kSwitchKeys = { "description", "arguments", "conflicts", "set" };
 const std::set<std::string> kContentKeys = {
     "roots", "base_packages", "mount_order", "mount_sets", "locators", "lowering" };
 const std::set<std::string> kTargetKeys = { "product", "os", "architecture" };
@@ -303,6 +304,23 @@ private:
 			if ( !item.IsString() || item.Text().empty() )
 				return Fail(
 				    ProfileErrorCode::kSchema, key, "must be a list of non-empty strings" );
+			out.push_back( item.Text() );
+		}
+		return std::nullopt;
+	}
+
+	// A list of strings, possibly empty, whose strings may be empty.
+	std::optional<ProfileError> AnyStringList(
+	    const Value *value, const std::string &key, std::vector<std::string> &out ) const
+	{
+		if ( !value )
+			return std::nullopt;
+		if ( !value->IsArray() )
+			return Fail( ProfileErrorCode::kSchema, key, "must be a list of strings" );
+		for ( const Value &item : value->Items() )
+		{
+			if ( !item.IsString() )
+				return Fail( ProfileErrorCode::kSchema, key, "must be a list of strings" );
 			out.push_back( item.Text() );
 		}
 		return std::nullopt;
@@ -478,6 +496,38 @@ private:
 	std::optional<ProfileError> Switches( ResolvedProfile &out ) const
 	{
 		const Value *launch = Find( "launch" );
+		if ( const Value *variables = launch ? launch->Find( "variables" ) : nullptr )
+		{
+			if ( !variables->IsObject() )
+				return Fail(
+				    ProfileErrorCode::kSchema, "launch.variables", "maps names to argument lists" );
+			for ( const auto &member : variables->Members() )
+			{
+				std::vector<std::string> &list = out.launchVariables[member.first];
+				if ( auto e =
+				         AnyStringList( &member.second, "launch.variables." + member.first, list ) )
+					return e;
+			}
+		}
+		for ( const char *key : { "arguments", "map_arguments" } )
+		{
+			std::vector<std::string> unused;
+			if ( auto e = AnyStringList( launch ? launch->Find( key ) : nullptr,
+			         std::string( "launch." ) + key, unused ) )
+				return e;
+		}
+		if ( const Value *environment = launch ? launch->Find( "environment" ) : nullptr )
+		{
+			if ( !environment->IsObject() )
+				return Fail(
+				    ProfileErrorCode::kSchema, "launch.environment", "maps names to strings" );
+			for ( const auto &member : environment->Members() )
+			{
+				if ( !member.second.IsString() )
+					return Fail( ProfileErrorCode::kSchema, "launch.environment." + member.first,
+					    "an environment value is a string" );
+			}
+		}
 		const Value *switches = launch ? launch->Find( "switches" ) : nullptr;
 		if ( !switches )
 			return std::nullopt;
@@ -508,6 +558,21 @@ private:
 			if ( auto e = StringList(
 			         member.second.Find( "conflicts" ), where + ".conflicts", entry.conflicts ) )
 				return e;
+			if ( const Value *sets = member.second.Find( "set" ) )
+			{
+				if ( !sets->IsObject() )
+					return Fail( ProfileErrorCode::kSchema, where + ".set",
+					    "maps launch variables to argument lists" );
+				for ( const auto &variable : sets->Members() )
+				{
+					if ( !out.launchVariables.count( variable.first ) )
+						return Fail( ProfileErrorCode::kSchema, where + ".set." + variable.first,
+						    "is not a launch variable (launch.variables)" );
+					if ( auto e = AnyStringList( &variable.second, where + ".set." + variable.first,
+					         entry.sets[variable.first] ) )
+						return e;
+				}
+			}
 			out.switches.push_back( std::move( entry ) );
 		}
 		for ( const Switch &entry : out.switches )
@@ -720,6 +785,13 @@ foundation::Expected<std::vector<std::string>, ProfileError> ResolvedProfile::Wa
 	return arguments;
 }
 
+std::string ResolvedProfile::PackageDirectoryName() const
+{
+	const foundation::json::Value *package = document.Find( "package" );
+	const std::string *directory = package ? package->FindString( "directory" ) : nullptr;
+	return directory ? *directory : std::string( "package" );
+}
+
 std::string ResolvedProfile::TreeName( std::string_view flavor ) const
 {
 	return name + "/" + std::string( flavor );
@@ -868,6 +940,27 @@ foundation::Expected<ResolvedProfile, ProfileError> ApplyWorkspace(
 	if ( !target )
 		target = &result.document.Set( "launch", Value::Object() );
 	MergeInto( *target, *launch );
+	if ( const Value *variables = launch->Find( "variables" ) )
+	{
+		if ( !variables->IsObject() )
+			return foundation::MakeUnexpected( Error( ProfileErrorCode::kSchema, "",
+			    "profiles." + profile.name + ".launch.variables",
+			    "maps names to argument lists" ) );
+		for ( const auto &member : variables->Members() )
+		{
+			std::vector<std::string> list;
+			for ( const Value &item :
+			    member.second.IsArray() ? member.second.Items() : std::vector<Value>{} )
+			{
+				if ( !item.IsString() )
+					return foundation::MakeUnexpected( Error( ProfileErrorCode::kSchema, "",
+					    "profiles." + profile.name + ".launch.variables." + member.first,
+					    "an argument list of strings" ) );
+				list.push_back( item.Text() );
+			}
+			result.launchVariables[member.first] = std::move( list );
+		}
+	}
 	return result;
 }
 

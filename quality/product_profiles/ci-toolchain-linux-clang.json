@@ -1,0 +1,20 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "ci-toolchain-linux-clang-v2",
+  "description": "CI: the C++ toolchain boundary lane with the runner's Clang 18.1.3 (toolchain.yml clang).",
+  "extends": [
+    "ci-toolchain-linux.json"
+  ],
+  "aliases": [
+    "ci-toolchain-clang@linux-x86_64"
+  ],
+  "toolchain": {
+    "cc": "clang",
+    "cxx": "clang++",
+    "family": "clang",
+    "version": "18.1.3"
+  },
+  "build": {
+    "toolchain": "linux-clang"
+  }
+}

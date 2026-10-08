@@ -328,9 +328,11 @@ static void R_SetNonAmbientLightingState( int numLights, dworldlight_t *locallig
 		// Apply lightstyle
 		float bias = LightStyleValue( locallight[i]->style );
 
-		// and the share moving objects let through
+		// and the share moving objects let through (a client concern)
+#ifndef SWDS
 		if ( pReceiver && DynamicOcclusion_Enabled() )
 			bias *= DynamicOcclusion_ModelVisibility( *locallight[i], *pReceiver, nSelf );
+#endif
 
 		// Deal with overbrighting + bias
 		pLightDesc->m_Color[0] *= bias;
@@ -2558,6 +2560,9 @@ int	CModelRender::DrawModelEx( ModelRenderInfo_t &pInfo )
 
 static int CoreStaticPropForDraw( IClientRenderable *renderable, int lod )
 {
+#ifdef SWDS
+	return -1; // the dedicated server has no render core
+#else
 	if ( !renderable || lod < 0 || renderable->GetFxBlend() != 255 )
 		return -1;
 	const int prop = StaticPropMgr_CorePropIndex( renderable );
@@ -2571,6 +2576,7 @@ static int CoreStaticPropForDraw( IClientRenderable *renderable, int lod )
 	float color[3];
 	renderable->GetColorModulation( color );
 	return color[0] == 1.0f && color[1] == 1.0f && color[2] == 1.0f ? prop : -1;
+#endif
 }
 
 int	CModelRender::DrawModelExStaticProp( ModelRenderInfo_t &pInfo )

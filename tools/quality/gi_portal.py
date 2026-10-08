@@ -50,6 +50,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+import gi_radiosity  # noqa: E402
 import gi_runtime  # noqa: E402
 
 MAPS = ROOT / "quality-results" / "rfc0011-maps"
@@ -71,7 +72,7 @@ def capture(args, name, command, boot_map=None):
     target = Path(args.out) / name
     run = [sys.executable, HERE / "gi_runtime.py", "capture", "--fixture", "portal-light",
            "--camera", "room", "--map-build", Path(args.map_build or MAPS / "portal-light"),
-           "--out", target, "--build", args.build, "--console-command", command,
+           "--out", target, *gi_radiosity.client_arguments(args), "--console-command", command,
            "--capture-wait", str(gi_runtime.PLACEMENT_FRAMES + WARM_FRAMES + CHANGE_FRAMES),
            "--view", "3"] + (["--boot-map", boot_map] if boot_map else [])
     booted = subprocess.run([str(part) for part in run], capture_output=True, text=True,
@@ -101,7 +102,9 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--map-build", type=Path)
     parser.add_argument("--out", required=True)
-    parser.add_argument("--build", default="build")
+    parser.add_argument("--client-profile", help="kiln client profile (default: the map "
+                        "toolchain's)")
+    parser.add_argument("--client-flavor", help="its build flavor")
     parser.add_argument("--producer", choices=("sdf", "rayquery"), default="sdf")
     args = parser.parse_args()
     producer = args.producer
@@ -139,7 +142,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     gate = "G10 portal-light (%s)" % producer
     record = {"gate": gate, "status": "pass" if passed else "fail", "producer": producer,
-              "build": args.build, "captures": results, "warm_frames": WARM_FRAMES,
+              "client_profile": args.client_profile, "captures": results, "warm_frames": WARM_FRAMES,
               "change_frames": CHANGE_FRAMES, "response_tolerance": RESPONSE_TOLERANCE}
     (out / "gate.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     print("%s: %s" % (gate, record["status"]))

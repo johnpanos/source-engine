@@ -12,7 +12,7 @@ wall facing into A, portal B on B's west wall facing into B, both centered at
 y 256, z 72. Room A has a dim baked light; room B a dim one in a far corner,
 so its floor near the portal is dark. The map compiles with the pinned
 legacy vbsp/vvis/vrad (tools/quality/vmf_map_build.py) and publishes to the
-playable map store (./play portal_dlight_lab).
+playable map store (./kiln play portal portal_dlight_lab).
 
 The check boots the installed product headless on the map with a test light
 (`r_portal_dlight_test`, a cheat) 72 units in front of portal A, radius 400.
@@ -39,7 +39,7 @@ of each view's central 32x32 pixels: `direct` brightens in every lit state;
                           (`out`) must fail.
 
     check --game portal2  the same views in Portal 2 (a Portal 2 build and a
-                          runtime staged by stage_portal2_runtime.py): its
+                          runtime packaged by kiln (portal2)): its
                           client publishes the open portals from
                           C_Portal_Base2D. Portal 2's portals glow
                           (r_portal_use_dlights), which would light the
@@ -55,7 +55,6 @@ of each view's central 32x32 pixels: `direct` brightens in every lit state;
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -67,6 +66,9 @@ import gyro_lab_map  # noqa: E402  (the Vmf writer)
 import playable_maps  # noqa: E402
 import vmf_map_build  # noqa: E402
 from conformance_result import Checks  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
 
 ROOT = HERE.parents[1]
 MAIN = ROOT.parent / "source-engine"
@@ -204,9 +206,8 @@ def check(args):
     out = Path(args.out).resolve()
     game = args.game
     frames = 200 + len(states(game)) * (30 + len(VIEWS) * (SETTLE + AFTER + 10))
-    command = [sys.executable, str(HERE / "portal_boot.py"), "--runtime", str(args.runtime),
-               "--build", str(args.build), "--renderer", "native-vulkan", "--headless",
-               "--game", game, "--map", NAME, "--width", "1280", "--height", "720",
+    command = [sys.executable, str(HERE / "portal_boot.py"), *sepipe_loader.boot_arguments(args),
+               "--renderer", "native-vulkan", "--headless", "--map", NAME, "--width", "1280", "--height", "720",
                "--capture-wait", str(frames), "--startup-command", "sv_cheats 1",
                "--startup-command", "r_portal_dlights_report 1",
                # Fixed 15 ms frames, so each wait is game time the server
@@ -279,23 +280,23 @@ def main(argv=None):
     b.add_argument("--out", default=str(ROOT / "quality-results" / NAME))
     b.add_argument("--toolchain", default=str(MAIN / "build/toolchains/pbrt-map-toolchain.json"))
     b.add_argument("--runtime", default=str(MAIN / "run/runtime"))
-    b.add_argument("--store", default=str(MAIN / "run/maps"), help="the playable map store (./play)")
+    b.add_argument("--store", default=str(MAIN / "run/maps"), help="the playable map store (./kiln play portal)")
     c = sub.add_parser("check")
-    c.add_argument("--build", default=os.environ.get("PORTAL_DLIGHT_LAB_BUILD"),
-                   help="the installed product (default $PORTAL_DLIGHT_LAB_BUILD)")
-    c.add_argument("--runtime", default=str(MAIN / "run/runtime"))
+    sepipe_loader.add_arguments(c, "portal")
     c.add_argument("--content-root", default=str(ROOT / "quality-results" / NAME / "content"),
                    help="where the built map lives (the build step's content package)")
     c.add_argument("--out", required=True)
-    c.add_argument("--game", choices=("portal", "portal2"), default="portal")
     c.add_argument("--seed", choices=("noclip", "glowimage"),
                    help="sensitivity: images skip the portal clip (the no-leak checks must fail), "
                         "or (portal2) the glow is imaged (portal2.glow-not-imaged must fail)")
     args = parser.parse_args(argv)
-    if args.command == "check" and not args.build:
-        parser.error("check needs --build or PORTAL_DLIGHT_LAB_BUILD")
+    if args.command == "check":
+        try:
+            args.game = sepipe_loader.game_of(args.profile)
+        except Exception as error:  # sepipe_loader.LoadError, sepipe.KilnError
+            parser.error("kiln: %s" % error)
     if args.command == "check" and args.seed == "glowimage" and args.game != "portal2":
-        parser.error("--seed glowimage needs --game portal2")
+        parser.error("--seed glowimage needs a Portal 2 profile")
     return build(args) if args.command == "build" else check(args)
 
 

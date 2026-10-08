@@ -23,7 +23,7 @@ cd ..
 python3 tools/quality/pbrt_map_build.py \
   --manifest quality/fixtures/usd-maps/world-lobby.json \
   --out quality-results/world-lobby-map --boot
-./play world_lobby
+./kiln play portal world_lobby
 ```
 
 Scene decisions recorded in the manifest:

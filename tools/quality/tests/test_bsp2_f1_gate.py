@@ -21,8 +21,6 @@ class Bsp2F1GateTests(unittest.TestCase):
             result = bsp2_f1_gate.main([
                 "--portal-runtime", str(root / "missing-portal"),
                 "--portal2-runtime", str(root / "missing-portal2"),
-                "--dedicated-build", str(root / "missing-dedicated"),
-                "--client-build", str(root / "missing-client"),
                 "--tool", str(root / "missing-tool"), "--out", str(out)])
             self.assertEqual(result, 1)
             evidence = json.loads((out / "evidence.json").read_text())
@@ -39,8 +37,6 @@ class Bsp2F1GateTests(unittest.TestCase):
             out = portal / "evidence"
             result = bsp2_f1_gate.main([
                 "--portal-runtime", str(portal), "--portal2-runtime", str(root / "portal2"),
-                "--dedicated-build", str(root / "dedicated"),
-                "--client-build", str(root / "client"),
                 "--tool", str(root / "tool"), "--out", str(out)])
             self.assertEqual(result, 1)
             self.assertFalse(out.exists())
@@ -54,10 +50,6 @@ class Bsp2F1GateTests(unittest.TestCase):
             (portal2 / "portal2").mkdir(parents=True)
             (portal / "portal/gameinfo.txt").touch()
             (portal2 / "portal2/gameinfo.txt").touch()
-            dedicated = root / "dedicated"
-            client = root / "client"
-            dedicated.mkdir()
-            client.mkdir()
             tool = root / "bsp2tool"
             tool.write_text("#!/bin/sh\n")
             tool.chmod(0o755)
@@ -72,7 +64,6 @@ class Bsp2F1GateTests(unittest.TestCase):
                                       side_effect=RuntimeError("seeded derivative crash")):
                 result = bsp2_f1_gate.main([
                     "--portal-runtime", str(portal), "--portal2-runtime", str(portal2),
-                    "--dedicated-build", str(dedicated), "--client-build", str(client),
                     "--tool", str(tool), "--out", str(out)])
             self.assertEqual(result, 1)
             evidence = json.loads((out / "evidence.json").read_text())

@@ -480,7 +480,7 @@ IPhysicsObject *PhysSphereCreate( CBaseEntity *pEntity, float radius, const Vect
 // RFC 0013 vphysics.shape-inertia.v1 (user decision, 2026-09-25): with
 // -physics_shape_inertia, objects take their collision solid's full inertia
 // tensor (products of inertia, no rotInertiaLimit) when the provider offers
-// the capability; ./play and ./play_p2 pass it. A provider without it (IVP)
+// the capability; the desktop kiln profiles (portal, portal2) pass it. A provider without it (IVP)
 // keeps the legacy model, and -physics_shape_inertia_required makes that an
 // error. The model is fixed before the environment's first object, so the
 // server and client environments call this right after creating theirs.

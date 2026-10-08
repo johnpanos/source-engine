@@ -150,7 +150,7 @@ class Device:
     def start(self, args=(), environment=None):
         """Launches the app detached (terminating a running instance first)
         and returns once the device reports it running; the app keeps
-        running after this returns (./play_p2_coop)."""
+        running after this returns (./kiln play portal2-coop)."""
         options = ["--environment-variables", json.dumps(environment)] if environment else []
         output = ""
         for attempt in range(LAUNCH_ATTEMPTS):

@@ -16,7 +16,7 @@ vrad has written the BSP, it relights that BSP with the map pipeline
   * the relit BSP2 carries every gameplay lump of vrad's BSP unchanged,
     including vvis's visibility and vrad's lightmaps for the faces the relight
     leaves to the legacy renderer;
-  * the map is published as `<map>_relit` for `./play`.
+  * the map is published as `<map>_relit` for `./kiln play portal`.
 
 vrad's `-game` (or `-vproject`, or $VPROJECT) directory is searched for the
 map's materials before the pipeline's game runtime, as vrad searched it.
@@ -35,7 +35,7 @@ Options for this script (removed before vrad runs):
                            cpu or auto (explicit opt-ins for GPU-less hosts)
   --cycles-boot            boot the relit map headless on native Vulkan
   --cycles-keep-going      finish the map when a pixel gate fails
-  --cycles-no-publish      do not publish the map for ./play
+  --cycles-no-publish      do not publish the map for ./kiln play portal
 """
 
 import os

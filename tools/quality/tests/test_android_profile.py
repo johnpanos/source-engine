@@ -186,7 +186,7 @@ class BuildScriptTests(unittest.TestCase):
     def test_portal2_script_uses_its_profile(self):
         script = (ROOT / "build-android-portal2-apk.sh").read_text()
         self.assertIn("portal2-android-native-vulkan.json", script)
-        self.assertIn("stage_portal2_runtime.py\" --mount-custom", script)
+        self.assertIn("kiln\" package portal2-content", script)
 
     def test_script_verifies_the_package(self):
         script = (ROOT / "build-android-apk.sh").read_text()

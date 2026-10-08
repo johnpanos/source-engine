@@ -322,8 +322,7 @@ def main():
                         help="run under the Khronos validation layer; any message fails")
     parser.add_argument("--layer-path", help="VK_ADD_LAYER_PATH for the validation layer")
     parser.add_argument("--step", type=int, default=STEP, help="frames between switches")
-    parser.add_argument("--build", default="build")
-    parser.add_argument("--runtime")
+    pbrt_map_toolchain.add_client_arguments(parser)
     parser.add_argument("--out", required=True)
     parser.add_argument("--android", action="store_true",
                         help="soak the app on the connected Android device instead")
@@ -352,7 +351,6 @@ def main():
         return 0 if record["status"] == "pass" else 1
     profile, _ = pbrt_map_toolchain.load_profiles()
     toolchain = pbrt_map_toolchain.load(ROOT / profile["layout"]["toolchain_file"])
-    runtime = Path(args.runtime or toolchain["runtime"])
     content = merged_content(out, args.maps)
     maps = list(args.maps) + list(args.legacy_maps)
     aliases, start = script(maps, doors={"gi_door"}, step=args.step)
@@ -366,8 +364,9 @@ def main():
         if args.layer_path:
             environment["VK_ADD_LAYER_PATH"] = args.layer_path
         environment["VK_INSTANCE_LAYERS"] = "VK_LAYER_KHRONOS_validation"
-    command = [sys.executable, str(HERE / "portal_boot.py"), "--runtime", str(runtime),
-               "--build", args.build, "--content-root", str(content), "--renderer",
+    command = [sys.executable, str(HERE / "portal_boot.py"),
+               *pbrt_map_toolchain.boot_target(toolchain, args), "--content-root", str(content),
+               "--renderer",
                "native-vulkan", "--headless", "--map", args.maps[0], "--capture-wait",
                str(frames), "--timeout", str(args.minutes * 60 * 3 + 600), "--out", str(boot)]
     for line in aliases + [start]:

@@ -105,7 +105,7 @@
         "{python}",
         "tools/quality/hammer_loop.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--out",
         "{out}"
       ],
@@ -113,9 +113,9 @@
       "min_checks": 14,
       "timeout_seconds": 600,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime-native",
+        "path:run/runtime/portal/gameinfo.txt",
         "vulkan-device:gpu"
       ],
       "sources": [
@@ -140,7 +140,7 @@
         "{python}",
         "tools/quality/hammer_ui_test.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--out",
         "{out}"
       ],
@@ -148,9 +148,9 @@
       "min_checks": 58,
       "timeout_seconds": 900,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "executable:mutter",
         "executable:dbus-run-session",
         "path:/usr/libexec/at-spi-bus-launcher",
@@ -167,7 +167,6 @@
         "hammer/gtk/properties_dialog.cpp",
         "hammer/gtk/entity_schema.cpp",
         "hammer/gtk/wscript",
-        "hammer/gtk/build.sh",
         "hammer/adapters/render/viewport_renderer.cpp",
         "hammer/core/presenters/editor_workspace.cpp",
         "hammer/core/presenters/visgroup_panel.cpp",
@@ -187,7 +186,7 @@
         "{python}",
         "tools/quality/hammer_ui_test.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--backend",
         "wayland",
         "--out",
@@ -197,9 +196,9 @@
       "min_checks": 48,
       "timeout_seconds": 900,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "executable:mutter",
         "executable:dbus-run-session",
         "path:/usr/libexec/at-spi-bus-launcher",
@@ -214,7 +213,6 @@
         "hammer/gtk/visgroups_panel.cpp",
         "hammer/gtk/viewport_widget.cpp",
         "hammer/gtk/wscript",
-        "hammer/gtk/build.sh",
         "hammer/adapters/render/viewport_renderer.cpp",
         "hammer/core/presenters/editor_workspace.cpp",
         "hammer/core/presenters/visgroup_panel.cpp"
@@ -233,7 +231,7 @@
         "{python}",
         "tools/quality/hammer_ui_test.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--scale",
         "2",
         "--case",
@@ -245,9 +243,9 @@
       "min_checks": 8,
       "timeout_seconds": 900,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "executable:mutter",
         "executable:dbus-run-session",
         "path:/usr/libexec/at-spi-bus-launcher",
@@ -259,7 +257,6 @@
         "hammer/gtk/app.cpp",
         "hammer/gtk/viewport_widget.cpp",
         "hammer/gtk/wscript",
-        "hammer/gtk/build.sh",
         "hammer/adapters/render/viewport_renderer.cpp",
         "hammer/core/presenters/editor_workspace.cpp",
         "hammer/core/presenters/replace_textures.cpp"
@@ -278,7 +275,7 @@
         "{python}",
         "tools/quality/hammer_ui_test.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--backend",
         "wayland",
         "--scale",
@@ -292,9 +289,9 @@
       "min_checks": 8,
       "timeout_seconds": 900,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "executable:mutter",
         "executable:dbus-run-session",
         "path:/usr/libexec/at-spi-bus-launcher",
@@ -306,7 +303,6 @@
         "hammer/gtk/app.cpp",
         "hammer/gtk/viewport_widget.cpp",
         "hammer/gtk/wscript",
-        "hammer/gtk/build.sh",
         "hammer/adapters/render/viewport_renderer.cpp",
         "hammer/core/presenters/editor_workspace.cpp",
         "hammer/core/presenters/replace_textures.cpp"
@@ -466,7 +462,7 @@
         "{python}",
         "tools/quality/hammer_mcp_check.py",
         "--cli",
-        "build-r03-tools/hammer/cli/hammer_cli",
+        "out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "--out",
         "{out}"
       ],
@@ -474,9 +470,9 @@
       "min_checks": 21,
       "timeout_seconds": 300,
       "requires": [
-        "path:build-r03-tools/hammer/cli/hammer_cli",
+        "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime"
+        "path:out/host-linux-x86_64/product/kiln/kiln"
       ],
       "sources": [
         "tools/quality/hammer_mcp_check.py",
@@ -1625,15 +1621,11 @@
       "contract": "tools/quality/thread_census.py",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0003 J3 runtime thread census (RFC/0003-progress.md, R94): boots testchmb_a_00 headless on native Vulkan from the ./play tree, runs the engine's thread_census command after the map loads, and classifies every live thread against quality/budgets/thread-census-v1.json's declared owners (main, compute pool, MatQueue, filesystem I/O, save lane, SDL audio, driver and device threads). Undeclared threads equal the recorded shrink-only list exactly (J3 needs it empty); with -compute_workers 2 the census shows exactly 2 CmpJob workers (J5's control).",
+      "description": "RFC 0003 J3 runtime thread census (RFC/0003-progress.md, R94): boots testchmb_a_00 headless on native Vulkan from the portal kiln profile, runs the engine's thread_census command after the map loads, and classifies every live thread against quality/budgets/thread-census-v1.json's declared owners (main, compute pool, MatQueue, filesystem I/O, save lane, SDL audio, driver and device threads). Undeclared threads equal the recorded shrink-only list exactly (J3 needs it empty); with -compute_workers 2 the census shows exactly 2 CmpJob workers (J5's control).",
       "command": [
         "{python}",
         "tools/quality/thread_census.py",
         "run",
-        "--runtime",
-        "run/runtime",
-        "--build",
-        "build",
         "--compute-workers",
         "2",
         "--out",
@@ -1676,7 +1668,8 @@
       "result_protocol": "checks-v1",
       "min_checks": 13,
       "timeout_seconds": 600,
-      "expect": "pass"
+      "expect": "pass",
+      "requires": []
     },
     {
       "id": "jobs.ratchet.sensitivity",
@@ -3042,7 +3035,7 @@
       "contract": "unittests/rendertest/contracts/render.portal-lights.v1.md",
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
-      "description": "RFC 0016 K7 dynamic lights through portals, in game on the portal_dlight_lab test map (two sealed rooms joined only by a linked prop_portal pair; tools/quality/portal_dlight_lab.py build): a test dlight in front of portal A lights room B's floor through the pair; a floor point in its reach whose path misses the opening and the wall around portal B stay dark; nothing brightens with r_portal_dlights 0 or portal A closed; the light itself lights room A in every lit state. Needs the installed client (build-rc-client/install) and the built map.",
+      "description": "RFC 0016 K7 dynamic lights through portals, in game on the portal_dlight_lab test map (two sealed rooms joined only by a linked prop_portal pair; tools/quality/portal_dlight_lab.py build): a test dlight in front of portal A lights room B's floor through the pair; a floor point in its reach whose path misses the opening and the wall around portal B stay dark; nothing brightens with r_portal_dlights 0 or portal A closed; the light itself lights room A in every lit state. Needs the portal kiln profile (built on demand) and the built map.",
       "command": [
         "{python}",
         "tools/quality/portal_dlight_lab.py",
@@ -3059,7 +3052,7 @@
       "min_checks": 14,
       "timeout_seconds": 1200,
       "requires": [
-        "env:PORTAL_DLIGHT_LAB_BUILD",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "path:quality-results/portal_dlight_lab/content/maps/portal_dlight_lab.bsp"
       ],
       "optional": true,
@@ -3091,7 +3084,7 @@
       "result_protocol": "checks-v1",
       "timeout_seconds": 1200,
       "requires": [
-        "env:PORTAL_DLIGHT_LAB_BUILD",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "path:quality-results/portal_dlight_lab/content/maps/portal_dlight_lab.bsp"
       ],
       "optional": true,
@@ -3106,17 +3099,13 @@
       "contract": "unittests/rendertest/contracts/render.portal-lights.v1.md",
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
-      "description": "RFC 0016 K7 dynamic lights through portals in Portal 2 (portal_dlight_lab.py --game portal2): the Portal 2 client publishes its open portals from C_Portal_Base2D, and the lab's views pass as in Portal 1 (portals opened by SetActivatedState, as Portal 2 maps open theirs; the portals' glow off and exposure fixed for the pixel checks). A fifth state turns the glow on with the test light off: the glow lights its own side only (DLIGHT_NO_PORTAL_IMAGE), so the engine reports no image through the two open portals. Needs build-p2, a runtime staged by stage_portal2_runtime.py (run/runtime-p2) and the built map.",
+      "description": "RFC 0016 K7 dynamic lights through portals in Portal 2 (portal_dlight_lab.py --game portal2): the Portal 2 client publishes its open portals from C_Portal_Base2D, and the lab's views pass as in Portal 1 (portals opened by SetActivatedState, as Portal 2 maps open theirs; the portals' glow off and exposure fixed for the pixel checks). A fifth state turns the glow on with the test light off: the glow lights its own side only (DLIGHT_NO_PORTAL_IMAGE), so the engine reports no image through the two open portals. Needs the portal2 kiln profile (built and packaged on demand), a local Portal 2 install and the built map.",
       "command": [
         "{python}",
         "tools/quality/portal_dlight_lab.py",
         "check",
-        "--game",
+        "--profile",
         "portal2",
-        "--build",
-        "build-p2",
-        "--runtime",
-        "run/runtime-p2",
         "--out",
         "{out}"
       ],
@@ -3133,8 +3122,6 @@
       "timeout_seconds": 1200,
       "requires": [
         "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py",
-        "path:run/runtime-p2/hl2_launcher",
         "path:quality-results/portal_dlight_lab/content/maps/portal_dlight_lab.bsp"
       ],
       "optional": true,
@@ -3153,12 +3140,8 @@
         "{python}",
         "tools/quality/portal_dlight_lab.py",
         "check",
-        "--game",
+        "--profile",
         "portal2",
-        "--build",
-        "build-p2",
-        "--runtime",
-        "run/runtime-p2",
         "--out",
         "{out}",
         "--seed",
@@ -3176,8 +3159,6 @@
       "timeout_seconds": 1200,
       "requires": [
         "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py",
-        "path:run/runtime-p2/hl2_launcher",
         "path:quality-results/portal_dlight_lab/content/maps/portal_dlight_lab.bsp"
       ],
       "optional": true,
@@ -4549,6 +4530,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vpk_archive.cpp",
+        "content/vpk_archive.cpp",
         "unittests/hammertest/formats/test_vpk_archive.cpp"
       ],
       "expect": "pass"
@@ -4564,6 +4546,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vpk_archive.cpp",
+        "content/vpk_archive.cpp",
         "unittests/hammertest/formats/test_vpk_archive_negative.cpp"
       ],
       "expect": "pass"
@@ -4595,13 +4578,13 @@
       "contract": "public/texturecontainer/vtf_decompress.h",
       "description": "VTF 7.6 textures in the game's legacy texture path: the shared AXC decompressor (Deflate and Zstandard round trips; short, long, corrupt and unknown-method runs refused), CVTFTexture loading an 8x8 four-mip BC7 texture (Strata format 70) from Deflate and Zstandard runs byte-exactly with a corrupt run failing the load, the VTF 7.6 sRGB flag (0x80000) not read as staging memory, and the material system's BC7 decode for backends without BC7 (RGBA and BGRA texels at their blocks' positions, BC7 copy, undeclared targets refused). Seeded faults (no decompression, no BGRA swap) fail 5 checks.",
       "command": [
-        "build-p2/unittests/texturecontainertest/vtf_decompress_conformance"
+        "out/portal2-linux-native-vulkan/dev/build/unittests/texturecontainertest/vtf_decompress_conformance"
       ],
       "result_protocol": "checks-v1",
       "min_checks": 26,
       "timeout_seconds": 60,
       "requires": [
-        "path:build-p2/unittests/texturecontainertest/vtf_decompress_conformance"
+        "path:out/portal2-linux-native-vulkan/dev/build/unittests/texturecontainertest/vtf_decompress_conformance"
       ],
       "sources": [
         "texturecontainer/vtf_decompress.cpp",
@@ -6444,6 +6427,7 @@
       "sources": [
         "mdl/studio_model.cpp",
         "hammer/core/formats/vpk_archive.cpp",
+        "content/vpk_archive.cpp",
         "hammer/adapters/platform/disk_byte_store.cpp",
         "unittests/mdltest/test_studio_model_corpus.cpp"
       ],
@@ -12766,9 +12750,7 @@
       "timeout_seconds": 3000,
       "requires": [
         "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",
-        "path:build-rc-client/install/hl2_launcher",
-        "path:build-rc-p2/install/hl2_launcher",
-        "path:build-rc-p2/p2content/portal2",
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
       "sources": [
@@ -13011,8 +12993,7 @@
       "timeout_seconds": 600,
       "requires": [
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:build-p2/launcher_main/hl2_launcher",
-        "path:run/runtime-p2/portal2",
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
       "sources": [
@@ -13064,8 +13045,7 @@
       "timeout_seconds": 300,
       "requires": [
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:build-p2/launcher_main/hl2_launcher",
-        "path:run/runtime-p2/portal2",
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
       "sources": [
@@ -13630,7 +13610,7 @@
       "timeout_seconds": 600,
       "requires": [
         "path:build-rc-lab/render/lab/render_lab",
-        "path:run/runtime-p2/portal2",
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
         "path:run/maps/sp_a1_intro4_relit/maps/sp_a1_intro4_relit.bsp",
         "vulkan-device:gpu"
       ],
@@ -15012,8 +14992,7 @@
       "min_checks": 9,
       "timeout_seconds": 240,
       "requires": [
-        "path:run/runtime-p2",
-        "path:build-p2/launcher_main/hl2_launcher",
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
         "executable:ffmpeg",
         "vulkan-device:gpu"
       ],
@@ -15126,7 +15105,6 @@
       "timeout_seconds": 900,
       "requires": [
         "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",
-        "path:build-rc-client/install/hl2_launcher",
         "vulkan-device:gpu"
       ],
       "sources": [
@@ -15190,7 +15168,6 @@
       "timeout_seconds": 900,
       "requires": [
         "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",
-        "path:build-rc-client/install/hl2_launcher",
         "vulkan-device:gpu"
       ],
       "sources": [
@@ -15710,7 +15687,7 @@
       "contract": "quality/fixtures/render-material/proxy-capture-v1/portal/capture_0.jsonl",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0016 K4 'Proxy corpus', legacy side on Portal (tools/render/proxy_corpus.py capture --game portal). Boots the installed Portal client (build-rc-client/install or $SOURCE_PORTAL_BUILD) headless on native Vulkan on testchmb_a_00 with host_framerate 0.015 and -deterministicrender, with one fixture material per proxy (proxy_corpus.py RECIPES, --material-root), and runs mat_proxy_capture (game/client/material_proxy_capture.cpp) twice 20 frames apart: the registered proxies and every defined material variable after binding with no proxy data and with the local player. The registered proxies must equal the inventory, every fixture must load, exactly the declared ones must run without their proxy (Camo's Init fails; Dummy, Empty and Health lose to KeyValues symbol case), and both captures must equal quality/fixtures/render-material/proxy-capture-v1/portal under the comparator. About 40 s.",
+      "description": "RFC 0016 K4 'Proxy corpus', legacy side on Portal (tools/render/proxy_corpus.py capture --game portal). Boots the installed Portal client (the portal kiln profile, built on demand) headless on native Vulkan on testchmb_a_00 with host_framerate 0.015 and -deterministicrender, with one fixture material per proxy (proxy_corpus.py RECIPES, --material-root), and runs mat_proxy_capture (game/client/material_proxy_capture.cpp) twice 20 frames apart: the registered proxies and every defined material variable after binding with no proxy data and with the local player. The registered proxies must equal the inventory, every fixture must load, exactly the declared ones must run without their proxy (Camo's Init fails; Dummy, Empty and Health lose to KeyValues symbol case), and both captures must equal quality/fixtures/render-material/proxy-capture-v1/portal under the comparator. About 40 s.",
       "command": [
         "{python}",
         "tools/render/proxy_corpus.py",
@@ -15725,7 +15702,7 @@
       "timeout_seconds": 1200,
       "requires": [
         "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",
-        "env:PORTAL_DLIGHT_LAB_BUILD",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "vulkan-device:gpu"
       ],
       "sources": [
@@ -15763,7 +15740,7 @@
       "timeout_seconds": 1200,
       "requires": [
         "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",
-        "env:PORTAL_DLIGHT_LAB_BUILD",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "vulkan-device:gpu"
       ],
       "sources": [
@@ -15788,7 +15765,7 @@
       "contract": "quality/fixtures/render-material/proxy-capture-v1/portal2/capture_0.jsonl",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "render.material.proxies.legacy-portal for Portal 2 (capture --game portal2): the installed Portal 2 client (build-rc-p2/install or $SOURCE_PORTAL2_BUILD) on sp_a1_wakeup with the staged retail runtime (build-rc-p2/p2content or $SOURCE_PORTAL2_RUNTIME); Camo and Health run without their proxy; both captures equal quality/fixtures/render-material/proxy-capture-v1/portal2. About 60 s.",
+      "description": "render.material.proxies.legacy-portal for Portal 2 (capture --game portal2): the installed Portal 2 client (the portal2 kiln profile, built on demand) on sp_a1_wakeup with the staged retail runtime (its packaged runtime); Camo and Health run without their proxy; both captures equal quality/fixtures/render-material/proxy-capture-v1/portal2. About 60 s.",
       "command": [
         "{python}",
         "tools/render/proxy_corpus.py",
@@ -15802,14 +15779,12 @@
       "min_checks": 10,
       "timeout_seconds": 1200,
       "requires": [
-        "path:build-rc-p2/p2content/portal2",
-        "path:build-rc-p2/install/hl2_launcher",
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
       "sources": [
         "tools/render/proxy_corpus.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "game/client/material_proxy_capture.cpp",
         "quality/fixtures/render-material/proxy-inventory-v1.json",
         "quality/fixtures/render-material/proxy-capture-v1/portal2/capture_0.jsonl",
@@ -15841,14 +15816,12 @@
       "min_checks": 10,
       "timeout_seconds": 1200,
       "requires": [
-        "path:build-rc-p2/p2content/portal2",
-        "path:build-rc-p2/install/hl2_launcher",
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
       "sources": [
         "tools/render/proxy_corpus.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "game/client/material_proxy_capture.cpp",
         "render/legacy/material_blocks.cpp",
         "public/render/legacy/material_blocks.h",
@@ -18885,7 +18858,7 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R59",
-      "description": "RFC 0009 U2 role behaviour at runtime (tools/quality/usd_map_runtime.py --roles; probes map_entity_probe, map_entity_probe_schedule and map_trace_probe in game/server/entitylist.cpp). The role fixture compiles with SOURCE_USD_MAP_TOOLS and runs headless. The windowless client (null renderer, SDL offscreen, no window) holds the physics clock until its config runs, then samples 40 times 0.1 s of game time apart: the prop_physics is a gravity body that falls from its authored height into the trigger and rests with its hull on the floor; the trigger fires both authored connections (the engine's developer 2 I/O trace) and no input goes unhandled; the prop_dynamic is a non-simulated entity that keeps its placement, starts in its default animation and plays the animation the trigger sets; the func_movelinear is a pusher that moves from closed through intermediate samples to its authored displacement. A ray and a player hull dropped on the vphysics prop_static stop on its model's top as a static-prop hit while the world alone reaches the floor, and pass through the collision-none prop_static. The dedicated server, which never simulates without players (engine SV_Frame), checks the spawn state and the traces only. Runtime mutants compiled past the output checks fail here: the dynamic prop emitted as a prop_physics (removed at spawn, never sampled), the trigger touched by clients only (no connection fires, the lift stays shut, the switch does not animate, the box still falls), and the vphysics desk made non-solid (traces reach the floor). Setup: SOURCE_USD_TOOLCHAIN as corpus.usd.scene-module; SOURCE_USD_MAP_TOOLS as corpus.usd-map.compiler; SOURCE_USD_MAP_CLIENT_BUILD and SOURCE_USD_MAP_DEDICATED_BUILD name Portal client and dedicated Waf outputs from this tree; Portal content in run/runtime ($SOURCE_USD_MAP_RUNTIME overrides). Skipped (never certified) without them.",
+      "description": "RFC 0009 U2 role behaviour at runtime (tools/quality/usd_map_runtime.py --roles; probes map_entity_probe, map_entity_probe_schedule and map_trace_probe in game/server/entitylist.cpp). The role fixture compiles with SOURCE_USD_MAP_TOOLS and runs headless. The windowless client (null renderer, SDL offscreen, no window) holds the physics clock until its config runs, then samples 40 times 0.1 s of game time apart: the prop_physics is a gravity body that falls from its authored height into the trigger and rests with its hull on the floor; the trigger fires both authored connections (the engine's developer 2 I/O trace) and no input goes unhandled; the prop_dynamic is a non-simulated entity that keeps its placement, starts in its default animation and plays the animation the trigger sets; the func_movelinear is a pusher that moves from closed through intermediate samples to its authored displacement. A ray and a player hull dropped on the vphysics prop_static stop on its model's top as a static-prop hit while the world alone reaches the floor, and pass through the collision-none prop_static. The dedicated server, which never simulates without players (engine SV_Frame), checks the spawn state and the traces only. Runtime mutants compiled past the output checks fail here: the dynamic prop emitted as a prop_physics (removed at spawn, never sampled), the trigger touched by clients only (no connection fires, the lift stays shut, the switch does not animate, the box still falls), and the vphysics desk made non-solid (traces reach the floor). Setup: SOURCE_USD_TOOLCHAIN as corpus.usd.scene-module; SOURCE_USD_MAP_TOOLS as corpus.usd-map.compiler; kiln packages the portal and dedicated-linux profiles (SOURCE_USD_MAP_CLIENT_PROFILE and SOURCE_USD_MAP_DEDICATED_PROFILE override); Portal content in run/runtime ($SOURCE_USD_MAP_RUNTIME overrides). Skipped (never certified) without them.",
       "result_protocol": "checks-v1",
       "min_checks": 13,
       "timeout_seconds": 900,
@@ -18914,8 +18887,6 @@
       "requires": [
         "env:SOURCE_USD_TOOLCHAIN",
         "env:SOURCE_USD_MAP_TOOLS",
-        "env:SOURCE_USD_MAP_CLIENT_BUILD",
-        "env:SOURCE_USD_MAP_DEDICATED_BUILD",
         "path:run/runtime/portal/portal_pak_dir.vpk"
       ],
       "optional": true,
@@ -19201,7 +19172,7 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R32",
-      "description": "Portal 2 video retail conformance (game/shared/portal2/README.md, 'Portal 2 video retail conformance'). Shoots quality/workloads/portal2-materials-v1's fixed views (6 maps, 16 views) on build-p2 at 1024x768 through tools/quality/portal2_scenarios.py (SDL offscreen, native Vulkan) and judges each shot against the retail reference (reference.json: 16x12 tile means and per-feature region statistics recorded from retail portal2_linux; numbers only, no retail pixels): tiles, named regions that each pin one defect, unknown shaders, missing proxies and VMT conditionals the material system did not understand against retail's console, and the native backend's per-screenshot dropped-draw census. Known failure while the defects it pins are open (no projected-texture shadow depth, so the void above the bridge chamber keeps a black clear where retail's is white; toxic goo Water not implemented natively, the laser emitter glow, the tractor beam column pale, dev/motion_blur dropped, rusty models and blown-out exteriors); the first is the bridge view's tiles against that void. Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT) and a built build-p2 (SOURCE_PORTAL2_BUILD selects another tree); about 6 minutes.",
+      "description": "Portal 2 video retail conformance (game/shared/portal2/README.md, 'Portal 2 video retail conformance'). Shoots quality/workloads/portal2-materials-v1's fixed views (6 maps, 16 views) on the portal2 kiln profile at 1024x768 through tools/quality/portal2_scenarios.py (SDL offscreen, native Vulkan) and judges each shot against the retail reference (reference.json: 16x12 tile means and per-feature region statistics recorded from retail portal2_linux; numbers only, no retail pixels): tiles, named regions that each pin one defect, unknown shaders, missing proxies and VMT conditionals the material system did not understand against retail's console, and the native backend's per-screenshot dropped-draw census. Known failure while the defects it pins are open (no projected-texture shadow depth, so the void above the bridge chamber keeps a black clear where retail's is white; toxic goo Water not implemented natively, the laser emitter glow, the tractor beam column pale, dev/motion_blur dropped, rusty models and blown-out exteriors); the first is the bridge view's tiles against that void. Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT) and the portal2 kiln profile (built on demand; --profile selects another); about 6 minutes.",
       "command": [
         "{python}",
         "tools/quality/portal2_material_shots.py",
@@ -19214,14 +19185,12 @@
       "timeout_seconds": 1800,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -19262,14 +19231,12 @@
       "timeout_seconds": 600,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -19304,14 +19271,12 @@
       "timeout_seconds": 600,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -19329,7 +19294,7 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R96",
-      "description": "Shadowed lights keep their shadows as the camera turns (RFC 0016 K7/K12; user report 2026-10-06): quality/workloads/portal2-intro4-shadows-v1 holds four views at 391.94 -412.03 on sp_a1_intro4_relit (turned first, facing the sunlit wall, turned again, turned with r_core_shadow_quality 0) on build-p2 with r_core_world 1 and cl_render_debug_stats. Every stats line while a shadowed view is held reports 0 shadowed lights without tiles, and the turned view is at least 38 percent darker than with the core's shadows off. The greedy atlas planner reported 81-86 per frame here. Needs a local Portal 2 install and a built build-p2; about 1 minute.",
+      "description": "Shadowed lights keep their shadows as the camera turns (RFC 0016 K7/K12; user report 2026-10-06): quality/workloads/portal2-intro4-shadows-v1 holds four views at 391.94 -412.03 on sp_a1_intro4_relit (turned first, facing the sunlit wall, turned again, turned with r_core_shadow_quality 0) on the portal2 kiln profile with r_core_world 1 and cl_render_debug_stats. Every stats line while a shadowed view is held reports 0 shadowed lights without tiles, and the turned view is at least 38 percent darker than with the core's shadows off. The greedy atlas planner reported 81-86 per frame here. Needs a local Portal 2 install; the portal2 kiln profile is built on demand; about 1 minute.",
       "command": [
         "{python}",
         "tools/quality/portal2_shadow_views.py",
@@ -19343,14 +19308,12 @@
       "timeout_seconds": 600,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_shadow_views.py",
         "tools/quality/portal2_map_views.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-intro4-shadows-v1/views.json"
       ]
@@ -19362,7 +19325,7 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R91",
-      "description": "Portal 2 toxic goo on the render core (the water family, render/material/water_family.h) against retail: quality/workloads/portal2-water-v1's views (sp_a2_laser_over_goo, a second-apart series and a grazing view; sp_a2_catapult_intro; sp_a3_jump_intro's $forceenvmap goo) shot on build-p2 with r_core_world 1 and judged against the retail reference (tiles and goo regions, numbers only). Pairs with the seeded row below. Needs a local Portal 2 install and a built build-p2; about 3 minutes.",
+      "description": "Portal 2 toxic goo on the render core (the water family, render/material/water_family.h) against retail: quality/workloads/portal2-water-v1's views (sp_a2_laser_over_goo, a second-apart series and a grazing view; sp_a2_catapult_intro; sp_a3_jump_intro's $forceenvmap goo) shot on the portal2 kiln profile with r_core_world 1 and judged against the retail reference (tiles and goo regions, numbers only). Pairs with the seeded row below. Needs a local Portal 2 install; the portal2 kiln profile is built on demand; about 3 minutes.",
       "command": [
         "{python}",
         "tools/quality/portal2_material_shots.py",
@@ -19379,14 +19342,12 @@
       "timeout_seconds": 600,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-water-v1/scenarios.json",
         "quality/workloads/portal2-water-v1/checks.json",
@@ -19422,14 +19383,12 @@
       "timeout_seconds": 600,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-water-v1/scenarios.json",
         "quality/workloads/portal2-water-v1/checks.json",
@@ -19468,14 +19427,12 @@
       "timeout_seconds": 600,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -19606,7 +19563,7 @@
       "rfc": "0005",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "Portal 2 story beats on the player's own input (game/shared/portal2/README.md, 'sp_a1_wakeup story beats on player input'). Plays sp_a1_wakeup from spawn to the level change on build-p2: quality/workloads/portal2-storybeats-v1/qa_walker.nut plans every walk with A* over a grid it measures in the running game (TraceLine plus the map's player clips and brush entities, which tools/quality/portal2_storybeats.py extracts from the BSP at run time) and drives the player only through console input (+forward, +left/+right at a proportional cl_yawspeed, +lookup/+lookdown, +jump); nothing sets the player's position or angles. Screenshots each of 24 story beats and judges the run (every walk arrived, every story trigger fired) and where the player stood at each beat against the retail reference (reference.json: beat order and retail's positions and views; numbers only). Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT) and a built build-p2; about 4 minutes. Retail runs and the side-by-side sheet: portal2_storybeats.py capture --side retail, sheet.",
+      "description": "Portal 2 story beats on the player's own input (game/shared/portal2/README.md, 'sp_a1_wakeup story beats on player input'). Plays sp_a1_wakeup from spawn to the level change on the portal2 kiln profile: quality/workloads/portal2-storybeats-v1/qa_walker.nut plans every walk with A* over a grid it measures in the running game (TraceLine plus the map's player clips and brush entities, which tools/quality/portal2_storybeats.py extracts from the BSP at run time) and drives the player only through console input (+forward, +left/+right at a proportional cl_yawspeed, +lookup/+lookdown, +jump); nothing sets the player's position or angles. Screenshots each of 24 story beats and judges the run (every walk arrived, every story trigger fired) and where the player stood at each beat against the retail reference (reference.json: beat order and retail's positions and views; numbers only). Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT); the portal2 kiln profile is built on demand; about 4 minutes. Retail runs and the side-by-side sheet: portal2_storybeats.py capture --side retail, sheet.",
       "command": [
         "{python}",
         "tools/quality/portal2_storybeats.py",
@@ -19619,15 +19576,13 @@
       "timeout_seconds": 1200,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_storybeats.py",
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/legacy_bsp.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-storybeats-v1/scenarios.json",
@@ -19645,7 +19600,7 @@
       "rfc": "0005",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "Portal 2 puzzle solved on the player's own input (game/shared/portal2/README.md, 'sp_a2_laser_intro solved on player input'). Plays the relit sp_a2_laser_intro_relit (the map pipeline's published map in run/maps, mounted as ./play_p2 mounts it; its gameplay lumps are the shipped map's) on build-p2 from the arrival elevator to the level's end: quality/workloads/portal2-storybeats-laser-v1 walks with qa_walker.nut, fires the floor portal where the laser lands and, from the lowered lift, the ceiling portal over the catcher with +attack/+attack2 at points the player looks at, then rides the lift to the exit and walks into the departure elevator. Nothing sets the player's position or angles or places a portal. Judges the run (every walk arrived, both portals placed, the catcher powered, the exit door opened, the level ended) and where the player stood at each of 14 beats against the retail reference (reference.json, recorded from retail on the shipped map; numbers only). Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT), a built build-p2 and the published relit map; loading the relit map dominates the run time.",
+      "description": "Portal 2 puzzle solved on the player's own input (game/shared/portal2/README.md, 'sp_a2_laser_intro solved on player input'). Plays the relit sp_a2_laser_intro_relit (the map pipeline's published map in run/maps, mounted as kiln play portal2 mounts it; its gameplay lumps are the shipped map's) on the portal2 kiln profile from the arrival elevator to the level's end: quality/workloads/portal2-storybeats-laser-v1 walks with qa_walker.nut, fires the floor portal where the laser lands and, from the lowered lift, the ceiling portal over the catcher with +attack/+attack2 at points the player looks at, then rides the lift to the exit and walks into the departure elevator. Nothing sets the player's position or angles or places a portal. Judges the run (every walk arrived, both portals placed, the catcher powered, the exit door opened, the level ended) and where the player stood at each of 14 beats against the retail reference (reference.json, recorded from retail on the shipped map; numbers only). Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT), the portal2 kiln profile (built on demand) and the published relit map; loading the relit map dominates the run time.",
       "command": [
         "{python}",
         "tools/quality/portal2_storybeats.py",
@@ -19661,7 +19616,6 @@
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py",
         "path:run/maps/sp_a2_laser_intro_relit/published.json"
       ],
       "optional": true,
@@ -19669,7 +19623,6 @@
         "tools/quality/portal2_storybeats.py",
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/playable_maps.py",
         "tools/quality/legacy_bsp.py",
         "tools/quality/conformance_result.py",
@@ -19796,14 +19749,12 @@
       "timeout_seconds": 600,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -19839,14 +19790,12 @@
       "timeout_seconds": 600,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -19865,7 +19814,7 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R01",
-      "description": "Portal 2 audio retail conformance (game/shared/portal2/README.md, 'Portal 2 audio retail conformance'). Runs quality/workloads/portal2-audio-v1's probe on sp_a2_triple_laser with build-p2 (SDL offscreen video, SDL disk audio, stereo) and compares the mixer output with retail-reference.json (metrics of a retail portal2_linux capture; numbers only): each event is located by normalized cross-correlation with its retail wave (ffmpeg-decoded from the installed VPKs) and judged on presence, level against the calibration, fidelity, stereo balance and width, ducking, the cut of a replaced line and v1 falloff. Known failure while the operator-stack defects are open (v2 dialog and music levels, sys_start_entry chains, unprecached v2 entries as script handles, the v2 world level, soundscape ambience, v1 near fidelity); the first is vo.level. Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT), ffmpeg, numpy and scipy, and a built build-p2 (SOURCE_PORTAL2_BUILD selects another tree); about 2 minutes.",
+      "description": "Portal 2 audio retail conformance (game/shared/portal2/README.md, 'Portal 2 audio retail conformance'). Runs quality/workloads/portal2-audio-v1's probe on sp_a2_triple_laser with the portal2 kiln profile (SDL offscreen video, SDL disk audio, stereo) and compares the mixer output with retail-reference.json (metrics of a retail portal2_linux capture; numbers only): each event is located by normalized cross-correlation with its retail wave (ffmpeg-decoded from the installed VPKs) and judged on presence, level against the calibration, fidelity, stereo balance and width, ducking, the cut of a replaced line and v1 falloff. Known failure while the operator-stack defects are open (v2 dialog and music levels, sys_start_entry chains, unprecached v2 entries as script handles, the v2 world level, soundscape ambience, v1 near fidelity); the first is vo.level. Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT), ffmpeg, numpy and scipy, and the portal2 kiln profile (built on demand; --profile selects another); about 2 minutes.",
       "command": [
         "{python}",
         "tools/quality/portal2_audio.py",
@@ -19879,14 +19828,12 @@
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "executable:ffmpeg",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_audio.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-audio-v1/audio.json",
@@ -19920,14 +19867,12 @@
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "executable:ffmpeg",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_audio.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-audio-v1/audio.json",
@@ -19961,14 +19906,12 @@
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "executable:ffmpeg",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_audio.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-audio-v1/audio.json",
@@ -20003,7 +19946,6 @@
       "sources": [
         "tools/quality/portal2_audio.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-audio-v1/audio.json",
@@ -20040,7 +19982,6 @@
       "sources": [
         "tools/quality/portal2_audio.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-audio-v1/audio.json",
@@ -20058,7 +19999,7 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R32",
-      "description": "Portal 2 paint retail conformance (game/shared/portal2/README.md, 'Portal 2 paint retail conformance'). Runs quality/workloads/portal2-paint-world-v1 on build-p2 at 1024x768 (SDL offscreen, native Vulkan) through tools/quality/portal2_scenarios.py: sp_a3_jump_intro's floor trench painted by the map and by moved info_paint_sprayers (a propulsion strip, water, conversion gel on the end wall). Judges the server-side measures (rebound off repulsion gel, top speed on propulsion gel and on the bare floor, rebound after water, portal placement on conversion gel and on the bare wall) and the painted regions' pixel class fractions and mean colour against the retail reference (reference.json: numbers recorded from retail portal2_linux, no retail pixels). Each check names the defect it pins. Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT) and a built build-p2 (SOURCE_PORTAL2_BUILD selects another tree); about 2 minutes.",
+      "description": "Portal 2 paint retail conformance (game/shared/portal2/README.md, 'Portal 2 paint retail conformance'). Runs quality/workloads/portal2-paint-world-v1 on the portal2 kiln profile at 1024x768 (SDL offscreen, native Vulkan) through tools/quality/portal2_scenarios.py: sp_a3_jump_intro's floor trench painted by the map and by moved info_paint_sprayers (a propulsion strip, water, conversion gel on the end wall). Judges the server-side measures (rebound off repulsion gel, top speed on propulsion gel and on the bare floor, rebound after water, portal placement on conversion gel and on the bare wall) and the painted regions' pixel class fractions and mean colour against the retail reference (reference.json: numbers recorded from retail portal2_linux, no retail pixels). Each check names the defect it pins. Needs a local Portal 2 install (SOURCE_PORTAL2_STEAM_ROOT) and the portal2 kiln profile (built on demand; --profile selects another); about 2 minutes.",
       "command": [
         "{python}",
         "tools/quality/portal2_paint.py",
@@ -20071,15 +20012,13 @@
       "timeout_seconds": 900,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_paint.py",
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-paint-world-v1/scenarios.json",
         "quality/workloads/portal2-paint-world-v1/checks.json",
@@ -20111,15 +20050,13 @@
       "timeout_seconds": 900,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_paint.py",
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-paint-world-v1/scenarios.json",
         "quality/workloads/portal2-paint-world-v1/checks.json",
@@ -20152,15 +20089,13 @@
       "timeout_seconds": 900,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu",
-        "path:build-p2/c4che/_cache.py"
+        "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/portal2_paint.py",
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-paint-world-v1/scenarios.json",
         "quality/workloads/portal2-paint-world-v1/checks.json",
@@ -20894,7 +20829,7 @@
       "rfc": "0016",
       "migration": "R86",
       "profile": "linux-host-corpus",
-      "description": "RFC 0016 K0 'View oracles captured' (tools/render/view_oracle.py suite --check views). Boots each scenario of quality/workloads/render-view-oracles-v1.json headless on native Vulkan through portal_boot.py: testchmb_a_00, testchmb_a_08 and testchmb_a_01 (the legacy-ports view set where it is defined) on the Portal client (build) and sp_a1_wakeup on the Portal 2 client (build-p2). Per shot the backend records the screenshot frame's views and draws (source-view-oracle/v1, -vieworacle): every CRender::Push3DView/Push2DView...PopView span in submission order, nested as the engine nested it, with each draw's material, shader, pass, primitive, index range, vertex count, target and viewport. Each shot must equal its frozen capture in quality/fixtures/render-views (every view field exactly, origin and angles within 0.11 of their 0.1-printed values, every draw and clear in order) and cover its declared feature: portal recursion at every depth to the limit (r_portal_stencil_depth 1, 2 and 10, two portals facing each other), water reflection and refraction (Portal 2; no Portal map has a Water material), a monitor (a spawned point_camera on the Portal maps; the Portal 2 client compiles monitors out), glass, and the legacy-ports view set (eight yaws, two upward views, the pause menu). Frames are made repeatable with host_framerate, -deterministicrender (particle seeds, world static batch and material sort order, invariant random seed), -nosound, noclip and a camera placed again before every screenshot. About 6 minutes.",
+      "description": "RFC 0016 K0 'View oracles captured' (tools/render/view_oracle.py suite --check views). Boots each scenario of quality/workloads/render-view-oracles-v1.json headless on native Vulkan through portal_boot.py: testchmb_a_00, testchmb_a_08 and testchmb_a_01 (the legacy-ports view set where it is defined) on the Portal client (kiln profile portal) and sp_a1_wakeup on the Portal 2 client (kiln profile portal2). Per shot the backend records the screenshot frame's views and draws (source-view-oracle/v1, -vieworacle): every CRender::Push3DView/Push2DView...PopView span in submission order, nested as the engine nested it, with each draw's material, shader, pass, primitive, index range, vertex count, target and viewport. Each shot must equal its frozen capture in quality/fixtures/render-views (every view field exactly, origin and angles within 0.11 of their 0.1-printed values, every draw and clear in order) and cover its declared feature: portal recursion at every depth to the limit (r_portal_stencil_depth 1, 2 and 10, two portals facing each other), water reflection and refraction (Portal 2; no Portal map has a Water material), a monitor (a spawned point_camera on the Portal maps; the Portal 2 client compiles monitors out), glass, and the legacy-ports view set (eight yaws, two upward views, the pause menu). Frames are made repeatable with host_framerate, -deterministicrender (particle seeds, world static batch and material sort order, invariant random seed), -nosound, noclip and a camera placed again before every screenshot. About 6 minutes.",
       "command": [
         "{python}",
         "tools/render/view_oracle.py",
@@ -20909,8 +20844,6 @@
       "timeout_seconds": 2400,
       "requires": [
         "path:run/runtime",
-        "path:build/c4che/_cache.py",
-        "path:build-p2/c4che/_cache.py",
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
@@ -20919,7 +20852,6 @@
         "tools/quality/portal_boot.py",
         "tools/quality/draw_state_diff.py",
         "tools/quality/legacy_ports_views.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/render-view-oracles-v1.json",
         "quality/fixtures/render-views/portal_testchmb_a_00/provenance.json",
@@ -20959,8 +20891,6 @@
       "timeout_seconds": 2400,
       "requires": [
         "path:run/runtime",
-        "path:build/c4che/_cache.py",
-        "path:build-p2/c4che/_cache.py",
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
@@ -20969,7 +20899,6 @@
         "tools/quality/portal_boot.py",
         "tools/quality/draw_state_diff.py",
         "tools/quality/legacy_ports_views.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/render-view-oracles-v1.json",
         "quality/fixtures/render-views/portal_testchmb_a_00/provenance.json",
@@ -21104,7 +21033,6 @@
       "sources": [
         "tools/quality/portal2_sign_panel.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py"
       ],
       "expect": "pass"
@@ -21127,14 +21055,12 @@
       "min_checks": 12,
       "timeout_seconds": 2400,
       "requires": [
-        "path:build-p2/c4che/_cache.py",
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
       "sources": [
         "tools/quality/portal2_sign_panel.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "game/client/c_vguiscreen.cpp",
         "game/client/portal2/vgui/vgui_base_progress_screen.cpp",
@@ -21176,7 +21102,7 @@
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
       "profile": "linux-host-corpus",
-      "description": "Test chamber signs light up and cast their light at runtime, on native Vulkan's legacy world path (tools/quality/portal_sign_light.py suite --path legacy; RFC 0011 emissive area lights, light set v2). Scenarios (quality/workloads/portal-sign-light-v1.json): Portal 2 sp_a1_intro6's chamber sign (vgui_screen info_panel-info_panel, the primary case; build-p2), Portal testchmb_a_01's sign_02 and testchmb_a_04's sign_08 (prop_dynamic signage_numNN.mdl; build), each booted headless on native Vulkan through portal_boot.py with a fixed noclip camera at 1024x768. Per scenario: content facts from the map and the content (the sign starts off and the map's trigger lights it; Portal's lit skin has a $selfillum backing and the initial one none; Portal 2's panel is sp_progress_sign); sign-on (the sign's pixels go from dark to lit), sign-off and sign-relight at runtime; emitter-at-sign (r_area_lights_report publishes a light inside the sign's world box, facing out of it, while lit and none while unlit); casts-light.near (a receiver in front brightens by the scenario's measured minimum), .falloff (near at least 1.25x far), .hue (the change's linear chromaticity within 0.05 of the published light's reflected by the receiver's albedo from a mat_fullbright shot), .returns (receivers back to their unlit pixels when switched off), .relight, and .behind (a surface behind or in the emitter's plane does not change, which also holds any exposure change; mat_force_tonemap_scale 1). Every casts-light check compares shots of one boot at one camera with the sign changed at runtime, so baked lighting cannot satisfy it. On sp_a1_intro6 and testchmb_a_01 two live negative controls must be rejected: every sign input withheld (sign-on and casts-light.near fail) and emissive area lights off (r_area_lights 0: casts-light.near and emitter-at-sign fail). Needs the RFC 0011 area-light slice (engine/area_lights.cpp, game/client/emissive_area_lights.cpp) in both builds, a local Portal 2 install and a GPU; about 2 minutes.",
+      "description": "Test chamber signs light up and cast their light at runtime, on native Vulkan's legacy world path (tools/quality/portal_sign_light.py suite --path legacy; RFC 0011 emissive area lights, light set v2). Scenarios (quality/workloads/portal-sign-light-v1.json): Portal 2 sp_a1_intro6's chamber sign (vgui_screen info_panel-info_panel, the primary case; kiln profile portal2), Portal testchmb_a_01's sign_02 and testchmb_a_04's sign_08 (prop_dynamic signage_numNN.mdl; build), each booted headless on native Vulkan through portal_boot.py with a fixed noclip camera at 1024x768. Per scenario: content facts from the map and the content (the sign starts off and the map's trigger lights it; Portal's lit skin has a $selfillum backing and the initial one none; Portal 2's panel is sp_progress_sign); sign-on (the sign's pixels go from dark to lit), sign-off and sign-relight at runtime; emitter-at-sign (r_area_lights_report publishes a light inside the sign's world box, facing out of it, while lit and none while unlit); casts-light.near (a receiver in front brightens by the scenario's measured minimum), .falloff (near at least 1.25x far), .hue (the change's linear chromaticity within 0.05 of the published light's reflected by the receiver's albedo from a mat_fullbright shot), .returns (receivers back to their unlit pixels when switched off), .relight, and .behind (a surface behind or in the emitter's plane does not change, which also holds any exposure change; mat_force_tonemap_scale 1). Every casts-light check compares shots of one boot at one camera with the sign changed at runtime, so baked lighting cannot satisfy it. On sp_a1_intro6 and testchmb_a_01 two live negative controls must be rejected: every sign input withheld (sign-on and casts-light.near fail) and emissive area lights off (r_area_lights 0: casts-light.near and emitter-at-sign fail). Needs the RFC 0011 area-light slice (engine/area_lights.cpp, game/client/emissive_area_lights.cpp) in both builds, a local Portal 2 install and a GPU; about 2 minutes.",
       "command": [
         "{python}",
         "tools/quality/portal_sign_light.py",
@@ -21191,8 +21117,6 @@
       "timeout_seconds": 2400,
       "requires": [
         "path:run/runtime",
-        "path:build/c4che/_cache.py",
-        "path:build-p2/c4che/_cache.py",
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
@@ -21201,7 +21125,6 @@
         "tools/quality/portal_boot.py",
         "tools/quality/legacy_bsp.py",
         "tools/quality/source_content.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal-sign-light-v1.json",
         "game/client/portal2/vgui/vgui_base_progress_screen.cpp"
@@ -21215,7 +21138,7 @@
       "rfc": "0016",
       "migration": "R89",
       "profile": "linux-host-corpus",
-      "description": "The chamber-sign checks of corpus.portal.sign-light.legacy with the RFC 0016 render core drawing the BSP world surfaces its material model takes (r_core_world 1, as ./play --core-world; the suite fails at boot when the console variable is unknown or not 1), plus core-draws-receivers: a closing r_core_world 3 shot (neither legacy nor the core draws the core's surfaces) must change each receiver by at least 20 levels, or the path's verdicts are the legacy world's. Scenarios (quality/workloads/portal-sign-light-v1.json): Portal 2 sp_a1_intro6's chamber sign (vgui_screen info_panel-info_panel, the primary case; build-p2), Portal testchmb_a_01's sign_02 and testchmb_a_04's sign_08 (prop_dynamic signage_numNN.mdl; build), each booted headless on native Vulkan through portal_boot.py with a fixed noclip camera at 1024x768. Known failure, RFC 0016 K5 step 4 (row R89): the core's model takes none of the receivers (Portal: concrete/concrete_modular_floor001a and _wall001a, gaps $detail and $envmap; Portal 2: nature/dirtfloor004c), and on sp_a1_intro6 r_core_world_stats reports no view queued or drawn; every sign and casts-light check passes on the legacy world. The failure message names the receivers and the core's gaps. About 2.5 minutes.",
+      "description": "The chamber-sign checks of corpus.portal.sign-light.legacy with the RFC 0016 render core drawing the BSP world surfaces its material model takes (r_core_world 1, as kiln play portal --set core-world; the suite fails at boot when the console variable is unknown or not 1), plus core-draws-receivers: a closing r_core_world 3 shot (neither legacy nor the core draws the core's surfaces) must change each receiver by at least 20 levels, or the path's verdicts are the legacy world's. Scenarios (quality/workloads/portal-sign-light-v1.json): Portal 2 sp_a1_intro6's chamber sign (vgui_screen info_panel-info_panel, the primary case; kiln profile portal2), Portal testchmb_a_01's sign_02 and testchmb_a_04's sign_08 (prop_dynamic signage_numNN.mdl; build), each booted headless on native Vulkan through portal_boot.py with a fixed noclip camera at 1024x768. Known failure, RFC 0016 K5 step 4 (row R89): the core's model takes none of the receivers (Portal: concrete/concrete_modular_floor001a and _wall001a, gaps $detail and $envmap; Portal 2: nature/dirtfloor004c), and on sp_a1_intro6 r_core_world_stats reports no view queued or drawn; every sign and casts-light check passes on the legacy world. The failure message names the receivers and the core's gaps. About 2.5 minutes.",
       "command": [
         "{python}",
         "tools/quality/portal_sign_light.py",
@@ -21230,8 +21153,6 @@
       "timeout_seconds": 2400,
       "requires": [
         "path:run/runtime",
-        "path:build/c4che/_cache.py",
-        "path:build-p2/c4che/_cache.py",
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
@@ -21240,7 +21161,6 @@
         "tools/quality/portal_boot.py",
         "tools/quality/legacy_bsp.py",
         "tools/quality/source_content.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal-sign-light-v1.json",
         "game/client/portal2/vgui/vgui_base_progress_screen.cpp",
@@ -21277,7 +21197,7 @@
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
       "profile": "linux-host-corpus",
-      "description": "Movers at rest cast no shadow on the static world (RFC 0011 render.dynamic-occlusion.v1; the user's sp_a2_core reports of 2026-09-28): tools/quality/portal2_mover_shadow.py suite boots Portal 2's sp_a2_core headless on native Vulkan (build-p2, portal_boot.py, 1024x768, mat_force_tonemap_scale 1) and shoots two scenes with occlusion on, on again and off (r_dynamic_occlusion 0): the Wheatley receptacle deployed with the chamber's projected lights on (its func_brush frame, func_door movers, func_tank pointer and func_door_rotating iris panels), and the stalemate button on its pedestal (func_door button_platform). Checks per scene: facts.brush-movers (the map's movers there are brush entities), boot, static (regions unchanged between the two on shots), occlusion-active (a published occlusion generation) and no-mover-shadow (in regions on the floor and on the pedestal and arm models the old occluder set darkened, occlusion on is at most 0.5 levels darker on average and at most 1 % of pixels darker by more than 4 levels). Live negative control, which must be rejected on no-mover-shadow: a shadow-casting copy of the housing model (prop_dynamic just_elevator.mdl) set at the deployed housing's pose, sunk in the pit as the old frame box was (r_shadows 0), whose boxes must be published. With the pre-fix client (every brush entity published) the receptacle floor darkens by 2.6 levels on 30 % of its pixels and the stalemate pedestal by 10.3 levels. Needs a local Portal 2 install and a GPU; about 2 minutes.",
+      "description": "Movers at rest cast no shadow on the static world (RFC 0011 render.dynamic-occlusion.v1; the user's sp_a2_core reports of 2026-09-28): tools/quality/portal2_mover_shadow.py suite boots Portal 2's sp_a2_core headless on native Vulkan (the portal2 kiln profile, portal_boot.py, 1024x768, mat_force_tonemap_scale 1) and shoots two scenes with occlusion on, on again and off (r_dynamic_occlusion 0): the Wheatley receptacle deployed with the chamber's projected lights on (its func_brush frame, func_door movers, func_tank pointer and func_door_rotating iris panels), and the stalemate button on its pedestal (func_door button_platform). Checks per scene: facts.brush-movers (the map's movers there are brush entities), boot, static (regions unchanged between the two on shots), occlusion-active (a published occlusion generation) and no-mover-shadow (in regions on the floor and on the pedestal and arm models the old occluder set darkened, occlusion on is at most 0.5 levels darker on average and at most 1 % of pixels darker by more than 4 levels). Live negative control, which must be rejected on no-mover-shadow: a shadow-casting copy of the housing model (prop_dynamic just_elevator.mdl) set at the deployed housing's pose, sunk in the pit as the old frame box was (r_shadows 0), whose boxes must be published. With the pre-fix client (every brush entity published) the receptacle floor darkens by 2.6 levels on 30 % of its pixels and the stalemate pedestal by 10.3 levels. Needs a local Portal 2 install and a GPU; about 2 minutes.",
       "command": [
         "{python}",
         "tools/quality/portal2_mover_shadow.py",
@@ -21289,7 +21209,6 @@
       "min_checks": 14,
       "timeout_seconds": 2400,
       "requires": [
-        "path:build-p2/c4che/_cache.py",
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
@@ -21297,7 +21216,6 @@
         "tools/quality/portal2_mover_shadow.py",
         "tools/quality/portal_boot.py",
         "tools/quality/legacy_bsp.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "game/client/dynamic_occluders.cpp",
         "public/render/dynamic_occlusion.h",
@@ -21333,7 +21251,7 @@
       "domain": "Q-PRESENTATION",
       "rfc": "0001",
       "profile": "linux-host-corpus",
-      "description": "Portal 2's Wheatley monitors show the live point_camera view (the user's report of 2026-09-29: black monitors; cause: the client compiled CViewRender::DrawMonitors out, USE_MONITORS being HL2/CS:S only). tools/quality/portal2_monitors.py suite boots sp_a4_tb_intro and sp_a4_intro headless on native Vulkan (build-p2, portal_boot.py, 1024x768, mat_force_tonemap_scale 1), deploys one prefab monitor (relay_deploy_straight), places a noclip camera 190 units in front of the screen from the BSP (func_monitor origin, screen face normal turned by its yaw) and shoots it at the camera's authored FOV and at double (ChangeFOV). Checks per map: facts.screen-material (the screen face's VMT $basetexture is _rt_Camera, read from the VPK), facts.camera-target (the func_monitor targets one point_camera), boot, screen-shows-camera (Wheatley's eye, B >= 110 and B - R >= 60, covers at least 0.3 % of the screen region; measured 1.55-1.58 %) and view-is-live (doubling the FOV leaves the eye at most 0.6 of its area; measured 0.25-0.26). Live negative controls on sp_a4_tb_intro, each rejected: cl_drawmonitors 0 from startup (the defect as reported, rejected on screen-shows-camera) and cl_drawmonitors 0 after the first shot (a stale _rt_Camera, rejected on view-is-live). The pre-fix client fails screen-shows-camera and view-is-live on both maps. Needs a local Portal 2 install and a GPU; about 90 s.",
+      "description": "Portal 2's Wheatley monitors show the live point_camera view (the user's report of 2026-09-29: black monitors; cause: the client compiled CViewRender::DrawMonitors out, USE_MONITORS being HL2/CS:S only). tools/quality/portal2_monitors.py suite boots sp_a4_tb_intro and sp_a4_intro headless on native Vulkan (the portal2 kiln profile, portal_boot.py, 1024x768, mat_force_tonemap_scale 1), deploys one prefab monitor (relay_deploy_straight), places a noclip camera 190 units in front of the screen from the BSP (func_monitor origin, screen face normal turned by its yaw) and shoots it at the camera's authored FOV and at double (ChangeFOV). Checks per map: facts.screen-material (the screen face's VMT $basetexture is _rt_Camera, read from the VPK), facts.camera-target (the func_monitor targets one point_camera), boot, screen-shows-camera (Wheatley's eye, B >= 110 and B - R >= 60, covers at least 0.3 % of the screen region; measured 1.55-1.58 %) and view-is-live (doubling the FOV leaves the eye at most 0.6 of its area; measured 0.25-0.26). Live negative controls on sp_a4_tb_intro, each rejected: cl_drawmonitors 0 from startup (the defect as reported, rejected on screen-shows-camera) and cl_drawmonitors 0 after the first shot (a stale _rt_Camera, rejected on view-is-live). The pre-fix client fails screen-shows-camera and view-is-live on both maps. Needs a local Portal 2 install and a GPU; about 90 s.",
       "command": [
         "{python}",
         "tools/quality/portal2_monitors.py",
@@ -21345,7 +21263,6 @@
       "min_checks": 14,
       "timeout_seconds": 1800,
       "requires": [
-        "path:build-p2/c4che/_cache.py",
         "env:SOURCE_PORTAL2_STEAM_ROOT",
         "vulkan-device:gpu"
       ],
@@ -21354,7 +21271,6 @@
         "tools/quality/portal_boot.py",
         "tools/quality/legacy_bsp.py",
         "tools/quality/source_content.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "game/client/viewrender.cpp",
         "game/client/view.cpp",
@@ -21387,13 +21303,11 @@
       "timeout_seconds": 1800,
       "requires": [
         "path:run/runtime/portal/gameinfo.txt",
-        "path:build/c4che/_cache.py",
         "vulkan-device:gpu"
       ],
       "sources": [
         "tools/quality/core_world_smoke.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/launch_sandbox.py",
         "tools/quality/conformance_result.py",
@@ -21409,7 +21323,7 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R89",
-      "description": "corpus.core-world.portal for Portal 2: every retail map of the Steam installation's portal2, DLC1 and DLC2 search path (SOURCE_PORTAL2_STEAM_ROOT), staged with stage_portal2_runtime.py and the build-p2 products, in two processes (--jobs 2). Maps failing today are known failures in the workload, owned by R89 (render core); they print after any unexpected result, so the row matches only while the known set is exactly what fails.",
+      "description": "corpus.core-world.portal for Portal 2: every retail map of the Steam installation's portal2, DLC1 and DLC2 search path (SOURCE_PORTAL2_STEAM_ROOT), packaged by kiln (the portal2 profile), in two processes (--jobs 2). Maps failing today are known failures in the workload, owned by R89 (render core); they print after any unexpected result, so the row matches only while the known set is exactly what fails.",
       "command": [
         "{python}",
         "tools/quality/core_world_smoke.py",
@@ -21426,14 +21340,12 @@
       "timeout_seconds": 5400,
       "requires": [
         "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "path:build-p2/c4che/_cache.py",
         "vulkan-device:gpu"
       ],
       "optional": true,
       "sources": [
         "tools/quality/core_world_smoke.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/launch_sandbox.py",
         "tools/quality/conformance_result.py",
@@ -21468,13 +21380,11 @@
       "timeout_seconds": 600,
       "requires": [
         "path:run/runtime/portal/gameinfo.txt",
-        "path:build/c4che/_cache.py",
         "vulkan-device:gpu"
       ],
       "sources": [
         "tools/quality/core_world_smoke.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/launch_sandbox.py",
         "tools/quality/conformance_result.py",
@@ -21621,12 +21531,12 @@
       "contract": "public/product/contracts.h",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "RFC 0027 L0 (RFC/0027-progress.md): foundation.json; product.profile schema v2 with the extends merge equal to profile_extends.py's rule, provenance, aliases, flavors and derived Waf arguments, and its seeded faults refused by name (extends cycle, unknown key, unknown provider, missing pin, three conflicting configure options, workspace values that would change a build fact); the shared suites of ITargetToolchain (linux-gcc, linux-clang, the fixture host), IRecipeBuilder (fake), IProductStage (fixture stages; waf-engine descriptor and cancellation), IPackager, IDeployTransport and IDisplaySession, each rejecting its deliberately bad providers by the clause they break (25 bad providers); the ProviderCatalog; and the fixture platform run build -> content -> package -> deploy -> run through an unchanged kiln.core, with an unchanged second run rebuilding and resending nothing, a missing capability refused before the device is touched, and an undeclared read failing the run with nothing published.",
+      "description": "RFC 0027 L0 (RFC/0027-progress.md): foundation.json; product.profile schema v2 with the extends merge equal to the retired profile_extends.py's rule (kiln_gate.py parity keeps an independent reference), provenance, aliases, flavors and derived Waf arguments, and its seeded faults refused by name (extends cycle, unknown key, unknown provider, missing pin, three conflicting configure options, workspace values that would change a build fact); the shared suites of ITargetToolchain (linux-gcc, linux-clang, the fixture host), IRecipeBuilder (fake), IProductStage (fixture stages; waf-engine descriptor and cancellation), IPackager, IDeployTransport and IDisplaySession, each rejecting its deliberately bad providers by the clause they break (25 bad providers); the ProviderCatalog; and the fixture platform run build -> content -> package -> deploy -> run through an unchanged kiln.core, with an unchanged second run rebuilding and resending nothing, a missing capability refused before the device is touched, and an undeclared read failing the run with nothing published.",
       "command": [
         "out/host-tests/unittests/kilntest/kilntest"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 108,
+      "min_checks": 140,
       "timeout_seconds": 300,
       "requires": [
         "path:out/host-tests/unittests/kilntest/kilntest"
@@ -21653,7 +21563,7 @@
       "contract": "public/product/profile.h",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0027 L0 gate: `kiln profiles resolve` equals tools/quality/profile_extends.py, values and member order, on every file in quality/product_profiles (the pre-RFC profiles, the schema v2 desktop profiles and the fragments).",
+      "description": "RFC 0027 L0 gate: `kiln profiles resolve` equals the gate's own independent reference merge (the retired tools/quality/profile_extends.py's rule), values and member order, on every file in quality/product_profiles (the pre-RFC profiles, the schema v2 desktop profiles and the fragments).",
       "command": [
         "{python}",
         "tools/kiln/kiln_gate.py",
@@ -21666,10 +21576,53 @@
         "path:out/host-linux-x86_64/product/kiln/kiln"
       ],
       "sources": [
-        "tools/kiln/kiln_gate.py",
-        "tools/quality/profile_extends.py"
+        "tools/kiln/kiln_gate.py"
       ],
       "expect": "pass"
+    },
+    {
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L1",
+      "contract": "RFC/0027-product-pipeline-lowering-streaming-kiln.md",
+      "profile": "linux-host-corpus",
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 120,
+      "sources": [
+        "tools/kiln/retired_scan.py"
+      ],
+      "expect": "pass",
+      "id": "kiln.l1.no-callers",
+      "kind": "positive",
+      "min_checks": 2,
+      "description": "RFC 0027 L1 retirement: no retired launch or staging path (./play*, run.sh, run.conf, render_flags.sh, launcher_ccache.sh, ensure_configured.py, profile_extends.py, stage_*.py, private_session.py, transcode_av1.py, the scripts/ CI wrappers, the launch-equivalence gate) is tracked, and no tracked file outside RFC/ and Markdown names one except on a provenance line (retired, ported from, port of, formerly).",
+      "command": [
+        "{python}",
+        "tools/kiln/retired_scan.py",
+        "check"
+      ]
+    },
+    {
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L1",
+      "contract": "RFC/0027-product-pipeline-lowering-streaming-kiln.md",
+      "profile": "linux-host-corpus",
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 120,
+      "sources": [
+        "tools/kiln/retired_scan.py"
+      ],
+      "expect": "pass",
+      "id": "kiln.l1.no-callers.selftest",
+      "kind": "positive",
+      "min_checks": 8,
+      "description": "The no-callers scan's sensitivity: seeded callers of the retired surface (a launcher path join, ./play_p2 in an argv, an import of stage_portal2_runtime, a CI step running scripts/tests-ubuntu-amd64.sh, Hammer's old ./play argv, run.conf, ROOT / \"play\") are each caught, while provenance lines, documentation, kiln's own `play` subcommand and an unrelated run.sh pass.",
+      "command": [
+        "{python}",
+        "tools/kiln/retired_scan.py",
+        "selftest"
+      ]
     },
     {
       "id": "kiln.profiles.parity.sensitivity",
@@ -21720,6 +21673,64 @@
         "product/kiln/core/session.cpp"
       ],
       "expect": "pass"
+    },
+    {
+      "id": "kiln.coop-live",
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L1",
+      "contract": "public/product/run_desktop.h",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0027 L1 gate: `kiln play portal2-coop --display none --set null --set until-joined` starts a real two-player co-op pair headless (no window on the user's desktop): the host's server answers the engine challenge, the client connects over the LAN, and the host's engine.log records the remote join; both peers then stop. Needs the installed Portal 2 content.",
+      "command": [
+        "{python}",
+        "tools/kiln/kiln_gate.py",
+        "coop"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 1800,
+      "requires": [
+        "path:out/host-linux-x86_64/product/kiln/kiln"
+      ],
+      "sources": [
+        "product/run/desktop.cpp",
+        "platform/posix/process_spawner.cpp",
+        "product/kiln/core/launch.cpp",
+        "tools/kiln/kiln_gate.py"
+      ],
+      "expect": "pass",
+      "min_checks": 4
+    },
+    {
+      "id": "kiln.sepipe",
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L1",
+      "contract": "public/kiln/api.h",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0027 L1d gate: sepipe (the nanobind module over kiln.api, built in the tools tree for the pinned host Python) returns the documents `kiln --json` prints for profiles, switches and five launch plans, and raises KilnError for an unknown profile and switch; play_embedded, a play request from a catalog the sample composes itself, spawns exactly the planned argv. Seeded map and switch changes are caught.",
+      "command": [
+        "{python}",
+        "tools/kiln/sepipe_gate.py"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 1800,
+      "requires": [
+        "path:out/host-linux-x86_64/product/kiln/kiln",
+        "path:out/tools-linux/dev/build/product/kiln/python",
+        "path:out/tools-linux/dev/build/tools/samples/play_embedded/play_embedded_sample"
+      ],
+      "sources": [
+        "product/kiln/python/sepipe_module.cpp",
+        "tools/samples/play_embedded/play_embedded.cpp",
+        "product/kiln/core/session.cpp",
+        "product/kiln/core/launch.cpp",
+        "tools/kiln/sepipe_gate.py"
+      ],
+      "expect": "pass",
+      "min_checks": 15
     }
   ]
 }

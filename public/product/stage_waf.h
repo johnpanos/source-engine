@@ -8,7 +8,8 @@
 //			configures only when the configure digest (arguments, toolchain
 //			identity) changed or a configuration input is newer than the tree,
 //			never compiles itself, and keeps the Waf lock inside the tree
-//			(out/<profile>/<flavor>/), so trees never share a lock.
+//			(out/<profile>/<flavor>/build/, installing to .../install/), so
+//			trees never share a lock.
 //
 //=============================================================================//
 

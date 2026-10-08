@@ -333,10 +333,11 @@ VolumetricRenderer::Create(
 	recipe.layouts = { {}, {}, {}, renderer->m_CompositeLayout };
 	recipe.topology = PrimitiveTopology::kTriangleList;
 	recipe.raster.cull = CullMode::kNone;
-	recipe.colorFormats = { colorFormat };
+	// assign(1, ...): GCC 13 misreports a one-element initializer list (-Warray-bounds).
+	recipe.colorFormats.assign( 1, colorFormat );
 	// src + dst * a with the source ( L, T ): dst T + L, T at the target's
 	// precision (render.device.v2 D21).
-	recipe.blends = { BlendMode::kTransmittance };
+	recipe.blends.assign( 1, BlendMode::kTransmittance );
 	recipe.debugName = "render.pass.volumetric.composite";
 	auto resolved = shaderlib::Resolve( recipe, artifacts, format );
 	if ( !resolved )

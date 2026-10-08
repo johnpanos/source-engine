@@ -47,9 +47,9 @@
                           "--reflection-probes"]
   },
   "runtime": {
-    "runtime": "run/runtime-native",
-    "client_build": "build-rfc0008-staircase-lit-client",
-    "note": "The game runtime and client build are the native Vulkan Portal profile's outputs; they are inputs to --boot, not provisioned here."
+    "client_profile": "portal",
+    "client_flavor": "dev",
+    "note": "The kiln product profile whose package is the game runtime (content source and --boot target) and whose engine install provides the model export tool (RFC 0027 L1); kiln builds and packages it on demand."
   },
   "evidence": {
     "status": "partial",

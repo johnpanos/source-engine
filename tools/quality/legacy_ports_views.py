@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Compare the testchmb_a_01 view set with the legacy shader ports on and off.
 
-R32-LEGACY-SHADERS' default-on gate asks that the map ./play boots look the
+R32-LEGACY-SHADERS' default-on gate asks that the map ./kiln play portal boots look the
 same with the ports as without them, except where a reviewed port improvement
 is expected. This boots the installed Portal product (through portal_boot,
-which owns staging) three times at run.conf's settings: the ports on (the
+which owns staging) three times at the portal profile's launch settings: the ports on (the
 default), off (-novklegacyports), and on again. Each run captures the same
 views: eight yaws and two upward views from the spawn point, then the pause
 menu.
@@ -31,6 +31,9 @@ import sys
 import numpy
 from PIL import Image
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 QUALITY = Path(__file__).resolve().parent
 PORTAL_BOOT = QUALITY / "portal_boot.py"
 SCHEMA = "legacy-ports-views/v1"
@@ -40,7 +43,7 @@ MAP = "testchmb_a_01"
 VIEWS = tuple(("yaw%03d" % yaw, 0, yaw) for yaw in range(0, 360, 45)) + (
     ("up000", -50, 0), ("up180", -50, 180))
 PAUSE = "pause_menu"
-# run.conf's settings for ./play (MAT_ARGS, JOB_ARGS, EXTRA_ARGS, PHYSICS*).
+# the portal profile's launch settings (its mat_args, job_args, queue and physics variables).
 # Console variables go in portal_boot's startup cfg, which keeps the command
 # line under the engine's 512 characters (argument lengths summed, the program
 # path included). The cfg runs after portal_boot's own +mat_queue_mode 0, so
@@ -78,8 +81,8 @@ def capture_frames():
 
 
 def boot(args, name, extra, out):
-    command = [sys.executable, str(PORTAL_BOOT), "--runtime", str(args.runtime),
-               "--build", str(args.build), "--out", str(out), "--headless", "--map", MAP,
+    command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
+               "--out", str(out), "--headless", "--map", MAP,
                "--renderer", "native-vulkan", "--physics", "vphysics_box3d", "--require-vulkan",
                "--width", str(WIDTH), "--height", str(HEIGHT),
                "--capture-wait", str(capture_frames()), "--timeout", str(args.timeout),
@@ -124,8 +127,7 @@ def write_difference(a, b, path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument("--build", type=Path, required=True)
+    sepipe_loader.add_arguments(parser, "portal")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=600)
     args = parser.parse_args(argv)

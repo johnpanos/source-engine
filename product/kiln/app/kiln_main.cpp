@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+#include "../../../platform/posix/process_exec.h"
+
 namespace
 {
 
@@ -31,7 +33,15 @@ constexpr const char *kUsage =
     "  profiles resolve <profile>     the profile with its extends chain merged\n"
     "  profiles explain <profile>     provenance and derived facts\n"
     "  doctor <profile>               host prerequisites, present or unavailable\n"
-    "  build <profile> [--flavor <f>] Waf configure (when changed), build and install\n";
+    "  build <profile> [--flavor <f>] Waf configure (when changed), build and install\n"
+    "  content <profile> [--flavor <f>] build, then the content stages\n"
+    "  package <profile> [--flavor <f>] build, then lay out the platform package (the runtime)\n"
+    "  switches <profile>             the profile's launch switches\n"
+    "  play <profile> [map] [--set <switch>]... [--mounts <set>]... [--flavor <f>] [--dry-run] [-- "
+    "args]\n"
+    "  run <profile> [map] [--set <switch>]... [--flavor <f>] [--dry-run] [-- args]\n"
+    "  package, play and run take --runtime <dir>: package into (and launch from) <dir> instead\n"
+    "  of the tree's runtime, e.g. a test's private runtime\n";
 
 class StderrSink final : public product::IDiagnosticSink
 {
@@ -69,14 +79,16 @@ int Failure( bool json, const kiln::Error &error )
 	return 1;
 }
 
-std::optional<std::string> ReadText( const fs::path &path )
+// Become the planned program (kiln play/run on this host).
+int Exec( const kiln::LaunchPlan &plan )
 {
-	std::ifstream stream( path, std::ios::binary );
-	if ( !stream )
-		return std::nullopt;
-	std::ostringstream text;
-	text << stream.rdbuf();
-	return text.str();
+	std::cout.flush();
+	std::cerr.flush();
+	std::string error;
+	platform::ExecReplacingProcess(
+	    plan.argv, plan.environment, plan.workingDirectory.string(), error );
+	std::cerr << "kiln: " << error << " (kiln play builds and packages first)\n";
+	return 127;
 }
 
 } // namespace
@@ -89,6 +101,13 @@ int main( int argc, char **argv )
 	for ( int i = 1; i < argc; ++i )
 	{
 		const std::string arg = argv[i];
+		if ( arg == "--" )
+		{
+			// Everything after `--` belongs to the game, verbatim.
+			for ( ; i < argc; ++i )
+				args.push_back( argv[i] );
+			break;
+		}
 		if ( arg == "--json" )
 			json = true;
 		else if ( arg == "--root" && i + 1 < argc )
@@ -115,13 +134,8 @@ int main( int argc, char **argv )
 	auto composition = kiln::ComposeDefault();
 	if ( !composition )
 		return Failure( json, composition.Error() );
-	kiln::SessionConfig config;
-	config.sourceRoot = root;
-	config.profileRoot = root / "quality" / "product_profiles";
-	config.outRoot = root / "out";
-	config.dependencyRoot = root / "dependencies";
-	config.hostTag = composition.Value().hostTag;
-	config.workspaceText = ReadText( root / ".kiln" / "local.json" );
+	const kiln::SessionConfig config =
+	    kiln::DefaultSessionConfig( root, composition.Value().hostTag );
 	StderrSink sink( json );
 	kiln::Session session( composition.Value().catalog, *composition.Value().processes,
 	    *composition.Value().executor, sink, config );
@@ -132,13 +146,7 @@ int main( int argc, char **argv )
 		const auto profiles = session.ListProfiles();
 		if ( json )
 		{
-			Value list = Value::Array();
-			for ( const auto &profile : profiles )
-				list.Push( kiln::ToJson( profile ) );
-			Value value = Value::Object();
-			value.Set( "schema", Value::String( std::string( kiln::kJsonSchema ) ) );
-			value.Set( "profiles", std::move( list ) );
-			std::cout << value.WritePretty() << '\n';
+			std::cout << kiln::ToJson( profiles ).WritePretty() << '\n';
 		}
 		else
 		{
@@ -167,7 +175,7 @@ int main( int argc, char **argv )
 		if ( !profile )
 			return Failure( json, profile.Error() );
 		// `resolve` prints the merged document itself (with or without
-		// --json), the form profile_extends.py printed.
+		// --json), the form the retired profile_extends.py printed.
 		std::cout << ( args[1] == "resolve" ? profile.Value().document.WritePretty()
 		                                    : kiln::ExplainJson( profile.Value() ).WritePretty() )
 		          << '\n';
@@ -191,15 +199,22 @@ int main( int argc, char **argv )
 		}
 		return ok ? 0 : 1;
 	}
-	if ( command == "build" && args.size() >= 2 )
+	if ( ( command == "build" || command == "content" || command == "package" ) &&
+	     args.size() >= 2 )
 	{
 		kiln::PipelineRequest request;
 		request.profile = args[1];
-		request.upTo = product::StageRole::kEngine;
+		request.upTo = command == "build"     ? product::StageRole::kEngine
+		               : command == "content" ? product::StageRole::kContent
+		                                      : product::StageRole::kPackage;
 		for ( size_t i = 2; i < args.size(); ++i )
 		{
 			if ( args[i] == "--flavor" && i + 1 < args.size() )
 				request.flavor = args[++i];
+			else if ( args[i] == "--mounts" && i + 1 < args.size() )
+				request.mountSets.push_back( args[++i] );
+			else if ( args[i] == "--runtime" && i + 1 < args.size() )
+				request.runtime = fs::absolute( args[++i] );
 			else
 				return Usage();
 		}
@@ -216,6 +231,89 @@ int main( int argc, char **argv )
 			          << "evidence: " << result.Value().evidenceFile.string() << '\n';
 		}
 		return 0;
+	}
+	if ( command == "switches" && args.size() == 2 )
+	{
+		auto switches = session.Switches( args[1] );
+		if ( !switches )
+			return Failure( json, switches.Error() );
+		if ( json )
+		{
+			Value list = Value::Array();
+			for ( const auto &entry : switches.Value() )
+			{
+				Value item = Value::Object();
+				item.Set( "name", Value::String( entry.name ) );
+				item.Set( "description", Value::String( entry.description ) );
+				list.Push( std::move( item ) );
+			}
+			std::cout << list.WritePretty() << '\n';
+		}
+		else
+		{
+			for ( const auto &entry : switches.Value() )
+				std::cout << "  --set " << entry.name << "\n      " << entry.description << '\n';
+		}
+		return 0;
+	}
+	if ( ( command == "play" || command == "run" ) && args.size() >= 2 )
+	{
+		kiln::PlayRequest request;
+		request.profile = args[1];
+		bool dryRun = false;
+		for ( size_t i = 2; i < args.size(); ++i )
+		{
+			if ( args[i] == "--" )
+			{
+				request.arguments.assign( args.begin() + static_cast<long>( i ) + 1, args.end() );
+				break;
+			}
+			if ( args[i] == "--set" && i + 1 < args.size() )
+				request.switches.push_back( args[++i] );
+			else if ( args[i] == "--flavor" && i + 1 < args.size() )
+				request.flavor = args[++i];
+			else if ( args[i] == "--device" && i + 1 < args.size() )
+				request.device = args[++i];
+			else if ( args[i] == "--display" && i + 1 < args.size() )
+				request.displaySession = args[++i];
+			else if ( args[i] == "--mounts" && i + 1 < args.size() )
+				request.mountSets.push_back( args[++i] );
+			else if ( args[i] == "--runtime" && i + 1 < args.size() )
+				request.runtime = fs::absolute( args[++i] );
+			else if ( args[i] == "--dry-run" )
+				dryRun = true;
+			else if ( args[i].rfind( "-", 0 ) != 0 && !request.map )
+				request.map = args[i];
+			else
+				return Usage();
+		}
+		auto plan = session.PlanLaunch( request );
+		if ( !plan )
+			return Failure( json, plan.Error() );
+		if ( dryRun )
+		{
+			std::cout << kiln::ToJson( plan.Value() ).WritePretty() << '\n';
+			return 0;
+		}
+		if ( command == "play" )
+		{
+			auto built = session.BuildForPlay( request );
+			if ( !built )
+				return Failure( json, built.Error() );
+			for ( const auto &stage : built.Value().stages )
+				std::cerr << "kiln: " << stage.name << ": " << stage.summary << '\n';
+		}
+		// One program in the user's own session replaces kiln, as the old
+		// launchers' exec did; anything else runs under its run provider.
+		const bool single =
+		    ( plan.Value().runProvider.empty() || plan.Value().runProvider == "single" ) &&
+		    ( plan.Value().displaySession.empty() || plan.Value().displaySession == "user" );
+		if ( single )
+			return Exec( plan.Value() );
+		auto status = session.Launch( request, *composition.Value().spawner );
+		if ( !status )
+			return Failure( json, status.Error() );
+		return status.Value();
 	}
 	return Usage();
 }

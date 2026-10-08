@@ -39,6 +39,9 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 SCHEMA = "spark-light-scene/v1"
@@ -287,8 +290,8 @@ def command_run(args):
                 waited = frame
             sequence.append("wait %d" % max(0, 400 - waited))
         commands.append("; ".join(sequence))
-    command = [sys.executable, str(HERE / "portal_boot.py"), "--runtime", str(args.runtime),
-               "--build", str(args.build), "--content-root", str(content), "--out", str(boot),
+    command = [sys.executable, str(HERE / "portal_boot.py"), *sepipe_loader.boot_arguments(args),
+               "--content-root", str(content), "--out", str(boot),
                "--map", "spark_lab", "--renderer", args.renderer, "--physics", args.physics,
                "--capture-wait", str(args.frames or (900 if args.view else 1800)),
                "--timeout", str(args.timeout),
@@ -325,8 +328,7 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="boot spark_lab and judge its log")
     run.add_argument("--out", type=Path, required=True)
-    run.add_argument("--runtime", type=Path, default=ROOT / "run/runtime")
-    run.add_argument("--build", type=Path, default=ROOT / "build")
+    sepipe_loader.add_arguments(run, "portal")
     run.add_argument("--renderer", default="native-vulkan")
     run.add_argument("--physics", default="vphysics_box3d")
     run.add_argument("--frames", type=int, default=None,

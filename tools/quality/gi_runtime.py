@@ -150,8 +150,7 @@ def capture(args):
     profile, _ = pbrt_map_toolchain.load_profiles()
     toolchain = pbrt_map_toolchain.load(args.toolchain or
                                         ROOT / profile["layout"]["toolchain_file"])
-    build = Path(args.build or toolchain["client_build"])
-    runtime = Path(args.runtime or toolchain["runtime"])
+    boot_target = pbrt_map_toolchain.boot_target(toolchain, args)
     content = Path(args.map_build) / "content"
     manifest = json.loads((fixture["directory"] / fixture["map_manifest"]).read_text())
     cameras = [args.camera] if args.camera else sorted(fixture["cameras"])
@@ -195,9 +194,8 @@ def capture(args):
         wait = (getattr(args, "capture_wait", None) or CAPTURE_WAIT) + (
             MAP_CHANGE_FRAMES if boot_map else 0)
         result = subprocess.run(
-            [sys.executable, HERE / "portal_boot.py", "--runtime", runtime, "--build", build,
+            [sys.executable, HERE / "portal_boot.py", *boot_target,
              "--content-root", content, "--renderer", "native-vulkan", "--headless",
-             "--game", getattr(args, "game", "portal"),
              "--map", boot_map or manifest["map"], "--width", str(CAPTURE_WIDTH),
              "--height", str(CAPTURE_HEIGHT),
              "--capture-wait", str(wait),
@@ -225,7 +223,7 @@ def capture(args):
         print("[%s/%s] boot %s" % (args.fixture, camera, evidence.get("status")), flush=True)
     record = {"schema": CAPTURE_SCHEMA, "fixture": args.fixture, "map": manifest["map"],
               "boot_map": getattr(args, "boot_map", None),
-              "map_build": str(Path(args.map_build).resolve()), "build": str(build),
+              "map_build": str(Path(args.map_build).resolve()), "client": boot_target[1::2],
               "view": args.view, "scale": args.scale, "cameras": records,
               "map_bsp_sha256": sha256(content / "maps" / (manifest["map"] + ".bsp"))}
     (out / "capture.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
@@ -486,10 +484,7 @@ def main():
         p.add_argument("--fixture", required=True)
         p.add_argument("--camera")
         p.add_argument("--map-build", required=True, help="pbrt_map_build.py output directory")
-        p.add_argument("--build", help="client build tree (default: the pipeline toolchain's)")
-        p.add_argument("--runtime")
-        p.add_argument("--game", choices=("portal", "portal2"), default="portal",
-                       help="game composition in the staged runtime")
+        pbrt_map_toolchain.add_client_arguments(p)
         p.add_argument("--toolchain", type=Path)
         p.add_argument("--console-command", action="append", default=[])
         p.add_argument("--out", required=True)

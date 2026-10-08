@@ -9,7 +9,7 @@
 # usage: ./ios-deploy.sh [--profile FILE] [path/to/App.app] [--with-content] [--content DIR]... [--sign-only] [--no-launch] [--console]
 #
 #   --profile FILE  product profile ("extends" resolved by
-#                 tools/quality/profile_extends.py), e.g.
+#                 kiln profiles resolve), e.g.
 #                 quality/product_profiles/portal2-ios-native-vulkan.json
 #   --with-content  the profile's content: --content for each of its
 #                 content.directories under content.stage_directory, or
@@ -64,9 +64,9 @@ done
 profile_value() {
   python3 - "$ROOT" "$PROFILE_JSON" "$1" <<'PY'
 import sys
-sys.path.insert(0, sys.argv[1] + "/tools/quality")
-from profile_extends import load_profile
-p = load_profile(sys.argv[2])
+sys.path.insert(0, sys.argv[1] + "/tools/kiln")
+from sepipe_loader import resolve_profile
+p = resolve_profile(sys.argv[2])
 os_keys = p[p["target"]["os"]]
 print(eval(sys.argv[3], {"p": p, "os_keys": os_keys}))
 PY

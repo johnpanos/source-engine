@@ -34,7 +34,7 @@ Light, in three kinds:
 
     python3 tools/quality/portal2_gi_chamber.py                # build, relight, publish
     python3 tools/quality/portal2_gi_chamber.py --vmf-only     # just write the VMF
-    ./play_p2 +map sp_gi_chamber_01
+    ./kiln play portal2 sp_gi_chamber_01
 
 Coordinates are Source units: x east, y north, z up; the lower floor is z 0.
 """
@@ -587,8 +587,8 @@ def build(out, toolchain_path, runtime, sdk, quality, relight_quality, device=No
           force_from=None, publish=True):
     """The generator front end: write the VMF, compile it (vmf_map_build.py)
     and hand the BSP to the lighting back end (map_lighting.py) with the scene
-    derived from the BSP. A published build is mounted by ./play_p2
-    (stage_portal2_runtime.py --mount-published)."""
+    derived from the BSP. A published build is mounted by ./kiln play portal2
+    (its kiln package's published-maps mount)."""
     import vmf_map_build
 
     out.mkdir(parents=True, exist_ok=True)
@@ -631,10 +631,10 @@ VIEWS = [
 ]
 
 
-def capture(out, build):
+def capture(out, profile, flavor):
     """Boot the published chamber in Portal 2 and capture the review views."""
     import portal2_map_views
-    argv = ["--map", NAME, "--out", str(out), "--build", str(build)]
+    argv = ["--map", NAME, "--out", str(out), "--profile", profile, "--flavor", flavor]
     for step in VIEWS:
         argv += ["--step", step]
     sys.argv = ["portal2_map_views.py"] + argv
@@ -646,8 +646,9 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, default=ROOT / "quality-results/portal2-maps" / NAME)
     parser.add_argument("--toolchain", type=Path, default=TOOLCHAIN)
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2",
-                        help="staged Portal 2 runtime the content comes from")
+    parser.add_argument("--runtime", type=Path,
+                        help="Portal 2 runtime the content comes from (default: the portal2 "
+                             "profile's packaged runtime)")
     parser.add_argument("--sdk", type=Path, default=STEAM_ROOT / "sdk_content/maps",
                         help="the Portal 2 SDK's maps directory (holds instances/)")
     parser.add_argument("--quality", choices=("fast", "full"), default="full",
@@ -660,11 +661,11 @@ def main():
     parser.add_argument("--vmf-only", action="store_true", help="write the VMF and stop")
     parser.add_argument("--capture", type=Path, metavar="DIR",
                         help="only boot the published map and capture the review views")
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2",
-                        help="Portal 2 build for --capture")
+    parser.add_argument("--profile", default="portal2", help="kiln profile for --capture")
+    parser.add_argument("--flavor", default="dev", help="its build flavor")
     args = parser.parse_args()
     if args.capture:
-        return capture(args.capture.resolve(), args.build.resolve())
+        return capture(args.capture.resolve(), args.profile, args.flavor)
     out = args.out.resolve()
     if not (args.sdk / "instances").is_dir():
         parser.error("no Portal 2 SDK instances under %s (set --sdk or P2_STEAM_ROOT)" % args.sdk)
@@ -673,6 +674,9 @@ def main():
         (out / (NAME + ".vmf")).write_text(build_vmf(args.sdk))
         print("wrote " + str(out / (NAME + ".vmf")))
         return 0
+    if args.runtime is None:
+        import vmf_map_build
+        args.runtime = vmf_map_build.sepipe_loader.packaged_runtime("portal2")
     build(out, args.toolchain.resolve(), args.runtime.resolve(), args.sdk, args.quality,
           args.relight_quality, args.device, args.force_from, not args.no_publish)
     return 0

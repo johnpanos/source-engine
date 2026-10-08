@@ -1,0 +1,64 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# RFC 0027: sepipe, the nanobind module over kiln.api, host tools only.
+# The tools profile pins the host Python (--sepipe-python=<major.minor>);
+# configure finds that interpreter, takes its headers and extension suffix
+# from it, and verifies the pinned nanobind (quality/toolchain/nanobind.json,
+# tools/quality/source_pin.py). Without the option nothing is built.
+
+import os
+import subprocess
+import sys
+
+def configure(conf):
+	conf.env.SEPIPE = False
+	version = conf.options.sepipe_python
+	if not version:
+		return
+	if conf.env.DEST_OS != 'linux':
+		conf.fatal('sepipe: host tools only; --sepipe-python is for the Linux tools product')
+	python = conf.find_program('python' + version, var='SEPIPE_PYTHON')
+	probe = ('import sys, sysconfig; '
+		'print("%d.%d" % sys.version_info[:2]); '
+		'print(sysconfig.get_paths()["include"]); '
+		'print(sysconfig.get_config_var("EXT_SUFFIX"))')
+	lines = subprocess.check_output(python + ['-I', '-c', probe], text=True).splitlines()
+	if lines[0] != version:
+		conf.fatal('sepipe: %s reports Python %s, not the pinned %s' % (python[0], lines[0], version))
+	if not os.path.isfile(os.path.join(lines[1], 'Python.h')):
+		conf.fatal('sepipe: no Python.h under %s (install the Python %s headers)' % (lines[1], version))
+	sys.path.insert(0, os.path.join(conf.path.abspath(), '..', '..', '..', 'tools', 'quality'))
+	import source_pin
+	pin = source_pin.load_pin(os.path.join(conf.srcnode.abspath(), 'quality', 'toolchain', 'nanobind.json'))
+	problems = source_pin.verify(pin, conf.srcnode.abspath())
+	if problems:
+		conf.fatal('sepipe: ' + '; '.join(problems))
+	conf.env.SEPIPE = True
+	conf.env.SEPIPE_PYTHON_INCLUDE = lines[1]
+	conf.env.SEPIPE_EXT_SUFFIX = lines[2]
+	conf.env.SEPIPE_NANOBIND = str(source_pin.directory(pin, conf.srcnode.abspath()))
+	conf.msg('sepipe', 'Python %s, nanobind %s' % (version, pin['component']['version']))
+
+def build(bld):
+	if not bld.env.SEPIPE:
+		return
+	nanobind = bld.env.SEPIPE_NANOBIND
+	system = ['-isystem', bld.env.SEPIPE_PYTHON_INCLUDE, '-isystem', os.path.join(nanobind, 'include'),
+		'-isystem', os.path.join(nanobind, 'ext', 'robin_map', 'include')]
+	# nanobind itself is third-party: its own flags, no engine relaxations.
+	third_party = bld.strict_cpp20_env()
+	third_party.CXXFLAGS = [f for f in third_party.CXXFLAGS if not f.startswith('-W')] + \
+		['-fPIC', '-fvisibility=hidden', '-w'] + system
+	bld.objects(env=third_party, source=[bld.root.make_node(os.path.join(nanobind, 'src', 'nb_combined.cpp'))],
+		target='nanobind', name='nanobind', arch_module='kiln.python', features='cxx')
+	strict = bld.strict_cpp20_env()
+	strict.CXXFLAGS = strict.CXXFLAGS + ['-fPIC', '-fvisibility=hidden'] + system
+	strict.cxxshlib_PATTERN = '%s' + bld.env.SEPIPE_EXT_SUFFIX
+	# The Python C API resolves against the interpreter that imports the
+	# module, so this one link leaves those symbols undefined.
+	strict.LINKFLAGS = [f for f in strict.LINKFLAGS if f != '-Wl,--no-undefined']
+	bld.shlib(env=strict, source=['sepipe_module.cpp'], target='sepipe', name='sepipe',
+		arch_module='kiln.python', features='cxx cxxshlib', includes=['../../../public'],
+		use=['nanobind', 'kiln_composition', 'kiln_core', 'foundation_json'],
+		install_path=None)

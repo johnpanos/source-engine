@@ -63,8 +63,8 @@ class CommandLineTest(unittest.TestCase):
     def test_capture_needs_a_command(self):
         with self.assertRaises(SystemExit):
             rgp.parse_args(["capture", "--out", "x.rgp", "--after", "5"])
-        args = rgp.parse_args(["capture", "--out", "x.rgp", "--after", "5", "--", "./play_p2", "-x"])
-        self.assertEqual(["./play_p2", "-x"], args.run)
+        args = rgp.parse_args(["capture", "--out", "x.rgp", "--after", "5", "--", "./kiln", "play", "portal2", "-x"])
+        self.assertEqual(["./kiln", "play", "portal2", "-x"], args.run)
 
     def test_isa_needs_an_event(self):
         with self.assertRaises(SystemExit):

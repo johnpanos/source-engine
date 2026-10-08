@@ -51,7 +51,7 @@
     "build_games": "portal2"
   },
   "content": {
-    "staging": "tools/quality/stage_portal2_runtime.py --mount-custom: the retail search-path order spelled out in portal2/gameinfo.txt, plus <game>/custom/* for the APK's touch icons",
+    "staging": "kiln package portal2-content (the portal2 profile's retail seed, links and search paths with custom/* mounted, no engine): the retail search-path order spelled out in portal2/gameinfo.txt, plus <game>/custom/* for the APK's touch icons",
     "directories": [
       "platform",
       "retail_platform",

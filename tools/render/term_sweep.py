@@ -13,7 +13,7 @@ the surface program (RFC 0014 D1), so the driver compiles that variant on
 first use and the term's code is gone from it; the sweep then reads the
 per-pass GPU timers (cl_render_debug_gpu_timers) and takes a screenshot.
 
-`run` boots ./play_p2 on the map (headless mutter, the launch sandbox, as
+`run` boots the portal2-fsr profile on the map through kiln (headless mutter, the launch sandbox, as
 tools/quality/demo_frames.py does), stands at the player's spawn, pauses
 the game, hides the HUD and view model, and for each view (the spawn at
 four headings) and each setting (the baseline first and last, then every
@@ -43,7 +43,6 @@ import math
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -281,13 +280,10 @@ def analyze(out, screenshots=None, console=None):
 
 def run(args):
     import demo_frames
-    import frame_floor
     args.out.mkdir(parents=True, exist_ok=True)
-    if args.steam_root is None:
-        args.steam_root = frame_floor.DEFAULT_STEAM_ROOT
     stage_args = argparse.Namespace(runtime=args.runtime, no_stage=args.no_stage, out=args.out,
-                                    steam_root=args.steam_root, build=args.build, extra_arg=[],
-                                    profile=False)
+                                    kiln_profile=args.kiln_profile, flavor=args.flavor,
+                                    extra_arg=[], profile=False)
     workload = demo_frames.load_workload(demo_frames.DEFAULT_WORKLOAD)
     workload["demo_name"] = workload["map"] + ".dem"
     runtime = demo_frames.stage(stage_args, workload)
@@ -296,21 +292,22 @@ def run(args):
     shots = game / "screenshots"
     if shots.is_dir():
         shutil.rmtree(shots)
-    command = [str(ROOT / "play_p2"), "-multirun", "-novid", "-condebug", "-windowed",
+    arguments = ["-multirun", "-novid", "-condebug", "-windowed",
                "-noborder", "-w", str(args.width), "-h", str(args.height), "-vkgputimers",
                "+exec", Path(demo_frames.QUERY_CFG).stem, "+ai_norebuildgraph", "1", "+map", args.map,
                "+exec", Path(SCRIPT).stem]
     workload = dict(workload, timeout_seconds=args.timeout)
-    run_args = argparse.Namespace(out=args.out, build=args.build, width=args.width,
-                                  height=args.height)
-    process, stream, sandbox = demo_frames.launch(run_args, workload, runtime, command)
+    run_args = argparse.Namespace(out=args.out, kiln_profile=args.kiln_profile,
+                                  flavor=args.flavor, width=args.width, height=args.height,
+                                  renderdoc_frames=None)
+    process, sandbox = demo_frames.launch(run_args, workload, runtime, arguments)
+    deadline = time.monotonic() + args.timeout
     try:
-        process.wait(timeout=args.timeout)
-    except subprocess.TimeoutExpired:
-        pass
+        while process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.5)
     finally:
-        frame_floor.stop(process)
-        stream.close()
+        if process.poll() is None:
+            process.stop()
         sandbox.finish()
     if (game / "console.log").is_file():
         shutil.copyfile(game / "console.log", args.out / "console.log")
@@ -357,9 +354,8 @@ def main():
     play = commands.add_parser("run")
     play.add_argument("--runtime", type=Path, required=True)
     play.add_argument("--out", type=Path, required=True)
-    play.add_argument("--build", type=Path, default=ROOT / "build-p2-fsr")
-    play.add_argument("--steam-root", type=Path, default=None,
-                      help="the Portal 2 installation (default: frame_floor's)")
+    play.add_argument("--kiln-profile", default="portal2-fsr", help="kiln profile")
+    play.add_argument("--flavor", default="dev", help="the profile's build flavor")
     play.add_argument("--no-stage", action="store_true")
     play.add_argument("--width", type=int, default=1920)
     play.add_argument("--height", type=int, default=1080)

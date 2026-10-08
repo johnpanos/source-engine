@@ -4,9 +4,9 @@
   "driver": "../portal2-wheatley-v1/qa_driver.nut",
   "scenarios": [
     {
-      "name": "sp_a1_intro4_probe64",
-      "map": "sp_a1_intro4_probe64",
-      "script": "sp_a1_intro4_probe64.nut",
+      "name": "sp_a1_intro4_relit",
+      "map": "sp_a1_intro4_relit",
+      "script": "sp_a1_intro4_relit.nut",
       "timeout_seconds": 180,
       "required_checks": [
         "map.loaded",
@@ -20,7 +20,7 @@
           "name": "map.fixture",
           "window": "map_identity",
           "select": "^map\\s+:",
-          "expect": "^map\\s+: sp_a1_intro4_probe64 at:"
+          "expect": "^map\\s+: sp_a1_intro4_relit at:"
         }
       ]
     }

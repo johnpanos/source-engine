@@ -28,6 +28,9 @@ import os
 import struct
 import subprocess
 import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -96,13 +99,13 @@ def compact(captures, out, poses):
 def capture(args):
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    maps = args.map or DEFAULT_MAPS[args.game]
+    maps = args.map or DEFAULT_MAPS[sepipe_loader.game_of(args.profile)]
     failures = 0
     for name in maps:
         env = dict(os.environ, SOURCE_SKIN_CAPTURE=str(out / (name + ".skcap")),
                    SOURCE_SKIN_CAPTURE_MESHES=str(args.meshes))
-        command = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"), "--runtime", args.runtime,
-                   "--build", args.build, "--renderer", "native-vulkan", "--headless", "--game", args.game,
+        command = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
+                   *sepipe_loader.boot_arguments(args), "--renderer", "native-vulkan", "--headless",
                    "--map", name, "--startup-command", "mat_softwareskin 1", "--out", str(out / ("boot-" + name))]
         result = subprocess.run(command, env=env, capture_output=True, text=True)
         ok = result.returncode == 0 and (out / (name + ".skcap")).exists()
@@ -115,11 +118,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     cap = sub.add_parser("capture")
-    cap.add_argument("--build", required=True)
-    cap.add_argument("--runtime", required=True)
+    sepipe_loader.add_arguments(cap, "portal")
     cap.add_argument("--out", required=True)
     cap.add_argument("--map", action="append")
-    cap.add_argument("--game", choices=sorted(DEFAULT_MAPS), default="portal")
     cap.add_argument("--meshes", type=int, default=1500)
     com = sub.add_parser("compact")
     com.add_argument("captures", nargs="+")

@@ -53,17 +53,15 @@ if len(sys.argv) > 2 and sys.argv[1] == "--ns":
 if len(sys.argv) > 1 and sys.argv[1] == "--private":
     del sys.argv[1]
     if os.environ.get("N3DS_PRIVATE_DISPLAY") != "1":
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "quality"))
-        import private_session  # noqa: E402
+        # kiln's private display session (RFC 0027): a private bus and
+        # headless mutter that runs this command as its child.
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+        import sepipe_loader  # noqa: E402
         base = Path(__file__).resolve().parents[2] / "build-3ds/private" / os.environ.get("N3DS_NS", "shared")
-        env = dict(os.environ, N3DS_PRIVATE_DISPLAY="1")
-        for name in ("WAYLAND_DISPLAY", "DISPLAY"):
-            env.pop(name, None)
-        display = "n3ds-%d" % os.getpid()
-        command = private_session.dbus_run_session(base / "dbus") + [
-            "mutter", "--headless", "--virtual-monitor", "800x480", "--wayland-display", display, "--",
-            sys.executable, str(Path(__file__).resolve())] + sys.argv[1:]
-        raise SystemExit(subprocess.run(command, env=env).returncode)
+        with sepipe_loader.Display("private", base / "display", (800, 480, 60)) as display:
+            command, env = display.wrap([sys.executable, str(Path(__file__).resolve())] + sys.argv[1:],
+                                        dict(os.environ, N3DS_PRIVATE_DISPLAY="1"))
+            raise SystemExit(subprocess.run(command, env=env).returncode)
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))

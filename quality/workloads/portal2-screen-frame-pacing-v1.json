@@ -2,7 +2,7 @@
   "schema": "frame-pacing-scenario/v1",
   "id": "intro4-screens-v1",
   "game": "portal2",
-  "map": "sp_a1_intro4_probe64",
+  "map": "sp_a1_intro4_relit",
   "host_framerate": 120,
   "passes": 3,
   "setup": [

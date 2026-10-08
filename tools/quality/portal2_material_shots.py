@@ -67,8 +67,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import conformance  # noqa: E402
 import conformance_result  # noqa: E402
 import portal2_scenarios  # noqa: E402
-import private_session  # noqa: E402
-import stage_portal2_runtime  # noqa: E402
+sepipe_loader = portal2_scenarios.sepipe_loader
+import portal2_retail  # noqa: E402
 
 
 CAPTURE_SCHEMA = "portal2-material-capture/v1"
@@ -78,7 +78,7 @@ ROOT = Path(conformance.repo_root())
 WORKLOAD = ROOT / "quality/workloads/portal2-materials-v1"
 DEFAULT_STEAM_ROOT = Path.home() / ".local/share/Steam/steamapps/common/Portal 2"
 WIDTH, HEIGHT = 1024, 768
-# ./play_p2's MAT_ARGS: retail Portal 2 always applies the maps' color
+# the portal2 profile's mat_args: retail Portal 2 always applies the maps' color
 # correction; this engine leaves it to the saved video config, which is off in
 # a runtime staged from a retail install.
 PLAY_P2_ENGINE_ARGS = ["+mat_colorcorrection", "1"]
@@ -293,12 +293,11 @@ def capture_build(args, workload_path, workload, scenarios):
     out = Path(args.out).resolve()
     capture = {"schema": CAPTURE_SCHEMA, "side": "build", "status": "incomplete",
                "started_utc": now_iso(), "source": conformance.source_identity(str(ROOT)),
-               "build": str(args.build),
+               "client": [args.profile, args.flavor],
                "extra_args": CAPTURE_ENGINE_ARGS + PLAY_P2_ENGINE_ARGS + list(args.extra_arg),
                "selected": [s["name"] for s in scenarios], "scenarios": {}}
-    stage_portal2_runtime.stage_content(args.steam_root, args.runtime)
-    capture["installed"] = stage_portal2_runtime.portal_boot.install_build(
-        args.build, args.runtime, game="portal2")
+    capture["installed"] = portal2_scenarios.package_runtime((args.profile, args.flavor),
+                                                             args.runtime)
     portal2_scenarios.install_scripts(workload_path, workload, args.runtime)
     tools = out / "tools"
     portal2_scenarios.write_fake_zenity(tools)
@@ -309,8 +308,8 @@ def capture_build(args, workload_path, workload, scenarios):
         started = time.time()
         result = portal2_scenarios.run_scenario(
             scenario, args.runtime, out / name, args.start_frames, WIDTH, HEIGHT, tools,
-            extra_args=CAPTURE_ENGINE_ARGS + PLAY_P2_ENGINE_ARGS + list(args.extra_arg), wrapper=renderdoc_wrapper(
-                args, out / name))
+            extra_args=CAPTURE_ENGINE_ARGS + PLAY_P2_ENGINE_ARGS + list(args.extra_arg),
+            wrapper=renderdoc_wrapper(args, out / name), client=(args.profile, args.flavor))
         record = finish_scenario(out / name, name, result, screenshots, started,
                                  (out / name / "stdout.log").read_text(errors="replace"))
         capture["scenarios"][name] = record
@@ -367,11 +366,11 @@ def make_retail_mirror(steam_root, mirror):
     mirror.mkdir(parents=True, exist_ok=True)
     for entry in steam_root.iterdir():
         target = mirror / entry.name
-        if entry.name in ("portal2", "portal2_linux", stage_portal2_runtime.RETAIL_WRITE_DIR):
+        if entry.name in ("portal2", "portal2_linux", portal2_retail.RETAIL_WRITE_DIR):
             continue
         if not target.exists() and not target.is_symlink():
             target.symlink_to(entry)
-    stage_portal2_runtime.private_retail_write_dir(steam_root, mirror)
+    portal2_retail.private_retail_write_dir(steam_root, mirror)
     if not (mirror / "portal2_linux").is_file():
         shutil.copy2(steam_root / "portal2_linux", mirror / "portal2_linux")
     (mirror / "steam_appid.txt").write_text("620\n")
@@ -437,24 +436,30 @@ def capture_retail(args, workload_path, workload, scenarios):
              "--mirror", str(mirror), "--workload", str(workload_path)]
     for scenario in scenarios:
         inner += ["--scenario", scenario["name"]]
-    config = out / "compositor-config"
-    config.mkdir(parents=True, exist_ok=True)
-    environment = dict(os.environ, XDG_CONFIG_HOME=str(config))
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
-    command = private_session.dbus_run_session(out / "dbus") + [
-        "mutter", "--headless", "--wayland", "--virtual-monitor", "1920x1080@60",
-        "--wayland-display", "p2-material-shots-%d" % os.getpid(), "--"] + inner
-    # The session starts (and afterwards shuts down) a Steam client only when
-    # none is running; a user's own Steam is never restarted or stopped.
-    with (out / "compositor.log").open("wb") as log:
-        process = subprocess.run(command, env=environment, stdout=log,
-                                 stderr=subprocess.STDOUT, timeout=args.session_timeout)
+    returncode = run_retail_session(inner, out, args.session_timeout)
     capture_path = out / "capture.json"
     if not capture_path.is_file():
         raise ShotError("the retail session wrote no capture (exit %d); see %s"
-                        % (process.returncode, out / "compositor.log"))
+                        % (returncode, out / "compositor.log"))
     return json.loads(capture_path.read_text())
+
+
+def run_retail_session(inner, out, timeout):
+    """Runs `inner` (a _retail-session) under kiln's private-x11 display: a
+    private bus and headless mutter, SDL on its Xwayland. The session starts
+    (and afterwards shuts down) a Steam client only when none is running; a
+    user's own Steam is never restarted or stopped. Returns its exit status."""
+    config = out / "compositor-config"
+    config.mkdir(parents=True, exist_ok=True)
+    try:
+        with sepipe_loader.Display("private-x11", out / "display", (1920, 1080, 60)) as display:
+            command, environment = display.wrap(
+                inner, dict(os.environ, XDG_CONFIG_HOME=str(config)))
+            with (out / "compositor.log").open("wb") as log:
+                return subprocess.run(command, env=environment, stdout=log,
+                                      stderr=subprocess.STDOUT, timeout=timeout).returncode
+    except sepipe_loader.LoadError as error:
+        raise ShotError("retail session: %s" % error) from error
 
 
 def steam_helpers():
@@ -503,7 +508,7 @@ def retail_session(args):
             directory.mkdir(parents=True, exist_ok=True)
             command = ["./portal2_linux", "-game", "portal2", "-novid", "-windowed",
                        "-w", str(WIDTH), "-h", str(HEIGHT), "-condebug", "+volume", "0",
-                       *stage_portal2_runtime.RETAIL_ENGINE_ARGS, *CAPTURE_ENGINE_ARGS, *args.engine_arg, "+map",
+                       *portal2_retail.RETAIL_ENGINE_ARGS, *CAPTURE_ENGINE_ARGS, *args.engine_arg, "+map",
                        portal2_scenarios.retail_map(scenario)]
             started = time.time()
             timed_out = False
@@ -777,10 +782,7 @@ def main(argv=None):
                        help="only this scenario (repeatable)")
 
     def build_args(p):
-        p.add_argument("--build", type=Path,
-                       default=Path(os.environ.get("SOURCE_PORTAL2_BUILD") or ROOT / "build-p2"),
-                       help="Waf output configured with --build-games=portal2 "
-                            "(default: $SOURCE_PORTAL2_BUILD or build-p2)")
+        portal2_scenarios.sepipe_loader.add_arguments(p, "portal2")
         p.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-material-shots",
                        help="private staged runtime (created on first use)")
         p.add_argument("--start-frames", type=int, default=300)

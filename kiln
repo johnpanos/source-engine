@@ -32,8 +32,8 @@ mkdir -p "$tree"
 # shellcheck disable=SC2086  # the path lists are intentionally word-split
 if [ ! -f "$tree/c4che/_cache.py" ] || newer "$tree/c4che/_cache.py" $config; then
 	echo "kiln: configuring the host tree $tree" >&2
-	if ! (cd "$root" && python3 ./waf configure --tools --render-core-vulkan=off -T release \
-		--disable-warns -o "$tree") >"$log" 2>&1; then
+	if ! (cd "$root" && python3 ./waf configure --kiln-host -T release --disable-warns \
+		-o "$tree") >"$log" 2>&1; then
 		tail -n 20 "$log" >&2
 		echo "kiln: configuring the host tree failed; the full log is $log" >&2
 		exit 1

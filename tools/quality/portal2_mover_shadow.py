@@ -56,7 +56,6 @@ runtime is staged under --out (or pass --p2-runtime). Keep --out short.
 import argparse
 import datetime
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -68,12 +67,14 @@ from PIL import Image
 QUALITY = Path(__file__).resolve().parent
 sys.path.insert(0, str(QUALITY))
 import conformance_result  # noqa: E402
+
+sys.path.insert(0, str(QUALITY.parent / "kiln"))
+import sepipe_loader  # noqa: E402
 from legacy_bsp import LegacyBsp  # noqa: E402
 
 ROOT = QUALITY.parents[1]
 PORTAL_BOOT = QUALITY / "portal_boot.py"
 SCHEMA = "portal2-mover-shadow-evidence/v1"
-DEFAULT_STEAM_P2 = Path.home() / ".local/share/Steam/steamapps/common/Portal 2"
 MARK = "MOVERSHADOW"
 SHOTS = ("on", "on2", "off")
 WIDTH, HEIGHT = 1024, 768
@@ -175,8 +176,7 @@ def console_line(scenario, control):
 
 def boot(args, scenario, control, out):
     line = console_line(scenario, control)
-    command = [sys.executable, str(PORTAL_BOOT), "--game", "portal2",
-               "--runtime", str(p2_runtime(args)), "--build", str(args.p2_build),
+    command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
                "--out", str(out), "--headless", "--map", "sp_a2_core",
                "--renderer", "native-vulkan", "--require-vulkan", "--physics", "vphysics_box3d",
                "--width", str(WIDTH), "--height", str(HEIGHT), "--capture-wait", "2600",
@@ -195,12 +195,8 @@ def boot(args, scenario, control, out):
 
 
 def p2_runtime(args):
-    if args.p2_runtime is None:
-        args.p2_runtime = args.out.resolve() / "p2content"
-        if not args.p2_runtime.exists():
-            import stage_portal2_runtime  # noqa: E402 (needs the Steam install only here)
-            stage_portal2_runtime.stage_content(args.steam_root, args.p2_runtime)
-    return args.p2_runtime
+    """The Portal 2 profile's packaged runtime, read for map facts."""
+    return sepipe_loader.packaged_runtime(args.profile, args.flavor)
 
 
 BOX_LINE = re.compile(r"^\s+box entity (-?\d+) part (\d+) v\d+ at (\S+) (\S+) (\S+) radius (\S+)")
@@ -306,7 +302,7 @@ def cmd_suite(args):
     checks = conformance_result.Checks()
     evidence = {"schema": SCHEMA, "thresholds": THRESHOLDS,
                 "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "p2_build": str(args.p2_build.resolve()), "scenarios": []}
+                "client": sepipe_loader.boot_arguments(args), "scenarios": []}
     for index, scenario in enumerate(SCENARIOS):
         if args.scenario and scenario["name"] not in args.scenario:
             continue
@@ -417,11 +413,7 @@ def main(argv=None):
     commands = parser.add_subparsers(dest="command", required=True)
     suite = commands.add_parser("suite", help="boot, shoot and judge sp_a2_core")
     suite.add_argument("--out", type=Path, required=True)
-    suite.add_argument("--p2-build", type=Path,
-                       default=Path(os.environ.get("SOURCE_PORTAL2_BUILD", ROOT / "build-p2")))
-    suite.add_argument("--p2-runtime", type=Path)
-    suite.add_argument("--steam-root", type=Path,
-                       default=Path(os.environ.get("SOURCE_PORTAL2_STEAM_ROOT", DEFAULT_STEAM_P2)))
+    sepipe_loader.add_arguments(suite, "portal2")
     suite.add_argument("--scenario", action="append")
     suite.add_argument("--no-controls", action="store_true")
     suite.add_argument("--timeout", type=int, default=600)

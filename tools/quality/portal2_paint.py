@@ -331,7 +331,8 @@ def capture(args, side, out):
                "--workload", str(Path(args.workload) / "scenarios.json"),
                "--out", str(Path(out).resolve()), "--steam-root", str(args.steam_root)]
     if side == "build":
-        command += ["--build", str(args.build), "--runtime", str(args.runtime)]
+        command += ["--profile", args.profile, "--flavor", args.flavor,
+                    "--runtime", str(args.runtime)]
         for extra in args.extra_arg:
             command.append("--extra-arg=" + extra)
     else:
@@ -478,8 +479,9 @@ def main(argv=None):
     def common(p):
         p.add_argument("--workload", type=Path, default=WORKLOAD)
         p.add_argument("--steam-root", type=Path, default=steam)
-        p.add_argument("--build", type=Path,
-                       default=Path(os.environ.get("SOURCE_PORTAL2_BUILD") or ROOT / "build-p2"))
+        p.add_argument("--profile", default=os.environ.get("SOURCE_PORTAL2_PROFILE", "portal2"),
+                       help="kiln profile of the build side")
+        p.add_argument("--flavor", default="dev", help="the profile's build flavor")
         p.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-paint-suite")
         p.add_argument("--mirror", type=Path, default=ROOT / "run/retail-p2-paint")
         p.add_argument("--extra-arg", action="append", default=[],
@@ -537,7 +539,7 @@ def main(argv=None):
             raise PaintError("no Portal 2 installation at %s" % args.steam_root)
         capture(args, "build", out)
         return report(judge(out, checks, reference), out,
-                      {"build": str(args.build), "source": conformance.source_identity(str(ROOT))})
+                      {"profile": args.profile, "flavor": args.flavor, "source": conformance.source_identity(str(ROOT))})
     except PaintError as error:
         print("portal2_paint: %s" % error)
         return conformance_result.report_conformance(0, 1)

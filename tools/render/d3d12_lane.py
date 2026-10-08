@@ -378,18 +378,21 @@ def execute(out, exe, extra_env=(), session=False):
     # The suite runs from the repository root (fixtures are repository paths);
     # its DLLs are found beside the executable.
     command = ["wine", str(exe)]
+    display = None
     if session:
-        # A private compositor (and Xwayland for Wine's X11 driver) with its
-        # own D-Bus session: windows never reach the user's display.
-        sys.path.insert(0, str(ROOT / "tools/quality"))
-        import private_session
-        for key in ("DISPLAY", "WAYLAND_DISPLAY"):
-            env.pop(key, None)
-        command = (private_session.dbus_run_session(out / "dbus") +
-                   ["mutter", "--headless", "--virtual-monitor", "1920x1080@60",
-                    "--wayland-display", "d3d12-lane-%d" % os.getpid(), "--"] + command)
-    result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True,
-                            timeout=1800)
+        # kiln's private-x11 session: a private compositor (and Xwayland for
+        # Wine's X11 driver) with its own D-Bus session, so windows never
+        # reach the user's display.
+        sys.path.insert(0, str(ROOT / "tools/kiln"))
+        import sepipe_loader
+        display = sepipe_loader.Display("private-x11", out / "display", (1920, 1080, 60))
+        command, env = display.wrap(command, env)
+    try:
+        result = subprocess.run(command, cwd=ROOT, env=env, capture_output=True, text=True,
+                                timeout=1800)
+    finally:
+        if display is not None:
+            display.close()
     log = out / (exe.stem + ".log")
     log.write_text(result.stdout + result.stderr)
     for line in result.stdout.splitlines():

@@ -5,10 +5,11 @@
 #
 #   python3 tools/quality/usd_map_runtime.py --map-file run/maps/usd_room/maps/usd_room.bsp \
 #       --report authoring-report.json --runtime run/runtime \
-#       --build build-r03-dedicated --product dedicated --out quality-results/u1-dedicated
+#       --product dedicated --out quality-results/u1-dedicated
 #
-# Boots the map in a private staged runtime (portal_boot staging, as
-# bsp2_dedicated.py does) and checks, from the product's console log:
+# Boots the map in a private runtime packaged by kiln from the product's
+# profile (dedicated-linux or portal, --profile overrides; as bsp2_dedicated.py
+# does) and checks, from the product's console log:
 #   - the engine loads the file as a BSP2 container and the map spawns
 #     (status names it; the client's player becomes active);
 #   - report_entities lists every authored runtime entity class;
@@ -50,10 +51,10 @@ sys.path.insert(0, str(HERE))
 
 import bsp2_dedicated  # noqa: E402
 import bsp2_server_compare  # noqa: E402
-import portal_boot  # noqa: E402
 import source_content  # noqa: E402
 import source_model  # noqa: E402
-import stage_runtime  # noqa: E402
+sys.path.insert(0, str(HERE.parent / "kiln"))
+import sepipe_loader  # noqa: E402
 import usd_map_check  # noqa: E402
 from conformance_result import Checks  # noqa: E402
 
@@ -315,6 +316,10 @@ def floor_under(report, record):
     return max(tops)
 
 
+def profile_of(args):
+    return args.profile or ("dedicated-linux" if args.product == "dedicated" else "portal")
+
+
 def smoke(args, checks):
     report = json.loads(Path(args.report).read_text())
     rays, compiled = probes(report, args.map_file)
@@ -323,18 +328,14 @@ def smoke(args, checks):
         provenance = json.loads(Path(args.provenance).read_text())
         plan = role_plan(report, provenance, compiled, args.runtime)
     evidence = {"schema": "source-usd-map-runtime/v1", "product": args.product,
-                "map": args.map, "build": str(Path(args.build).resolve()),
+                "map": args.map, "profile": profile_of(args), "flavor": args.flavor,
                 "map_sha256": usd_map_check.hashlib.sha256(
                     Path(args.map_file).read_bytes()).hexdigest(), "probes": []}
     out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="usd-map-runtime-") as scratch:
         stage = Path(scratch) / "runtime"
-        portal_boot.stage_runtime(Path(args.runtime).resolve(), stage)
-        launcher = "dedicated_launcher" if args.product == "dedicated" else "hl2_launcher"
-        installed = portal_boot.install_build(Path(args.build).resolve(), stage,
-                                              launcher_name=launcher)
-        stage_runtime.sanitize(stage)
+        installed = sepipe_loader.package_into(profile_of(args), stage, args.flavor)
         checks.check("portal/bin/libserver.so" in installed, "runtime.server-installed")
         staged_map = stage / "portal/maps" / (args.map + ".bsp")
         if staged_map.exists() or staged_map.is_symlink():
@@ -435,7 +436,9 @@ def main(argv=None):
     parser.add_argument("--roles", action="store_true",
                         help="sample and check each role's runtime behaviour (RFC 0009 U2)")
     parser.add_argument("--runtime", required=True, help="Portal content root (read only)")
-    parser.add_argument("--build", required=True, help="Waf output with the product")
+    parser.add_argument("--profile", help="kiln profile of the product (default dedicated-linux, "
+                        "or portal for --product client)")
+    parser.add_argument("--flavor", default="dev", help="the profile's build flavor")
     parser.add_argument("--product", choices=("dedicated", "client"), default="dedicated")
     parser.add_argument("--out", required=True)
     parser.add_argument("--timeout", type=int, default=60)

@@ -49,6 +49,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+import gi_radiosity  # noqa: E402
 import gi_runtime  # noqa: E402
 
 MAPS = ROOT / "quality-results" / "rfc0011-maps"
@@ -78,12 +79,10 @@ def run_captures(fixture, map_build, out, captures, level_state, args):
         view = extra[1] if len(extra) > 1 else 1
         target = out / name
         capture = [sys.executable, HERE / "gi_runtime.py", "capture", "--fixture", fixture,
-                   "--map-build", map_build, "--out", target, "--build", args.build,
+                   "--map-build", map_build, "--out", target, *gi_radiosity.client_arguments(args),
                    "--console-command", command, "--capture-wait",
                    str(gi_runtime.PLACEMENT_FRAMES + WARM_FRAMES + CHANGE_FRAMES + settle),
                    "--view", str(view)]
-        if args.runtime:
-            capture += ["--runtime", args.runtime]
         booted = subprocess.run([str(part) for part in capture], capture_output=True, text=True,
                                 timeout=1200).returncode == 0
         compare = [sys.executable, str(HERE / "gi_runtime.py"), "compare", "--fixture", fixture,
@@ -161,7 +160,7 @@ def door(args):
     for check, ok in checks.items():
         print("%-32s %s" % (check, "pass" if ok else "fail"))
     passed &= all(checks.values())
-    return write(Path(args.out), GATES[producer][0], passed, results, build=args.build,
+    return write(Path(args.out), GATES[producer][0], passed, results, client_profile=args.client_profile,
                  producer=producer, shaded_dark_fraction=SHADED_DARK, shaded_dark=dark,
                  checks=checks)
 
@@ -214,7 +213,7 @@ def sun(args):
     accuracy = {region: {"measured": value, "reference": reference,
                          "relative_error": abs(value - reference) / max(reference, 1e-9)}
                 for region, (value, reference) in early.items()}
-    return write(Path(args.out), GATES[producer][1], passed, results, build=args.build,
+    return write(Path(args.out), GATES[producer][1], passed, results, client_profile=args.client_profile,
                  producer=producer, sun_style=style, sun_direction=direction, checks=checks,
                  settled=settled,
                  toward_reference={producer: moved_toward, "radiosity": radiosity_toward},
@@ -239,9 +238,9 @@ def main():
         command = commands.add_parser(name)
         command.add_argument("--map-build", type=Path)
         command.add_argument("--out", required=True)
-        command.add_argument("--build", default="build",
-                             help="the client build tree carrying the producer")
-        command.add_argument("--runtime", help="base runtime (a private copy is booted)")
+        command.add_argument("--client-profile", help="kiln client profile carrying the "
+                             "producer (default: the map toolchain's)")
+        command.add_argument("--client-flavor", help="its build flavor")
         command.add_argument("--producer", choices=sorted(GATES), default="sdf",
                              help="the traced producer under test (rayquery: RFC 0011 G7)")
     args = parser.parse_args()

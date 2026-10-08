@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "portal-linux-native-vulkan-v2",
-  "description": "Portal on Linux x86_64, SDL3 and native Vulkan with the render core: the product ./play and run.sh build today (tree build/). Pins and evidence are the v1 slice's (extends portal-linux-wayland-native-vulkan.json).",
+  "description": "Portal on Linux x86_64, SDL3 and native Vulkan with the render core: the product the retired ./play and run.sh built (tree build/); the launch reproduces run.sh with run.conf's settings (RFC 0027 L1 launch equivalence). Pins and evidence are the v1 slice's (extends portal-linux-wayland-native-vulkan.json).",
   "extends": [
     "portal-linux-wayland-native-vulkan.json",
     "fragments/linux-x86_64-desktop.json",
@@ -15,42 +15,166 @@
     "game": "portal",
     "default_map": "testchmb_a_01",
     "executable": "hl2_launcher",
+    "variables": {
+      "width": [
+        "1920"
+      ],
+      "height": [
+        "1080"
+      ],
+      "frame_cap": [
+        "120"
+      ],
+      "windowed": [
+        "-windowed"
+      ],
+      "renderer": [
+        "native-vulkan"
+      ],
+      "job_args": [
+        "+cl_render_start_graph",
+        "2",
+        "+sv_querycache_job_graph",
+        "2",
+        "+portal_carve_job_graph",
+        "2",
+        "-vkemitparallel",
+        "1"
+      ],
+      "mat_args": [
+        "+mat_bumpmap 1",
+        "+mat_picmip -1",
+        "+r_lod 0",
+        "+r_indirect_producer auto"
+      ]
+    },
     "arguments": [
+      "-game",
+      "portal",
+      "-w",
+      "{width}",
+      "-h",
+      "{height}",
       "-renderer",
-      "native-vulkan",
+      "{renderer}",
       "-physics",
-      "vphysics_box3d",
-      "-physics_shape_inertia",
-      "+cl_render_start_graph",
-      "2",
-      "+sv_querycache_job_graph",
-      "2",
-      "+portal_carve_job_graph",
-      "2",
-      "-vkemitparallel",
-      "1",
-      "+mat_bumpmap 1",
-      "+mat_picmip -1",
-      "+r_lod 0",
-      "+r_indirect_producer auto",
+      "{physics}",
+      "{physics_args}",
+      "+fps_max",
+      "{frame_cap}",
+      "{job_args}",
+      "{mat_args}",
+      "+map",
+      "{map}",
+      "{windowed}",
       "-novid",
       "-insecure",
-      "+mat_queue_mode",
-      "2",
-      "+sv_cheats",
-      "1",
-      "+r_core_world",
-      "1",
+      "{queue}",
+      "{args}",
+      "{switches}",
+      "{core_world}",
       "+r_indirect_producer",
-      "baked",
+      "{producer}",
       "+r_core_runtime_direct",
-      "1",
+      "{runtime_direct}",
       "+r_core_area_lights",
-      "0"
+      "{area_lights}"
     ],
     "environment": {
+      "SDL_VIDEODRIVER": "wayland",
+      "SDL_VIDEO_DRIVER": "wayland",
       "SteamAppId": "400",
-      "SteamGameId": "400"
+      "SteamGameId": "400",
+      "LD_LIBRARY_PATH": "{runtime}/bin:{inherit}"
+    },
+    "switches": {
+      "null": {
+        "description": "No rendering (the null device), for headless checks",
+        "set": {
+          "renderer": [
+            "null"
+          ],
+          "core_world": []
+        },
+        "conflicts": [
+          "core-world"
+        ]
+      }
+    }
+  },
+  "package": {
+    "form": "linux-dir",
+    "directory": "runtime",
+    "steps": [
+      {
+        "op": "seed",
+        "from": "portal-base",
+        "marker": "portal/gameinfo.txt",
+        "game": "portal",
+        "shared_suffixes": [
+          ".vpk",
+          ".bsp",
+          ".vtf",
+          ".vmt",
+          ".mdl",
+          ".vvd",
+          ".vtx",
+          ".phy",
+          ".wav",
+          ".mp3",
+          ".ogg",
+          ".webm",
+          ".bik"
+        ],
+        "skip_directories": [
+          "screenshots",
+          "save",
+          "logs",
+          "dumps"
+        ],
+        "skip_suffixes": [
+          ".log",
+          ".dmp"
+        ]
+      },
+      {
+        "op": "overlay",
+        "artifact": "engine-install",
+        "include": [
+          "hl2_launcher",
+          "bin/*.so",
+          "portal/bin/*.so"
+        ]
+      },
+      {
+        "op": "remove-elf32",
+        "directories": [
+          "bin",
+          "portal/bin"
+        ]
+      },
+      {
+        "op": "mount-each",
+        "from": "published-maps",
+        "into": "portal/custom",
+        "prefix": "pbrt-",
+        "record": "published.json",
+        "require": "maps/{name}.bsp",
+        "skip_if_exists": "portal/maps/{name}.bsp",
+        "optional": true
+      }
+    ]
+  },
+  "content": {
+    "locators": {
+      "portal-base": {
+        "default": "{root}/run/runtime",
+        "description": "A runnable Portal tree (retail content and its third-party libraries) to seed the runtime from once"
+      },
+      "published-maps": {
+        "default": "{root}/run/maps",
+        "description": "Maps published by tools/quality/pbrt_map_build.py (playable_maps.py), mounted as portal/custom/pbrt-<map>"
+      }
     }
   }
 }

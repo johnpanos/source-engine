@@ -16,11 +16,15 @@
 #include "jobsystem/graph_executor.h"
 #include "kiln/api.h"
 #include "product/contracts.h"
+#include "product/display_desktop.h"
+#include "product/package_linux_dir.h"
+#include "product/run_desktop.h"
 #include "product/profile.h"
 #include "product/stage_waf.h"
 #include "product/toolchain_linux.h"
 #include "testing/conformance_result.h"
 
+#include "../../platform/posix/process_spawner.h"
 #include "../../platform/posix/tool_process_provider.h"
 
 #include <algorithm>
@@ -361,7 +365,7 @@ void ProfileChecks()
 		Check( old && !old.Value().Buildable(), "profile.v1-inspection-only" );
 	}
 	{
-		// The merge rule equals profile_extends.py's: objects merge, the
+		// The merge rule equals the retired profile_extends.py's: objects merge, the
 		// rest replaces, existing members keep their position.
 		Value base = foundation::json::Parse( R"({"a":1,"o":{"x":1,"y":[1]},"z":0})" ).Value();
 		const Value derived =
@@ -596,6 +600,48 @@ void DisplayChecks()
 {
 	CheckVerdict(
 	    suites::DisplaySuite( *fixture::CreateHeadlessSession() ), "display fixture-headless" );
+	CheckVerdict( suites::DisplaySuite( *product::CreateUserDisplaySession() ), "display user" );
+	CheckVerdict(
+	    suites::DisplaySuite( *product::CreateHeadlessDisplaySession() ), "display none" );
+	{
+		const fs::path config = fs::temp_directory_path() / "kilntest-session.conf";
+		fixture::WriteBytes( config, "<busconfig/>\n" );
+		auto privateSession =
+		    product::CreatePrivateDisplaySession( { "/nonexistent/session.conf", config } );
+		CheckVerdict( suites::DisplaySuite( *privateSession ), "display private" );
+		auto x11Session =
+		    product::CreatePrivateX11DisplaySession( { "/nonexistent/session.conf", config } );
+		CheckVerdict( suites::DisplaySuite( *x11Session ), "display private-x11" );
+		{
+			product::DisplayRequest x11Request;
+			x11Request.scratch = fs::temp_directory_path() / "kilntest-private-x11";
+			auto x11 = x11Session->Open( x11Request );
+			bool driver = false;
+			if ( x11 )
+			{
+				for ( const auto &entry : x11.Value().environment )
+					driver |= entry.name == "SDL_VIDEODRIVER" && entry.value == "x11";
+			}
+			Check( x11 && x11.Value().isolated && driver && x11Session->Name() == "private-x11",
+			    "display private-x11: isolated, SDL on X11" );
+			x11Session->Close();
+		}
+		product::DisplayRequest request;
+		request.scratch = fs::temp_directory_path() / "kilntest-private";
+		auto opened = privateSession->Open( request );
+		Check( opened && opened.Value().commandPrefix.size() > 4 &&
+		           opened.Value().commandPrefix[0] == "dbus-run-session" &&
+		           fixture::ReadBytes(
+		               request.scratch / "services" / "org.freedesktop.portal.Documents.service" )
+		                   .find( "Exec=/bin/false" ) != std::string::npos &&
+		           fixture::ReadBytes( request.scratch / "session.conf" ).find( config.string() ) !=
+		               std::string::npos,
+		    "display private: a private bus that blocks the document portal, then mutter" );
+		auto missing = product::CreatePrivateDisplaySession( { "/nonexistent/session.conf" } )
+		                   ->Open( request );
+		Check( !missing && missing.Error().code == product::kUnavailable,
+		    "display private: no bus configuration is unavailable" );
+	}
 	const struct
 	{
 		bad::DisplayFault fault;
@@ -703,6 +749,26 @@ void FixturePlatformChecks( const Workbench &bench, platform::IToolProcessProvid
 	    "fixture.content-synced-and-installed" );
 	Check( first.Value().package && first.Value().package->entries.size() >= 4,
 	    "fixture.package-manifest" );
+	{
+		// A caller-chosen runtime (a test's private one) gets the same package.
+		kiln::PipelineRequest privateRuntime = request;
+		privateRuntime.upTo = product::StageRole::kPackage;
+		privateRuntime.runtime = bench.root / "private-runtime";
+		auto packaged = session.Run( privateRuntime );
+		const auto artifact = packaged ? std::find_if( packaged.Value().artifacts.begin(),
+		                                     packaged.Value().artifacts.end(),
+		                                     []( const product::Artifact &item )
+		                                     {
+			                                     return item.name == "platform-package";
+		                                     } )
+		                               : decltype( packaged.Value().artifacts.end() ){};
+		Check(
+		    packaged && packaged.Value().package && artifact != packaged.Value().artifacts.end() &&
+		        artifact->path == bench.root / "private-runtime" &&
+		        fs::is_directory( bench.root / "private-runtime" ) &&
+		        packaged.Value().package->entries.size() == first.Value().package->entries.size(),
+		    "fixture.package-into-a-chosen-runtime" );
+	}
 	Check( fs::exists( first.Value().evidenceFile ), "fixture.evidence-written" );
 	const Value &evidence = first.Value().evidence;
 	Check( evidence.FindString( "revision" ) && evidence.FindString( "dirty_digest" ) &&
@@ -820,6 +886,219 @@ void FixturePlatformChecks( const Workbench &bench, platform::IToolProcessProvid
 	}
 }
 
+//-----------------------------------------------------------------------------
+// The launch plan (RFC 0027 L1): templates over variables, switches, workspace.
+
+kiln::PlayRequest Play( const std::string &profile )
+{
+	kiln::PlayRequest request;
+	request.profile = profile;
+	return request;
+}
+
+std::vector<std::string> PlanArgv(
+    kiln::Session &session, kiln::PlayRequest request, kiln::Error *error = nullptr )
+{
+	auto plan = session.PlanLaunch( request );
+	if ( !plan )
+	{
+		if ( error )
+			*error = plan.Error();
+		return { "<refused>" };
+	}
+	return plan.Value().argv;
+}
+
+void LaunchPlanChecks( const Workbench &bench, platform::IToolProcessProvider &posix )
+{
+	const fs::path profiles = bench.root / "launch-profiles";
+	fixture::WriteBytes( profiles / "game.json",
+	    R"({"schema": "source-product-profile/v2", "id": "g", "description": "g",
+	  "aliases": ["game"],
+	  "launch": {"executable": "run_me", "game": "demo", "default_map": "start",
+	    "map_arguments": ["+map", "{map}"],
+	    "variables": {"width": ["800"], "height": ["600"], "windowed": ["-windowed"], "producer": ["baked"],
+	                  "core": ["+core", "1"], "assets": ["{root}/assets"]},
+	    "arguments": ["-game", "{game}", "-w", "{width}", "-h", "{height}", "{windowed}", "{switches}", "{core}",
+	                  "+producer", "{producer}", "-assets", "{assets}", "{map_arguments}", "{args}"],
+	    "environment": {"LD_LIBRARY_PATH": "{runtime}/bin:{inherit}", "GAME": "{game}"},
+	    "switches": {
+	      "validate": {"description": "v", "arguments": ["-validate"]},
+	      "probe": {"description": "p", "arguments": ["-probe", "x"]},
+	      "sdf": {"description": "s", "set": {"producer": ["sdf"]}},
+	      "no-core": {"description": "n", "arguments": ["-nocore"], "set": {"core": []}, "conflicts": ["core"]},
+	      "core": {"description": "c", "set": {"core": ["+core", "1"]}, "conflicts": ["no-core"]}}}})" );
+	fixture::WriteBytes( profiles / "bad-set.json",
+	    R"({"schema": "source-product-profile/v2", "id": "b", "description": "b",
+	  "launch": {"executable": "x", "arguments": [], "variables": {},
+	    "switches": {"s": {"description": "s", "set": {"undeclared": ["1"]}}}}})" );
+	fixture::WriteBytes( profiles / "bad-var.json",
+	    R"({"schema": "source-product-profile/v2", "id": "c", "description": "c",
+	  "launch": {"executable": "x", "arguments": ["{nowhere}"]}})" );
+	fixture::FakeDevice device;
+	product::ProviderCatalog catalog = fixture::ComposeFixtureCatalog( device, posix );
+	jobsystem::DeterministicExecutor executor;
+	NullSink sink;
+	kiln::SessionConfig config;
+	config.sourceRoot = bench.source;
+	config.profileRoot = profiles;
+	config.outRoot = bench.root / "out";
+	config.hostTag = "fixture-any";
+	kiln::Session session( catalog, posix, executor, sink, config );
+
+	kiln::PlayRequest request;
+	request.profile = "game";
+	const std::string root = bench.source.string();
+	const std::vector<std::string> plain = { "./run_me", "-game", "demo", "-w", "800", "-h", "600",
+	    "-windowed", "+core", "1", "+producer", "baked", "-assets", root + "/assets", "+map",
+	    "start" };
+	Check( PlanArgv( session, request ) == plain, "launch.template-splices-variables" );
+	request.switches = { "probe", "validate", "sdf", "no-core" };
+	request.map = "other";
+	request.arguments = { "-console", "+x 1" };
+	const std::vector<std::string> switched = { "./run_me", "-game", "demo", "-w", "800", "-h",
+	    "600", "-windowed", "-probe", "x", "-validate", "-nocore", "+producer", "sdf", "-assets",
+	    root + "/assets", "+map", "other", "-console", "+x 1" };
+	Check( PlanArgv( session, request ) == switched,
+	    "launch.switches-append-in-order-and-set-variables" );
+	request.switches = { "validate", "probe" };
+	auto reordered = PlanArgv( session, request );
+	Check( std::find( reordered.begin(), reordered.end(), "-validate" ) <
+	           std::find( reordered.begin(), reordered.end(), "-probe" ),
+	    "launch.switch-order-is-the-request-order" );
+	kiln::Error error;
+	request.switches = { "core", "no-core" };
+	Check( PlanArgv( session, request, &error ).front() == "<refused>" && error.code == "switch" &&
+	           error.detail.find( "conflicts" ) != std::string::npos,
+	    "launch.conflicting-switches-refused" );
+	request.switches = { "nope" };
+	Check( PlanArgv( session, request, &error ).front() == "<refused>" &&
+	           error.detail.find( "nope" ) != std::string::npos,
+	    "launch.unknown-switch-refused-by-name" );
+	request.switches = { "validate", "validate" };
+	Check( PlanArgv( session, request, &error ).front() == "<refused>",
+	    "launch.repeated-switch-refused" );
+
+	auto plan = session.PlanLaunch( Play( "game" ) );
+	Check( plan && plan.Value().environment.size() == 2 &&
+	           plan.Value().environment[0].value ==
+	               ( bench.root / "out" / "game" / "runtime" ).string() + "/bin:{inherit}" &&
+	           plan.Value().environment[1].value == std::string( "demo" ) &&
+	           plan.Value().workingDirectory == bench.root / "out" / "game" / "runtime",
+	    "launch.environment-and-working-directory" );
+	kiln::PlayRequest chosen = Play( "game" );
+	chosen.runtime = bench.root / "elsewhere";
+	auto moved = session.PlanLaunch( chosen );
+	Check( moved && moved.Value().runtime == bench.root / "elsewhere" &&
+	           moved.Value().workingDirectory == bench.root / "elsewhere" &&
+	           moved.Value().environment[0].value ==
+	               ( bench.root / "elsewhere" ).string() + "/bin:{inherit}",
+	    "launch.chosen-runtime-is-the-working-directory-and-{runtime}" );
+	kiln::PlayRequest exact = Play( "game" );
+	exact.exactArguments = std::vector<std::string>{ "-test", "+map", "x" };
+	exact.environment = { { "HOME", std::string( "/sandbox" ) }, { "GONE", std::nullopt } };
+	exact.wrapper = { "capture", "--" };
+	auto exactPlan = session.PlanLaunch( exact );
+	Check( exactPlan &&
+	           exactPlan.Value().argv ==
+	               std::vector<std::string>{ "capture", "--", "./run_me", "-test", "+map", "x" } &&
+	           exactPlan.Value().environment.size() == 4 &&
+	           exactPlan.Value().environment[2].name == "HOME" &&
+	           !exactPlan.Value().environment[3].value,
+	    "launch.exact-arguments-wrapper-and-environment-follow-the-profile" );
+	exact.switches = { "validate" };
+	auto exactSwitches = session.PlanLaunch( exact );
+	Check( !exactSwitches && exactSwitches.Error().code == "request",
+	    "launch.exact-arguments-with-switches-refused" );
+
+	kiln::SessionConfig personal = config;
+	personal.workspaceText =
+	    R"({"resolution": [2560, 1440], "windowed": false, "default_map": "mine",
+	  "profiles": {"game": {"launch": {"variables": {"producer": ["probe"]}}}}})";
+	kiln::Session workspace( catalog, posix, executor, sink, personal );
+	const std::vector<std::string> bound = { "./run_me", "-game", "demo", "-w", "2560", "-h",
+	    "1440", "+core", "1", "+producer", "probe", "-assets", root + "/assets", "+map", "mine" };
+	Check( PlanArgv( workspace, Play( "game" ) ) == bound,
+	    "launch.workspace-binds-resolution-windowed-map-and-variables" );
+
+	auto badSet =
+	    kiln::Session( catalog, posix, executor, sink, config ).PlanLaunch( Play( "bad-set" ) );
+	Check( !badSet && badSet.Error().detail.find( "undeclared" ) != std::string::npos,
+	    "launch.switch-setting-an-undeclared-variable-refused" );
+	auto badVar = session.PlanLaunch( Play( "bad-var" ) );
+	Check( !badVar && badVar.Error().detail.find( "nowhere" ) != std::string::npos,
+	    "launch.unknown-template-variable-refused" );
+	auto switches = session.Switches( "game" );
+	Check( switches && switches.Value().size() == 5, "launch.switches-listed" );
+}
+
+void PackagerUnitChecks( const Workbench &bench, platform::IToolProcessProvider &posix )
+{
+	Check( product::GlobMatch( "bin/*.so", "bin/libengine.so" ) &&
+	           !product::GlobMatch( "bin/*.so", "bin/sub/x.so" ) &&
+	           product::GlobMatch( "**", "a/b/c" ) &&
+	           product::GlobMatch( "*/bin/*.so", "portal/bin/libclient.so" ) &&
+	           !product::GlobMatch( "hl2_launcher", "bin/hl2_launcher" ) &&
+	           product::GlobMatch( "a/**/z", "a/b/c/z" ),
+	    "package.glob-segments" );
+	// A mount set must be declared by the profile.
+	const fs::path profiles = bench.root / "mount-profiles";
+	fixture::WriteBytes( profiles / "fixture.json",
+	    R"({"schema": "source-product-profile/v2", "id": "m", "description": "m",
+	      "toolchain": {"family": "host", "version": ")" +
+	        HostCompilerVersion( posix, "c++" ) + R"(", "cxx": "c++"},
+	      "build": {"toolchain": "fixture-host", "flavors": {"dev": {"description": "d"}}},
+	      "pipeline": {"stages": ["fixture-compile"]},
+	      "content": {"mount_sets": {"extra": {"description": "e"}}}})" );
+	fixture::FakeDevice device;
+	product::ProviderCatalog catalog = fixture::ComposeFixtureCatalog( device, posix );
+	jobsystem::DeterministicExecutor executor;
+	NullSink sink;
+	kiln::SessionConfig config;
+	config.sourceRoot = bench.source;
+	config.profileRoot = profiles;
+	config.outRoot = bench.root / "mount-out";
+	config.hostTag = "fixture-any";
+	kiln::Session session( catalog, posix, executor, sink, config );
+	kiln::PipelineRequest request;
+	request.profile = "fixture";
+	request.mountSets = { "nope" };
+	auto refused = session.Run( request );
+	Check( !refused && refused.Error().detail.find( "nope" ) != std::string::npos,
+	    "package.undeclared-mount-set-refused" );
+	request.mountSets = { "extra" };
+	Check( session.Run( request ).HasValue(), "package.declared-mount-set-accepted" );
+
+	// linux-dir: a mount set's entries leave the runtime when a later package
+	// runs without the set.
+	{
+		const fs::path store = bench.root / "set-store";
+		fs::create_directories( store / "pack" );
+		fixture::WriteBytes( store / "pack" / "a.txt", "a" );
+		auto parsed = foundation::json::Parse(
+		    R"({"package": {"steps": [{"op": "link", "path": "game/extra", "from": "store",
+		      "source": "pack", "mount_set": "extra"}]}})" );
+		product::ResolvedProfile profile;
+		profile.name = "set-fixture";
+		profile.document = parsed.Value();
+		auto packager = product::CreateLinuxDirPackager();
+		product::PackageRequest package;
+		package.profile = &profile;
+		package.output = bench.root / "set-runtime";
+		package.locations = { { "store", store } };
+		package.sourceRoot = bench.source;
+		package.mountSets = { "extra" };
+		auto with = packager->Package( package );
+		const bool linked = fs::is_symlink( package.output / "game/extra" );
+		package.mountSets = {};
+		auto without = packager->Package( package );
+		Check( with && without && linked && !fs::exists( package.output / "game/extra" ) &&
+		           !fs::exists( package.output / "game" ) &&
+		           !fs::is_symlink( package.output / "game/extra" ) &&
+		           without.Value().entries.empty(),
+		    "package.linux-dir-unselected-mount-set-entries-removed" );
+	}
+}
 } // namespace
 
 int main()
@@ -855,7 +1134,38 @@ int main()
 	TransportChecks( bench, *posix );
 	DisplayChecks();
 	CatalogChecks( *posix );
+	{
+		auto spawner = platform::CreatePosixProcessSpawner();
+		CheckVerdict( suites::RunSuite( *product::CreateSingleRunProvider(), *spawner,
+		                  bench.scratch / "run-single" ),
+		    "run single" );
+		CheckVerdict( suites::RunSuite( *product::CreateExternalInstallRunProvider(), *spawner,
+		                  bench.scratch / "run-external" ),
+		    "run external-install" );
+		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kReturnsBeforeExit ),
+		                   *spawner, bench.scratch / "run-bad1" ),
+		    "N2", "bad run provider: returns before its program ends" );
+		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kIgnoresCancel ),
+		                   *spawner, bench.scratch / "run-bad2" ),
+		    "N4", "bad run provider: ignores cancellation" );
+		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kDropsLog ), *spawner,
+		                   bench.scratch / "run-bad3" ),
+		    "N6", "bad run provider: drops the launch's log" );
+		CheckRejected(
+		    suites::RunSuite( *bad::RunProvider( bad::RunFault::kLaunchOverridesDisplay ), *spawner,
+		        bench.scratch / "run-bad4" ),
+		    "N7", "bad run provider: lets the launch override the display session" );
+		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kSilentStart ), *spawner,
+		                   bench.scratch / "run-bad5" ),
+		    "N8", "bad run provider: does not report its programs' starts" );
+		std::string error;
+		auto missing = spawner->Spawn( { { "/nonexistent/program" }, "/", {}, {} }, error );
+		Check( missing.id < 0 && error.find( "/nonexistent/program" ) != std::string::npos,
+		    "spawn: a missing program fails by name" );
+	}
 	FixturePlatformChecks( bench, *posix );
+	LaunchPlanChecks( bench, *posix );
+	PackagerUnitChecks( bench, *posix );
 	Check( posix->LiveProcessCount() == 0, "no process outlives its request" );
 
 	fs::remove_all( root, ec );

@@ -1,0 +1,29 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal2-retail-mirror-v2",
+  "description": "The retail 32-bit Portal 2 binary run from a harness's private mirror of the Steam install (tools/quality/portal2_retail.py), for retail comparisons. Nothing is built; the caller passes the mirror as the runtime, its arguments as exact arguments, and normally the private-x11 display (the binary crashes on SDL's Wayland backend).",
+  "aliases": [
+    "portal2-retail-mirror@linux-x86_64"
+  ],
+  "target": {
+    "product": "portal2-retail",
+    "os": "linux",
+    "architecture": "x86_64"
+  },
+  "launch": {
+    "game": "portal2",
+    "display_session": "private-x11",
+    "run": "external-install",
+    "executable": "{runtime}/portal2_linux",
+    "arguments": [
+      "-game",
+      "portal2",
+      "{args}"
+    ],
+    "environment": {
+      "SteamAppId": "620",
+      "SteamGameId": "620",
+      "LD_LIBRARY_PATH": "{runtime}/bin/linux32:{inherit}"
+    }
+  }
+}

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -76,6 +77,10 @@ struct RunState
 	std::vector<std::string> extraArguments;
 	std::optional<product::PackageManifest> manifest;
 	std::optional<product::LaunchResult> launch;
+	std::map<std::string, fs::path> locations;
+	std::vector<std::string> mountSets;
+	fs::path sourceRoot;
+	std::optional<fs::path> runtime; // the request's package directory, if chosen
 };
 
 std::vector<std::string> StringList( const Value *value )
@@ -133,12 +138,19 @@ public:
 		product::PackageRequest request;
 		request.profile = m_State.profile;
 		request.cancel = inputs.Cancel();
-		request.output = m_State.tree / "package";
+		request.output =
+		    m_State.runtime.value_or( m_State.tree / m_State.profile->PackageDirectoryName() );
+		request.locations = m_State.locations;
+		request.mountSets = m_State.mountSets;
+		request.sourceRoot = m_State.sourceRoot;
 		for ( const std::string &name : m_Consumes )
 		{
 			if ( const Artifact *artifact = inputs.Get( name ) )
+			{
 				AddFiles( *artifact, artifact->type == "install" ? "install" : "content",
 				    request.inputs );
+				request.artifacts[name] = *artifact;
+			}
 		}
 		std::sort( request.inputs.begin(), request.inputs.end(),
 		    []( const auto &a, const auto &b )
@@ -253,7 +265,10 @@ public:
 		    request.arguments.end(), m_State.extraArguments.begin(), m_State.extraArguments.end() );
 		if ( m_State.display )
 		{
-			auto display = m_State.display->Open( inputs.Cancel() );
+			product::DisplayRequest displayRequest;
+			displayRequest.scratch = m_State.tree / "display-session";
+			displayRequest.cancel = inputs.Cancel();
+			auto display = m_State.display->Open( displayRequest );
 			if ( !display )
 				return foundation::MakeUnexpected( display.Error() );
 			request.environment = display.Value().environment;
@@ -415,6 +430,43 @@ foundation::Expected<DoctorResult, Error> Session::Doctor( const std::string &na
 	return result;
 }
 
+foundation::Expected<std::map<std::string, fs::path>, Error> Session::ResolveLocations(
+    const product::ResolvedProfile &profile ) const
+{
+	std::map<std::string, fs::path> locations;
+	auto workspace = LoadWorkspace();
+	if ( !workspace )
+		return foundation::MakeUnexpected( workspace.Error() );
+	const Value *personal = workspace.Value().document.Find( "content_locations" );
+	const Value *content = profile.document.Find( "content" );
+	const Value *locators = content ? content->Find( "locators" ) : nullptr;
+	if ( !locators )
+		return locations;
+	for ( const auto &member : locators->Members() )
+	{
+		std::string path;
+		if ( const std::string *chosen = personal ? personal->FindString( member.first ) : nullptr )
+			path = *chosen;
+		else if ( const std::string *fallback = member.second.FindString( "default" ) )
+			path = *fallback;
+		for ( const auto &[token, value] :
+		    { std::pair<std::string, std::string>{ "{root}", m_Config.sourceRoot.string() },
+		        std::pair<std::string, std::string>{ "{home}", m_Config.homeDirectory.string() } } )
+		{
+			for ( size_t at = path.find( token ); at != std::string::npos;
+			    at = path.find( token, at + value.size() ) )
+				path.replace( at, token.size(), value );
+		}
+		std::error_code ec;
+		// A writable location (a cache a stage fills) may not exist yet.
+		const Value *create = member.second.Find( "create" );
+		const bool writable = create && create->IsBool() && create->AsBool();
+		if ( !path.empty() && ( writable || fs::exists( path, ec ) ) )
+			locations[member.first] = path;
+	}
+	return locations;
+}
+
 foundation::Expected<PipelineResult, Error> Session::Run( const PipelineRequest &request )
 {
 	auto resolved = ResolveForLaunch( request.profile );
@@ -437,6 +489,21 @@ foundation::Expected<PipelineResult, Error> Session::Run( const PipelineRequest 
 	state.flavor = flavor;
 	state.tree = m_Config.outRoot / profile.TreeName( flavor );
 	state.extraArguments = request.arguments;
+	state.sourceRoot = m_Config.sourceRoot;
+	// Selected mount sets must be declared (content.mount_sets).
+	{
+		const Value *content = profile.document.Find( "content" );
+		const Value *sets = content ? content->Find( "mount_sets" ) : nullptr;
+		for ( const std::string &name : request.mountSets )
+		{
+			if ( !sets || !sets->Find( name ) )
+				return foundation::MakeUnexpected(
+				    Fail( "profile", "\"" + name + "\" is not a mount set of " + profile.name +
+				                         " (content.mount_sets)" ) );
+		}
+		state.mountSets = request.mountSets;
+	}
+	state.runtime = request.runtime;
 
 	// Resolve every provider the request needs before touching anything.
 	auto toolchain = m_Catalog.Toolchain( profile.toolchain );
@@ -473,6 +540,10 @@ foundation::Expected<PipelineResult, Error> Session::Run( const PipelineRequest 
 		}
 		step.effectiveRole = role;
 	}
+	auto locations = ResolveLocations( profile );
+	if ( !locations )
+		return foundation::MakeUnexpected( locations.Error() );
+	state.locations = std::move( locations ).Value();
 	std::vector<std::unique_ptr<product::IProductStage>> contractSteps;
 	const Value *package = profile.document.Find( "package" );
 	const std::string *form = package ? package->FindString( "form" ) : nullptr;
@@ -634,6 +705,7 @@ foundation::Expected<PipelineResult, Error> Session::Run( const PipelineRequest 
 			product::StageInputs inputs( profile, flavor, m_Config.sourceRoot, state.tree,
 			    step.descriptor.consumes, state.artifacts, &environment, &m_Processes,
 			    &m_Diagnostics, request.cancel );
+			inputs.SetLocations( state.locations );
 			product::StageOutputs outputs( staging );
 			auto ran = step.stage->Run( inputs, outputs );
 			std::string problem;
@@ -865,6 +937,37 @@ Value ExplainJson( const product::ResolvedProfile &profile )
 		for ( const std::string &stage : profile.stages )
 			stages.Push( Value::String( stage ) );
 	}
+	return value;
+}
+
+SessionConfig DefaultSessionConfig( const std::filesystem::path &root, std::string hostTag )
+{
+	SessionConfig config;
+	config.sourceRoot = std::filesystem::absolute( root ).lexically_normal();
+	config.profileRoot = config.sourceRoot / "quality" / "product_profiles";
+	config.outRoot = config.sourceRoot / "out";
+	config.dependencyRoot = config.sourceRoot / "dependencies";
+	config.hostTag = std::move( hostTag );
+	if ( const char *home = std::getenv( "HOME" ) )
+		config.homeDirectory = home;
+	if ( std::ifstream stream{ config.sourceRoot / config.workspaceFile, std::ios::binary } )
+	{
+		std::ostringstream text;
+		text << stream.rdbuf();
+		config.workspaceText = text.str();
+	}
+	return config;
+}
+
+foundation::json::Value ToJson( const std::vector<ProfileSummary> &profiles )
+{
+	using foundation::json::Value;
+	Value list = Value::Array();
+	for ( const auto &profile : profiles )
+		list.Push( ToJson( profile ) );
+	Value value = Value::Object();
+	value.Set( "schema", Value::String( std::string( kJsonSchema ) ) );
+	value.Set( "profiles", std::move( list ) );
 	return value;
 }
 

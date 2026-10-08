@@ -38,7 +38,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0024](RFC/0024-direct3d12-device-adapter.md) | Direct3D 12 adapter for `render.device.v2`: fences as completion tokens, bind groups as root-signature tables, HLSL artifacts compiled by the pinned DXC, SDL3–D3D12 bridge; Linux lane and X5 under MinGW + Wine/vkd3d-proton (proposed, user direction 2026-10-07; X0–X5 implemented: device suite 1,563/0, pixel families against Vulkan, render graph, SDL3–D3D12 presentation 64/0, resolution sweep on bazzite; no ranked row) |
 | [0025](RFC/0025-metal-device-adapter.md) | Metal device adapter for the render core: `render.device.metal` (Objective-C++), `kMsl` MSL 3.0 artifacts from the pinned SPIRV-Cross, bind groups as argument buffers, Metal 3 floor (proposed, user direction 2026-10-07; M0 partial, no device run) |
 | [0026](RFC/0026-box3d-beyond-ivp.md) | Box3D beyond IVP with IVP as the fallback: the IVP fallback guarantee (F1–F7), a measured "surpasses IVP" scoreboard, Box3D-only capabilities in order (B1 continuous collision, B2 capsules, B3 rolling resistance and surface velocity, B4 contact events, then joint drive, sensors, explosions, recording, runtime collision) through RFC 0013's mechanism, per-phase done checklist, six ratchets, published scenario maps (proposed, user direction 2026-10-07; scenario maps installed, no phase gate passed; row R98) |
-| [0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md) | One product pipeline in C++, libraries first: standalone public libraries (codecs, IRs, readers/writers, lowerings, graph, resolver, profiles, `kiln.api`) that tools, Hammer, bakers and Python (`sepipe`) use directly, with `kiln` as a thin CLI and an exported SDK; a breaking workflow change (`./kiln play <profile>` replaces `./play*`, `run.sh`, `run.conf` and the platform and CI scripts with no wrappers; trees move to `out/<profile>/<flavor>`); shared concerns lifted to one owner each; canonical texture encoders/decoders; texture, material and model IRs lowered per target as RFC 0015 compilers; streamable package units; extension by substitution (providers selected by name, shared suites with bad providers, a fixture platform through an unchanged core) (proposed, user direction 2026-10-07; [L0 implemented](RFC/0027-progress.md) 2026-10-07: `foundation.json`, `product.profile` schema v2, the product contracts with shared suites and bad providers, `kiln.core`/`kiln.api`, `kiln.composition`, the `./kiln` bootstrap and `kiln profiles|doctor|build` on the nine buildable desktop profiles (ten declared); nothing deleted, L1 cutover not started; row R102 at rank 75, R99–R101 unranked) |
+| [0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md) | One product pipeline in C++, libraries first: standalone public libraries (codecs, IRs, readers/writers, lowerings, graph, resolver, profiles, `kiln.api`) that tools, Hammer, bakers and Python (`sepipe`) use directly, with `kiln` as a thin CLI and an exported SDK; a breaking workflow change (`./kiln play <profile>` replaces `./play*`, `run.sh`, `run.conf` and the platform and CI scripts with no wrappers; trees move to `out/<profile>/<flavor>`); shared concerns lifted to one owner each; canonical texture encoders/decoders; texture, material and model IRs lowered per target as RFC 0015 compilers; streamable package units; extension by substitution (providers selected by name, shared suites with bad providers, a fixture platform through an unchanged core) (proposed, user direction 2026-10-07; [L0 implemented](RFC/0027-progress.md) 2026-10-07: `foundation.json`, `product.profile` schema v2, the product contracts with shared suites and bad providers, `kiln.core`/`kiln.api`, `kiln.composition`, the `./kiln` bootstrap and `kiln profiles|doctor|build` on the nine buildable desktop profiles (ten declared); [L1 done](RFC/0027-progress.md#l1-desktop-cutover-done-2026-10-08) 2026-10-08: `./kiln play` and `kiln.api` replace the launchers, the staging scripts, `private_session.py` and the Linux CI wrappers, all deleted, with a root allowlist and a no-callers scan; L7 (platform scripts) next; row R102 at rank 75, R99–R101 unranked) |
 | [0028](RFC/0028-direct3d9-device-adapter.md) | Direct3D 9 adapter for `render.device.v2`: D3D9Ex/SM3 floor, `kD3d9Bytecode` artifacts via SPIRV-Cross SM30 and the pinned FXC, graphics-only capability set with named refusals, mod `ShaderDLL004` bytecode on the core through the legacy frontend, `shaderapidx9` deleted once matched; DXVK Native and Wine lanes (proposed, user direction 2026-10-07, lifting RFC 0016's exclusion; nothing implemented, no ranked row) |
 | [0029](RFC/0029-webassembly-and-webgpu-platform.md) | WebAssembly platform and WebGPU device adapter: Emscripten `wasm32` profile with static composition, `render.device.webgpu` over `webgpu.h` with `kWgsl` artifacts, the engine in a worker on an `OffscreenCanvas`, the job pool as preallocated Web Workers with a serial mode when not cross-origin isolated, OPFS-cached content; Node, browser and Dawn lanes (proposed, user direction 2026-10-07; [W3 done](RFC/0029-progress.md) 2026-10-08: `render.device.webgpu` passes the shared device suite (792 checks) natively on the pinned Dawn and as WebAssembly in headless Chrome on the GPU and on SwiftShader, 57 of 58 programs have WGSL artifacts, Emscripten pinned; W0–W2 and W4–W6 open; no ranked row) |
 
@@ -411,6 +411,20 @@ or budget. Messaging another independent session that the user started
 7. Update roadmap state and link evidence in the same change. State what passed,
    what was unavailable, and which dependent gates remain unverified.
 
+Products are built, packaged and launched through `./kiln` (RFC 0027 L1; the
+`./play*`, `run.sh` and `run.conf` launchers and the staging scripts are
+deleted). Trees live in `out/<profile>/<flavor>/` (`build/`, `install/`,
+`runtime/`), and harnesses launch through `kiln.api`
+(`tools/kiln/sepipe_loader.py`), never through a launcher:
+
+```sh
+./kiln profiles list                                 # every product profile
+./kiln build <profile> [--flavor dev|release|ktx]    # configure when changed, build, install
+./kiln package <profile> [--runtime DIR]             # lay out the runtime
+./kiln play <profile> [map] [--set <switch>]... [--mounts <set>] [-- engine args]
+./kiln switches <profile>                            # the profile's launch switches
+```
+
 Current installed architecture commands (run from the repository root):
 
 ```sh
@@ -559,8 +573,8 @@ The currently selected sources are:
 - the installed P2:CE base VPKs for required Strata/PBR dependencies and
   fallbacks, not as a claim that its small loose PBR set is a full remaster.
 
-Mount policy has one explicit owner shared by `play_p2`, `render_lab`, Hammer and
-content tools. It records source provenance (Workshop ID, archive and logical
+Mount policy has one explicit owner shared by the portal2 kiln profile,
+`render_lab`, Hammer and content tools. It records source provenance (Workshop ID, archive and logical
 asset path), resolves segmented VPK v2 archives, and gives a named specialized
 pack priority over the broad pack, then the original Portal 2 content. Namespaced
 materials remain namespaced unless an authored mapping selects them; mounting a
@@ -696,7 +710,7 @@ marks no implementation gate done.
 | 72 / R37 | Physics parallel rollout and default gate; 0004 E | R20, R34 | Worker-count determinism, nested-work/callback/shutdown bridge, platform packaging, budgets and supported client/server combinations pass; IVP rollback tested | planned |
 | 73 / R67 | Opt-in Box3D capabilities; 0013 P0–P7 (phase prerequisites in the RFC) | R19 | Each capability has its own interface, contract with bad providers and required gate in `physics-v1.json`; parallel step passes on declared profiles; game opt-in only after its filter-threading policy and gameplay corpus pass | active ([0013 progress](RFC/0013-progress.md); P0–P3 on Linux desktop; pool step scheduler measured on Linux and the iPhone 16 Pro, 2026-09-26; from P4 on, order, done checklist and ratchets are RFC 0026's, row R98) |
 | 74 / R98 | Box3D beyond IVP, IVP kept as the fallback; 0026 B0–B9 (B9 with R59/R61/R45) | R19, R67 | B0: `physics.conformance` passes on the pinned Box3D and the six physics ratchets are installed with seeded violations; each capability B1–B8 has its versioned interface, contract with bad providers, required gate, a scoreboard metric where Box3D beats IVP on the same inputs, an IVP fallback clause, a real consumer and a published scenario map with a headless readout; the "surpasses IVP" claim holds on the Linux desktop and the Fold7; IVP stays linked, selectable and boots every scenario map ([done checklist](RFC/0026-box3d-beyond-ivp.md#what-done-looks-like-instructions-for-agents)) | active ([0026 progress](RFC/0026-progress.md); 2026-10-07: RFC and five published scenario maps on both providers; B0 and B1 next) |
-| 75 / R102 | One product pipeline and `kiln`; 0027 L0, L1, L7 | R02, R04, R10 | L0: profile schema v2, the product contracts with shared suites and bad providers, `kiln.api`, a fixture platform through an unchanged core, and `kiln build` with a no-op second build on every desktop profile; L1: `./kiln play` replaces `./play*`, `run.sh` and `run.conf` after the launch-equivalence check passes for every launcher mode, harnesses launch through `kiln.api`; L7: each platform's package, deploy and run through `kiln` with its scripts deleted ([RFC 0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md#phases-and-gates)) | active ([L0 done 2026-10-07](RFC/0027-progress.md); L1 next; id and rank are an agent placement, 2026-10-07, movable by the user) |
+| 75 / R102 | One product pipeline and `kiln`; 0027 L0, L1, L7 | R02, R04, R10 | L0: profile schema v2, the product contracts with shared suites and bad providers, `kiln.api`, a fixture platform through an unchanged core, and `kiln build` with a no-op second build on every desktop profile; L1: `./kiln play` replaces `./play*`, `run.sh` and `run.conf` after the launch-equivalence check passes for every launcher mode, harnesses launch through `kiln.api`; L7: each platform's package, deploy and run through `kiln` with its scripts deleted ([RFC 0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md#phases-and-gates)) | active ([L0 done 2026-10-07](RFC/0027-progress.md); [L1 done 2026-10-08](RFC/0027-progress.md#l1-desktop-cutover-done-2026-10-08); L7 next; id and rank are an agent placement, 2026-10-07, movable by the user) |
 | 76 / R38 | Stateful scheduling migrations; 0003 G | R30, R35, R37 | Snapshot-send ownership and selected entity/physics cohorts preserve legacy observations/order or record intentional change; network/latency/lifetime gates pass | planned |
 | 77 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | active ([Phase D](RFC/0001-phase-b-progress.md#later-work-not-claimed-here)) |
 | 78 / R40 | Tool executable/process cleanup; 0001 rank 19 / retirement E | R11, R12, R22 | Launchable-DLL wrappers retired by cohort; structured argv/process protocol, outputs/cancellation and required compiler workflows pass; integrations tool-only | active ([Phase E](RFC/0001-phase-e-progress.md)) |
@@ -752,6 +766,18 @@ Keep the table concise and link details below or from the domain progress file.
   ([record](RFC/0027-progress.md)). Its row is R102 at rank 75 (agent placement,
   2026-10-07: the RFC's R98 was also RFC 0026's id; ranks from R38 down
   moved by one; movable by the user).
+- RFC 0027 L1 (done 2026-10-08, user direction "move the 35 test harnesses
+  and the CI workflows onto kiln.api/sepipe ... Nothing has been deleted
+  yet; that waits until the full equivalence check passes"): the launch-
+  equivalence gate passed 76/0 (argv, environment and runtime manifest for
+  every launcher mode, release builds included), every harness launches
+  through `kiln.api`/`sepipe`, the Linux CI lanes build `ci-*` profiles, and
+  L1e deleted `./play*`, `run.sh`, `run.conf`, the staging scripts,
+  `private_session.py`, `transcode_av1.py` and `scripts/*-ubuntu-*.sh`.
+  `tools/stylelint/root_files.py` enforces the root allowlist (nine L7
+  platform scripts pending) and `tools/kiln/retired_scan.py` the no-callers
+  rule. Open: the Hammer build scripts' cohort, L7, hosted CI, retail
+  recaptures ([record](RFC/0027-progress.md#l1e-the-deletions-the-root-allowlist-and-the-no-callers-scan-2026-10-08)).
 
 - R67 (RFC 0013): added 2026-09-24 at the user's direction, `active`. The
   `box3d-optin` branch is merged (2026-09-25), and work continues on the
@@ -787,9 +813,9 @@ Keep the table concise and link details below or from the domain progress file.
     auto workers from the compute pool, with `-physics_workers 1` to opt out.
     Unmeasured on the Fold7. It applies only where Box3D is selected. Box3D
     is the default provider since 2026-09-26 (user decision): the launcher
-    (and so the Android APKs), the Linux dedicated server, `./play`,
-    `./play_p2`, `run.sh` and the iOS and tvOS apps; `-physics vphysics`
-    selects IVP. The Windows dedicated server (a legacy profile) still
+    (and so the Android APKs), the Linux dedicated server, the desktop kiln
+    profiles (`./kiln play portal|portal2`) and the iOS and tvOS apps;
+    `-physics vphysics` (`--set ivp`) selects IVP. The Windows dedicated server (a legacy profile) still
     defaults to IVP, and the conformance harnesses pin `-physics vphysics`.
   - `vphysics.shape-inertia.v1` (user decision, 2026-09-25): objects take
     their collision solid's full inertia tensor (Box3D hull mass data,
@@ -797,8 +823,9 @@ Keep the table concise and link details below or from the domain progress file.
     approximation. The legacy model stays the default and is unchanged.
     - 20 `inertia.*` contract checks pass, and 4 injected faults are
       detected; the `shape-inertia` gate is required.
-    - Game opt-in: `-physics_shape_inertia`, on by default in `./play` and
-      `./play_p2` (user decision; `PHYSICS_ARGS=` rolls back).
+    - Game opt-in: `-physics_shape_inertia`, on by default in the portal and
+      portal2 kiln profiles (user decision; `--set no-shape-inertia` rolls
+      back).
     - Open: no gameplay corpus under the model. Box3D's backward-Euler
       gyroscopic step makes a fast top sink at the game tick, so
       `gyro.gyroscope-stays-level` fails under `--candidate-shape-inertia`.
@@ -860,8 +887,8 @@ Keep the table concise and link details below or from the domain progress file.
     proposed until B0 installs them.
   - Installed 2026-10-07: `tools/quality/physics_lab_maps.py` publishes five
     scenario maps (`phys_tunnel`, `phys_stack`, `phys_joints`,
-    `phys_impacts`, `phys_rolling`; `./play <map>`, `PHYSICS=vphysics
-    ./play <map>` for IVP), each scene labelled in game, restartable from a
+    `phys_impacts`, `phys_rolling`; `./kiln play portal <map>`, with
+    `--set ivp` for IVP), each scene labelled in game, restartable from a
     button, and counting results to the console as `physlab` lines. All five
     boot headless on both providers. `phys_tunnel` reproduces the benchmark
     in game: 8 of 8 cubes through the hanging panes on Box3D, 4 of 8 on IVP.
@@ -1165,8 +1192,8 @@ Keep the table concise and link details below or from the domain progress file.
   - R96 (K12) integrates the terms into the product.
   - Moving-light GI is out of scope (user decision, 2026-09-30, reversing
     the 2026-09-29 decision to keep it). The indirect light is the bake's:
-    every profile's `r_indirect_producer auto` is `baked`, and `./play` and
-    `./play_p2` pass `baked` (`--moving-light-gi` opts in). RFC 0011's
+    every profile's `r_indirect_producer auto` is `baked`, and the portal and
+    portal2 kiln profiles pass `baked` (`--moving-light-gi` opts in). RFC 0011's
     producers stay in the tree as opt-ins; no K12 slice owes them a place
     on the core
     ([rule](RFC/0016-render-core.md#lighting-model-renderlightingv1-amended-2026-09-28)).
@@ -2137,10 +2164,10 @@ Keep the table concise and link details below or from the domain progress file.
     Portal maps and `gi_door` boot queued with 0 cross-thread calls;
     `gi_door` frames byte-identical across modes; frame pacing on a loaded
     host shows mode 2 at least as fast with a lower p99.
-  - `run.conf`, `run.sh` and `./play_p2` (with `./play_p2_fsr` and
-    `./play_p2_coop`; 2026-10-05,
+  - The desktop kiln profiles (portal, portal2, portal2-fsr and
+    portal2-coop; 2026-10-05,
     [measurements](RFC/0016-progress.md#device-heap-snapshots-and-cpu-mip-feedback-2026-10-04))
-    pass `+mat_queue_mode 2`. `portal_boot.py`, the
+    pass `+mat_queue_mode 2` (`--set sync-queue` opts out). `portal_boot.py`, the
     Android launcher and the iOS/tvOS launcher still pin 0.
     `frame_pacing.py` defaults to 0 and takes `--mat-queue-mode 2`.
   - A TSan run of the product tree found 46 signatures only in mode 2, each
@@ -2288,8 +2315,8 @@ Keep the table concise and link details below or from the domain progress file.
     families byte-identical with one-vertex chunks; CPU fixture
     `render.vulkan.emit-convert-batch` (269 checks) with a TSan lane; seeded
     chunk-offset and shared-maximum defects detected.
-  - Desktop launchers enable it: `run.conf`'s `JOB_ARGS` and `play_p2` pass
-    `-vkemitparallel 1` (agent decision under the user's standing
+  - Desktop launchers enable it: the portal and portal2 kiln profiles'
+    `job_args` pass `-vkemitparallel 1` (agent decision under the user's standing
     instruction, 2026-09-25). The engine default stays 0, and Android stays
     off until measured on the Fold7. Apple is unmeasured, and no full-product
     TSan run with it on exists. Merged into the shared tree from the worktree

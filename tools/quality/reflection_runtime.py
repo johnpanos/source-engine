@@ -137,8 +137,7 @@ def toolchain(args):
     profile, _ = pbrt_map_toolchain.load_profiles()
     values = pbrt_map_toolchain.load(getattr(args, "toolchain", None) or
                                      ROOT / profile["layout"]["toolchain_file"])
-    return (Path(getattr(args, "build", None) or values["client_build"]),
-            Path(getattr(args, "runtime", None) or values["runtime"]))
+    return pbrt_map_toolchain.boot_target(values, args)
 
 
 # ------------------------------------------------------------------ references
@@ -185,7 +184,7 @@ def station_commands(fixture, camera):
     return commands
 
 
-def capture(fixture, content, cameras, mode, out, build, runtime, setup=(), warm=0):
+def capture(fixture, content, cameras, mode, out, client, setup=(), warm=0):
     """Screenshots of `cameras` in one boot at `mat_reflection_probes mode`,
     after the `setup` commands and `warm` frames: {camera: path} (missing
     cameras are absent)."""
@@ -204,7 +203,7 @@ def capture(fixture, content, cameras, mode, out, build, runtime, setup=(), warm
         SETTLE_FRAMES + GAP_FRAMES + SHOT_FRAMES) + 60
     out.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
-        [sys.executable, HERE / "portal_boot.py", "--runtime", runtime, "--build", build,
+        [sys.executable, HERE / "portal_boot.py", *client,
          "--content-root", content, "--renderer", "native-vulkan", "--headless",
          "--map", manifest["map"], "--width", str(CAPTURE_WIDTH),
          "--height", str(CAPTURE_HEIGHT), "--capture-wait", str(frames)] +
@@ -316,7 +315,7 @@ def score_mirror(fixture, camera, shot, mask_bulb=False):
 
 def cmd_mirror(args):
     fixture = load_fixture("mirror-room")
-    build, runtime = toolchain(args)
+    client = toolchain(args)
     map_build = Path(args.map_build or MAPS / "mirror-room")
     manifest = json.loads((fixture["directory"] / fixture["map_manifest"]).read_text())
     out = Path(args.out)
@@ -335,7 +334,7 @@ def cmd_mirror(args):
             boot = {"boot": evidence.get("status"), "reused": True, "mode": mode,
                     "screenshots": len(paths), "out": str(out / name)}
         else:
-            shots, boot = capture(fixture, root, cameras, mode, out / name, build, runtime)
+            shots, boot = capture(fixture, root, cameras, mode, out / name, client)
         views = {camera: score_mirror(fixture, camera, shots[camera]) if camera in shots else
                  {"status": "fail", "failure": "no screenshot"} for camera in cameras}
         ratios = [view["floor_over_wall"] for view in views.values() if "floor_over_wall" in view]
@@ -365,7 +364,7 @@ def cmd_mirror(args):
             failures.append("%s control floor/wall %s is not above %.1f x the blend and the "
                             "limit" % (control, ratio, CONTROL_MARGIN))
     record = {"schema": SCHEMA, "gate": "mirror", "fixture": fixture["name"],
-              "map_build": str(map_build.resolve()), "build": str(build),
+              "map_build": str(map_build.resolve()), "client": client,
               "map_bsp_sha256": sha256(content / "maps" / (manifest["map"] + ".bsp")),
               "limits": {"mirror_ratio_limit": MIRROR_RATIO_LIMIT,
                          "control_margin": CONTROL_MARGIN},
@@ -380,7 +379,7 @@ def cmd_mirror(args):
 
 def cmd_relight(args):
     fixture = load_fixture("mirror-lamp")
-    build, runtime = toolchain(args)
+    client = toolchain(args)
     map_build = Path(args.map_build or MAPS / "mirror-lamp")
     manifest = json.loads((fixture["directory"] / fixture["map_manifest"]).read_text())
     out = Path(args.out)
@@ -398,8 +397,8 @@ def cmd_relight(args):
             boot = {"boot": evidence.get("status"), "reused": True, "setup": list(setup),
                     "screenshots": len(paths), "out": str(out / name)}
         else:
-            shots, boot = capture(fixture, content, cameras, rps.MODE_BLEND, out / name, build,
-                                  runtime, setup=setup, warm=RELIGHT_WARM_FRAMES)
+            shots, boot = capture(fixture, content, cameras, rps.MODE_BLEND, out / name, client,
+                                  setup=setup, warm=RELIGHT_WARM_FRAMES)
             boot["setup"] = list(setup)
         logs = sorted((out / name).glob("**/engine.log"))
         lines = logs[0].read_text(errors="replace").splitlines() if logs else []
@@ -435,7 +434,7 @@ def cmd_relight(args):
                         "limit" % (ratio, CONTROL_MARGIN))
     record = {"schema": SCHEMA, "gate": "relight", "fixture": fixture["name"],
               "producer": args.producer,
-              "map_build": str(map_build.resolve()), "build": str(build),
+              "map_build": str(map_build.resolve()), "client": client,
               "map_bsp_sha256": sha256(content / "maps" / (manifest["map"] + ".bsp")),
               "limits": {"mirror_ratio_limit": MIRROR_RATIO_LIMIT,
                          "control_margin": CONTROL_MARGIN, "bulb_mask": BULB_MASK,
@@ -450,7 +449,7 @@ def cmd_relight(args):
 def cmd_relight_cost(args):
     import frame_pacing
     fixture = load_fixture("mirror-lamp")
-    build, runtime = toolchain(args)
+    client = toolchain(args)
     map_build = Path(args.map_build or MAPS / "mirror-lamp")
     manifest = json.loads((fixture["directory"] / fixture["map_manifest"]).read_text())
     out = Path(args.out)
@@ -472,7 +471,7 @@ def cmd_relight_cost(args):
                      station_commands(fixture, "east") + place +
                      ["wait %d" % RELIGHT_WARM_FRAMES, "rrc0"])
     frames = RELIGHT_WARM_FRAMES + len(marks) * (RELIGHT_COST_FRAMES + 30) + 60
-    run = [sys.executable, HERE / "portal_boot.py", "--runtime", runtime, "--build", build,
+    run = [sys.executable, HERE / "portal_boot.py", *client,
            "--content-root", map_build / "content", "--renderer", "native-vulkan", "--headless",
            "--map", manifest["map"], "--width", "1920", "--height", "1080",
            "--capture-wait", str(gi_runtime.PLACEMENT_FRAMES + frames),
@@ -484,7 +483,7 @@ def cmd_relight_cost(args):
     found = sorted((out / "boot").rglob(stats_name))
     record = {"schema": SCHEMA, "gate": "relight-cost", "producer": args.producer,
               "setup": list(args.setup or []),
-              "build": str(build), "resolution": [1920, 1080],
+              "client": client, "resolution": [1920, 1080],
               "budget_ms": RELIGHT_BUDGET_MS, "booted": boot.returncode == 0}
     if not found:
         record.update(status="fail", error="no frame stats")
@@ -568,7 +567,7 @@ def score_walk_frame(shot, mask):
 
 def cmd_walk(args):
     fixture = load_fixture("two-rooms")
-    build, runtime = toolchain(args)
+    client = toolchain(args)
     map_build = Path(args.map_build or MAPS / "two-rooms")
     manifest = json.loads((fixture["directory"] / fixture["map_manifest"]).read_text())
     out = Path(args.out)
@@ -580,8 +579,7 @@ def cmd_walk(args):
     results = {}
     for name, mode in (("blended", rps.MODE_BLEND | rps.MODE_WEIGHTS),
                        ("nearest", rps.MODE_NEAREST | rps.MODE_WEIGHTS)):
-        shots, boot = capture(fixture, map_build / "content", stations, mode, out / name, build,
-                              runtime)
+        shots, boot = capture(fixture, map_build / "content", stations, mode, out / name, client)
         frames = {camera: score_walk_frame(shots[camera], masks[camera]) if camera in shots
                   else {"failure": "no screenshot"} for camera in stations}
         steps = [frame["max_step"] for frame in frames.values() if frame.get("max_step")
@@ -610,7 +608,7 @@ def cmd_walk(args):
         failures.append("nearest-capture control shows no seam (max step %s)" %
                         nearest["max_step"])
     record = {"schema": SCHEMA, "gate": "walk", "fixture": fixture["name"],
-              "map_build": str(map_build.resolve()), "build": str(build),
+              "map_build": str(map_build.resolve()), "client": client,
               "map_bsp_sha256": sha256(map_build / "content" / "maps" /
                                        (manifest["map"] + ".bsp")),
               "limits": {"walk_step_limit": WALK_STEP_LIMIT,
@@ -639,8 +637,7 @@ def main():
                        ("relight-cost", "the relight's GPU cost on mirror-lamp")):
         c = commands.add_parser(name, help=text)
         c.add_argument("--map-build", type=Path)
-        c.add_argument("--build", type=Path, help="client build (default: the toolchain's)")
-        c.add_argument("--runtime", type=Path)
+        pbrt_map_toolchain.add_client_arguments(c)
         c.add_argument("--toolchain", type=Path)
         c.add_argument("--out", type=Path, required=True)
         c.add_argument("--reuse", action="store_true",

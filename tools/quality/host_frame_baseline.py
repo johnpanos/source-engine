@@ -31,6 +31,9 @@ sys.path.insert(0, str(HERE))
 import host_frame_capture  # noqa: E402
 from conformance_result import Checks  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 ROOT = HERE.parents[1]
 FIXTURE = ROOT / "quality/fixtures/host-frame/testchmb_a_00-v1.json"
 SCHEMA = "host-frame-baseline/v1"
@@ -52,10 +55,10 @@ def load_fixture(manifest_path):
     return manifest, frames
 
 
-def capture(manifest, build, runtime, out, graph_mode):
+def capture(manifest, args, out, graph_mode):
     """Boots the product once and returns (boot returncode, capture path)."""
-    command = [sys.executable, str(HERE / "portal_boot.py"), "--runtime", str(runtime),
-               "--build", str(build), "--out", str(out), "--headless",
+    command = [sys.executable, str(HERE / "portal_boot.py"), *sepipe_loader.boot_arguments(args),
+               "--out", str(out), "--headless",
                "--renderer", manifest["renderer"], "--map", manifest["map"],
                "--engine-arg=-hostframetrace", "--engine-arg=h.t"]
     for startup in manifest["startup_commands"] + ["host_frame_graph %d" % graph_mode]:
@@ -90,7 +93,7 @@ def check(args):
     out.mkdir(parents=True, exist_ok=True)
     summary = {"schema": "host-frame-baseline-check/v1", "fixture": str(args.fixture), "modes": {}}
     for label, mode in (("legacy", 0), ("graph", 1)):
-        code, path = capture(manifest, args.build, args.runtime, out / label, mode)
+        code, path = capture(manifest, args, out / label, mode)
         checks.equal(code, 0, label + ".booted")
         if code != 0 or not path.is_file():
             checks.check(False, label + ".matches-fixture", "no capture at %s" % path)
@@ -112,7 +115,7 @@ def record(args):
         "tolerances": {"ia": 0.0001}, "trace": args.fixture.stem + ".trace.gz"}
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    code, path = capture(manifest, args.build, args.runtime, out / "legacy", 0)
+    code, path = capture(manifest, args, out / "legacy", 0)
     if code != 0 or not path.is_file():
         print("host_frame_baseline: the legacy capture failed (see %s)" % out, file=sys.stderr)
         return 1
@@ -138,8 +141,7 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("check", "record"):
         p = sub.add_parser(name)
-        p.add_argument("--build", type=Path, required=True, help="the installed Portal product")
-        p.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-native")
+        sepipe_loader.add_arguments(p, "portal")
         p.add_argument("--out", type=Path, required=True)
         p.add_argument("--fixture", type=Path, default=FIXTURE)
     args = parser.parse_args(argv)

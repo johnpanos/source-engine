@@ -26,7 +26,10 @@
 #include "product/contracts.h"
 #include "product/profile.h"
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -57,6 +60,7 @@ struct SessionConfig
 	std::filesystem::path outRoot;            // out/
 	std::filesystem::path dependencyRoot;     // dependencies/
 	std::string hostTag;                      // "linux-x86_64", for aliases
+	std::filesystem::path homeDirectory;      // "{home}" in content locator defaults
 	std::optional<std::string> workspaceText; // .kiln/local.json, read by the caller
 	std::string workspaceFile = ".kiln/local.json";
 };
@@ -89,6 +93,10 @@ struct PipelineRequest
 	product::StageRole upTo = product::StageRole::kEngine;
 	std::optional<std::string> device;  // a workspace device, for deploy and run
 	std::vector<std::string> arguments; // appended to the launch arguments
+	std::vector<std::string> mountSets; // content.mount_sets to package
+	// Package into this directory instead of the tree's own (a harness's
+	// private runtime); the same packager and steps.
+	std::optional<std::filesystem::path> runtime;
 	const product::ICancellation *cancel = nullptr;
 };
 
@@ -112,6 +120,77 @@ struct DoctorResult
 	product::DoctorReport report;
 };
 
+// `kiln play`, `kiln run`: what to launch. Switches are the profile's named
+// launch switches, in the order given; `arguments` is the `--` tail.
+struct PlayRequest
+{
+	std::string profile;
+	std::optional<std::string> flavor;
+	std::optional<std::string> map;
+	std::vector<std::string> switches;
+	std::vector<std::string> arguments;
+	std::optional<std::string> device;
+	std::vector<std::string> mountSets;
+	std::optional<std::string> displaySession; // overrides launch.display_session
+	// Launch from (and, for play, package into) this directory instead of
+	// the tree's own runtime.
+	std::optional<std::filesystem::path> runtime;
+	// The program's output and errors (a peer's go to "<log>.<peer>");
+	// inherited when unset.
+	std::optional<std::filesystem::path> log;
+	// The display session's mode (an isolated compositor's monitor);
+	// the provider's default when unset.
+	struct DisplayMode
+	{
+		int width = 1920;
+		int height = 1080;
+		double refreshHz = 60.0;
+	};
+	std::optional<DisplayMode> displayMode;
+	// A harness's own test command: these arguments follow the profile's
+	// executable in place of launch.arguments (no switches, map or peers).
+	// The profile still owns the program, working directory, environment,
+	// display session and run provider.
+	std::optional<std::vector<std::string>> exactArguments;
+	// Variables applied after the profile's (a test sandbox's HOME, trace
+	// paths); an unset value removes the variable.
+	std::vector<platform::ToolProcessEnvironmentOverride> environment;
+	// Programs that wrap the game inside the display session (a capture tool).
+	std::vector<std::string> wrapper;
+	// Called as each program starts: its launch name ("game", or a peer's)
+	// and process id (the run provider's process; a display session's
+	// wrapper, when it has one).
+	std::function<void( const std::string &, std::int64_t )> started;
+	const product::ICancellation *cancel = nullptr;
+};
+
+// One resolved launch: the program, its argv (argv[0] is the executable as
+// the profile names it, relative to the working directory), the environment
+// changes and the working directory. An environment value may contain
+// "{inherit}", the variable's inherited value, which the run provider fills.
+struct LaunchPlan
+{
+	std::string profile;
+	std::string flavor;
+	std::filesystem::path tree;
+	std::filesystem::path runtime;
+	std::filesystem::path workingDirectory;
+	std::vector<std::string> argv;
+	std::vector<platform::ToolProcessEnvironmentOverride> environment;
+	std::vector<std::string> switches;
+	std::string displaySession;
+	std::string runProvider;
+	// A multi-process run (launch.peers): each peer's argv, in start order.
+	struct Peer
+	{
+		std::string name;
+		std::vector<std::string> argv;
+	};
+	std::vector<Peer> peers;
+	// launch.facts, the values a run provider reads (ports, logs, timeouts).
+	std::map<std::string, std::string> facts;
+};
+
 class Session
 {
 public:
@@ -131,12 +210,37 @@ public:
 	    const std::string &nameOrAlias );
 	// Runs the profile's stage graph up to request.upTo.
 	[[nodiscard]] foundation::Expected<PipelineResult, Error> Run( const PipelineRequest &request );
+	// The launch a play or run request would make, without building or
+	// starting anything (`kiln play --dry-run`).
+	[[nodiscard]] foundation::Expected<LaunchPlan, Error> PlanLaunch(
+	    const PlayRequest &request ) const;
+	// Runs a planned launch on this host: opens the profile's display session
+	// and hands the launches to its run provider, which starts them through
+	// `spawner` (borrowed for the call). Returns the run's exit status.
+	// What `kiln play` runs before launching: the pipeline through the
+	// package stage for the request's profile, flavor and mount sets.
+	[[nodiscard]] foundation::Expected<PipelineResult, Error> BuildForPlay(
+	    const PlayRequest &request );
+	[[nodiscard]] foundation::Expected<int, Error> Launch(
+	    const PlayRequest &request, platform::IProcessSpawner &spawner ) const;
+	// The profile's launch switches (`kiln switches`).
+	[[nodiscard]] foundation::Expected<std::vector<product::Switch>, Error> Switches(
+	    const std::string &nameOrAlias ) const;
+	// A display session opened by name for a caller that runs its own
+	// programs under it (a harness that wraps a whole session rather than one
+	// launch): the environment and command prefix to apply. CloseDisplay
+	// ends it; the caller closes what it opens.
+	[[nodiscard]] foundation::Expected<product::DisplayEnvironment, Error> OpenDisplay(
+	    const std::string &name, const product::DisplayRequest &request ) const;
+	void CloseDisplay( const std::string &name ) const;
 
 	const SessionConfig &Config() const { return m_Config; }
 
 private:
 	foundation::Expected<std::string, Error> Locate( const std::string &nameOrAlias ) const;
 	foundation::Expected<product::Workspace, Error> LoadWorkspace() const;
+	foundation::Expected<std::map<std::string, std::filesystem::path>, Error> ResolveLocations(
+	    const product::ResolvedProfile &profile ) const;
 
 	const product::ProviderCatalog &m_Catalog;
 	platform::IToolProcessProvider &m_Processes;
@@ -147,10 +251,20 @@ private:
 };
 
 // Results as versioned JSON (`kiln --json`, sepipe).
+// The session configuration of a checkout at `root`: its profile, out and
+// dependency directories, HOME for content-locator defaults, and the
+// workspace file (.kiln/local.json) when present. The kiln app and sepipe
+// both use it.
+[[nodiscard]] SessionConfig DefaultSessionConfig(
+    const std::filesystem::path &root, std::string hostTag );
+
 foundation::json::Value ToJson( const ProfileSummary &summary );
+// `kiln profiles list`: {"schema": kJsonSchema, "profiles": [...]}.
+foundation::json::Value ToJson( const std::vector<ProfileSummary> &profiles );
 foundation::json::Value ToJson( const PipelineResult &result );
 foundation::json::Value ToJson( const DoctorResult &result );
 foundation::json::Value ExplainJson( const product::ResolvedProfile &profile );
+foundation::json::Value ToJson( const LaunchPlan &plan );
 
 } // namespace kiln
 

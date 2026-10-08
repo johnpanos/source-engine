@@ -19,17 +19,16 @@ import subprocess
 import sys
 
 from conformance_result import Checks
-from fizzler_light import generate, ROOT
+from fizzler_light import generate, ROOT, sepipe_loader
 import vmf_map_build
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2")
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2")
+    sepipe_loader.add_arguments(parser, "portal2")
     args = parser.parse_args()
-    out, runtime = args.out.resolve(), args.runtime.resolve()
+    out, runtime = args.out.resolve(), sepipe_loader.packaged_runtime(args.profile, args.flavor)
     out.mkdir(parents=True, exist_ok=True)
     source, content, overlay = generate(out, runtime, door=True)
     name = source.stem
@@ -56,8 +55,8 @@ def main():
                                   "cl_fizzler_core_emission 1", "r_dynamic_occlusion_report 1",
                                   "cl_fizzler_core_emission_report 1", "wait 20", "screenshot",
                                   "wait 10"]
-    command = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"), "--runtime", str(runtime),
-               "--build", str(args.build.resolve()), "--game", "portal2", "--map", name,
+    command = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
+               *sepipe_loader.boot_arguments(args), "--map", name,
                "--content-root", str(content), "--renderer", "native-vulkan", "--require-vulkan",
                "--require-sdl3", "--headless", "--width", "640", "--height", "480",
                "--out", str(out / "capture"), "--capture-wait", "900", "--timeout", "180",
