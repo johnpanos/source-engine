@@ -1972,7 +1972,10 @@
           "pthread/qos.h",
           "sys/syscall.h",
           "sys/mman.h",
-          "sys/stat.h"
+          "sys/stat.h",
+          "signal.h",
+          "sys/user.h",
+          "crt_externs.h"
         ]
       },
       {
@@ -2061,7 +2064,9 @@
           "sys/socket.h",
           "sys/stat.h",
           "sys/wait.h",
-          "fcntl.h"
+          "fcntl.h",
+          "pthread.h",
+          "sched.h"
         ],
         "legacyIncludes": [
           "../../../tier1/module_search_bridge.h"

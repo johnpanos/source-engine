@@ -15,7 +15,10 @@
 
 #include <cstdint>
 #if defined( _MSC_VER )
-#include <intrin.h>
+// The compiler intrinsic, declared as MSVC documents, so this portable header
+// needs no native include.
+extern "C" void *_ReturnAddress( void );
+#pragma intrinsic( _ReturnAddress )
 #endif
 #include <cstdio>
 #include <cstring>
