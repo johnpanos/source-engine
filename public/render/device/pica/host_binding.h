@@ -12,6 +12,8 @@
 #ifndef RENDER_DEVICE_PICA_HOST_BINDING_H
 #define RENDER_DEVICE_PICA_HOST_BINDING_H
 
+#include <cstdint>
+
 namespace render::device
 {
 class IRenderDevice2;
@@ -39,7 +41,7 @@ extern "C" void PicaShaderBackend_BindCorePassRecorder(
 // device's presentation (the WebGPU adapter's canvas). Without one frames
 // are drawn and not shown.
 using PicaShaderBackendPresenter = bool ( * )( void *context,
-    render::device::IRenderDevice2 &device, unsigned int color, unsigned int width,
+    render::device::IRenderDevice2 &device, std::uint64_t color, unsigned int width,
     unsigned int height );
 extern "C" void PicaShaderBackend_BindPresenter( PicaShaderBackendPresenter presenter, void *context );
 

@@ -177,8 +177,11 @@ void Replay::Plan( std::vector<RecordingEncoder *> &encoders )
 		m_Uploads.resize( uploads );
 		m_UploadBuffer = Temporary( uploads, WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst );
 	}
-	m_ConstantAlignment =
+	// Each draw's constants take a whole slot: the block rounded up to the
+	// device's dynamic-offset alignment (which may be smaller than the block).
+	const std::uint64_t alignment =
 	    std::max<std::uint64_t>( m_D.NativeLimits().minUniformBufferOffsetAlignment, 4 );
+	m_ConstantAlignment = ( kMaxDrawConstantBytes + alignment - 1 ) / alignment * alignment;
 	if ( draws )
 	{
 		const std::uint64_t size = draws * m_ConstantAlignment + kMaxDrawConstantBytes;

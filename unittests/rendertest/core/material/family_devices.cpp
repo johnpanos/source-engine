@@ -14,6 +14,8 @@
 #endif
 #if defined( RENDERTEST_FAMILY_D3D12 )
 #include "render/device/d3d12/provider.h"
+#elif defined( RENDERTEST_FAMILY_WEBGPU )
+#include "render/device/webgpu/provider.h"
 #elif !defined( RENDERTEST_FAMILY_GL )
 #include "render/device/vulkan/provider.h"
 #endif
@@ -64,6 +66,17 @@ CaseDevices::CaseDevices( testing::Checks &checks )
 		auto created = d3d12::Create( options );
 		if ( checks.That( created.HasValue(), "device.a-d3d12-device-is-created" ) )
 			entries.push_back( { "d3d12", std::move( created ).Value() } );
+	}
+#elif defined( RENDERTEST_FAMILY_WEBGPU )
+	{
+		// RFC 0029 W4: the WebGPU adapter (native Dawn, tools/render/webgpu_lane.py).
+		namespace webgpu = render::device::webgpu;
+		webgpu::WebGpuAdapterOptions options;
+		options.validation = true;
+		options.validationCounter = &m_WebGpuMessages;
+		auto created = webgpu::Create( options );
+		if ( checks.That( created.HasValue(), "device.a-webgpu-device-is-created" ) )
+			entries.push_back( { "webgpu", std::move( created ).Value() } );
 	}
 #elif !defined( RENDERTEST_FAMILY_GL )
 	{
@@ -229,6 +242,8 @@ int CaseDevices::Finish( testing::Checks &checks )
 	entries.clear();
 #if defined( RENDERTEST_FAMILY_D3D12 )
 	checks.Equal( m_D3d12Messages.load(), std::uint64_t( 0 ), "d3d12.debug-layer.no-messages" );
+#elif defined( RENDERTEST_FAMILY_WEBGPU )
+	checks.Equal( m_WebGpuMessages.load(), std::uint64_t( 0 ), "webgpu.validation.no-messages" );
 #elif !defined( RENDERTEST_FAMILY_GL )
 	if ( m_VulkanLayer )
 		checks.Equal( m_VulkanMessages.load(), std::uint64_t( 0 ), "validation.no-messages" );

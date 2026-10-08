@@ -139,7 +139,7 @@ public:
 	int Width() const { return m_width; }
 	int Height() const { return m_height; }
 	std::size_t Bytes() const { return m_bytes; }
-	std::uint32_t Id() const { return m_texture; } // the device's TextureId value
+	std::uint64_t Id() const { return m_texture; } // the device's TextureId value
 	// The colour usage the renderer keeps current across recordings
 	// (render::device::ResourceUsage), for work recorded in a core section
 	// (core_copies.cpp): read before transitioning, set to where it is left.
@@ -148,7 +148,7 @@ public:
 
 private:
 	friend struct TargetAccess;
-	std::uint32_t m_texture; // TextureId
+	std::uint64_t m_texture; // TextureId (the device's tagged 64-bit value)
 	bool m_target = false;
 	// A target's colour usage (render::device::ResourceUsage): the renderer
 	// keeps it current across recordings.
@@ -157,6 +157,10 @@ private:
 	int m_width;
 	int m_height;
 	std::size_t m_bytes;
+	// What Upload made (off the 3DS a new image of the same shape refills it,
+	// so the id the core holds stays valid).
+	std::uint8_t m_format = 0;
+	int m_levels = 0;
 };
 
 struct Stats
@@ -192,7 +196,7 @@ void SetScreenSize( int width, int height );
 // device's presentation needs (the WebGPU adapter's canvas). Without one the
 // frame is drawn and not shown (headless).
 using Presenter = bool ( * )( void *context, render::device::IRenderDevice2 &device,
-    std::uint32_t color, std::uint32_t width, std::uint32_t height );
+    std::uint64_t color, std::uint32_t width, std::uint32_t height );
 void BindPresenter( Presenter presenter, void *context );
 #endif
 
@@ -245,8 +249,8 @@ bool DeviceBufferOf( const void *ptr, render::device::BufferId &buffer, std::uin
 struct CoreSectionTarget
 {
 	render::device::IRenderDevice2 *device = nullptr;
-	std::uint32_t color = 0; // TextureId values
-	std::uint32_t depth = 0;
+	std::uint64_t color = 0; // TextureId values
+	std::uint64_t depth = 0;
 	std::uint32_t width = 0;
 	std::uint32_t height = 0;
 	// The recording's serial: it rises at every submission, so what the core

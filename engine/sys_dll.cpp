@@ -430,6 +430,10 @@ void Sys_Error_Internal( bool bMinidump, const char *error, va_list argsList )
 	{
 #ifdef _WIN32
 		::MessageBox( NULL, text, "Engine Error", MB_OK | MB_TOPMOST );
+#elif defined( __EMSCRIPTEN__ )
+		// A box from a worker thread has no document to draw in; the page
+		// shows the console, so the error goes there.
+		fprintf( stderr, "Engine Error: %s\n", text );
 #elif defined( USE_SDL )
 		// The error is already logged and the process is about to exit. Show the
 		// box but never block on it indefinitely: a session that cannot render

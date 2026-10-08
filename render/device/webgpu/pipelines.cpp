@@ -633,6 +633,19 @@ DeviceResult<PipelineId> WebGpuDevice::CreatePipeline( const PipelineDesc &desc 
 	PipelineLayout pipelineLayout( wgpuDeviceCreatePipelineLayout( m_Device, &layoutDescriptor ) );
 
 	wgpuDevicePushErrorScope( m_Device, WGPUErrorFilter_Validation );
+	// Every path pops the scope it pushed: an early refusal that left it
+	// pushed would capture (and hide) every later error on the device.
+	struct ScopeGuard
+	{
+		WGPUInstance instance;
+		WGPUDevice device;
+		bool popped = false;
+		~ScopeGuard()
+		{
+			if ( !popped )
+				(void)ScopeClean( instance, device, "refused pipeline" );
+		}
+	} scopeGuard{ m_Instance, m_Device };
 	if ( desc.kind == PipelineKind::kCompute )
 	{
 		if ( !compute )
@@ -757,8 +770,6 @@ DeviceResult<PipelineId> WebGpuDevice::CreatePipeline( const PipelineDesc &desc 
 		descriptor.primitive.cullMode = desc.raster.cull == CullMode::kNone   ? WGPUCullMode_None
 		                                : desc.raster.cull == CullMode::kBack ? WGPUCullMode_Back
 		                                                                      : WGPUCullMode_Front;
-		if ( std::getenv( "SOURCE_EXPERIMENT_NO_CULL" ) )
-			descriptor.primitive.cullMode = WGPUCullMode_None;
 		WGPUDepthStencilState depthStencil = WGPU_DEPTH_STENCIL_STATE_INIT;
 		if ( desc.depthFormat != Format::kUnknown )
 		{
@@ -813,6 +824,7 @@ DeviceResult<PipelineId> WebGpuDevice::CreatePipeline( const PipelineDesc &desc 
 		}
 		record.render.Reset( wgpuDeviceCreateRenderPipeline( m_Device, &descriptor ) );
 	}
+	scopeGuard.popped = true;
 	if ( !ScopeClean( m_Instance, m_Device, "pipeline" ) || ( !record.render && !record.compute ) )
 		return Fail( DeviceStatus::kInternal, op );
 	const PipelineId id{ ++m_NextId };

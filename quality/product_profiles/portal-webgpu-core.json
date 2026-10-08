@@ -9,7 +9,8 @@
     "portal-webgpu-core@linux-x86_64"
   ],
   "configure_options": {
-    "render_backend": "core"
+    "render_backend": "core",
+    "render_core_gl": true
   },
   "launch": {
     "variables": {

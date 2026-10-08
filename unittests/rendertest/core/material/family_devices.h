@@ -46,7 +46,7 @@ class CaseDevices
 public:
 	struct Entry
 	{
-		std::string name; // "vulkan", "gl", "gles" or "d3d12"
+		std::string name; // "vulkan", "gl", "gles", "d3d12" or "webgpu"
 		std::unique_ptr<render::device::IRenderDevice2> device;
 	};
 
@@ -73,6 +73,7 @@ private:
 	std::atomic<std::uint64_t> m_VulkanMessages{ 0 };
 	std::atomic<std::uint64_t> m_GlMessages{ 0 };
 	std::atomic<std::uint64_t> m_D3d12Messages{ 0 };
+	std::atomic<std::uint64_t> m_WebGpuMessages{ 0 };
 	[[maybe_unused]] bool m_VulkanLayer = false;
 	bool m_GlDebug = false;
 	std::map<std::string, Drawn> m_Reference;

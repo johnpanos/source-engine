@@ -1052,7 +1052,7 @@ bool CSourceAppSystemGroup::Create()
 #if defined( LINKED_PICA_BACKEND ) && defined( LINKED_WEBGPU_DEVICE )
 		// RFC 0029: frames on the WebGPU device show on the page's canvas.
 		PicaShaderBackend_BindPresenter(
-		    []( void *, render::device::IRenderDevice2 &device, unsigned int color,
+		    []( void *, render::device::IRenderDevice2 &device, std::uint64_t color,
 		        unsigned int width, unsigned int height )
 		    {
 			    return render::device::webgpu::PresentToCanvas(

@@ -441,7 +441,17 @@ bool Texture::Sampleable() const
 bool Texture::Upload(
     UploadFormat format, int width, int height, int levelCount, const std::uint8_t *const *levels )
 {
+#if !defined( PLATFORM_3DS )
+	// The same shape again (a lightmap page, a font page): refilled in place,
+	// so the core's imports and cached groups keep a live id.
+	const bool refill = m_texture && !m_target && m_width == width && m_height == height &&
+	                    m_levels == levelCount && m_format == std::uint8_t( format );
+	if ( !refill )
+		Release();
+#else
+	const bool refill = false;
 	Release();
+#endif
 	if ( levelCount < 1 || !g_state.initialized )
 		return false;
 	TextureDesc desc;
@@ -453,18 +463,21 @@ bool Texture::Upload(
 	desc.height = std::uint32_t( height );
 	desc.mipLevels = std::uint32_t( levelCount );
 	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
-	auto texture = Device().CreateTexture( desc );
+	auto texture =
+	    refill ? DeviceResult<TextureId>( TextureId{ m_texture } ) : Device().CreateTexture( desc );
 	if ( !texture )
 		return false;
 	auto encoder = Device().BeginEncoder( QueueKind::kGraphics );
 	if ( !encoder )
 	{
-		(void)Device().Release( texture.Value(), {} );
+		if ( !refill )
+			(void)Device().Release( texture.Value(), {} );
 		return false;
 	}
 	CommandEncoder &e = encoder.Value();
-	e.TransitionTexture(
-	    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.TransitionTexture( texture.Value(),
+	    refill ? ResourceUsage::kSampled : ResourceUsage::kUndefined,
+	    ResourceUsage::kCopyDestination );
 	std::vector<BufferId> staging;
 	std::size_t total = 0;
 	for ( int level = 0; level < levelCount; ++level )
@@ -492,13 +505,20 @@ bool Texture::Upload(
 		(void)Device().Release( buffer, token ? token.Value() : CompletionToken{} );
 	if ( !token || staging.size() != std::size_t( levelCount ) )
 	{
-		(void)Device().Release( texture.Value(), {} );
+		if ( refill )
+			Release();
+		else
+			(void)Device().Release( texture.Value(), {} );
 		return false;
 	}
+	if ( refill )
+		return true; // same id, same bytes
 	m_texture = texture.Value().value;
 	m_width = width;
 	m_height = height;
 	m_bytes = total;
+	m_format = std::uint8_t( format );
+	m_levels = levelCount;
 	g_state.textureBytes += total;
 	return true;
 }
@@ -729,9 +749,8 @@ void EndFrame()
 	(void)pc::PresentTopScreen( Device(), g_state.color, kScreenWidth, kScreenHeight );
 #else
 	if ( g_state.presenter )
-		(void)g_state.presenter( g_state.presenterContext, Device(),
-		    std::uint32_t( g_state.color.value ), std::uint32_t( kScreenWidth ),
-		    std::uint32_t( kScreenHeight ) );
+		(void)g_state.presenter( g_state.presenterContext, Device(), g_state.color.value,
+		    std::uint32_t( kScreenWidth ), std::uint32_t( kScreenHeight ) );
 #endif
 	g_state.inFrame = false;
 }
@@ -767,8 +786,6 @@ void Clear( bool color, bool depth, std::uint32_t rgba )
 		BeginFrame();
 	if ( ( !color && !depth ) || g_state.dropTargetDraws )
 		return;
-	if ( std::getenv( "SOURCE_EXPERIMENT_NO_CLEAR" ) && !g_state.target )
-		color = false;
 	// A new pass that clears; the viewport's region is the whole target, as
 	// the legacy renderer's clear was.
 	BeginPass( color, depth, rgba );
@@ -902,9 +919,8 @@ render::device::CommandEncoder *BeginCoreSection( CoreSectionTarget &target )
 	g_state.rendering = false;
 	const Target current = Current();
 	target.device = g_state.device;
-	target.color = std::uint32_t( current.color.value );
-	target.depth =
-	    std::uint32_t( current.depth ? current.depth->id.value : g_state.depth.value );
+	target.color = current.color.value;
+	target.depth = current.depth ? current.depth->id.value : g_state.depth.value;
 	target.width = current.width;
 	target.height = current.height;
 	target.serial = g_state.recording;

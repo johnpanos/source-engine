@@ -75,6 +75,10 @@ ThreadResult ApplyPriority( ThreadPriority priority )
 	                                                            : QOS_CLASS_DEFAULT;
 	return pthread_set_qos_class_self_np( qos, 0 ) == 0 ? ThreadResult::kOk
 	                                                    : ThreadResult::kUnsupported;
+#elif defined( __EMSCRIPTEN__ )
+	// The browser schedules its workers; there is no per-thread priority.
+	(void)priority;
+	return ThreadResult::kUnsupported;
 #else
 	// Linux and Android give each thread its own nice value. Raising priority
 	// needs privilege the process may not have; that is kUnsupported, never

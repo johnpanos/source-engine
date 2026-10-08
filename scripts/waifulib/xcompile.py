@@ -13,7 +13,7 @@
 
 try: from fwgslib import get_flags_by_compiler
 except: from waflib.extras.fwgslib import get_flags_by_compiler
-from waflib import Logs, TaskGen
+from waflib import Logs, TaskGen, Utils
 from waflib.Tools import c_config
 from collections import OrderedDict
 import os
@@ -694,6 +694,7 @@ def add_emscripten_wasm_output(self):
 		wasm = js.change_ext('.wasm')
 		self.link_task.outputs.append(wasm)
 		install = getattr(self, 'install_task', None)
-		if install and wasm not in install.inputs:
-			install.inputs.append(wasm)
+		if install:
+			self.add_install_files(install_to=install.install_to, install_from=wasm,
+				chmod=Utils.O644)
 

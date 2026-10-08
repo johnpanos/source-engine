@@ -626,7 +626,13 @@ unsigned int LevelHash( const CUtlVector<unsigned char> &level )
 void UploadTexture( PicaTexture &texture )
 {
 	texture.dirty = false;
+#if defined( PLATFORM_3DS )
 	texture.gpu.Release();
+#else
+	// Upload refills an image of the same shape in place (the core keeps its id).
+	if ( texture.cube )
+		texture.gpu.Release();
+#endif
 	if ( texture.cube )
 	{
 		const std::uint8_t *faces[6];
@@ -2383,14 +2389,6 @@ public:
 		target.foliageAvailable =
 			g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_AVAILABLE ) > 0.0f;
 		DecorateCoreTarget( target );
-		if ( getenv( "SOURCE_PICA_LOG_SLOTS" ) )
-		{
-			static int s_logged = 0;
-			if ( s_logged++ < 20000 )
-				printf( "pica: slot %08x color %u depth %u %ux%u frame %llu\n", tag,
-					unsigned( section.color ), unsigned( section.depth ), section.width,
-					section.height, (unsigned long long)section.serial );
-		}
 		g_CorePassRecorder->RecordSlot( tag, *encoder, target );
 		pica::EndCoreSection();
 	}
