@@ -124,6 +124,7 @@ projects={
 		'platform',
 		'product',
 		'product/kiln',
+		'unittests/kilntest',
 	],
 	'tests': [
 		'foundation',

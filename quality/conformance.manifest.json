@@ -20639,13 +20639,13 @@
       "profile": "linux-headless-core",
       "description": "RFC 0027 L0 (RFC/0027-progress.md): foundation.json; product.profile schema v2 with the extends merge equal to the retired profile_extends.py's rule (kiln_gate.py parity keeps an independent reference), provenance, aliases, flavors and derived Waf arguments, and its seeded faults refused by name (extends cycle, unknown key, unknown provider, missing pin, three conflicting configure options, workspace values that would change a build fact); the shared suites of ITargetToolchain (linux-gcc, linux-clang, the fixture host), IRecipeBuilder (fake), IProductStage (fixture stages; waf-engine descriptor and cancellation), IPackager, IDeployTransport and IDisplaySession, each rejecting its deliberately bad providers by the clause they break (25 bad providers); the ProviderCatalog; and the fixture platform run build -> content -> package -> deploy -> run through an unchanged kiln.core, with an unchanged second run rebuilding and resending nothing, a missing capability refused before the device is touched, and an undeclared read failing the run with nothing published.",
       "command": [
-        "out/host-tests/unittests/kilntest/kilntest"
+        "out/host-linux-x86_64/unittests/kilntest/kilntest"
       ],
       "result_protocol": "checks-v1",
       "min_checks": 140,
       "timeout_seconds": 300,
       "requires": [
-        "path:out/host-tests/unittests/kilntest/kilntest"
+        "path:out/host-linux-x86_64/unittests/kilntest/kilntest"
       ],
       "sources": [
         "foundation/json.cpp",

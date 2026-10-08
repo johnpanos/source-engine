@@ -95,10 +95,9 @@ void TestFamiliesFromMapping( testing::Checks &checks )
 	std::vector<std::string> names;
 	for ( const FamilyDesc &family : families )
 		names.push_back( family.name );
-	checks.That(
-	    names == std::vector<std::string>{ "lightmapped", "vertexlit", "unlit", "decal-modulate",
-	                 "modulate", "cable", "pbr", "water", "refract", "depth", "portal-mask",
-	                 "energy" },
+	checks.That( names == std::vector<std::string>{ "lightmapped", "vertexlit", "unlit",
+	                          "decal-modulate", "modulate", "teeth", "eyes", "cable", "pbr",
+	                          "water", "refract", "depth", "portal-mask", "energy" },
 	    "F1.the-mapping-defines-the-core-families-in-order" );
 	FamilyRegistry registry;
 	bool registered = true;
@@ -128,13 +127,22 @@ void TestFamiliesFromMapping( testing::Checks &checks )
 		parameters += family.parameters.size();
 	checks.That( rowsAreParameters && parameters == gpuRows, "F2.the-schema-is-the-key-rows" );
 	const FamilySchema *pbr = registry.Find( "pbr" );
+	// RFC 0007's parameters lead the family's schema in their order; the
+	// family's own extensions (tints, transforms, parallax) follow them.
 	std::size_t pbrGpu = 0;
+	bool pbrLeads = pbr != nullptr;
 	for ( const render::pbr::MaterialParameterSpec &spec : render::pbr::kMaterialParameters )
 	{
-		if ( spec.kind != render::pbr::ParameterKind::kMaterialReference )
-			++pbrGpu;
+		if ( spec.kind == render::pbr::ParameterKind::kMaterialReference )
+			continue;
+		std::string_view name = spec.name;
+		if ( !name.empty() && name.front() == '$' )
+			name.remove_prefix( 1 );
+		pbrLeads = pbrLeads && pbrGpu < pbr->desc.parameters.size() &&
+		           pbr->desc.parameters[pbrGpu].name == name;
+		++pbrGpu;
 	}
-	checks.That( pbr && pbr->desc.parameters.size() == pbrGpu && pbr->IndexOf( "mraotexture" ) &&
+	checks.That( pbrLeads && pbr->IndexOf( "mraotexture" ) &&
 	                 pbr->IndexOf( "clearcoatroughness" ),
 	    "F2.pbr-parameters-are-rfc-0007-s-schema" );
 	const FamilySchema *lit = registry.Find( "lightmapped" );

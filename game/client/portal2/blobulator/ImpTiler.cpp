@@ -458,9 +458,13 @@ int ImpTiler::EdgeVertex(
 	Vector vecGrad, vecColor, vecTangent;
 	EvaluateAt( pParticles, nParticles, vert.pos, &flWeight, &vecGrad, &vecColor, &vecTangent );
 
-	// The field falls off outwards: the normal is -grad f.
-	vert.normal = -vecGrad;
-	if ( VectorNormalize( vert.normal ) <= 0.0f )
+	// The field falls off outwards: the normal is -grad f. Normalized exactly:
+	// VectorNormalize divides by length + FLT_EPSILON, which retail's soft
+	// kernel's small gradients make visible (unit length off by 2e-5).
+	float flGradLength = vecGrad.Length();
+	if ( flGradLength > 0.0f )
+		vert.normal = vecGrad * ( -1.0f / flGradLength );
+	else
 		vert.normal.Init( 0.0f, 0.0f, 1.0f );
 
 	vert.color = ( flWeight > 0.0f ) ? vecColor * ( 1.0f / flWeight ) : Vector( 1.0f, 1.0f, 1.0f );
