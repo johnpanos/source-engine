@@ -15,7 +15,6 @@
 
 DEFINE_FALLBACK_SHADER( UnlitTwoTexture, UnlitTwoTexture_DX9 )
 
-extern ConVar r_flashlight_version2;
 
 BEGIN_VS_SHADER( UnlitTwoTexture_DX9, "Help for UnlitTwoTexture_DX9" )
 			  
@@ -121,14 +120,6 @@ BEGIN_VS_SHADER( UnlitTwoTexture_DX9, "Help for UnlitTwoTexture_DX9" )
 			{
 				bDrawStandardPass = false;
 			}
-		}
-
-		// Skip flashlight pass for unlit stuff
-		bool bNewFlashlightPath = false || ( r_flashlight_version2.GetInt() != 0 );
-		if ( bDrawStandardPass && ( pShaderShadow == NULL ) && ( pShaderAPI != NULL ) &&
-			!bNewFlashlightPath && ( pShaderAPI->InFlashlightMode() ) ) // not snapshotting && flashlight pass)
-		{
-			bDrawStandardPass = false;
 		}
 
 		// Standard rendering pass
