@@ -88,28 +88,16 @@ public:
 
 
 
-	void SetVertexShaderTextureScale( int vertexReg, int scaleVar );
  	void SetVertexShaderTextureTransform( int vertexReg, int transformVar );
 	void SetVertexShaderTextureScaledTransform( int vertexReg, 
 											int transformVar, int scaleVar );
 
  	void SetPixelShaderTextureTransform( int pixelReg, int transformVar );
 
-	// Moves a matrix into vertex shader constants 
-	void SetVertexShaderMatrix2x4( int vertexReg, int matrixVar );
-	void SetVertexShaderMatrix3x4( int vertexReg, int matrixVar );
 
-	// Loads the view matrix into vertex shader constants
-	void LoadViewMatrixIntoVertexShaderConstant( int vertexReg );
 
-	// Loads the projection matrix into vertex shader constants
-	void LoadProjectionMatrixIntoVertexShaderConstant( int vertexReg );
 
-	// Loads the model->view matrix into vertex shader constants
-	void LoadModelViewMatrixIntoVertexShaderConstant( int vertexReg );
 
-	// Loads a scale/offset version of the viewport transform into the specified constant.
-	void LoadViewportTransformScaledIntoVertexShaderConstant( int vertexReg );
 
 	// Sets up ambient light cube...
 	void SetAmbientCubeDynamicStateVertexShader( );
@@ -118,11 +106,7 @@ public:
 	// Helpers for dealing with envmaptint
 	void SetEnvMapTintPixelShaderDynamicState( int pixelReg, int tintVar, int alphaVar, bool bConvertFromGammaToLinear = false );
 	
-	// Helper methods for pixel shader overbrighting
-	void EnablePixelShaderOverbright( int reg, bool bEnable, bool bDivideByTwo );
 
-	// Helper for dealing with modulation
-	void SetModulationVertexShaderDynamicState();
 	void SetModulationPixelShaderDynamicState( int modulationVar );
 	void SetModulationPixelShaderDynamicState_LinearColorSpace( int modulationVar );
 	void SetModulationPixelShaderDynamicState_LinearColorSpace_LinearScale( int modulationVar, float flScale );
@@ -155,8 +139,6 @@ public:
 	// Computes the shader index for vertex lit materials
 	int ComputeVertexLitShaderIndex( bool bVertexLitGeneric, bool hasBump, bool hasEnvmap, bool hasVertexColor, bool bHasNormal ) const;
 
-	// Helper for setting up flashlight constants
-	void SetFlashlightVertexShaderConstants( bool bBump, int bumpTransformVar, bool bDetail, int detailScaleVar, bool bSetTextureTransforms );
 
 #if SUPPORT_DX8
 #endif

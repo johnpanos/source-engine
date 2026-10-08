@@ -5337,6 +5337,70 @@ CMatCallQueue *CMaterialSystem::GetRenderCallQueue()
 	return pRenderContext ? pRenderContext->GetCallQueueInternal() : NULL;
 }
 
+// Frozen-path: core plumbing (RFC 0016 K9, R91 migration M2's oracle) - the
+// load-time state the shader library leaves on every material, one sorted
+// JSON line per material, so a changed shader library is judged against the
+// state the engine and the render core read: flags, property flags, vertex
+// format, translucency and every shader parameter's value.
+CON_COMMAND( mat_dump_material_state, "mat_dump_material_state <file>: every loaded material's "
+                                      "load-time state as JSON lines (R91 M2 oracle)" )
+{
+	if ( args.ArgC() < 2 )
+	{
+		Msg( "usage: mat_dump_material_state <file>\n" );
+		return;
+	}
+	CUtlVector<CUtlString> lines;
+	for ( MaterialHandle_t i = g_MaterialSystem.FirstMaterial(); i != g_MaterialSystem.InvalidMaterial();
+	      i = g_MaterialSystem.NextMaterial( i ) )
+	{
+		IMaterialInternal *material = g_MaterialSystem.GetMaterialInternal( i );
+		if ( !material || !material->IsRealTimeVersion() )
+			continue;
+		unsigned int flags = 0;
+		for ( int bit = 0; bit < 32; ++bit )
+			if ( material->GetMaterialVarFlag( MaterialVarFlags_t( 1u << bit ) ) )
+				flags |= 1u << bit;
+		CUtlString line;
+		line.Format( "{\"name\":\"%s\",\"shader\":\"%s\",\"flags\":%u,\"lightmap\":%d,"
+		             "\"bumped\":%d,\"vertex_format\":\"%llx\",\"translucent\":%d,"
+		             "\"alpha_tested\":%d,\"vertex_lit\":%d,\"two_sided\":%d,"
+		             "\"tangent_space\":%d,\"full_frame\":%d,\"env_cubemap\":%d,\"params\":{",
+		    material->GetName(), material->GetShaderName(), flags,
+		    material->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_LIGHTMAP ) ? 1 : 0,
+		    material->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_BUMPED_LIGHTMAPS ) ? 1 : 0,
+		    (unsigned long long)material->GetVertexFormat(), material->IsTranslucent() ? 1 : 0,
+		    material->IsAlphaTested() ? 1 : 0, material->IsVertexLit() ? 1 : 0,
+		    material->IsTwoSided() ? 1 : 0, material->NeedsTangentSpace() ? 1 : 0,
+		    material->NeedsFullFrameBufferTexture( false ) ? 1 : 0,
+		    material->UsesEnvCubemap() ? 1 : 0 );
+		IMaterialVar **params = material->GetShaderParams();
+		const int count = material->ShaderParamCount();
+		for ( int p = 0; params && p < count; ++p )
+		{
+			CUtlString value( params[p]->GetStringValue() );
+			value = value.Replace( "\\", "/" );
+			value = value.Replace( "\"", "'" );
+			CUtlString item;
+			item.Format( "%s\"%s\":\"%s\"", p ? "," : "", params[p]->GetName(), value.Get() );
+			line += item;
+		}
+		line += "}}";
+		lines.AddToTail( line );
+	}
+	lines.Sort( []( const CUtlString *a, const CUtlString *b ) { return V_strcmp( a->Get(), b->Get() ); } );
+	FileHandle_t file = g_pFullFileSystem->Open( args.Arg( 1 ), "wt" );
+	if ( !file )
+	{
+		Warning( "mat_dump_material_state: cannot write %s\n", args.Arg( 1 ) );
+		return;
+	}
+	for ( int l = 0; l < lines.Count(); ++l )
+		g_pFullFileSystem->FPrintf( file, "%s\n", lines[l].Get() );
+	g_pFullFileSystem->Close( file );
+	Msg( "mat_dump_material_state: %d materials -> %s\n", lines.Count(), args.Arg( 1 ) );
+}
+
 void CMaterialSystem::UnbindMaterial( IMaterial *pMaterial )
 {
 	Assert( (pMaterial == NULL) || ((IMaterialInternal *)pMaterial)->IsRealTimeVersion() );

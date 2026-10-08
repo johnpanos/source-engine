@@ -256,35 +256,6 @@ BEGIN_VS_SHADER( color_projection, "Help for deferred color correction" )
 			SET_STATIC_PIXEL_SHADER( color_projection_ps20 );
 		}
 
-		DYNAMIC_STATE
-		{
-			pShaderAPI->SetDefaultState();
-
-			BindTexture( SHADER_SAMPLER4, FRAME_TEXTURE, -1 );
-
-			int nIndex = mat_color_projection->GetInt() - 1;
-			if ( nIndex < 0 || nIndex >= MAX_PROJECTIONS )
-			{
-				nIndex = 0;
-			}
-
-			Vector4D vCorrectionParms;
-
-			vCorrectionParms.x = ProjectionInfo[ nIndex ].m_flCPU;
-			vCorrectionParms.y = ProjectionInfo[ nIndex ].m_flCPV;
-			vCorrectionParms.z = ProjectionInfo[ nIndex ].m_flAM;
-			vCorrectionParms.w = ProjectionInfo[ nIndex ].m_flAYI;
-			pShaderAPI->SetPixelShaderConstant( 1, vCorrectionParms.Base() );
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( color_projection_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( color_projection_vs20 );
-
-			DECLARE_DYNAMIC_PIXEL_SHADER( color_projection_ps20 );
-			SET_DYNAMIC_PIXEL_SHADER_COMBO( NEED_BLINDMK, ProjectionInfo[ nIndex ].m_bNeedBlindMK );
-			SET_DYNAMIC_PIXEL_SHADER_COMBO( NEED_MONOCHROME, ProjectionInfo[ nIndex ].m_bNeedMonochrome );
-			SET_DYNAMIC_PIXEL_SHADER_COMBO( NEED_ANOMYLIZE, ProjectionInfo[ nIndex ].m_bNeedAnomylize );
-			SET_DYNAMIC_PIXEL_SHADER( color_projection_ps20 );
-		}
 		Draw();
 	}
 END_SHADER

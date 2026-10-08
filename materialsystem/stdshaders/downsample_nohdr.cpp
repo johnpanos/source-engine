@@ -81,53 +81,6 @@ BEGIN_VS_SHADER_FLAGS( Downsample_nohdr, "Help for Downsample_nohdr", SHADER_NOT
 			}
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, -1 );
-
-			int width, height;
-			pShaderAPI->GetBackBufferDimensions( width, height );
-
-			float v[4][4];
-			float dX = 1.0f/width;
-			float dY = 1.0f/height;
-
-			v[0][0] = .5*dX;
-			v[0][1] = .5*dY;
-			v[1][0] = 2.5*dX;
-			v[1][1] = .5*dY;
-			v[2][0] = .5*dX;
-			v[2][1] = 2.5*dY;
-			v[3][0] = 2.5*dX;
-			v[3][1] = 2.5*dY;
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, &v[0][0], 4 );
-
-			pShaderAPI->SetVertexShaderIndex( 0 );
-
-			float flPixelShaderParams[4] = { r_bloomtintr.GetFloat(),
-											 r_bloomtintg.GetFloat(),
-											 r_bloomtintb.GetFloat(),
-											 r_bloomtintexponent.GetFloat() };
-			if ( params[ BLOOMTINTENABLE ]->GetIntValue() == 0 )
-			{
-				flPixelShaderParams[0] = 0.333f;
-				flPixelShaderParams[1] = 0.333f;
-				flPixelShaderParams[2] = 0.333f;
-				flPixelShaderParams[3] = 1.0f;
-			}
-			pShaderAPI->SetPixelShaderConstant( 0, flPixelShaderParams, 1 );
-						
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( downsample_nohdr_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER( downsample_nohdr_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( downsample_nohdr_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( downsample_nohdr_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

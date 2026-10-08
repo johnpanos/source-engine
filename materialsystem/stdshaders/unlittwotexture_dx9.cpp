@@ -209,49 +209,6 @@ BEGIN_VS_SHADER( UnlitTwoTexture_DX9, "Help for UnlitTwoTexture_DX9" )
 
 				pShaderShadow->EnableAlphaWrites( bFullyOpaque );
 			}
-			DYNAMIC_STATE
-			{
-				BindTexture( SHADER_SAMPLER0, BASETEXTURE, FRAME );
-				BindTexture( SHADER_SAMPLER1, TEXTURE2, FRAME2 );
-				SetVertexShaderTextureTransform( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, BASETEXTURETRANSFORM );
-				SetVertexShaderTextureTransform( VERTEX_SHADER_SHADER_SPECIFIC_CONST_2, TEXTURE2TRANSFORM );
-				SetModulationPixelShaderDynamicState_LinearColorSpace( 1 );
-
-				pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );
-
-				float vEyePos_SpecExponent[4];
-				pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-				vEyePos_SpecExponent[3] = 0.0f;
-				pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-				MaterialFogMode_t fogType = pShaderAPI->GetSceneFogMode();
-				int fogIndex = ( fogType == MATERIAL_FOG_LINEAR_BELOW_FOG_Z ) ? 1 : 0;
-				int numBones = pShaderAPI->GetCurrentNumBones();
-
-				DECLARE_DYNAMIC_VERTEX_SHADER( unlittwotexture_vs20 );
-				SET_DYNAMIC_VERTEX_SHADER_COMBO( SKINNING,  numBones > 0 );
-				SET_DYNAMIC_VERTEX_SHADER_COMBO( DOWATERFOG,  fogIndex );
-				SET_DYNAMIC_VERTEX_SHADER_COMBO( COMPRESSED_VERTS, (int)vertexCompression );
-				SET_DYNAMIC_VERTEX_SHADER( unlittwotexture_vs20 );
-
-				if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-				{
-					DECLARE_DYNAMIC_PIXEL_SHADER( unlittwotexture_ps20b );
-					SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-					SET_DYNAMIC_PIXEL_SHADER_COMBO( WRITE_DEPTH_TO_DESTALPHA, bFullyOpaque && pShaderAPI->ShouldWriteDepthToDestAlpha() );
-					SET_DYNAMIC_PIXEL_SHADER_COMBO(	LIGHTING_PREVIEW, 
-						pShaderAPI->GetIntRenderingParameter(INT_RENDERPARM_ENABLE_FIXED_LIGHTING) );
-					SET_DYNAMIC_PIXEL_SHADER( unlittwotexture_ps20b );
-				}
-				else
-				{
-					DECLARE_DYNAMIC_PIXEL_SHADER( unlittwotexture_ps20 );
-					SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-					SET_DYNAMIC_PIXEL_SHADER_COMBO(	LIGHTING_PREVIEW, 
-						pShaderAPI->GetIntRenderingParameter(INT_RENDERPARM_ENABLE_FIXED_LIGHTING) );
-					SET_DYNAMIC_PIXEL_SHADER( unlittwotexture_ps20 );
-				}
-			}
 			Draw();
 		}
 		else

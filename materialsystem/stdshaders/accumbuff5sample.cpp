@@ -81,30 +81,6 @@ BEGIN_VS_SHADER_FLAGS( accumbuff5sample, "Help for AccumBuff5Sample", SHADER_NOT
 			}			
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, TEXTURE0, -1 );
-			BindTexture( SHADER_SAMPLER1, TEXTURE1, -1 );
-			BindTexture( SHADER_SAMPLER2, TEXTURE2, -1 );
-			BindTexture( SHADER_SAMPLER3, TEXTURE3, -1 );
-			BindTexture( SHADER_SAMPLER4, TEXTURE4, -1 );
-
-			SetPixelShaderConstant( 0, WEIGHTS );
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( accumbuff5sample_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER( accumbuff5sample_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( accumbuff5sample_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( accumbuff5sample_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

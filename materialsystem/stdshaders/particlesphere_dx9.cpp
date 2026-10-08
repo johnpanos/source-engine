@@ -114,63 +114,6 @@ BEGIN_VS_SHADER_FLAGS( ParticleSphere_DX9, "Help for BumpmappedEnvMap", SHADER_N
 
 			FogToFogColor();
 		}
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, BUMPMAP );
-
-			if ( params[DEPTHBLEND]->GetIntValue() )
-			{
-				pShaderAPI->BindStandardTexture( SHADER_SAMPLER1, TEXTURE_FRAME_BUFFER_FULL_DEPTH );
-			}
-
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, params[LIGHT_POSITION]->GetVecValue() );
-			
-			// Separate the light color into something that has a max value of 1 and a scale
-			// so the vertex shader can determine if it's going to overflow the color and scale back
-			// if it needs to.
-			//
-			// (It does this by seeing if the intensity*1/distSqr is > 1. If so, then it scales it so
-			// it is equal to 1).
-			const float *f = params[LIGHT_COLOR]->GetVecValue();
-			Vector4D vLightColor( f[0], f[1], f[2], 0.f );
-			float flScale = max( vLightColor.x, max( vLightColor.y, vLightColor.z ) );
-			if ( flScale < 0.01f )
-				flScale = 0.01f;
-
-			Vector4D vScaleVec = { flScale, flScale, flScale, 0.f };
-			vLightColor /= flScale;
-
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_1, vLightColor.Base() );
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_2, vScaleVec.Base() );
-
-			pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );
-
-			float vEyePos_SpecExponent[4];
-			pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-			vEyePos_SpecExponent[3] = 0.0f;
-			pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-			pShaderAPI->SetDepthFeatheringPixelShaderConstant( 0, params[DEPTHBLENDSCALE]->GetFloatValue() );
-
-
-			// Compute the vertex shader index.
-			DECLARE_DYNAMIC_VERTEX_SHADER( particlesphere_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( FOGTYPE, s_pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
-			SET_DYNAMIC_VERTEX_SHADER( particlesphere_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( particlesphere_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-				SET_DYNAMIC_PIXEL_SHADER( particlesphere_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( particlesphere_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-				SET_DYNAMIC_PIXEL_SHADER( particlesphere_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

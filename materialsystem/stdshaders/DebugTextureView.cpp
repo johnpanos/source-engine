@@ -62,43 +62,6 @@ BEGIN_VS_SHADER( DebugTextureView_dx9, "Help for DebugTextureView" )
 			}
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, FRAME );
-			//pShaderAPI->BindStandardTexture( SHADER_SAMPLER1, TEXTURE_LIGHTMAP );
-
-			ITexture *pTexture = params[BASETEXTURE]->GetTextureValue();
-
-			float cPsConst0[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-			if ( ( pTexture->GetImageFormat() == IMAGE_FORMAT_RGBA16161616F ) ||
-				 ( pTexture->GetImageFormat() == IMAGE_FORMAT_RGBA16161616 ) ||
-				 ( pTexture->GetImageFormat() == IMAGE_FORMAT_RGB323232F ) ||
-				 ( pTexture->GetImageFormat() == IMAGE_FORMAT_RGBA32323232F ) )
-			{
-				if ( pTexture->IsCubeMap() )
-					cPsConst0[0] = 1.0f;
-				else
-					cPsConst0[1] = 1.0f;
-			}
-			pShaderAPI->SetPixelShaderConstant( 0, cPsConst0 );
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( debugtextureview_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( COMPRESSED_VERTS, (int)vertexCompression );
-			SET_DYNAMIC_VERTEX_SHADER( debugtextureview_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( debugtextureview_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( ISCUBEMAP, pTexture->IsCubeMap() );
-				SET_DYNAMIC_PIXEL_SHADER( debugtextureview_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( debugtextureview_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( ISCUBEMAP, pTexture->IsCubeMap() );
-				SET_DYNAMIC_PIXEL_SHADER( debugtextureview_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

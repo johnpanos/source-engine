@@ -85,39 +85,6 @@ BEGIN_VS_SHADER( floatcombine_autoexpose, "Help for floatcombine_autoexpose" )
 			}
 		}
 
-		DYNAMIC_STATE
-		{
-			float c0[4]={params[SHARPNESS]->GetFloatValue(),
-						 params[WOODCUT]->GetFloatValue(),
-						 params[BLOOMAMOUNT]->GetFloatValue(),
-						 params[ALPHASHARPENFACTOR]->GetFloatValue()};
-			float c1[4]={params[BLOOMEXPONENT]->GetFloatValue(),
-						 params[VIGNETTE_MIN_BRIGHT]->GetFloatValue(),
-						 params[VIGNETTE_POWER]->GetFloatValue(),
-						 params[EDGE_SOFTNESS]->GetFloatValue()};
-			float c2[4]={params[AUTOEXPOSE_MIN]->GetFloatValue(),
-						 params[AUTOEXPOSE_MAX]->GetFloatValue(),
-						 0,0};
-			pShaderAPI->SetPixelShaderConstant( 0, c0, 1 );
-			pShaderAPI->SetPixelShaderConstant( 1, c1, 1 );
-			pShaderAPI->SetPixelShaderConstant( 2, c2, 1 );
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, -1 );
-			BindTexture( SHADER_SAMPLER1, BLOOMTEXTURE, -1 );
-			BindTexture( SHADER_SAMPLER2, EXPOSURE_TEXTURE, -1 );
-			DECLARE_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( floatcombine_autoexpose_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER( floatcombine_autoexpose_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( floatcombine_autoexpose_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( floatcombine_autoexpose_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

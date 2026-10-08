@@ -69,29 +69,6 @@ BEGIN_VS_SHADER_FLAGS( showz, "Help for ShowZ", SHADER_NOT_EDITABLE )
 
 			pShaderShadow->EnableSRGBWrite( true );  // The back buffer is sRGB, we should always set this true!
 		}
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, FRAME );	// Bind shadow depth map
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( showz_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( showz_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( showz_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER( showz_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( showz_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( showz_ps20 );
-			}
-
-			Vector4D C0;
-			C0.x = r_showz_power.GetFloat();
-
-			pShaderAPI->SetPixelShaderConstant( 0, C0.Base(), 1 );
-		}
 		Draw();
 	}
 END_SHADER

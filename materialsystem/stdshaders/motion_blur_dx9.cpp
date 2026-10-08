@@ -76,56 +76,6 @@ BEGIN_VS_SHADER_FLAGS( MotionBlur_dx9, "Motion Blur", SHADER_NOT_EDITABLE )
 			pShaderShadow->EnableAlphaWrites( false );
 		}
 
-		DYNAMIC_STATE
-		{
-			DECLARE_DYNAMIC_VERTEX_SHADER( motion_blur_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( motion_blur_vs20 );
-
-			// Bind textures
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE );
-
-			// Get texture dimensions
-			ITexture *src_texture = params[BASETEXTURE]->GetTextureValue();
-			//int flTextureWidth = src_texture->GetActualWidth();
-			int flTextureHeight = src_texture->GetActualHeight();
-
-			// Percent of screen clamp
-			float vConst[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-			vConst[0] = mat_motion_blur_percent_of_screen_max.GetFloat() / 100.0f;
-			pShaderAPI->SetPixelShaderConstant( 0, vConst, 1 );
-
-			// Set values from material proxy
-			pShaderAPI->SetPixelShaderConstant( 1, params[MOTIONBLURINTERNAL]->GetVecValue(), 1 );
-
-			// Quality based on screen resolution height
-			int nQuality = 1;
-			if ( flTextureHeight >= 1080 ) // 1080p and higher
-				nQuality = 3;
-			else if ( flTextureHeight >= 720 ) // 720p to 1080p
-				nQuality = 2;
-			else // Lower resolution than 720p
-				nQuality = 1;
-
-			if ( fabs( params[MOTIONBLURINTERNAL]->GetVecValue()[0] ) + fabs( params[MOTIONBLURINTERNAL]->GetVecValue()[1] ) +
-				 fabs( params[MOTIONBLURINTERNAL]->GetVecValue()[2] ) + fabs( params[MOTIONBLURINTERNAL]->GetVecValue()[3] ) == 0.0f )
-			{
-				// No motion blur this frame, so force quality to 0
-				nQuality = 0;
-			}
-
-			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( motion_blur_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( QUALITY, nQuality );
-				SET_DYNAMIC_PIXEL_SHADER( motion_blur_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( motion_blur_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( QUALITY, nQuality );
-				SET_DYNAMIC_PIXEL_SHADER( motion_blur_ps20 );
-			}
-		}
 
 		Draw();
 	}

@@ -23,14 +23,16 @@ Each view boots through tools/quality/portal_boot.py on its kiln profile
 
 `run` writes <dir>/census.json (schema legacy-stream-census/v1) and exits 1
 when any view drew from the stream, its core received no mesh draws
-(r_core_world_stats), a boot failed, or with --verify-handoff the handoff
-shadow oracle (-vkcoreshadowverify) found a mismatch; `summarize` prints it.
+(r_core_world_stats) or a boot failed; `summarize` prints it.
+--dump-materials also writes each view's mat_dump_material_state (the
+load-time state of every material) for comparing shader-library changes.
 """
 import argparse
 import collections
 import json
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 
@@ -92,8 +94,6 @@ DRAW = re.compile(r"\[vulkan\]\s+frame draw tgt=(-?\d+) blend=(\d+)\s+verts=\d+ 
 DROPPED = re.compile(r"dropped material draws=(\d+)\s+(\S+) \[(\w+)\]")
 # r_core_world_stats' dynamic line: the mesh draws the core received and refused.
 CORE_DYNAMIC = re.compile(r"r_core_world_stats: dynamic draws (\d+) refused (\d+)")
-# The handoff shadow oracle's summary (-vkcoreshadowverify).
-SHADOW = re.compile(r"COREVERIFY draws (\d+) mismatched (\d+)")
 
 
 def boot(args, name, out):
@@ -113,9 +113,10 @@ def boot(args, name, out):
                     "r_indirect_producer baked"):
         cmd += ["--startup-command", setting]
     # "=" keeps commands such as -attack from reading as options.
-    if args.verify_handoff:
-        cmd.append("--engine-arg=-vkcoreshadowverify")
-    for command in ["wait 120"] + commands + ["wait %d" % SETTLED, "r_core_world_stats"]:
+    tail = ["wait %d" % SETTLED, "r_core_world_stats"]
+    if args.dump_materials:
+        tail.append("mat_dump_material_state census_materials.jsonl")
+    for command in ["wait 120"] + commands + tail:
         cmd.append("--console-command=" + command)
     with open(out / (name + ".log"), "w") as log:
         status = subprocess.run(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT).returncode
@@ -146,23 +147,22 @@ def boot(args, name, out):
     dynamic = CORE_DYNAMIC.findall(log_text) or CORE_DYNAMIC.findall(text)
     record["core_dynamic_draws"] = int(dynamic[-1][0]) if dynamic else None
     record["core_dynamic_refused"] = int(dynamic[-1][1]) if dynamic else None
-    shadow = SHADOW.findall(text)
-    record["handoff_shadow"] = ({"draws": int(shadow[-1][0]), "mismatched": int(shadow[-1][1])}
-                                if shadow else None)
+    if args.dump_materials:
+        game = "portal" if portal1 else "portal2"
+        dumped = out / name / "runtime" / game / "census_materials.jsonl"
+        if dumped.is_file():
+            shutil.copyfile(dumped, out / (name + ".materials.jsonl"))
+        record["materials_dumped"] = dumped.is_file()
     record["zero"] = (status == 0 and bool(settled) and max(settled) == 0 and
-                      bool(record["core_dynamic_draws"]) and
-                      (not args.verify_handoff or
-                       (record["handoff_shadow"] or {}).get("mismatched", 1) == 0))
+                      bool(record["core_dynamic_draws"]))
     return record
 
 
 def line(record):
     draws = record["legacy_stream_draws"]
-    shadow = record.get("handoff_shadow")
-    return "%-16s %-22s boot=%d legacy/frame %s..%s core meshes %s%s captured %s dropped %s" % (
+    return "%-16s %-22s boot=%d legacy/frame %s..%s core meshes %s captured %s dropped %s" % (
         record["view"], record["map"], record["boot_exit"], draws["min"], draws["max"],
         record.get("core_dynamic_draws"),
-        " shadow %d/%d" % (shadow["mismatched"], shadow["draws"]) if shadow else "",
         ", ".join("%s x%d" % kv for kv in list(record["captured_legacy_draws"].items())[:6]) or "-",
         ", ".join(sorted(record["dropped"])) or "-")
 
@@ -193,8 +193,8 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run")
     r.add_argument("--out", type=Path, required=True)
-    r.add_argument("--verify-handoff", action="store_true",
-                   help="run the handoff shadow oracle (-vkcoreshadowverify) in every view")
+    r.add_argument("--dump-materials", action="store_true",
+                   help="write each view's mat_dump_material_state to <out>/<view>.materials.jsonl")
     r.add_argument("--view", action="append", choices=sorted(VIEWS))
     r.add_argument("--timeout", type=int, default=400)
     s = sub.add_parser("summarize")

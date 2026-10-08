@@ -77,58 +77,6 @@ BEGIN_VS_SHADER_FLAGS( BlurFilterY, "Help for BlurFilterY", SHADER_NOT_EDITABLE 
 				EnableAlphaBlending( SHADER_BLEND_ONE, SHADER_BLEND_ONE );
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, -1 );
-
-			// The temp buffer is 1/4 back buffer size
-			ITexture *src_texture = params[BASETEXTURE]->GetTextureValue();
-			int height = src_texture->GetActualWidth();
-			float dY = 1.0f / height;
-//			dY *= 0.4;
-			float v[4];
-
-			// Tap offsets
-			v[0] = 0.0f;
-			v[1] = 1.3366f * dY;
-			v[2] = 0;
-			v[3] = 0;
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, v, 1 );
-			v[0] = 0.0f;
-			v[1] = 3.4295f * dY;
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_1, v, 1 );
-			v[0] = 0.0f;
-			v[1] = 5.4264f * dY;
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_2, v, 1 );
-
-			v[0] = 0.0f;
-			v[1] = 7.4359f * dY;
-			pShaderAPI->SetPixelShaderConstant( 0, v, 1 );
-			v[0] = 0.0f;
-			v[1] = 9.4436f * dY;
-			pShaderAPI->SetPixelShaderConstant( 1, v, 1 );
-			v[0] = 0.0f;
-			v[1] = 11.4401f * dY;
-			pShaderAPI->SetPixelShaderConstant( 2, v, 1 );
-
-			v[0]=v[1]=v[2]=params[BLOOMAMOUNT]->GetFloatValue();
-			
-			pShaderAPI->SetPixelShaderConstant( 3, v, 1 );
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( blurfilter_ps20 );
-			SET_DYNAMIC_VERTEX_SHADER( blurfilter_ps20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( blurfilter_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER( blurfilter_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( blurfilter_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( blurfilter_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

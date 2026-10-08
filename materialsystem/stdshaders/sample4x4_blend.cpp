@@ -73,39 +73,6 @@ BEGIN_VS_SHADER( Sample4x4_Blend, "Help for Sample4x4_Blend" )
 									  SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, -1 );
-			ITexture *src_texture=params[BASETEXTURE]->GetTextureValue();
-
-			int width=src_texture->GetActualWidth();
-			int height=src_texture->GetActualHeight();
-
-			float v[4];
-			float dX = 1.0f / width;
-			float dY = 1.0f / height;
-
-			v[0] = -dX;
-			v[1] = -dY;
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, v, 1 );
-			v[0] = -dX;
-			v[1] = dY;
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_1, v, 1 );
-			v[0] = dX;
-			v[1] = -dY;
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_2, v, 1 );
-			v[0] = dX;
-			v[1] = dY;
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_3, v, 1 );
-
-			pShaderAPI->SetVertexShaderIndex( 0 );
-			pShaderAPI->SetPixelShaderIndex( 0 );
-
-			// store the ALPHA material var into c0
-			v[0] = ALPHA;
-			pShaderAPI->SetPixelShaderConstant( 0, v, 1 );
-			
-		}
 		Draw();
 	}
 END_SHADER

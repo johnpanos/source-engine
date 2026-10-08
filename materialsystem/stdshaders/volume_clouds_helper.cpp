@@ -85,54 +85,5 @@ void DrawVolumeClouds( CBaseVSShader *pShader, IMaterialVar** params, IShaderDyn
 		// !!! We need to turn this back on because EnableAlphaBlending() above disables it!
 		//pShaderShadow->EnableDepthWrites( true );
 	}
-	DYNAMIC_STATE
-	{
-		// Set Vertex Shader Combos
-		DECLARE_DYNAMIC_VERTEX_SHADER( volume_clouds_vs20 );
-		SET_DYNAMIC_VERTEX_SHADER_COMBO( SKINNING, pShaderAPI->GetCurrentNumBones() > 0 );
-		SET_DYNAMIC_VERTEX_SHADER_COMBO( COMPRESSED_VERTS, (int)vertexCompression );
-		SET_DYNAMIC_VERTEX_SHADER( volume_clouds_vs20 );
-
-		// Set Vertex Shader Constants 
-
-		// Time
-		float vPackedVsConst1[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-		float flTime = IS_PARAM_DEFINED( info.m_nTime ) && params[info.m_nTime]->GetFloatValue() > 0.0f ? params[info.m_nTime]->GetFloatValue() : pShaderAPI->CurrentTime();
-		float flRotateSpeed = 0.065f;
-		vPackedVsConst1[0] = flTime * flRotateSpeed * 1.0f;
-		vPackedVsConst1[1] = flTime * flRotateSpeed * 2.0f;
-		vPackedVsConst1[2] = flTime * flRotateSpeed * 4.0f;
-		vPackedVsConst1[0] -= (float)( (int)( vPackedVsConst1[0] / ( 2.0f * 3.14159f ) ) ) * 2.0f * 3.14159f;
-		vPackedVsConst1[1] -= (float)( (int)( vPackedVsConst1[1] / ( 2.0f * 3.14159f ) ) ) * 2.0f * 3.14159f;
-		vPackedVsConst1[2] -= (float)( (int)( vPackedVsConst1[2] / ( 2.0f * 3.14159f ) ) ) * 2.0f * 3.14159f;
-		pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, vPackedVsConst1, 1 );
-
-		// Set Pixel Shader Combos
-		if ( g_pHardwareConfig->SupportsPixelShaders_2_b() && !IsOpenGL() ) // Always send POSIX down the 20 path (rg - why?)
-		{
-			DECLARE_DYNAMIC_PIXEL_SHADER( volume_clouds_ps20b );
-			SET_DYNAMIC_PIXEL_SHADER( volume_clouds_ps20b );
-		}
-		else
-		{
-			DECLARE_DYNAMIC_PIXEL_SHADER( volume_clouds_ps20 );
-			SET_DYNAMIC_PIXEL_SHADER( volume_clouds_ps20 );
-		}
-
-		// Bind textures
-		pShader->BindTexture( SHADER_SAMPLER0, info.m_nTexture1 );
-		pShader->BindTexture( SHADER_SAMPLER1, info.m_nTexture2 );
-		pShader->BindTexture( SHADER_SAMPLER2, info.m_nTexture3 );
-
-		// Set Pixel Shader Constants 
-		float vEyePos[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-		pShaderAPI->GetWorldSpaceCameraPosition( vEyePos );
-		pShaderAPI->SetPixelShaderConstant( 5, vEyePos, 1 );
-
-		float vPackedConst6[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-		vPackedConst6[0] = IS_PARAM_DEFINED( info.m_nRefractAmount ) ? params[info.m_nRefractAmount]->GetFloatValue() : kDefaultRefractAmount;
-		vPackedConst6[1] = vPackedVsConst1[0]; // Time % 1000
-		pShaderAPI->SetPixelShaderConstant( 6, vPackedConst6, 1 );
-	}
 	pShader->Draw();
 }

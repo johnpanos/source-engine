@@ -69,37 +69,6 @@ SHADER_DRAW
 
 		FogToFogColor();
 	}
-	DYNAMIC_STATE
-	{
-		pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );
-
-		float vEyePos_SpecExponent[4];
-		pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-		vEyePos_SpecExponent[3] = 0.0f;
-		pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-		MaterialFogMode_t fogType = pShaderAPI->GetSceneFogMode();
-		int fogIndex = ( fogType == MATERIAL_FOG_LINEAR_BELOW_FOG_Z ) ? 1 : 0;
-
-		DECLARE_DYNAMIC_VERTEX_SHADER( black_vs20 );
-		SET_DYNAMIC_VERTEX_SHADER_COMBO( COMPRESSED_VERTS, (int)vertexCompression );
-		SET_DYNAMIC_VERTEX_SHADER_COMBO( DOWATERFOG, fogIndex );
-		SET_DYNAMIC_VERTEX_SHADER_COMBO( SKINNING, pShaderAPI->GetCurrentNumBones() > 0 );
-		SET_DYNAMIC_VERTEX_SHADER( black_vs20 );
-
-		if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-		{
-			DECLARE_DYNAMIC_PIXEL_SHADER( black_ps20b );
-			SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-			SET_DYNAMIC_PIXEL_SHADER( black_ps20b );
-		}
-		else
-		{
-			DECLARE_DYNAMIC_PIXEL_SHADER( black_ps20 );
-			SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-			SET_DYNAMIC_PIXEL_SHADER( black_ps20 );
-		}
-	}
 	Draw();
 }
 END_SHADER

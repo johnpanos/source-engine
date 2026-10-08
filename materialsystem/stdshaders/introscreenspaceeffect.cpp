@@ -77,28 +77,6 @@ BEGIN_VS_SHADER_FLAGS( IntroScreenSpaceEffect, "Help for IntroScreenSpaceEffect"
 			pShaderShadow->EnableBlending( true );
 			pShaderShadow->BlendFunc( SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE );
 		}
-		DYNAMIC_STATE
-		{
-			pShaderAPI->BindStandardTexture( SHADER_SAMPLER0, TEXTURE_FRAME_BUFFER_FULL_TEXTURE_0 );
-			pShaderAPI->BindStandardTexture( SHADER_SAMPLER1, TEXTURE_FRAME_BUFFER_FULL_TEXTURE_1 );
-			DECLARE_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-
-			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() ) // Posix always goes the ps2b way for this shader, even on "ps20" parts
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( introscreenspaceeffect_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( MODE, params[MODE]->GetIntValue() );
-				SET_DYNAMIC_PIXEL_SHADER( introscreenspaceeffect_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( introscreenspaceeffect_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( MODE, params[MODE]->GetIntValue() );
-				SET_DYNAMIC_PIXEL_SHADER( introscreenspaceeffect_ps20 );
-			}
-
-			SetPixelShaderConstant( 0, ALPHA );
-		}
 		Draw();
 	}
 END_SHADER

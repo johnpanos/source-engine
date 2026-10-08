@@ -77,26 +77,6 @@ BEGIN_VS_SHADER_FLAGS( TreeLeaf, "Help for TreeLeaf", SHADER_NOT_EDITABLE )
 			// The COLOR really decides if we are gamma or linear.  
 			pShaderShadow->EnableSRGBWrite( false );
 		}
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, FRAME );
-
-			// We need the view matrix
-			LoadViewMatrixIntoVertexShaderConstant( VERTEX_SHADER_VIEWMODEL );
-
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, params[ LEAFCENTER ]->GetVecValue() );
-
-			LightState_t lightState;
-			pShaderAPI->GetDX9LightState( &lightState );
-
-			bool bUseStaticControlFlow = g_pHardwareConfig->SupportsStaticControlFlow();
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( treeleaf_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( DYNAMIC_LIGHT, lightState.HasDynamicLight() );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( STATIC_LIGHT, lightState.m_bStaticLightVertex ? 1 : 0 );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( NUM_LIGHTS, bUseStaticControlFlow ? 0 : lightState.m_nNumLights );
-			SET_DYNAMIC_VERTEX_SHADER( treeleaf_vs20 );
-		}
 		Draw( );
 	}
 END_SHADER

@@ -77,42 +77,6 @@ BEGIN_VS_SHADER_FLAGS( floatcombine, "Help for floatcombine", SHADER_NOT_EDITABL
 			}
 		}
 
-		DYNAMIC_STATE
-		{
-			float c0[4]={params[SHARPNESS]->GetFloatValue(),
-						 params[WOODCUT]->GetFloatValue(),
-						 params[BLOOMAMOUNT]->GetFloatValue(),
-						 params[ALPHASHARPENFACTOR]->GetFloatValue()};
-			float c1[4]={params[BLOOMEXPONENT]->GetFloatValue(),
-						 params[VIGNETTE_MIN_BRIGHT]->GetFloatValue(),
-						 params[VIGNETTE_POWER]->GetFloatValue(),
-						 params[EDGE_SOFTNESS]->GetFloatValue()};
-			pShaderAPI->SetPixelShaderConstant( 0, c0, 1 );
-			pShaderAPI->SetPixelShaderConstant( 1, c1, 1 );
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, -1 );
-			BindTexture( SHADER_SAMPLER1, BLOOMTEXTURE, -1 );
-
-			ITexture *base_texture=params[BASETEXTURE]->GetTextureValue();
-			ITexture *bloom_texture=params[BLOOMTEXTURE]->GetTextureValue();
-
-			float v0[4]={ (float)(1.0/base_texture->GetActualWidth()), (float)(1.0/base_texture->GetActualHeight()),
-				      (float)(1.0/bloom_texture->GetActualWidth()), (float)(1.0/bloom_texture->GetActualHeight()) };
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, v0, 1 );
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( floatcombine_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER( floatcombine_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( floatcombine_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( floatcombine_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

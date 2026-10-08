@@ -56,12 +56,6 @@ BEGIN_VS_SHADER_FLAGS( HSV, "Help for HSV", SHADER_NOT_EDITABLE )
 				SET_STATIC_PIXEL_SHADER( hsv_ps20 );
 			}
 		}
-		DYNAMIC_STATE
-		{
-			pShaderAPI->BindStandardTexture( SHADER_SAMPLER0, TEXTURE_FRAME_BUFFER_FULL_TEXTURE_0 );
-			DECLARE_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-		}
 		Draw();
 	}
 END_SHADER

@@ -106,46 +106,6 @@ BEGIN_VS_SHADER_FLAGS( ColorCorrection, "Help for ColorCorrection", SHADER_NOT_E
 				SET_STATIC_PIXEL_SHADER( colorcorrection_ps20 );
 			}
 		}
-		DYNAMIC_STATE
-		{
-			if( params[ USE_FB_TEXTURE ]->GetIntValue() )
-				pShaderAPI->BindStandardTexture( SHADER_SAMPLER0, TEXTURE_FRAME_BUFFER_FULL_TEXTURE_0 );
-			else
-				BindTexture( SHADER_SAMPLER0, INPUT_TEXTURE, -1 );
-
-			for( int i=0;i<params[NUM_LOOKUPS]->GetIntValue();i++ )
-			{
-				pShaderAPI->BindStandardTexture( (Sampler_t)(SHADER_SAMPLER1+i), (StandardTextureId_t)(TEXTURE_COLOR_CORRECTION_VOLUME_0+i) );
-			}
-
-			float default_weight = params[ WEIGHT_DEFAULT ]->GetFloatValue();
-			float weights[4] = { params[ WEIGHT0 ]->GetFloatValue(),
-								 params[ WEIGHT1 ]->GetFloatValue(),
-								 params[ WEIGHT2 ]->GetFloatValue(),
-								 params[ WEIGHT3 ]->GetFloatValue()  };
-
-			pShaderAPI->SetPixelShaderConstant( 0, &default_weight );
-			pShaderAPI->SetPixelShaderConstant( 1, &weights[0] );
-			pShaderAPI->SetPixelShaderConstant( 2, &weights[1] );
-			pShaderAPI->SetPixelShaderConstant( 3, &weights[2] );
-			pShaderAPI->SetPixelShaderConstant( 4, &weights[3] );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( colorcorrection_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( NUM_LOOKUPS, params[ NUM_LOOKUPS ]->GetIntValue() );
-				SET_DYNAMIC_PIXEL_SHADER( colorcorrection_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( colorcorrection_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( NUM_LOOKUPS, params[ NUM_LOOKUPS ]->GetIntValue() );
-				SET_DYNAMIC_PIXEL_SHADER( colorcorrection_ps20 );
-			}
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-		}
 		Draw();
 	}
 END_SHADER

@@ -71,20 +71,6 @@ BEGIN_VS_SHADER_FLAGS( Occlusion_DX9, "Help for Occlusion", SHADER_NOT_EDITABLE 
 			int userDataSize = 0;
 			pShaderShadow->VertexShaderVertexFormat( flags, nTexCoordCount, NULL, userDataSize );
 		}
-		DYNAMIC_STATE
-		{
-			DECLARE_DYNAMIC_VERTEX_SHADER( writez_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( DOWATERFOG, pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( COMPRESSED_VERTS, (int)vertexCompression );
-			SET_DYNAMIC_VERTEX_SHADER( writez_vs20 );
-
-			// No pixel shader on Direct3D, doubles fill rate
-			if ( g_pHardwareConfig->PlatformRequiresNonNullPixelShaders() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( white_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( white_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

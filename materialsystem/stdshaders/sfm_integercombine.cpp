@@ -71,27 +71,6 @@ BEGIN_VS_SHADER_FLAGS( sfm_integercombine_shader, "Help for SFM integer HDR comb
 			}
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, ORIGINALTEXTURE, -1 );
-			BindTexture( SHADER_SAMPLER1, BLURREDTEXTURE, -1 );
-
-			SetPixelShaderConstant( 0, BLOOMAMOUNT );
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( sfm_combine_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( sfm_combine_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( sfm_integercombine_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER( sfm_integercombine_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( sfm_integercombine_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( sfm_integercombine_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

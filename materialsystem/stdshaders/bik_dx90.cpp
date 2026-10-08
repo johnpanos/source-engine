@@ -87,43 +87,6 @@ BEGIN_VS_SHADER( Bik, "Help for Bik" )
 
 //			EnableAlphaBlending( SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
 		}
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, YTEXTURE, FRAME );
-			BindTexture( SHADER_SAMPLER1, CRTEXTURE, FRAME );
-			BindTexture( SHADER_SAMPLER2, CBTEXTURE, FRAME );
-//			BindTexture( SHADER_SAMPLER3, ATEXTURE, FRAME );
-
-			// We need the view matrix
-			LoadViewMatrixIntoVertexShaderConstant( VERTEX_SHADER_VIEWMODEL );
-
-			MaterialFogMode_t fogType = pShaderAPI->GetSceneFogMode();
-			int fogIndex = ( fogType == MATERIAL_FOG_LINEAR_BELOW_FOG_Z ) ? 1 : 0;
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( bik_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( DOWATERFOG,  fogIndex );
-			SET_DYNAMIC_VERTEX_SHADER( bik_vs20 );
-
-			pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );		
-
-			float vEyePos_SpecExponent[4];
-			pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-			vEyePos_SpecExponent[3] = 0.0f;
-			pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( bik_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-				SET_DYNAMIC_PIXEL_SHADER( bik_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( bik_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-				SET_DYNAMIC_PIXEL_SHADER( bik_ps20 );
-			}
-		}
 		Draw( );
 	}
 END_SHADER

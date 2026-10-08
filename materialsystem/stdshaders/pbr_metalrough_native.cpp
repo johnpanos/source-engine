@@ -185,33 +185,6 @@ SHADER_DRAW
 	// that phase it reports "No render states in shader" and loses the map.
 	if ( !supported && !pShaderShadow )
 		return;
-	DYNAMIC_STATE
-	{
-		BindTexture( SHADER_SAMPLER0, BASETEXTURE, FRAME );
-		BindTexture( SHADER_SAMPLER10, MRAOTEXTURE, 0 );
-		if ( normalMap )
-			BindTexture( SHADER_SAMPLER1, BUMPMAP, 0 );
-		if ( emission )
-			BindTexture( SHADER_SAMPLER2, EMISSIONTEXTURE, 0 );
-		if ( envmap )
-			BindTexture( SHADER_SAMPLER3, ENVMAP, 0 );
-		// c0: transmission, IOR, thickness, and 1 for glass.
-		const float glassConstants[4] = { transmission, ior, thickness, glass ? 1.0f : 0.0f };
-		pShaderAPI->SetPixelShaderConstant( 0, glassConstants, 1 );
-		// c2: $emissionscale, $clearcoat, $clearcoatroughness; c3.x: the native
-		// feature flags.
-		const float emissionConstants[4] = { emissionScale, clearCoat, clearCoatRoughness, 0.0f };
-		pShaderAPI->SetPixelShaderConstant( 2, emissionConstants, 1 );
-		const float featureConstants[4] = { static_cast<float>( features ), 0.0f, 0.0f, 0.0f };
-		pShaderAPI->SetPixelShaderConstant( 3, featureConstants, 1 );
-		// Model lighting: the ambient cube and the sorted local lights, as
-		// skin_dx9_helper.cpp commits them. WMSH batches ignore both.
-		LightState_t lightState = { 0, false, false };
-		pShaderAPI->GetDX9LightState( &lightState );
-		pShaderAPI->SetPixelShaderStateAmbientLightCube(
-		    PSREG_AMBIENT_CUBE, !lightState.m_bAmbientLight );
-		pShaderAPI->CommitPixelShaderLighting( PSREG_LIGHT_INFO_ARRAY );
-	}
 	Draw();
 }
 END_SHADER

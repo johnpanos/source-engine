@@ -233,10 +233,6 @@ BEGIN_VS_SHADER( Sprite_DX9,
 
 				SetSpriteCommonShadowState( 0 );
 			}
-			DYNAMIC_STATE
-			{
-				SetSpriteCommonDynamicState( 0 );
-			}
 			Draw();
 			break;
 		case kRenderTransColor:
@@ -250,10 +246,6 @@ BEGIN_VS_SHADER( Sprite_DX9,
 				FogToFogColor();
 
 				SetSpriteCommonShadowState( SHADER_USE_VERTEX_COLOR );
-			}
-			DYNAMIC_STATE
-			{
-				SetSpriteCommonDynamicState( SHADER_USE_VERTEX_COLOR );
 			}
 			Draw();
 			break;
@@ -270,10 +262,6 @@ BEGIN_VS_SHADER( Sprite_DX9,
 
 				SetSpriteCommonShadowState( SHADER_USE_VERTEX_COLOR );
 			}
-			DYNAMIC_STATE
-			{
-				SetSpriteCommonDynamicState( SHADER_USE_VERTEX_COLOR );
-			}
 			Draw();
 			break;
 		case kRenderTransAlpha:
@@ -288,10 +276,6 @@ BEGIN_VS_SHADER( Sprite_DX9,
 
 				SetSpriteCommonShadowState( SHADER_USE_VERTEX_COLOR );
 			}
-			DYNAMIC_STATE
-			{
-				SetSpriteCommonDynamicState( SHADER_USE_VERTEX_COLOR );
-			}
 			Draw();
 			break;
 		case kRenderTransAlphaAdd:
@@ -305,10 +289,6 @@ BEGIN_VS_SHADER( Sprite_DX9,
 
 				SetSpriteCommonShadowState( SHADER_USE_VERTEX_COLOR );
 			}
-			DYNAMIC_STATE
-			{
-				SetSpriteCommonDynamicState( SHADER_USE_VERTEX_COLOR );
-			}
 			Draw();
 
 			SHADOW_STATE
@@ -321,10 +301,6 @@ BEGIN_VS_SHADER( Sprite_DX9,
 				FogToBlack();
 
 				SetSpriteCommonShadowState( SHADER_USE_VERTEX_COLOR );
-			}
-			DYNAMIC_STATE
-			{
-				SetSpriteCommonDynamicState( SHADER_USE_VERTEX_COLOR );
 			}
 			Draw();
 			break;
@@ -345,10 +321,6 @@ BEGIN_VS_SHADER( Sprite_DX9,
 					FogToBlack();
 
 					SetSpriteCommonShadowState( flags );
-				}
-				DYNAMIC_STATE
-				{
-					SetSpriteCommonDynamicState( flags );
 				}
 			}
 			Draw();
@@ -372,111 +344,12 @@ BEGIN_VS_SHADER( Sprite_DX9,
 
 					SetSpriteCommonShadowState( flags );
 				}
-				DYNAMIC_STATE
-				{
-					float frameBlendAlpha = 1.0f - ( flFrame - ( int )flFrame );
-					ITexture *pTexture = params[BASETEXTURE]->GetTextureValue();
-					BindTexture( SHADER_SAMPLER0, pTexture, ( int )flFrame );
-
-					MaterialFogMode_t fogType = s_pShaderAPI->GetSceneFogMode();
-					int fogIndex = ( fogType == MATERIAL_FOG_LINEAR_BELOW_FOG_Z ) ? 1 : 0;
-					DECLARE_DYNAMIC_VERTEX_SHADER( sprite_vs20 );
-					SET_DYNAMIC_VERTEX_SHADER_COMBO( DOWATERFOG,  fogIndex );
-					SET_DYNAMIC_VERTEX_SHADER( sprite_vs20 );
-
-					if( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() ) // Always send GL down this path
-					{
-						DECLARE_DYNAMIC_PIXEL_SHADER( sprite_ps20b );
-						SET_DYNAMIC_PIXEL_SHADER_COMBO( HDRENABLED,  IsHDREnabled() );
-						SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-						SET_DYNAMIC_PIXEL_SHADER( sprite_ps20b );
-					}
-					else
-					{
-						DECLARE_DYNAMIC_PIXEL_SHADER( sprite_ps20 );
-						SET_DYNAMIC_PIXEL_SHADER_COMBO( HDRENABLED,  IsHDREnabled() );
-						SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-						SET_DYNAMIC_PIXEL_SHADER( sprite_ps20 );
-					}
-
-					pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );
-
-					float vEyePos_SpecExponent[4];
-					pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-					vEyePos_SpecExponent[3] = 0.0f;
-					pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-					float color[4];
-					if ( bSRGB )
-						color[0] = color[1] = color[2] = GammaToLinear( flFade * frameBlendAlpha );
-					else
-						color[0] = color[1] = color[2] = flFade * frameBlendAlpha;
-					color[3] = 1.0f;
-					s_pShaderAPI->SetPixelShaderConstant( 0, color );
-					if( IsHDREnabled() )
-					{
-						if ( bSRGB )
-							SetPixelShaderConstantGammaToLinear( 1, HDRCOLORSCALE );
-						else
-							SetPixelShaderConstant( 1, HDRCOLORSCALE );
-					}
-				}
 				Draw();
 				SHADOW_STATE
 				{
 					FogToBlack();
 
 					SetSpriteCommonShadowState( flags );
-				}
-				DYNAMIC_STATE
-				{
-					float frameBlendAlpha = ( flFrame - ( int )flFrame );
-					ITexture *pTexture = params[BASETEXTURE]->GetTextureValue();
-					int numAnimationFrames = pTexture->GetNumAnimationFrames();
-					BindTexture( SHADER_SAMPLER0, pTexture, ( ( int )flFrame + 1 ) % numAnimationFrames );
-
-					MaterialFogMode_t fogType = s_pShaderAPI->GetSceneFogMode();
-					int fogIndex = ( fogType == MATERIAL_FOG_LINEAR_BELOW_FOG_Z ) ? 1 : 0;
-					DECLARE_DYNAMIC_VERTEX_SHADER( sprite_vs20 );
-					SET_DYNAMIC_VERTEX_SHADER_COMBO( DOWATERFOG,  fogIndex );
-					SET_DYNAMIC_VERTEX_SHADER( sprite_vs20 );
-
-					if( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() ) // Always send GL down this path
-					{
-						DECLARE_DYNAMIC_PIXEL_SHADER( sprite_ps20b );
-						SET_DYNAMIC_PIXEL_SHADER_COMBO( HDRENABLED,  IsHDREnabled() );
-						SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-						SET_DYNAMIC_PIXEL_SHADER( sprite_ps20b );
-					}
-					else
-					{
-						DECLARE_DYNAMIC_PIXEL_SHADER( sprite_ps20 );
-						SET_DYNAMIC_PIXEL_SHADER_COMBO( HDRENABLED,  IsHDREnabled() );
-						SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-						SET_DYNAMIC_PIXEL_SHADER( sprite_ps20 );
-					}
-
-					pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );
-
-					float vEyePos_SpecExponent[4];
-					pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-					vEyePos_SpecExponent[3] = 0.0f;
-					pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-					float color[4];
-					if ( bSRGB )
-						color[0] = color[1] = color[2] = GammaToLinear( flFade * frameBlendAlpha );
-					else
-						color[0] = color[1] = color[2] = flFade * frameBlendAlpha;
-					color[3] = 1.0f;
-					s_pShaderAPI->SetPixelShaderConstant( 0, color );
-					if( IsHDREnabled() )
-					{
-						if ( bSRGB )
-							SetPixelShaderConstantGammaToLinear( 1, HDRCOLORSCALE );
-						else
-							SetPixelShaderConstant( 1, HDRCOLORSCALE );
-					}
 				}
 				Draw();
 			}

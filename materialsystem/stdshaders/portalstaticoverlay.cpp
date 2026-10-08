@@ -163,57 +163,6 @@ SHADER_DRAW
 			}
 		}
 	}
-	DYNAMIC_STATE
-	{
-		pShaderAPI->SetDefaultState();
-
-		float fStaticAmount = params[STATICAMOUNT]->GetFloatValue();
-
-		//x is static, y is inverse static
-		float pc0[4] = { fStaticAmount, 1.0f - fStaticAmount, 0.0f, 0.0f };
-		pShaderAPI->SetPixelShaderConstant( 0, pc0 );
-
-		if ( bStaticBlendTexture )
-		{
-			BindTexture( SHADER_SAMPLER0, STATICBLENDTEXTURE, STATICBLENDTEXTUREFRAME );
-			if( bAlphaMaskTexture )
-				BindTexture( SHADER_SAMPLER1, ALPHAMASKTEXTURE, ALPHAMASKTEXTUREFRAME );
-		}
-		else if( bAlphaMaskTexture )
-		{
-			BindTexture( SHADER_SAMPLER0, ALPHAMASKTEXTURE, ALPHAMASKTEXTUREFRAME );
-		}
-
-		pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );
-
-		float vEyePos_SpecExponent[4];
-		pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-		vEyePos_SpecExponent[3] = 0.0f;
-		pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-		DECLARE_DYNAMIC_VERTEX_SHADER( portalstaticoverlay_vs20 );
-		SET_DYNAMIC_VERTEX_SHADER_COMBO( SKINNING, pShaderAPI->GetCurrentNumBones() > 0 );
-		SET_DYNAMIC_VERTEX_SHADER( portalstaticoverlay_vs20 );
-
-		// Avoid setting a pixel shader when only doing depth/stencil operations, as recommended by PIX
-		if( bColorWrites || bAlphaMaskTexture || g_pHardwareConfig->PlatformRequiresNonNullPixelShaders() )
-		{
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( portalstaticoverlay_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( HDRENABLED, IsHDREnabled() );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-				SET_DYNAMIC_PIXEL_SHADER( portalstaticoverlay_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( portalstaticoverlay_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( HDRENABLED, IsHDREnabled() );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-				SET_DYNAMIC_PIXEL_SHADER( portalstaticoverlay_ps20 );
-			}
-		}
-	}
 
 	Draw();
 }

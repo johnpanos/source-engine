@@ -75,29 +75,6 @@ BEGIN_VS_SHADER( hsl_filmgrain_pass1, "Help for Film Grain" )
 			}
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, INPUT, -1 );
-			BindTexture( SHADER_SAMPLER1, GRAIN, -1 );
-
-			SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, SCALEBIAS );
-
-			SetPixelShaderConstant( 0, HSLNOISESCALE );
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( filmgrain_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( filmgrain_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( hsl_filmgrain_pass1_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER( hsl_filmgrain_pass1_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( hsl_filmgrain_pass1_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( hsl_filmgrain_pass1_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

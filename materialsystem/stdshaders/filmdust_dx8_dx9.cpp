@@ -56,17 +56,6 @@ BEGIN_VS_SHADER_FLAGS( FilmDust_dx9, "Help for FilmDust", SHADER_NOT_EDITABLE )
 			DECLARE_STATIC_PIXEL_SHADER( filmdust_ps20 );
 			SET_STATIC_PIXEL_SHADER( filmdust_ps20 );
 		}
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, DUST_TEXTURE, -1 );
-						
-			SetPixelShaderConstant( 0, CHANNEL_SELECT );
-			DECLARE_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-
-			DECLARE_DYNAMIC_PIXEL_SHADER( filmdust_ps20 );
-			SET_DYNAMIC_PIXEL_SHADER( filmdust_ps20 );
-		}
 		Draw();
 	}
 END_SHADER

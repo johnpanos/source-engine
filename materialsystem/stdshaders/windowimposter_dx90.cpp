@@ -72,35 +72,6 @@ BEGIN_VS_SHADER( WindowImposter_DX90,
 			pShaderShadow->EnableDepthWrites( false );
 			FogToFogColor();
 		}
-		DYNAMIC_STATE
-		{
-			DECLARE_DYNAMIC_VERTEX_SHADER( windowimposter_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( DOWATERFOG, pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
-			SET_DYNAMIC_VERTEX_SHADER( windowimposter_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( windowimposter_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-				SET_DYNAMIC_PIXEL_SHADER( windowimposter_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( windowimposter_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-				SET_DYNAMIC_PIXEL_SHADER( windowimposter_ps20 );
-			}
-
-			pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );
-
-			float vEyePos_SpecExponent[4];
-			pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-			vEyePos_SpecExponent[3] = 0.0f;
-			pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-			BindTexture( SHADER_SAMPLER0, ENVMAP, -1 );
-			SetModulationVertexShaderDynamicState();
-		}
 		Draw();
 	}
 

@@ -73,21 +73,6 @@ BEGIN_VS_SHADER( Cloud_dx9, "Help for Cloud" )
 			DefaultFog();
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, FRAME );
-			BindTexture( SHADER_SAMPLER1, CLOUDALPHATEXTURE );
-
-			// Handle scrolling of base texture
-			SetVertexShaderTextureScaledTransform( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, BASETEXTURETRANSFORM, CLOUDSCALE );
-			SetVertexShaderTextureScale( VERTEX_SHADER_SHADER_SPECIFIC_CONST_2, MASKSCALE );
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( cloud_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( cloud_vs20 );
-
-			DECLARE_DYNAMIC_PIXEL_SHADER( cloud_ps20 );
-			SET_DYNAMIC_PIXEL_SHADER( cloud_ps20 );
-		}
 
 		Draw();
 	}

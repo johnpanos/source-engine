@@ -186,50 +186,6 @@ static void DrawCompositorStage_common( CBaseVSShader *pShader, IMaterialVar **p
 		pShaderShadow->SetVertexShader( "compositor_vs20", 0 );
 	}
 
-	DYNAMIC_STATE
-	{
-		pShaderAPI->SetDefaultState();
-
-		pShaderAPI->SetVertexShaderIndex( 0 );
-
-		int textureCount = GetIntParam( info.m_nTextureInputCount, params );
-		int textureCountThisPass = Min( textureCount, info.m_nTexturesPerPass );
-
-		float f4TextureCountThisPass[] = { ( float ) textureCountThisPass, 0.0f, 0.0f, 0.0f };
-		Assert( ARRAYSIZE( f4TextureCountThisPass ) == 4 );
-
-		pShaderAPI->SetPixelShaderConstant( 6, f4TextureCountThisPass );
-
-		if ( textureCountThisPass > 0 ) pShader->BindTexture( SHADER_SAMPLER0, info.m_nSrcTexture[0] );
-		if ( textureCountThisPass > 0 ) pShader->SetVertexShaderMatrix2x4( 2, info.m_nTexTransform[0] );
-
-		if ( nCombineMode == ECO_Select )
-		{
-			static const float cFac = 1.0f / 16.0f;
-
-			float selectors[] =
-			{
-				cFac * GetIntParam( info.m_nSelector[  0 ], params ),
-				cFac * GetIntParam( info.m_nSelector[  1 ], params ),
-				cFac * GetIntParam( info.m_nSelector[  2 ], params ),
-				cFac * GetIntParam( info.m_nSelector[  3 ], params ),
-				cFac * GetIntParam( info.m_nSelector[  4 ], params ),
-				cFac * GetIntParam( info.m_nSelector[  5 ], params ),
-				cFac * GetIntParam( info.m_nSelector[  6 ], params ),
-				cFac * GetIntParam( info.m_nSelector[  7 ], params ),
-				cFac * GetIntParam( info.m_nSelector[  8 ], params ),
-				cFac * GetIntParam( info.m_nSelector[  9 ], params ),
-				cFac * GetIntParam( info.m_nSelector[ 10 ], params ),
-				cFac * GetIntParam( info.m_nSelector[ 11 ], params ),
-				cFac * GetIntParam( info.m_nSelector[ 12 ], params ),
-				cFac * GetIntParam( info.m_nSelector[ 13 ], params ),
-				cFac * GetIntParam( info.m_nSelector[ 14 ], params ),
-				cFac * GetIntParam( info.m_nSelector[ 15 ], params )
-			};
-
-			pShaderAPI->SetPixelShaderConstant( 7, selectors, 4 );
-		}
-	}
 }
 
 // Helper function when using ps20 and performing multiply and add operations.
@@ -256,44 +212,6 @@ static void DrawCompositorStage_ps20_muladdblend( CBaseVSShader *pShader, IMater
 		pShader->Draw();
 	}
 
-	DYNAMIC_STATE
-	{
-		int textureCount = GetIntParam( info.m_nTextureInputCount, params );
-		int textureCountThisPass = Min( textureCount, info.m_nTexturesPerPass );
-		Assert( textureCount > 0 ); // Valid, but would be really weird. 
-		Assert( textureCountThisPass > 0 ); // That's bogus
-
-		if ( textureCountThisPass > 0 ) pShader->SetPixelShaderConstantGammaToLinear( 2, info.m_nTexAdjustLevels[ 0 ] );
-
-		if ( textureCountThisPass > 1 ) pShader->BindTexture( SHADER_SAMPLER1, info.m_nSrcTexture[ 1 ] );
-		if ( textureCountThisPass > 1 ) pShader->SetVertexShaderMatrix2x4( 4, info.m_nTexTransform[ 1 ] );
-		if ( textureCountThisPass > 1 ) pShader->SetPixelShaderConstantGammaToLinear( 3, info.m_nTexAdjustLevels[ 1 ] );
-
-		{
-			DECLARE_DYNAMIC_PIXEL_SHADER( compositor_ps20 );
-			SET_DYNAMIC_PIXEL_SHADER_COMBO( DEBUG_MODE, 0 );
-			SET_DYNAMIC_PIXEL_SHADER( compositor_ps20 );
-		}
-		pShader->Draw();
-
-		textureCountThisPass = Max( 0, textureCount - textureCountThisPass );
-		Assert( textureCountThisPass <= info.m_nTexturesPerPass );
-
-		float f4TextureCountThisPass[] = { (float)textureCountThisPass, 0.0f, 0.0f, 0.0f };
-		Assert( ARRAYSIZE( f4TextureCountThisPass ) == 4 );
-
-		pShaderAPI->SetPixelShaderConstant( 6, f4TextureCountThisPass );
-
-		if ( textureCountThisPass > 0 ) pShader->BindTexture( SHADER_SAMPLER0, info.m_nSrcTexture[ 2 ] );
-		if ( textureCountThisPass > 0 ) pShader->SetVertexShaderMatrix2x4( 2, info.m_nTexTransform[ 2 ] );
-		if ( textureCountThisPass > 0 ) pShader->SetPixelShaderConstantGammaToLinear( 2, info.m_nTexAdjustLevels[ 2 ] );
-
-		if ( textureCountThisPass > 1 ) pShader->BindTexture( SHADER_SAMPLER1, info.m_nSrcTexture[ 3 ] );
-		if ( textureCountThisPass > 1 ) pShader->SetVertexShaderMatrix2x4( 4, info.m_nTexTransform[ 3 ] );
-		if ( textureCountThisPass > 1 ) pShader->SetPixelShaderConstantGammaToLinear( 3, info.m_nTexAdjustLevels[ 3 ] );
-
-		pShader->Draw( textureCountThisPass > 0 );
-	}
 }
 
 // Helper function when using ps20 and performing lerp operations.
@@ -320,29 +238,6 @@ static void DrawCompositorStage_ps20_lerp( CBaseVSShader *pShader, IMaterialVar 
 		pShader->Draw();
 	}
 
-	DYNAMIC_STATE
-	{
-		Assert( GetIntParam( info.m_nTextureInputCount, params ) == 3 );
-
-		pShader->SetPixelShaderConstantGammaToLinear( 2, info.m_nTexAdjustLevels[ 0 ] );
-
-		pShader->BindTexture( SHADER_SAMPLER1, info.m_nSrcTexture[ 2 ] );
-		pShader->SetVertexShaderMatrix2x4( 4, info.m_nTexTransform[ 2 ] );
-		pShader->SetPixelShaderConstantGammaToLinear( 3, info.m_nTexAdjustLevels[ 2 ] );
-
-		{
-			DECLARE_DYNAMIC_PIXEL_SHADER( compositor_ps20 );
-			SET_DYNAMIC_PIXEL_SHADER_COMBO( DEBUG_MODE, 0 );
-			SET_DYNAMIC_PIXEL_SHADER( compositor_ps20 );
-		}
-		pShader->Draw();
-
-		pShader->BindTexture( SHADER_SAMPLER0, info.m_nSrcTexture[ 1 ] );
-		pShader->SetVertexShaderMatrix2x4( 2, info.m_nTexTransform[ 1 ] );
-		pShader->SetPixelShaderConstantGammaToLinear( 2, info.m_nTexAdjustLevels[ 1 ] );
-
-		pShader->Draw();
-	}
 }
 
 // Helper function when using ps20 and performing lerp operations.
@@ -360,18 +255,6 @@ static void DrawCompositorStage_ps20_select( CBaseVSShader *pShader, IMaterialVa
 		pShader->Draw();
 	}
 
-	DYNAMIC_STATE
-	{
-		Assert( GetIntParam( info.m_nTextureInputCount, params ) == 1 );
-
-		pShader->SetPixelShaderConstantGammaToLinear( 2, info.m_nTexAdjustLevels[ 0 ] );
-		{
-			DECLARE_DYNAMIC_PIXEL_SHADER( compositor_ps20 );
-			SET_DYNAMIC_PIXEL_SHADER_COMBO( DEBUG_MODE, 0 );
-			SET_DYNAMIC_PIXEL_SHADER( compositor_ps20 );
-		}
-		pShader->Draw();
-	}
 }
 
 static void DrawCompositorStage_ps20( CBaseVSShader *pShader, IMaterialVar **params, IShaderShadow* pShaderShadow, IShaderDynamicAPI* pShaderAPI, VertexCompressionType_t vertexCompression, const CompositorInfo_t &info )
@@ -419,37 +302,5 @@ static void DrawCompositorStage_ps20b( CBaseVSShader *pShader, IMaterialVar **pa
 		pShader->Draw();
 	}
 
-	DYNAMIC_STATE
-	{
-		int textureCount = GetIntParam( info.m_nTextureInputCount, params );
-		int textureCountThisPass = Min( textureCount, info.m_nTexturesPerPass );
-		Assert( textureCount > 0 ); // Valid, but would be really weird. 
-		Assert( textureCountThisPass > 0 ); // That's bogus
-
-		// Slot 0 is mostly already handled by common 
-		if ( textureCountThisPass > 0 ) pShader->SetPixelShaderConstant( 2, info.m_nTexAdjustLevels[ 0 ] );
-
-		if ( textureCountThisPass > 1 ) pShader->BindTexture( SHADER_SAMPLER1,   info.m_nSrcTexture[ 1 ]  );
-		if ( textureCountThisPass > 1 ) pShader->SetVertexShaderMatrix2x4( 4,  info.m_nTexTransform[ 1 ] );
-		if ( textureCountThisPass > 1 ) pShader->SetPixelShaderConstant( 3, info.m_nTexAdjustLevels[ 1 ] );
-
-		if ( textureCountThisPass > 2 ) pShader->BindTexture( SHADER_SAMPLER2,   info.m_nSrcTexture[ 2 ] );
-		if ( textureCountThisPass > 2 ) pShader->SetVertexShaderMatrix2x4( 6,  info.m_nTexTransform[ 2 ] );
-		if ( textureCountThisPass > 2 ) pShader->SetPixelShaderConstant( 4, info.m_nTexAdjustLevels[ 2 ] );
-
-		if ( textureCountThisPass > 3 ) pShader->BindTexture( SHADER_SAMPLER3,   info.m_nSrcTexture[ 3 ] );
-		if ( textureCountThisPass > 3 ) pShader->SetVertexShaderMatrix2x4( 8,  info.m_nTexTransform[ 3 ] );
-		if ( textureCountThisPass > 3 ) pShader->SetPixelShaderConstant( 5, info.m_nTexAdjustLevels[ 3 ] );
-			
-		DECLARE_DYNAMIC_PIXEL_SHADER( compositor_ps20b );
-		#ifdef STAGING_ONLY
-			SET_DYNAMIC_PIXEL_SHADER_COMBO( DEBUG_MODE, r_texcomp_debug_stickers.GetBool() ? 1 : 0 );
-		#else
-			SET_DYNAMIC_PIXEL_SHADER_COMBO( DEBUG_MODE, 0 );
-		#endif
-		SET_DYNAMIC_PIXEL_SHADER( compositor_ps20b );
-
-		pShader->Draw();
-	}
 }
 

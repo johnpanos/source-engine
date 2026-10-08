@@ -112,46 +112,6 @@ BEGIN_VS_SHADER( Cable_DX9,
 
 			pShaderShadow->EnableAlphaWrites( bFullyOpaque );
 		}
-		DYNAMIC_STATE
-		{
-			bool bLightingOnly = mat_fullbright.GetInt() == 2 && !IS_FLAG_SET( MATERIAL_VAR_NO_DEBUG_OVERRIDE );
-
-			BindTexture( SHADER_SAMPLER0, BUMPMAP );
-			if ( bLightingOnly )
-			{
-				pShaderAPI->BindStandardTexture( SHADER_SAMPLER1, TEXTURE_GREY );
-
-			}
-			else
-			{
-				BindTexture( SHADER_SAMPLER1, BASETEXTURE );			
-			}
-
-			pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );		
-
-			float vEyePos_SpecExponent[4];
-			pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-			vEyePos_SpecExponent[3] = 0.0f;
-			pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-			DECLARE_DYNAMIC_VERTEX_SHADER( cable_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( DOWATERFOG, pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
-			SET_DYNAMIC_VERTEX_SHADER( cable_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( cable_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( WRITE_DEPTH_TO_DESTALPHA, bFullyOpaque && pShaderAPI->ShouldWriteDepthToDestAlpha() );
-				SET_DYNAMIC_PIXEL_SHADER( cable_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( cable_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-				SET_DYNAMIC_PIXEL_SHADER( cable_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

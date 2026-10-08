@@ -77,48 +77,6 @@ BEGIN_VS_SHADER( Sky_DX9, "Help for Sky_DX9 shader" )
 			pShaderShadow->EnableAlphaWrites( true );
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, FRAME );
-			float c1[4]={0,0,0,0};
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, c1);
-
-			float c0[4]={1,1,1,1};
-			if (params[COLOR]->IsDefined())
-			{
-				memcpy(c0,params[COLOR]->GetVecValue(),3*sizeof(float));
-			}
-			ITexture *txtr=params[BASETEXTURE]->GetTextureValue();
-			ImageFormat fmt=txtr->GetImageFormat();
-			if (
-				(fmt==IMAGE_FORMAT_RGBA16161616) ||
-				( (fmt==IMAGE_FORMAT_RGBA16161616F) && 
-				  (g_pHardwareConfig->GetHDRType()==HDR_TYPE_INTEGER))
-				)
-			{
-				c0[0]*=16.0;
-				c0[1]*=16.0;
-				c0[2]*=16.0;
-			}
-			pShaderAPI->SetPixelShaderConstant(0,c0,1);
-			DECLARE_DYNAMIC_VERTEX_SHADER( sky_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( sky_vs20 );
-
-			// Texture coord transform
-			SetVertexShaderTextureTransform( VERTEX_SHADER_SHADER_SPECIFIC_CONST_1, BASETEXTURETRANSFORM );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( sky_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( WRITE_DEPTH_TO_DESTALPHA, pShaderAPI->ShouldWriteDepthToDestAlpha() );
-				SET_DYNAMIC_PIXEL_SHADER( sky_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( sky_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( sky_ps20 );
-			}
-		}
 		Draw( );
 	}
 

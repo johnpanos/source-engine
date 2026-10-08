@@ -66,23 +66,6 @@ BEGIN_VS_SHADER_FLAGS( floattoscreen_vanilla, "Help for floattoscreen_vanilla", 
 			}
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, FBTEXTURE, -1 );
-			DECLARE_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( floattoscreen_vanilla_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER( floattoscreen_vanilla_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( floattoscreen_vanilla_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( floattoscreen_vanilla_ps20 );
-			}
-		}
 		Draw();
 	}
 END_SHADER

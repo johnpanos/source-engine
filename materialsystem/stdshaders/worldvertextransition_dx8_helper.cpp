@@ -51,31 +51,5 @@ void DrawWorldVertexTransitionEditor_DX8( CBaseVSShader *pShader, IMaterialVar**
 	
 		pShader->FogToFogColor();
 	}
-	DYNAMIC_STATE
-	{
-		pShader->BindTexture( SHADER_SAMPLER0, info.m_nBaseTextureVar, info.m_nBaseTextureFrameVar );
-		pShader->BindTexture( SHADER_SAMPLER1, info.m_nBaseTexture2Var, info.m_nBaseTexture2FrameVar );
-
-		// Texture 3 = lightmap
-		pShaderAPI->BindStandardTexture( SHADER_SAMPLER2, TEXTURE_LIGHTMAP );
-		
-		pShader->EnablePixelShaderOverbright( 0, true, true );
-		
-		// JasonM - Gnarly hack since we're calling this legacy shader from DX9
-		int nTextureTransformConst  = VERTEX_SHADER_SHADER_SPECIFIC_CONST_0;
-		int nTextureTransformConst2 = VERTEX_SHADER_SHADER_SPECIFIC_CONST_2;
-		if ( g_pHardwareConfig->GetDXSupportLevel() >= 90)
-		{
-			nTextureTransformConst  -= 10;
-			nTextureTransformConst2 -= 10;
-		}
-
-		pShader->SetVertexShaderTextureTransform( nTextureTransformConst,  info.m_nBaseTextureTransformVar  );
-		pShader->SetVertexShaderTextureTransform( nTextureTransformConst2, info.m_nBaseTexture2TransformVar );
-
-		worldvertextransition_Dynamic_Index vshIndex;
-		vshIndex.SetDOWATERFOG( pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
-		pShaderAPI->SetVertexShaderIndex( vshIndex.GetIndex() );
-	}
 	pShader->Draw();
 }

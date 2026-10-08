@@ -56,18 +56,6 @@ BEGIN_VS_SHADER_FLAGS( FilmGrain_dx9, "Help for FilmGrain", SHADER_NOT_EDITABLE 
 			SET_STATIC_PIXEL_SHADER( filmgrain_ps20 );
 
 		}
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, GRAIN_TEXTURE, -1 );
-						
-			SetPixelShaderConstant( 0, NOISESCALE );
-
-				DECLARE_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-				SET_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-
-				DECLARE_DYNAMIC_PIXEL_SHADER( filmgrain_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( filmgrain_ps20 );
-		}
 		Draw();
 	}
 END_SHADER

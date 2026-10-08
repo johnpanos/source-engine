@@ -173,50 +173,6 @@ BEGIN_VS_SHADER( vr_distort_hud, "Help for hud warp" )
 			}
 		}
 
-		DYNAMIC_STATE
-		{
-			CCommandBufferBuilder< CFixedCommandStorageBuffer< 1000 > > DynamicCmdsOut;
-			DynamicCmdsOut.Call( pContextData->m_pStaticCmds );
-			DynamicCmdsOut.Call( pContextData->m_SemiStaticCmdsOut.Base() );
-
-			pShaderAPI->SetDefaultState();
-
-			SetPixelShaderConstant( 0, DISTORTBOUNDS );
-			SetPixelShaderConstant( 1, HUDTRANSLUCENT );
-
-			int hudUndistortEnabled = ( params[ HUDUNDISTORT ]->GetIntValue() == 0 ) ? 0 : 1;
-
-			if ( !g_pHardwareConfig->SupportsShaderModel_3_0() )
-			{
-				DECLARE_DYNAMIC_VERTEX_SHADER( vr_distort_hud_vs20 );
-				SET_DYNAMIC_VERTEX_SHADER( vr_distort_hud_vs20 );
-
-				if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-				{
-					DECLARE_DYNAMIC_PIXEL_SHADER( vr_distort_hud_ps20b );
-					SET_DYNAMIC_PIXEL_SHADER_COMBO( CMBO_HUDUNDISTORT,	hudUndistortEnabled );
-					SET_DYNAMIC_PIXEL_SHADER( vr_distort_hud_ps20b );
-				}
-				else
-				{
-					DECLARE_DYNAMIC_PIXEL_SHADER( vr_distort_hud_ps20 );
-					SET_DYNAMIC_PIXEL_SHADER_COMBO( CMBO_HUDUNDISTORT,	hudUndistortEnabled );
-					SET_DYNAMIC_PIXEL_SHADER( vr_distort_hud_ps20 );
-				}
-			}
-			else
-			{
-				DECLARE_DYNAMIC_VERTEX_SHADER( vr_distort_hud_vs30 );
-				SET_DYNAMIC_VERTEX_SHADER( vr_distort_hud_vs30 );
-
-				DECLARE_DYNAMIC_PIXEL_SHADER( vr_distort_hud_ps30 );
-				SET_DYNAMIC_PIXEL_SHADER_COMBO( CMBO_HUDUNDISTORT,	hudUndistortEnabled );
-				SET_DYNAMIC_PIXEL_SHADER( vr_distort_hud_ps30 );
-			}
-
-			DynamicCmdsOut.End();
-			pShaderAPI->ExecuteCommandBuffer( DynamicCmdsOut.Base() );
-		}
 
 		Draw();
 

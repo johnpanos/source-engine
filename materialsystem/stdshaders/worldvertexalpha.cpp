@@ -68,18 +68,6 @@ BEGIN_VS_SHADER( WorldVertexAlpha,
 					FogToFogColor();
 				}
 
-				DYNAMIC_STATE
-				{
-					// Bind the base texture (Stage0) and lightmap (Stage1)
-					BindTexture( SHADER_SAMPLER0, BASETEXTURE );
-					pShaderAPI->BindStandardTexture( SHADER_SAMPLER1, TEXTURE_LIGHTMAP );
-
-					EnablePixelShaderOverbright( 0, true, true );
-
-					worldvertexalpha_Dynamic_Index vshIndex;
-					vshIndex.SetDOWATERFOG( pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
-					pShaderAPI->SetVertexShaderIndex( vshIndex.GetIndex() );
-				}
 
 				Draw();
 			}
@@ -130,27 +118,6 @@ BEGIN_VS_SHADER( WorldVertexAlpha,
 					FogToFogColor();
 				}
 
-				DYNAMIC_STATE
-				{
-					// Bind the base texture (Stage0) and lightmap (Stage1)
-					BindTexture( SHADER_SAMPLER0, BASETEXTURE );
-					pShaderAPI->BindStandardTexture( SHADER_SAMPLER1, TEXTURE_LIGHTMAP );
-
-					worldvertexalpha_Dynamic_Index vshIndex;
-					vshIndex.SetDOWATERFOG( pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
-					pShaderAPI->SetVertexShaderIndex( vshIndex.GetIndex() );
-
-					if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-					{
-						DECLARE_DYNAMIC_PIXEL_SHADER( worldvertexalpha_ps20b );
-						SET_DYNAMIC_PIXEL_SHADER( worldvertexalpha_ps20b );
-					}
-					else
-					{
-						DECLARE_DYNAMIC_PIXEL_SHADER( worldvertexalpha_ps20 );
-						SET_DYNAMIC_PIXEL_SHADER( worldvertexalpha_ps20 );
-					}
-				}
 				Draw();
 
 				// Pass 2
@@ -196,27 +163,6 @@ BEGIN_VS_SHADER( WorldVertexAlpha,
 					FogToFogColor();
 				}
 
-				DYNAMIC_STATE
-				{
-					// Bind the base texture (Stage0) and lightmap (Stage1)
-					BindTexture( SHADER_SAMPLER0, BASETEXTURE );
-					pShaderAPI->BindStandardTexture( SHADER_SAMPLER1, TEXTURE_LIGHTMAP );
-
-					worldvertexalpha_Dynamic_Index vshIndex;
-					vshIndex.SetDOWATERFOG( pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
-					pShaderAPI->SetVertexShaderIndex( vshIndex.GetIndex() );
-
-					if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-					{
-						DECLARE_DYNAMIC_PIXEL_SHADER( worldvertexalpha_ps20b );
-						SET_DYNAMIC_PIXEL_SHADER( worldvertexalpha_ps20b );
-					}
-					else
-					{
-						DECLARE_DYNAMIC_PIXEL_SHADER( worldvertexalpha_ps20 );
-						SET_DYNAMIC_PIXEL_SHADER( worldvertexalpha_ps20 );
-					}
-				}
 				Draw();
 			}
 		}
@@ -246,11 +192,6 @@ BEGIN_VS_SHADER( WorldVertexAlpha,
 
 				pShaderShadow->DrawFlags( colorFlag | SHADER_DRAW_POSITION | SHADER_DRAW_TEXCOORD1 | 
 					                      SHADER_DRAW_LIGHTMAP_TEXCOORD0 );
-			}
-			DYNAMIC_STATE
-			{
-				BindTexture( SHADER_SAMPLER1, BASETEXTURE );
-				pShaderAPI->BindStandardTexture( SHADER_SAMPLER0, TEXTURE_LIGHTMAP );
 			}
 
 			Draw();

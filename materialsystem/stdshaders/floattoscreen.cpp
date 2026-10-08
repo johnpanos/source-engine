@@ -78,16 +78,6 @@ BEGIN_VS_SHADER_FLAGS( floattoscreen, "Help for floattoscreen", SHADER_NOT_EDITA
 			}
 		}
 
-		DYNAMIC_STATE
-		{
-			BindTexture( SHADER_SAMPLER0, FBTEXTURE, -1 );
-			DECLARE_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-
-//			DECLARE_DYNAMIC_PIXEL_SHADER( floattoscreen_ps20 );
-//			SET_DYNAMIC_PIXEL_SHADER( floattoscreen_ps20 );
-			pShaderAPI->SetPixelShaderIndex( 0 );
-		}
 		Draw();
 	}
 END_SHADER

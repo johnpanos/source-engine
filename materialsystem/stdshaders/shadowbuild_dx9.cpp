@@ -87,63 +87,6 @@ BEGIN_VS_SHADER_FLAGS( ShadowBuild_DX9, "Help for ShadowBuild", SHADER_NOT_EDITA
 				SET_STATIC_PIXEL_SHADER( shadowbuildtexture_ps20 );
 			}
 		}
-		DYNAMIC_STATE
-		{
-			SetModulationVertexShaderDynamicState();
-
-			// Snack important parameters from the original material
-			// FIXME: What about alpha modulation? Need a solution for that
-			ITexture *pTexture = NULL;
-			IMaterialVar **ppTranslucentParams = NULL;
-			if (params[TRANSLUCENT_MATERIAL]->IsDefined())
-			{
-				IMaterial *pMaterial = params[TRANSLUCENT_MATERIAL]->GetMaterialValue();
-				if (pMaterial)
-				{
-					ppTranslucentParams = pMaterial->GetShaderParams();
-					if ( ppTranslucentParams[BASETEXTURE]->IsTexture() )
-					{
-						pTexture = ppTranslucentParams[BASETEXTURE]->GetTextureValue();
-					}
-				}
-			}
-
-			if (pTexture)
-			{
-				BindTexture( SHADER_SAMPLER0, pTexture, ppTranslucentParams[FRAME]->GetIntValue() );
-
-				Vector4D transformation[2];
-				const VMatrix &mat = ppTranslucentParams[BASETEXTURETRANSFORM]->GetMatrixValue();
-				transformation[0].Init( mat[0][0], mat[0][1], mat[0][2], mat[0][3] );
-				transformation[1].Init( mat[1][0], mat[1][1], mat[1][2], mat[1][3] );
-				pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, transformation[0].Base(), 2 ); 
-			}
-			else
-			{
-				pShaderAPI->BindStandardTexture( SHADER_SAMPLER0, TEXTURE_LIGHTMAP_FULLBRIGHT );
-			}
-
-			float vVertexColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-			pShaderAPI->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_6, vVertexColor, 1 );
-
-			// Compute the vertex shader index.
-			DECLARE_DYNAMIC_VERTEX_SHADER( unlitgeneric_vs20 );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( DOWATERFOG, pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( SKINNING, pShaderAPI->GetCurrentNumBones() > 0 );
-			SET_DYNAMIC_VERTEX_SHADER_COMBO( COMPRESSED_VERTS, (int)vertexCompression );
-			SET_DYNAMIC_VERTEX_SHADER( unlitgeneric_vs20 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( shadowbuildtexture_ps20b );
-				SET_DYNAMIC_PIXEL_SHADER( shadowbuildtexture_ps20b );
-			}
-			else
-			{
-				DECLARE_DYNAMIC_PIXEL_SHADER( shadowbuildtexture_ps20 );
-				SET_DYNAMIC_PIXEL_SHADER( shadowbuildtexture_ps20 );
-			}
-		}
 		Draw( );
 	}
 END_SHADER
