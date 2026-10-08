@@ -30,6 +30,9 @@ def build(bld):
 	if bld.env.RENDER_CORE_D3D12:
 		use.append('render_device_d3d12')
 		defines.append('RENDER_CORE_D3D12')
+	if bld.env.RENDER_CORE_WEBGPU:
+		use.append('render_device_webgpu')
+		defines.append('RENDER_CORE_WEBGPU')
 	# RFC 0026: the 3DS's adapter.
 	if bld.env.N3DS:
 		use.append('render_device_pica')

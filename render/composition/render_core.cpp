@@ -34,6 +34,9 @@
 #if defined( RENDER_CORE_D3D12 )
 #include "render/device/d3d12/provider.h"
 #endif
+#if defined( RENDER_CORE_WEBGPU )
+#include "render/device/webgpu/provider.h"
+#endif
 #if defined( RENDER_CORE_PICA )
 #include "render/device/pica/provider.h"
 #endif
@@ -139,6 +142,9 @@ const render::device::DeviceProviderDescriptor *FindDevice( std::string_view nam
 #if defined( RENDER_CORE_D3D12 )
 	    &render::device::d3d12::Describe(), // RFC 0024
 #endif
+#if defined( RENDER_CORE_WEBGPU )
+	    &render::device::webgpu::Describe(), // RFC 0029
+#endif
 #if defined( RENDER_CORE_PICA )
 	    &render::device::pica::Describe(), // RFC 0026
 #endif
@@ -239,6 +245,15 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 		options.validation = request.validation;
 		options.allowed = allow( options.allowed );
 		return render::device::d3d12::Create( options );
+	}
+#endif
+#if defined( RENDER_CORE_WEBGPU )
+	if ( descriptor.id == "webgpu" )
+	{
+		render::device::webgpu::WebGpuAdapterOptions options;
+		options.validation = request.validation;
+		options.allowed = allow( options.allowed );
+		return render::device::webgpu::Create( options );
 	}
 #endif
 #if defined( RENDER_CORE_PICA )

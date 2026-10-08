@@ -968,6 +968,24 @@
         ]
       },
       {
+        "id": "render.device.webgpu",
+        "paths": [
+          "public/render/device/webgpu/",
+          "render/device/webgpu/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "render.device"
+        ],
+        "kind": "backend",
+        "externalHeaders": [
+          "webgpu/webgpu.h"
+        ],
+        "uselib": [
+          "WEBGPU"
+        ]
+      },
+      {
         "id": "render.device.pica",
         "paths": [
           "public/render/device/pica/",
@@ -1527,6 +1545,7 @@
           "render.device.vulkan",
           "render.device.gl",
           "render.device.metal",
+          "render.device.webgpu",
           "render.device.d3d12",
           "render.device.pica",
           "render.pass.skinning",
@@ -1576,6 +1595,7 @@
           "render.device.vulkan",
           "render.device.gl",
           "render.device.metal",
+          "render.device.webgpu",
           "render.device.d3d12",
           "render.device.pica",
           "render.graph",
@@ -2094,6 +2114,12 @@
           "D3D12"
         ]
       },
+      "render_device_webgpu": {
+        "allowedUse": [
+          "render_device",
+          "WEBGPU"
+        ]
+      },
       "render_graph": {
         "allowedUse": [
           "render_device",
@@ -2342,6 +2368,7 @@
           "render_device_gl",
           "render_device_metal",
           "render_device_d3d12",
+          "render_device_webgpu",
           "render_device_pica",
           "render_pass_skinning",
           "render_pass_debug",
@@ -2740,6 +2767,7 @@
             "render.device.vulkan",
             "render.device.gl",
             "render.device.metal",
+            "render.device.webgpu",
             "render.device.d3d12",
             "render.device.pica",
             "render.device.null"
@@ -2750,6 +2778,7 @@
             "render.device.vulkan",
             "render.device.gl",
             "render.device.metal",
+            "render.device.webgpu",
             "render.device.d3d12",
             "render.device.pica",
             "render.device.null"

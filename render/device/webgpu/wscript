@@ -1,0 +1,19 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.device.webgpu (RFC 0029 adapter): render.device.v2 over WebGPU
+# (webgpu.h). The only render target that sees webgpu.h; its public header is
+# a factory. Natively it links the pinned Dawn release (quality/toolchain/
+# webgpu.json); an Emscripten build takes emdawnwebgpu's webgpu.h instead.
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.device.webgpu',
+		target      = 'render_device_webgpu',
+		name        = 'render_device_webgpu',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_device', 'WEBGPU'],
+		idx         = bld.get_taskgen_count()
+	)

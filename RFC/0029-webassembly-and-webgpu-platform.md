@@ -1,6 +1,8 @@
 # RFC 0029: WebAssembly Platform and WebGPU Device Adapter
 
-- Status: Proposed (2026-10-07); nothing implemented, no gate passed.
+- Status: Proposed (2026-10-07). W3's native half implemented 2026-10-08
+  ([progress](0029-progress.md)): the WebGPU adapter passes the shared
+  device suite on the pinned Dawn; no gate is complete.
 - Date: 2026-10-07
 - User direction (2026-10-07): "let's make this an rfc to use webgpu and
   wasm", after a feasibility discussion and "can we use multiple web
@@ -133,7 +135,7 @@ pipelines) maps onto `render.device.v2` directly.
 | W0 | Profile declared and pinned; `--emscripten` configure; dedicated/test products link statically to `.wasm`; `static_composition.py` reads wasm with seeded defects; archlint clean | open |
 | W1 | Node lane: foundation, `platform.task-runner.v1`, jobs (serial and pooled, `jobsystem.continuous`) and `physics.conformance` suites pass with their counts; thread census matches the declared pool; serial mode passes without `SharedArrayBuffer` | open |
 | W2 | Headless Portal boots a map in the engine worker with the null device and exits cleanly; content through the OPFS package source; missing content named | open |
-| W3 | `render.device.webgpu`: shared `render.device.v2` suite and bad adapters pass for every claimed capability on Dawn and in headless Chromium, conventions section included; `kWgsl` artifacts for every translatable core program, the rest refused by name | open |
+| W3 | `render.device.webgpu`: shared `render.device.v2` suite and bad adapters pass for every claimed capability on Dawn and in headless Chromium, conventions section included; `kWgsl` artifacts for every translatable core program, the rest refused by name | partial: passes on Dawn (792 checks, [record](0029-progress.md)); 57 of 58 rows translate; headless Chromium open (needs W0) |
 | W4 | `render.graph.v1` on the adapter; core pixel families within recorded cross-backend tolerance of Vulkan in Chromium and Firefox | open |
 | W5 | Portal playable in a browser on the core: input, audio, resize, focus loss and tab backgrounding; matched captures against native Vulkan | open |
 | W6 | Resolution sweep and frame-floor runs against native Vulkan on the same host, threaded and serial; budgets for the profile set before measuring | open |

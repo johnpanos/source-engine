@@ -9477,6 +9477,41 @@
       "expect": "pass"
     },
     {
+      "id": "render.device.v2.webgpu",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0029",
+      "migration": "R92",
+      "contract": "unittests/rendertest/contracts/render.device.v2.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "render.device.v2 on render.device.webgpu (RFC 0029 W3, native lane): the shared suite built with the host compiler against the pinned Dawn release (quality/toolchain/webgpu.json) and run on the host GPU through Dawn, with the WGSL artifacts tools/render/shader_artifacts.py wgsl_compile makes from the fixtures' SPIR-V (pinned tint, after its SPIR-V rewrites: draw constants as a dynamic-offset uniform block at group 3 binding 255, compared textures as depth images, vector specialization selects split, NaN and infinity tests as bit tests, write-only storage buffers read-write). Runs plainly and once more with every WebGPU validation error counted, which must be none; D7 runs through the adapter's loss hook, D5 and D10 through its submission hold. Adapter clauses: facts (WGSL, sample counts 1 and 4, claimed and unclaimed capabilities, a masked capability) and the descriptor; two bad configurations (releases freed before their token; tokens complete at submission) must each fail the whole suite. Proves the adapter against WebGPU as the pinned Dawn implements it, not a browser.",
+      "command": [
+        "{python}",
+        "tools/render/webgpu_lane.py",
+        "run",
+        "--out",
+        "/tmp/claude-1000/webgpu-lane"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 780,
+      "timeout_seconds": 900,
+      "requires": [
+        "executable:g++",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/device/webgpu/device.cpp",
+        "render/device/webgpu/execute.cpp",
+        "render/device/webgpu/pipelines.cpp",
+        "render/device/webgpu/webgpu_device.h",
+        "public/render/device/webgpu/provider.h",
+        "unittests/rendertest/core/device/test_device_webgpu.cpp",
+        "unittests/rendertest/core/device/device_conformance.h",
+        "tools/render/webgpu_lane.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.family.unlit.d3d12",
       "domain": "Q-PRESENTATION",
       "rfc": "0024",

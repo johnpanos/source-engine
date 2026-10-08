@@ -64,6 +64,8 @@ artifact. It prints one checks-v1 record.
   fifth-group       a fixture family declares five groups;
   flip-word         one word of one array in each backend header the build
                     wrote is changed;
+  wgsl-refusal      a row WGSL_REFUSED lists is dropped from it, so the row
+                    tint refuses is unlisted;
 `sensitivity` requires the unseeded check to pass and each fault to fail for
 exactly its seeded defect.
 
@@ -643,6 +645,503 @@ def metal_compile(spirv):
 
 
 # ---------------------------------------------------------------------------
+# WGSL (render.device.webgpu, RFC 0029)
+
+# The WebGPU adapter's contract with the WGSL artifacts
+# (render/device/webgpu/pipelines.cpp):
+# - the pinned tint (quality/toolchain/webgpu.json) translates the SPIR-V,
+#   after webgpu_spirv rewrites what WGSL has no form for; SPIR-V binding
+#   (set s, binding b) is @group(s) @binding(b), and the entry point is
+#   WEBGPU_ENTRY_POINT;
+# - the draw constants (D16, the push-constant block) are a uniform buffer at
+#   @group(3) @binding(WEBGPU_DRAW_CONSTANTS_BINDING), which the adapter binds
+#   with a dynamic offset into its own constants buffer; a port layout may not
+#   use that binding in the draw group;
+# - specialization constant n (D20) is `@id(n) override`, listed on a line
+#   "WEBGPU_LINE override <n> <bool|i32|u32|f32>" so the adapter passes only
+#   the ids a stage declares, each converted from the port's 32 bits by type;
+# - WebGPU layouts need what the port's layouts do not say (sample types,
+#   view dimensions, sampler kinds, storage formats), so every binding the
+#   stage statically uses is listed on a line
+#   "WEBGPU_LINE binding <group> <binding> <kind> <arguments>":
+#     uniform | storage | read-only-storage
+#     texture <float|unfilterable-float|depth|sint|uint> <view dimension> <0|1 multisampled>
+#     sampler <filtering|non-filtering|comparison>
+#     storage-texture <write-only|read-only|read-write> <format> <view dimension>
+#   A float texture the stage only loads (textureLoad and size queries) is
+#   unfilterable-float, so depth and 32-bit float textures bind to it; a
+#   sampler that reads a compared depth texture plainly is non-filtering; the
+#   draw constants are "WEBGPU_LINE draw-constants <bytes>".
+# A module tint does not accept, or that needs binding arrays or external
+# textures, has no WGSL artifact: its row is left out of the header and the
+# store, and its pipelines are refused on a WebGPU device by name.
+WEBGPU_LINE = "// render.device.webgpu"
+WEBGPU_ENTRY_POINT = "main"
+WEBGPU_DRAW_GROUP = 3
+WEBGPU_DRAW_CONSTANTS_BINDING = 255
+OP_TYPE_SAMPLED_IMAGE = 27
+OP_TYPE_VECTOR = 23
+OP_CONSTANT_COMPOSITE = 44
+OP_SPEC_CONSTANT_COMPOSITE = 51
+OP_SPEC_CONSTANT_OP = 52
+OP_LOAD = 61
+OP_ACCESS_CHAIN = 65
+OP_IN_BOUNDS_ACCESS_CHAIN = 66
+OP_PTR_ACCESS_CHAIN = 67
+OP_SAMPLED_IMAGE = 86
+OP_SELECT = 169
+OP_FUNCTION = 54
+OP_IMAGE = 100
+OP_IS_NAN = 156
+OP_IS_INF = 157
+OP_IEQUAL = 170
+OP_BITCAST = 124
+OP_BITWISE_AND = 199
+OP_UGREATER_THAN = 172
+OP_TYPE_INT = 21
+OP_TYPE_FLOAT = 22
+OP_CONSTANT = 43
+OP_MEMBER_DECORATE = 72
+DECORATION_NON_READABLE = 25
+STORAGE_UNIFORM = 2
+
+
+def webgpu_push_constants(words):
+    """The push-constant block as a Uniform block at (WEBGPU_DRAW_GROUP,
+    WEBGPU_DRAW_CONSTANTS_BINDING): its variable and pointer types change
+    storage class, and a pointer type that would then duplicate an existing
+    Uniform pointer is replaced by it."""
+    pointers = {}  # (storage, pointee) -> id of the existing Uniform pointers
+    push_pointers, push_variables = [], []
+    for index, count, opcode in instructions(words):
+        if opcode == OP_TYPE_POINTER:
+            storage, pointee = words[index + 2], words[index + 3]
+            if storage == STORAGE_PUSH_CONSTANT:
+                push_pointers.append(index)
+            elif storage == STORAGE_UNIFORM:
+                pointers.setdefault(pointee, words[index + 1])
+        elif opcode == OP_VARIABLE and words[index + 3] == STORAGE_PUSH_CONSTANT:
+            push_variables.append(index)
+    if not push_variables:
+        return words
+    if len(push_variables) > 1:
+        raise ArtifactError("more than one push-constant block")
+    replace, drop = {}, set()
+    for index in push_pointers:
+        pointee = words[index + 3]
+        if pointee in pointers:
+            replace[words[index + 1]] = pointers[pointee]
+            drop.add(index)
+        else:
+            words[index + 2] = STORAGE_UNIFORM
+            pointers[pointee] = words[index + 1]
+    variable = words[push_variables[0] + 2]
+    words[push_variables[0] + 3] = STORAGE_UNIFORM
+    out = words[:5]
+    for index, count, opcode in instructions(words):
+        if index in drop:
+            continue
+        instruction = words[index:index + count]
+        if opcode in (OP_VARIABLE, OP_ACCESS_CHAIN, OP_IN_BOUNDS_ACCESS_CHAIN,
+                      OP_PTR_ACCESS_CHAIN) and instruction[1] in replace:
+            instruction[1] = replace[instruction[1]]
+        out.extend(instruction)
+    decorations = [(4 << 16) | OP_DECORATE, variable, DECORATION_DESCRIPTOR_SET,
+                   WEBGPU_DRAW_GROUP,
+                   (4 << 16) | OP_DECORATE, variable, DECORATION_BINDING,
+                   WEBGPU_DRAW_CONSTANTS_BINDING]
+    first = next(index for index, _, opcode in instructions(out) if opcode == OP_DECORATE)
+    return out[:first] + decorations + out[first:]
+
+
+def webgpu_depth_images(words):
+    """Textures the module samples with a comparison (OpSampledImage of a
+    depth image type) retyped as depth images, which tint requires: each
+    such variable and its loads take the depth image type. A retyped texture
+    also sampled without comparison samples through the depth type too; the
+    samplers it does so with are returned, since WebGPU binds them as
+    non-filtering. (words, {sampler variable})."""
+    types = {}       # id -> (opcode, words) of every type
+    loads = {}       # load result -> (instruction index, variable)
+    variables = {}   # variable -> instruction index
+    sampled = []     # (sampled image type, image value, instruction index)
+    for index, count, opcode in instructions(words):
+        if opcode in (OP_TYPE_IMAGE, OP_TYPE_SAMPLED_IMAGE, OP_TYPE_POINTER):
+            types[words[index + 1]] = (opcode, words[index:index + count])
+        elif opcode == OP_VARIABLE:
+            variables[words[index + 2]] = index
+        elif opcode == OP_LOAD:
+            loads[words[index + 2]] = (index, words[index + 3])
+        elif opcode == OP_SAMPLED_IMAGE:
+            sampled.append((words[index + 1], words[index + 3], index, words[index + 4]))
+    retype = {}  # variable -> depth image type
+    plain = {}   # variable -> [OpSampledImage index] sampling it without comparison
+    samplers = {}  # OpSampledImage index -> its sampler value
+    for sampled_type, image, at, sampler in sampled:
+        samplers[at] = sampler
+        target = types[types[sampled_type][1][2]][1]  # the sampled image's image type
+        if image not in loads:
+            raise ArtifactError("an OpSampledImage of an image that is not a variable load")
+        variable = loads[image][1]
+        if target[4] == 1:
+            retype[variable] = target[1]
+        else:
+            plain.setdefault(variable, []).append(at)
+    retype = {v: t for v, t in retype.items()
+              if types[types[words[variables[v] + 1]][1][3]][1][4] != 1}
+    if not retype:
+        return words, set()
+    # A depth texture also read without comparison (a blocker search) samples
+    # through the depth sampled-image type, as Vulkan allows; WGSL reads its
+    # one channel, and its sampler is non-filtering.
+    depth_sampled = {types[t][1][2]: t for t in types if types[t][0] == OP_TYPE_SAMPLED_IMAGE}
+    resample = {}
+    for variable in set(plain) & set(retype):
+        if retype[variable] not in depth_sampled:
+            raise ArtifactError("a compared texture has no depth sampled-image type")
+        for at in plain[variable]:
+            resample[at] = depth_sampled[retype[variable]]
+    non_filtering = set()
+    for at in resample:
+        if samplers[at] not in loads:
+            raise ArtifactError("a depth texture sampled with a sampler that is not a variable")
+        non_filtering.add(loads[samplers[at]][1])
+    bound = words[3]
+    pointers = {}
+    for depth_type in set(retype.values()):
+        pointers[depth_type] = bound
+        bound += 1
+    # The depth image types may follow the variables, so the new pointer
+    # types and the retyped variables move to the end of the declarations.
+    out = words[:5]
+    out[3] = bound
+    moved = []
+    depth_values = {}  # result of a resampled OpSampledImage -> its depth image type
+    for index, count, opcode in instructions(words):
+        instruction = words[index:index + count]
+        if opcode == OP_FUNCTION and not moved:
+            for depth_type, pointer in sorted(pointers.items()):
+                moved.extend([(4 << 16) | OP_TYPE_POINTER, pointer, STORAGE_UNIFORM_CONSTANT,
+                              depth_type])
+            for variable, depth_type in sorted(retype.items()):
+                moved.extend([(4 << 16) | OP_VARIABLE, pointers[depth_type], variable,
+                              STORAGE_UNIFORM_CONSTANT])
+            out.extend(moved)
+        if opcode == OP_VARIABLE and instruction[2] in retype:
+            continue
+        if opcode == OP_LOAD and instruction[3] in retype:
+            instruction[1] = retype[instruction[3]]
+        if index in resample:
+            instruction[1] = resample[index]
+            depth_values[instruction[2]] = types[resample[index]][1][2]
+        if opcode == OP_IMAGE and instruction[3] in depth_values:
+            # The image of a resampled depth texture is the depth image.
+            instruction[1] = depth_values[instruction[3]]
+        out.extend(instruction)
+    return out, non_filtering
+
+
+def webgpu_vector_selects(words):
+    """Each vector OpSpecConstantOp Select of constant vectors split into
+    scalar selects and an OpSpecConstantComposite: WGSL overrides are
+    scalars, so tint refuses the vector form."""
+    vectors, composites = {}, {}
+    for index, count, opcode in instructions(words):
+        if opcode == OP_TYPE_VECTOR:
+            vectors[words[index + 1]] = (words[index + 2], words[index + 3])
+        elif opcode in (OP_CONSTANT_COMPOSITE, OP_SPEC_CONSTANT_COMPOSITE):
+            composites[words[index + 2]] = words[index + 3:index + count]
+    bound = words[3]
+    out = words[:5]
+    changed = False
+    for index, count, opcode in instructions(words):
+        instruction = words[index:index + count]
+        if (opcode == OP_SPEC_CONSTANT_OP and instruction[3] == OP_SELECT and
+                instruction[1] in vectors):
+            component, size = vectors[instruction[1]]
+            condition, a, b = instruction[4:7]
+            if a not in composites or b not in composites:
+                raise ArtifactError("a vector specialization select of non-constant vectors")
+            parts = []
+            for i in range(size):
+                # A vector condition (one per component) selects per component.
+                part = composites[condition][i] if condition in composites else condition
+                out.extend([(7 << 16) | OP_SPEC_CONSTANT_OP, component, bound, OP_SELECT,
+                            part, composites[a][i], composites[b][i]])
+                parts.append(bound)
+                bound += 1
+            out.extend([((3 + size) << 16) | OP_SPEC_CONSTANT_COMPOSITE, instruction[1],
+                        instruction[2]] + parts)
+            changed = True
+            continue
+        out.extend(instruction)
+    out[3] = bound
+    return out if changed else words
+
+
+def webgpu_writeonly_buffers(words):
+    """Storage buffers without their NonReadable decorations: WGSL storage
+    buffers are read or read-write, never write-only (images keep theirs)."""
+    images = set()
+    pointers = {}
+    for index, count, opcode in instructions(words):
+        if opcode == OP_TYPE_IMAGE:
+            images.add(words[index + 1])
+        elif opcode == OP_TYPE_POINTER:
+            pointers[words[index + 1]] = words[index + 3]
+    variables = {words[index + 2] for index, _, opcode in instructions(words)
+                 if opcode == OP_VARIABLE and pointers.get(words[index + 1]) not in images}
+    out = words[:5]
+    for index, count, opcode in instructions(words):
+        if (opcode == OP_MEMBER_DECORATE and count >= 4 and
+                words[index + 3] == DECORATION_NON_READABLE):
+            continue
+        if (opcode == OP_DECORATE and count >= 3 and words[index + 2] == DECORATION_NON_READABLE
+                and words[index + 1] in variables):
+            continue
+        out.extend(words[index:index + count])
+    return out
+
+
+def webgpu_isnan(words):
+    """OpIsNan and OpIsInf as bit tests, (bits & 0x7fffffff) > 0x7f800000 and
+    == 0x7f800000: WGSL has neither test, and tint refuses both opcodes."""
+    types = {}
+    floats = {}  # float type -> component count
+    uints = {}   # component count -> uint type
+    constants = {}
+    for index, count, opcode in instructions(words):
+        if opcode == OP_TYPE_FLOAT and words[index + 2] == 32:
+            floats[words[index + 1]] = 1
+        elif opcode == OP_TYPE_INT and words[index + 2] == 32 and words[index + 3] == 0:
+            uints[1] = words[index + 1]
+        elif opcode == OP_TYPE_VECTOR:
+            types[words[index + 1]] = (words[index + 2], words[index + 3])
+        elif opcode == OP_CONSTANT and words[index + 1] == uints.get(1):
+            constants[words[index + 3]] = words[index + 2]
+    for vector, (component, size) in types.items():
+        if component in floats:
+            floats[vector] = size
+        if component == uints.get(1):
+            uints[size] = vector
+    results = {}
+    for index, count, opcode in instructions(words):
+        if count >= 3:
+            results[words[index + 2]] = words[index + 1]
+    nans = [index for index, _, opcode in instructions(words)
+            if opcode in (OP_IS_NAN, OP_IS_INF)]
+    if not nans:
+        return words
+    bound = words[3]
+    declare = []
+
+    def fresh():
+        nonlocal bound
+        bound += 1
+        return bound - 1
+    if 1 not in uints:
+        uints[1] = fresh()
+        declare += [(4 << 16) | OP_TYPE_INT, uints[1], 32, 0]
+    scalar = {}
+    for value in (0x7FFFFFFF, 0x7F800000):
+        if value in constants:
+            scalar[value] = constants[value]
+        else:
+            scalar[value] = fresh()
+            declare += [(4 << 16) | OP_CONSTANT, uints[1], scalar[value], value]
+    composite = {}
+
+    def constant(value, size):
+        if size == 1:
+            return scalar[value]
+        if size not in uints:
+            uints[size] = fresh()
+            declare.extend([(4 << 16) | OP_TYPE_VECTOR, uints[size], uints[1], size])
+        if (value, size) not in composite:
+            composite[(value, size)] = fresh()
+            declare.extend([((3 + size) << 16) | OP_CONSTANT_COMPOSITE, uints[size],
+                            composite[(value, size)]] + [scalar[value]] * size)
+        return composite[(value, size)]
+    replacement = {}
+    for index in nans:
+        result_type, result, value = words[index + 1:index + 4]
+        size = floats.get(results.get(value))
+        if size is None:
+            raise ArtifactError("OpIsNan or OpIsInf of a value that is not 32-bit float")
+        mask, infinity = constant(0x7FFFFFFF, size), constant(0x7F800000, size)
+        bits, masked = fresh(), fresh()
+        replacement[index] = [(4 << 16) | OP_BITCAST, uints[size], bits, value,
+                              (5 << 16) | OP_BITWISE_AND, uints[size], masked, bits, mask,
+                              (5 << 16) | (OP_UGREATER_THAN if words[index] & 0xFFFF == OP_IS_NAN
+                                           else OP_IEQUAL),
+                              result_type, result, masked, infinity]
+    out = words[:5]
+    for index, count, opcode in instructions(words):
+        if opcode == OP_FUNCTION and declare:
+            out.extend(declare)
+            declare = []
+        out.extend(replacement.get(index, words[index:index + count]))
+    out[3] = bound
+    return out
+
+
+def webgpu_spirv(spirv):
+    """The module as tint takes it (see the contract above), and the
+    (set, binding) of each sampler WebGPU must bind as non-filtering."""
+    words = words_of(spirv)
+    words = webgpu_writeonly_buffers(words)
+    words = webgpu_isnan(words)
+    words = webgpu_push_constants(words)
+    words, non_filtering = webgpu_depth_images(words)
+    words = webgpu_vector_selects(words)
+    sets, bindings = {}, {}
+    for index, count, opcode in instructions(words):
+        if opcode == OP_DECORATE and count >= 4:
+            if words[index + 2] == DECORATION_DESCRIPTOR_SET:
+                sets[words[index + 1]] = words[index + 3]
+            elif words[index + 2] == DECORATION_BINDING:
+                bindings[words[index + 1]] = words[index + 3]
+    return bytes_of(words), {(sets.get(v, 0), bindings.get(v, 0)) for v in non_filtering}
+
+
+# The rows with no WGSL artifact, each with the reason tint gives (RFC 0029).
+# The check fails for a row tint refuses that is not listed, and for a listed
+# row that translates again, so the list only shrinks.
+WGSL_REFUSED = {
+    "cluster_assign_wgsl.h:kClusterBuildCompute":
+        "'workgroupBarrier' must only be called from uniform control flow",
+}
+
+
+def check_wgsl(checks, generated_dir, refused):
+    """Every core program and suite fixture has a WGSL artifact in its
+    generated header, except the rows refused lists."""
+    generated_dir = Path(generated_dir)
+    missing = set()
+    for header, (_, _, rows) in st.WGSL_GENERATED.items():
+        path = generated_dir / header
+        text = path.read_text() if path.is_file() else ""
+        for array, _, _ in rows:
+            if "inline constexpr char %s[] = R\"wgsl(" % array not in text:
+                missing.add("%s:%s" % (header, array))
+    for row in sorted(missing):
+        checks.check(row in refused, "wgsl.%s.translated" % row,
+                     "tint refused the row and WGSL_REFUSED does not list it")
+    for row in sorted(refused):
+        checks.check(row in missing, "wgsl.%s.refusal-current" % row,
+                     "the row translates now: remove it from WGSL_REFUSED")
+
+
+WGSL_DECLARATION = re.compile(
+    r"@group\((\d+)u?\)\s*@binding\((\d+)u?\)\s*var(?:<([^>]*)>)?\s+(\w+)\s*:\s*([^;]+);")
+WGSL_OVERRIDE = re.compile(r"@id\((\d+)u?\)\s*override\s+\w+\s*:\s*(bool|i32|u32|f32)\b")
+WGSL_TEXTURE = re.compile(r"texture_(depth_)?(multisampled_)?(1d|2d_array|2d|3d|cube_array|cube)"
+                          r"(?:<(\w+)>)?$")
+WGSL_STORAGE_TEXTURE = re.compile(r"texture_storage_(1d|2d_array|2d|3d)<(\w+),\s*(\w+)>$")
+WGSL_LOAD_ONLY = ("textureLoad", "textureDimensions", "textureNumLevels", "textureNumLayers",
+                  "textureNumSamples")
+
+
+def wgsl_binding_line(text, group, binding, space, name, kind):
+    """The WEBGPU_LINE binding description of one declaration (see above)."""
+    kind = kind.strip()
+    if space:
+        access = [part.strip() for part in space.split(",")]
+        if access[0] == "uniform":
+            return "uniform"
+        if access[0] == "storage":
+            return "read-only-storage" if access[1:] in ([], ["read"]) else "storage"
+        raise ArtifactError("binding %d.%d has address space %s" % (group, binding, space))
+    if kind == "sampler":
+        return "sampler filtering"
+    if kind == "sampler_comparison":
+        return "sampler comparison"
+    storage = WGSL_STORAGE_TEXTURE.match(kind)
+    if storage:
+        dimension, texel, access = storage.groups()
+        access = {"write": "write-only", "read": "read-only", "read_write": "read-write"}[access]
+        return "storage-texture %s %s %s" % (access, texel, dimension.replace("_", "-"))
+    texture = WGSL_TEXTURE.match(kind)
+    if not texture:
+        raise ArtifactError("binding %d.%d has type %s, which the WebGPU adapter does not bind"
+                            % (group, binding, kind))
+    depth, multisampled, dimension, sampled = texture.groups()
+    dimension = dimension.replace("_", "-")
+    if depth:
+        sample = "depth"
+    elif sampled == "i32":
+        sample = "sint"
+    elif sampled == "u32":
+        sample = "uint"
+    else:
+        uses = len(re.findall(r"\b%s\b" % name, text)) - 1  # less the declaration
+        loads = len(re.findall(r"\b(?:%s)\(\s*%s\b" % ("|".join(WGSL_LOAD_ONLY), name), text))
+        sample = "unfilterable-float" if multisampled or uses == loads else "float"
+    return "texture %s %s %d" % (sample, dimension, 1 if multisampled else 0)
+
+
+def wgsl_compile(spirv, stage):
+    """The WGSL artifact of a SPIR-V module for the WebGPU adapter (see the
+    contract above), with its header lines."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "module.spv"
+        prepared, non_filtering = webgpu_spirv(spirv)
+        path.write_bytes(prepared)
+        out = Path(tmp) / "module.wgsl"
+        # Derivatives in non-uniform control flow are allowed, as in SPIR-V:
+        # tint adds WGSL's own diagnostic directive for them.
+        result = subprocess.run([str(st.tint()), "--input-format", "spirv", str(path),
+                                 "--allow-non-uniform-derivatives", "true",
+                                 "--format", "wgsl", "-o", str(out)],
+                                capture_output=True, text=True)
+        if result.returncode != 0 or not out.is_file():
+            detail = (result.stdout + result.stderr).strip().splitlines()
+            errors = [line.strip() for line in detail if "error:" in line and
+                      not line.rstrip().endswith("internal compiler error:")]
+            raise ArtifactError("tint refuses the module: %s" % (
+                errors[0] if errors else detail[0] if detail else "exit %d" % result.returncode))
+        text = out.read_text()
+        info = subprocess.run([str(st.tint().with_name("tint_info")), "--json", str(out)],
+                              capture_output=True, text=True)
+        if info.returncode != 0:
+            raise ArtifactError("tint_info failed on the WGSL: %s" % info.stderr.strip()[-500:])
+        entries = json.loads(info.stdout)["entry_points"]
+    if len(entries) != 1 or entries[0]["name"] != WEBGPU_ENTRY_POINT:
+        raise ArtifactError("the WGSL does not have the one entry point %s" % WEBGPU_ENTRY_POINT)
+    if entries[0]["stage"] != stage:
+        raise ArtifactError("the WGSL entry point is a %s stage, not %s"
+                            % (entries[0]["stage"], stage))
+    used = {(b["group"], b["binding"]) for b in entries[0]["bindings"]}
+    if "binding_array" in text or "texture_external" in text:
+        raise ArtifactError("the WGSL needs binding arrays or external textures")
+    lines = []
+    constants = None
+    for match in WGSL_DECLARATION.finditer(text):
+        group, binding = int(match.group(1)), int(match.group(2))
+        if (group, binding) not in used:
+            continue
+        if (group, binding) == (WEBGPU_DRAW_GROUP, WEBGPU_DRAW_CONSTANTS_BINDING):
+            constants = match
+            continue
+        line = wgsl_binding_line(text, group, binding, match.group(3), match.group(4),
+                                 match.group(5))
+        if line == "sampler filtering" and (group, binding) in non_filtering:
+            line = "sampler non-filtering"
+        lines.append("%s binding %d %d %s" % (WEBGPU_LINE, group, binding, line))
+    if constants:
+        size = next(b["size"] for b in entries[0]["bindings"]
+                    if (b["group"], b["binding"]) ==
+                    (WEBGPU_DRAW_GROUP, WEBGPU_DRAW_CONSTANTS_BINDING))
+        lines.append("%s draw-constants %d" % (WEBGPU_LINE, size))
+    overrides = {int(i): kind for i, kind in WGSL_OVERRIDE.findall(text)}
+    if len(overrides) != len(re.findall(r"@id\(", text)):
+        raise ArtifactError("an override is not a bool, i32, u32 or f32")
+    for override, kind in sorted(overrides.items()):
+        lines.append("%s override %d %s" % (WEBGPU_LINE, override, kind))
+    return "".join(line + "\n" for line in lines) + text
+
+
+# ---------------------------------------------------------------------------
 # Declared layouts
 
 
@@ -926,9 +1425,10 @@ def write_headers(units, words, out_dir, root=ROOT):
         words[array] = future.result()
     for header in st.GENERATED:
         written[header] = st.render_generated(header, lambda array: words[array])
-    glsl, es_missing, msl_missing, hlsl_missing = glsl_headers(words, root)
+    glsl, es_missing, msl_missing, hlsl_missing, wgsl_missing = glsl_headers(words, root)
     written.update(glsl)
-    written[st.STORE_HEADER] = store_header(words, es_missing, msl_missing, hlsl_missing)
+    written[st.STORE_HEADER] = store_header(words, es_missing, msl_missing, hlsl_missing,
+                                            wgsl_missing)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for name, text in written.items():
@@ -997,7 +1497,8 @@ def reflect_port(spirv):
     return bindings, push
 
 
-def store_header(words, es_missing=None, msl_missing=None, hlsl_missing=None):
+def store_header(words, es_missing=None, msl_missing=None, hlsl_missing=None,
+                 wgsl_missing=None):
     """spv/core_artifact_table.h: the artifact store's table (public/render/
     shaderlib/core_artifacts.h), one entry per core program row and format:
     source, stage, format, code (the generated SPIR-V, GLSL 4.50 and, for the
@@ -1011,7 +1512,7 @@ def store_header(words, es_missing=None, msl_missing=None, hlsl_missing=None):
         namespace, _, rows = st.GENERATED[header]
         includes += [header, header.replace("_spv.h", "_glsl.h"),
                      header.replace("_spv.h", "_gles.h"), header.replace("_spv.h", "_msl.h"),
-                     header.replace("_spv.h", "_hlsl.h")]
+                     header.replace("_spv.h", "_hlsl.h"), header.replace("_spv.h", "_wgsl.h")]
         for array, source, _ in rows:
             spirv = bytes_of(words[array])
             reflected, push = reflect_port(spirv)
@@ -1034,7 +1535,8 @@ def store_header(words, es_missing=None, msl_missing=None, hlsl_missing=None):
                               push))
             for missing, suffix, enum in ((es_missing, "gles", "kGlslEs310"),
                                           (msl_missing, "msl", "kMsl"),
-                                          (hlsl_missing, "hlsl", "kHlsl")):
+                                          (hlsl_missing, "hlsl", "kHlsl"),
+                                          (wgsl_missing, "wgsl", "kWgsl")):
                 if array in (missing or {}):
                     continue
                 text_namespace = namespace.replace("::spirv", "::" + suffix)
@@ -1069,8 +1571,8 @@ def store_header(words, es_missing=None, msl_missing=None, hlsl_missing=None):
 
 
 def glsl_headers(words, root=ROOT):
-    """({name: text} of the GLSL_GENERATED, GLES_GENERATED, MSL_GENERATED and
-    HLSL_GENERATED headers, {array: reason} of the rows with no ES artifact,
+    """({name: text} of the GLSL_GENERATED, GLES_GENERATED, MSL_GENERATED,
+    HLSL_GENERATED and WGSL_GENERATED headers, {array: reason} of the rows with no ES artifact,
     the same of the rows with no MSL artifact and of those with no HLSL one): each row's SPIR-V (its artifact when the row is
     a unit or a GENERATED row, else compiled here) through cross_compile in
     both dialects and metal_compile. A GLSL 4.50 failure fails the build; an
@@ -1106,11 +1608,18 @@ def glsl_headers(words, root=ROOT):
         except (ArtifactError, st.ToolchainError) as error:
             return None, str(error)
 
+    def wgsl_text_of(row):
+        try:
+            return wgsl_compile(spirv_of(row), STAGES[Path(row[1]).suffix]), None
+        except (ArtifactError, st.ToolchainError) as error:
+            return None, str(error)
+
     with concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4) as pool:
         texts = dict(zip((row[0] for row in rows), pool.map(text_of, rows)))
         es_results = dict(zip((row[0] for row in rows), pool.map(es_text_of, rows)))
         msl_results = dict(zip((row[0] for row in rows), pool.map(msl_text_of, rows)))
         hlsl_results = dict(zip((row[0] for row in rows), pool.map(hlsl_text_of, rows)))
+        wgsl_results = dict(zip((row[0] for row in rows), pool.map(wgsl_text_of, rows)))
     headers = {header: st.render_glsl(header, lambda array: texts[array])
                for header in st.GLSL_GENERATED}
     headers.update({header: st.render_glsl(header, lambda array: es_results[array][0])
@@ -1124,7 +1633,11 @@ def glsl_headers(words, root=ROOT):
                     for header in st.HLSL_GENERATED})
     hlsl_missing = {array: reason for array, (text, reason) in hlsl_results.items()
                     if text is None}
-    return headers, es_missing, msl_missing, hlsl_missing
+    headers.update({header: st.render_glsl(header, lambda array: wgsl_results[array][0])
+                    for header in st.WGSL_GENERATED})
+    wgsl_missing = {array: reason for array, (text, reason) in wgsl_results.items()
+                    if text is None}
+    return headers, es_missing, msl_missing, hlsl_missing, wgsl_missing
 
 
 def generate_headers(out_dir, root=ROOT):
@@ -1254,6 +1767,13 @@ def run_check(out=None, seed_fault=None, root=ROOT, stream=None):
         expected = seed_generated(generated, units)
         evidence["seeded"] = sorted(expected)
     check_headers(checks, units, words, generated, root)
+    refused = dict(WGSL_REFUSED)
+    if seed_fault == "wgsl-refusal":
+        dropped = sorted(refused)[0]
+        del refused[dropped]
+        expected = {"wgsl.%s.translated" % dropped}
+        evidence["seeded"] = "WGSL_REFUSED without " + dropped
+    check_wgsl(checks, generated, refused)
     evidence["artifacts"] = sum(1 for a in index["artifacts"] if "file" in a)
     evidence["excluded"] = [a for a in index["artifacts"] if "excluded" in a]
     evidence["sets_used"] = index["sets_used"]
@@ -1286,7 +1806,7 @@ def failed_names(checks):
 def command_sensitivity(args):
     checks = Checks()
     out = Path(args.out) if args.out else Path(tempfile.mkdtemp(prefix="shader-artifacts-"))
-    for fault in (None, "layout-mismatch", "fifth-group", "flip-word"):
+    for fault in (None, "layout-mismatch", "fifth-group", "flip-word", "wgsl-refusal"):
         stream = io.StringIO()
         run, evidence = run_check(out / (fault or "control"), fault, stream=stream)
         (out / ((fault or "control") + ".log")).write_text(stream.getvalue())
@@ -1381,7 +1901,7 @@ def main(argv=None):
     check_parser = commands.add_parser("check", help="the render.shader-artifacts gate")
     check_parser.add_argument("--out", help="evidence and scratch directory")
     check_parser.add_argument("--seed-fault", choices=("layout-mismatch", "fifth-group",
-                                                       "flip-word"))
+                                                       "flip-word", "wgsl-refusal"))
     check_parser.set_defaults(run=command_check)
     sensitivity_parser = commands.add_parser("sensitivity", help="the check against its faults")
     sensitivity_parser.add_argument("--out", help="scratch directory")

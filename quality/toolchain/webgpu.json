@@ -1,0 +1,23 @@
+{
+  "schema": "webgpu-pin/v1",
+  "description": "The pinned Dawn release (RFC 0029 decisions 3, 5 and 11). Its Linux build supplies the WGSL translator (bin/tint), which tools/render/shader_artifacts.py wgsl_compile runs on every core program and suite fixture at build time, and the native webgpu.h implementation (lib64/libwebgpu_dawn.a) that the native lane (tools/render/webgpu_lane.py) links the render.device.webgpu adapter and its suite against. The emdawnwebgpu package of the same release is the browser's webgpu.h for Emscripten builds (RFC 0029 W0); the adapter is written against the core webgpu.h both share. tools/render/shader_toolchain.py webgpu_release owns fetching, sha256 verification and extraction into dependencies/webgpu/<directory>. No other translator is pinned: SPIRV-Cross stays the translator for every other format (RFC 0029 decision 5).",
+  "release": "v20260930.214659",
+  "revision": "9af2744f8d6f0bd97a8d37b3910ba7637a3d0a90",
+  "repository": "google/dawn",
+  "archives": {
+    "linux": {
+      "archive": "Dawn-9af2744f8d6f0bd97a8d37b3910ba7637a3d0a90-ubuntu-latest-Release.tar.gz",
+      "url": "https://github.com/google/dawn/releases/download/v20260930.214659/Dawn-9af2744f8d6f0bd97a8d37b3910ba7637a3d0a90-ubuntu-latest-Release.tar.gz",
+      "sha256": "e8bae88b6a242c692ad5e753fadc05e71db286c067d21d038c8295b8993e169b",
+      "bytes": 36682080,
+      "directory": "Dawn-9af2744f8d6f0bd97a8d37b3910ba7637a3d0a90-ubuntu-latest-Release"
+    },
+    "emscripten": {
+      "archive": "emdawnwebgpu_pkg-v20260930.214659.zip",
+      "url": "https://github.com/google/dawn/releases/download/v20260930.214659/emdawnwebgpu_pkg-v20260930.214659.zip",
+      "sha256": "ea1ea6e1c12afa03591b2696d9351f7042f9dbb54f298993a52d7809f2394002",
+      "bytes": 133903,
+      "directory": "emdawnwebgpu_pkg"
+    }
+  }
+}

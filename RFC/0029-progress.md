@@ -1,0 +1,138 @@
+# RFC 0029 progress: WebAssembly Platform and WebGPU Device Adapter
+
+Design: [RFC 0029](0029-webassembly-and-webgpu-platform.md). No ranked
+roadmap row; ranking it is the user's decision.
+
+## W3, first slice: the WebGPU adapter on the native Dawn lane (2026-10-08)
+
+User direction: "start the wasm backend but do not add anymore legacy at
+all". This slice adds the render core's WebGPU device adapter and its WGSL
+artifacts, proven natively against the pinned Dawn. Nothing in it touches a
+legacy render path: no file under `materialsystem/`, `stdshaders` or any
+`shaderapi*` changed, and the `legacy-backends` ratchet
+(`tools/render/retirement_scans.py legacy-backends`) has no new line from it.
+The browser half of W3 (headless Chromium) needs W0's Emscripten build and is
+open.
+
+### What is installed
+
+| Piece | Where | What it does |
+| --- | --- | --- |
+| Pin | `quality/toolchain/webgpu.json` | Dawn release `v20260930.214659` (revision `9af2744f`): the Linux build (`bin/tint`, `bin/tint_info`, `lib64/libwebgpu_dawn.a`, headers) and the matching `emdawnwebgpu` package for Emscripten, each with its sha256. `shader_toolchain.webgpu_release` fetches, verifies and extracts them into `dependencies/webgpu/`; `tint()` is the translator |
+| Artifact format | `public/render/device/facts.h` | `ArtifactFormat::kWgsl` |
+| WGSL artifacts | `tools/render/shader_artifacts.py` (`wgsl_compile`, the `WEBGPU_*` contract) | Every core program and suite fixture's SPIR-V, rewritten where WGSL has no form for it, translated by the pinned tint, and headed by lines that give the WebGPU binding types the stage uses. `WGSL_GENERATED` headers (`<stem>_wgsl.h`, namespace `::wgsl`) and `kWgsl` entries in the core artifact store's table |
+| Coverage ratchet | `shader_artifacts.WGSL_REFUSED`, `check_wgsl` | `render.shader-artifacts` fails for a row tint refuses that is not listed with its reason, and for a listed row that translates again; seeded fault `wgsl-refusal` |
+| Adapter | `render.device.webgpu`: `public/render/device/webgpu/provider.h`, `render/device/webgpu/` | `render.device.v2` over the standard `webgpu.h` |
+| Composition | `render/composition/render_core.cpp`, `render/composition/wscript` | Provider `"webgpu"` in the catalog under `RENDER_CORE_WEBGPU` |
+| Waf | `wscript` (`--render-core-webgpu`, `--render-core-device=webgpu`), `render/wscript`, `render/device/webgpu/wscript`, `quality/toolchain/policy.json` (strict `cxx20`) | Links the pinned Dawn natively |
+| Architecture | `architecture/modules.json` | Module `render.device.webgpu` (backend; `webgpu/webgpu.h` its one external header; layer-contract adapter of `render.device`), Waf target `render_device_webgpu` |
+| Native lane | `tools/render/webgpu_lane.py` (`fetch`, `run`, `suite`) | Builds the adapter and a suite with the host compiler against the pinned Dawn and runs it on the host GPU |
+| Suite | `unittests/rendertest/core/device/test_device_webgpu.cpp`, manifest `render.device.v2.webgpu` | The shared suite plainly and with WebGPU validation errors counted, adapter clauses and two bad configurations |
+
+### The WGSL artifacts
+
+SPIRV-Cross has no WGSL target and browsers take no SPIR-V, so tint is the
+one WGSL translator (RFC 0029 decision 5, no Naga by user decision). Tint's
+SPIR-V reader accepts only what WGSL expresses; `webgpu_spirv` rewrites the
+rest before it:
+
+| SPIR-V | Rewrite | Why |
+| --- | --- | --- |
+| The push-constant block (draw constants, D16) | A uniform block at group 3, binding 255 | WebGPU has no push constants; the adapter binds the block with a dynamic offset |
+| A texture sampled with a comparison | Retyped as a depth image; one also sampled plainly samples through the depth type, and its sampler is listed non-filtering | Tint requires depth images for comparisons; WebGPU binds a depth texture read plainly through a non-filtering sampler |
+| A vector `OpSpecConstantOp Select` | Scalar selects and an `OpSpecConstantComposite` | WGSL overrides are scalars |
+| `OpIsNan`, `OpIsInf` | Bit tests of the float's bits | WGSL has neither |
+| `NonReadable` storage buffers | The decoration dropped | WGSL storage buffers are read or read-write |
+
+Tint also gets `--allow-non-uniform-derivatives` (derivatives in
+non-uniform control flow, as SPIR-V allows; it adds WGSL's own diagnostic
+directive). The header lines (`// render.device.webgpu binding <group>
+<binding> <kind> ...`, `draw-constants <bytes>`, `override <id> <type>`) come
+from the WGSL declarations and tint's per-entry-point list of the bindings a
+stage statically uses: a float texture the stage only loads is
+`unfilterable-float`, so depth and 32-bit float textures bind to it.
+
+Coverage at this slice: 57 of 58 rows (49 core programs and the 9 suite
+fixtures). The one refused row is `cluster_assign_wgsl.h:kClusterBuildCompute`
+(`'workgroupBarrier' must only be called from uniform control flow`): its
+GLSL has a barrier in non-uniform control flow, which WGSL forbids; its
+pipelines are refused on a WebGPU device by name.
+
+### The adapter
+
+The model is the Metal adapter's: encoders record the port's shared command
+lists (`render/device/recording.h`), Submit validates them and replays them
+into one command buffer. What differs, and why:
+
+- **Layouts.** WebGPU layouts need sample types, view dimensions, sampler
+  kinds and storage formats the port's layouts do not carry. A pipeline's
+  layouts come from its artifacts' binding lines (stages merged), cached by
+  their entries and shared between pipelines; a port bind group becomes one
+  WebGPU group per layout it is used with. An unused group in between is the
+  empty layout and group.
+- **Draw constants.** Group 3 gains binding 255, a uniform buffer with a
+  dynamic offset into the submission's own constants buffer (one slot per
+  change of the constants, at the device's uniform offset alignment). A
+  draw group is built per submission for pipelines that read them.
+- **Uploads.** `WriteBuffer` bytes travel in their commands into a
+  submission buffer the queue writes before the command buffer runs, then
+  are copied in command order. Each submission's buffers are freed with it.
+- **Completion and readback.** Tokens advance as `Poll`, `IsComplete` and
+  `WaitIdle` process WebGPU's events. A readback buffer is a GPU buffer and a
+  `MapRead` copy: after each submission that names it, it is copied and
+  mapped, and its bytes kept on the CPU. The token completes once the work
+  is done and those maps landed, so `ReadBuffer` never waits, which a
+  browser requires.
+- **Copies.** WebGPU's row pitch is a multiple of 256 bytes: tightly packed
+  regions whose rows are not go through a padded submission buffer, row by
+  row. WebGPU copies no buffer into a depth texture: the region is drawn by
+  an internal pipeline that writes `frag_depth` from the buffer's floats.
+  A block-compressed texture whose first mip is not whole blocks (WebGPU
+  requires it) is made whole blocks larger: copies keep the port's regions,
+  and sampling it is refused by name. Writes and copies of partial words are
+  refused by name.
+- **Pipelines.** A graphics pipeline without a fragment stage gets one that
+  writes none of its targets, so its color targets match the pass. Shader
+  modules and pipelines are created under a validation error scope, so a
+  refusal is a creation failure, not a later error.
+- **Facts.** `kWgsl`; sample counts 1 and 4; claims compute, storage
+  buffers, cube arrays and indexed indirect draws (one draw per record),
+  indirect first instance and BC when Dawn has the features, float targets
+  when float32-filterable, RG11B10 rendering and depth32float-stencil8 are
+  all present. Not claimed: parallel recording, async queues, transient
+  aliasing, ray query, external images, indirect count, timestamps between
+  commands, exact occlusion counts, line fill, ETC1 and RGBA4. `kD24UnormS8`
+  is refused (WebGPU's depth24plus copies to no buffer).
+
+### Evidence
+
+Host: Fedora 44, AMD Radeon 8060S (RADV STRIX_HALO), Dawn picked its Vulkan
+backend. g++ 16.
+
+| Check | Result |
+| --- | --- |
+| `python3 tools/render/webgpu_lane.py run` | `CONFORMANCE 792 0`: the shared suite plainly and with validation errors counted (0), adapter clauses, and both bad configurations fail the suite (`webgpu.sensitivity.release-before-token`, `webgpu.sensitivity.complete-on-submit`) |
+| `python3 tools/quality/conformance.py check --suite render.device.v2.webgpu` | pass, 792 checks |
+| `python3 tools/render/shader_artifacts.py check` | `CONFORMANCE 1559 0` (before the WGSL ratchet) |
+| `python3 tools/render/shader_artifacts.py sensitivity` | `CONFORMANCE 17 0`: the control passes and each of the four seeded faults, `wgsl-refusal` included, fails exactly its check |
+| `python3 tools/render/shader_toolchain.py check` | `CONFORMANCE 355 0` |
+| `WAFLOCK=.lock-waf-webgpu ./waf configure --tests ... --render-core-webgpu --render-core-device=webgpu -o build-webgpu`, then `./waf build --targets=render_device_webgpu,render_composition` | builds (strict C++20 module rules, link-dependency check) |
+| `python3 tools/archlint/archlint.py check --all` | no finding for the new module (the run's 211 new findings are elsewhere, from `games/csgo/`) |
+| `python3 tools/stylelint/stylelint.py <the new C++ files>` | 0 failures |
+
+Reproduce: `python3 tools/render/webgpu_lane.py fetch`, then
+`python3 tools/render/webgpu_lane.py run --out /tmp/claude-1000/webgpu-lane`.
+
+### Open
+
+- W3's browser half: the same suite in headless Chromium needs W0
+  (Emscripten pinned, the adapter built against `emdawnwebgpu`).
+- WGSL that Firefox rejects is caught only by W4's Firefox runs (no second
+  validator, user decision).
+- `kClusterBuildCompute` has no WGSL artifact (above).
+- A depth texture sampled plainly through a filtering sampler, and a
+  float texture both sampled and bound as depth, have no WebGPU layout; no
+  core program needs either today, and a bind group that would is refused
+  by name at submission.
+- W4 (the render graph and the core pixel families on the adapter) and every
+  other gate are open.

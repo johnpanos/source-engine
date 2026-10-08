@@ -56,6 +56,8 @@ def modules(env):
 		adapters.append('device/metal')
 	if env.RENDER_CORE_D3D12:
 		adapters.append('device/d3d12')
+	if env.RENDER_CORE_WEBGPU:
+		adapters.append('device/webgpu')
 	return PORTABLE + adapters
 
 def options(opt):

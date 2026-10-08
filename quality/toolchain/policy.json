@@ -456,6 +456,10 @@
       "dialect": "cxx20",
       "rfc": "0026"
     },
+    "render_device_webgpu": {
+      "dialect": "cxx20",
+      "rfc": "0029"
+    },
     "render_graph": {
       "dialect": "cxx20",
       "rfc": "0016"

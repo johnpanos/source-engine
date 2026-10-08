@@ -523,11 +523,12 @@ def options(opt):
 		dest='RENDER_BACKEND',
 		help='linked renderer; clients render through native-vulkan, server, test and tool '
 			'products link none (legacy); the 3DS client links pica [default: %default]')
-	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal', 'd3d12', 'pica'], default='null',
+	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal', 'd3d12', 'webgpu', 'pica'], default='null',
 		dest='RENDER_CORE_DEVICE',
 		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
 			'names another; vulkan needs the native Vulkan backend, gl and gles need --render-core-gl, '
-			'metal an Apple target, d3d12 a Windows target [default: %default]')
+			'metal an Apple target, d3d12 a Windows target, webgpu --render-core-webgpu '
+			'[default: %default]')
 	grp.add_option('--render-core-features', default='legacy-stream,present',
 		dest='RENDER_CORE_FEATURES',
 		help='RFC 0016 render core: the frame features a client composes, in order [default: %default]')
@@ -539,6 +540,9 @@ def options(opt):
 			'(render::device::CapabilityName), e.g. compute,storage-buffers [default: none]')
 	grp.add_option('--render-core-gl', action='store_true', default=False, dest='RENDER_CORE_GL',
 		help='build the OpenGL 4.5 device adapter of the render core (RFC 0016 K10; needs EGL) [default: %default]')
+	grp.add_option('--render-core-webgpu', action='store_true', default=False, dest='RENDER_CORE_WEBGPU',
+		help='build the WebGPU device adapter of the render core (RFC 0029), linked natively '
+			'against the pinned Dawn release (quality/toolchain/webgpu.json) [default: %default]')
 	grp.add_option('--render-fsr411', action='store_true', default=False, dest='RENDER_FSR411',
 		help='Build the experimental pinned FSR 4.1.1 Vulkan provider (lab only)')
 	grp.add_option('--render-core-vulkan', choices=['auto', 'on', 'off'], default='auto',
@@ -1208,6 +1212,22 @@ def configure_render_core(conf):
 		conf.env.LIBPATH_D3D12 = [dxc]
 	if conf.options.RENDER_CORE_DEVICE == 'd3d12' and not conf.env.RENDER_CORE_D3D12:
 		conf.fatal('--render-core-device=d3d12 needs a Windows target')
+	# The WebGPU adapter (RFC 0029) links the pinned Dawn release natively
+	# (tools/render/shader_toolchain.py webgpu_release fetches and verifies it).
+	conf.env.RENDER_CORE_WEBGPU = bool(conf.env.RENDER_CORE and conf.options.RENDER_CORE_WEBGPU)
+	if conf.env.RENDER_CORE_WEBGPU:
+		import json
+		pin = json.load(open(os.path.join(conf.path.abspath(), 'quality', 'toolchain', 'webgpu.json')))
+		dawn = os.path.join(conf.path.abspath(), 'dependencies', 'webgpu',
+			pin['archives']['linux']['directory'])
+		if not os.path.isfile(os.path.join(dawn, 'lib64', 'libwebgpu_dawn.a')):
+			conf.fatal('the WebGPU adapter needs the pinned Dawn: python3 tools/render/webgpu_lane.py fetch')
+		conf.env.INCLUDES_WEBGPU = [os.path.join(dawn, 'include')]
+		conf.env.STLIBPATH_WEBGPU = [os.path.join(dawn, 'lib64')]
+		conf.env.STLIB_WEBGPU = ['webgpu_dawn']
+		conf.env.LIB_WEBGPU = ['dl']
+	if conf.options.RENDER_CORE_DEVICE == 'webgpu' and not conf.env.RENDER_CORE_WEBGPU:
+		conf.fatal('--render-core-device=webgpu needs --render-core-webgpu')
 	conf.env.RENDER_CORE_DEVICE = conf.options.RENDER_CORE_DEVICE
 	conf.env.RENDER_CORE_FEATURES = conf.options.RENDER_CORE_FEATURES
 	conf.env.RENDER_CORE_FALLBACKS = conf.options.RENDER_CORE_FALLBACKS
@@ -1235,6 +1255,7 @@ def configure_render_core(conf):
 			(['gl'] if conf.env.RENDER_CORE_GL else []) +
 			(['metal'] if conf.env.RENDER_CORE_METAL else []) +
 			(['d3d12'] if conf.env.RENDER_CORE_D3D12 else []) +
+			(['webgpu'] if conf.env.RENDER_CORE_WEBGPU else []) +
 			(['pica'] if conf.env.N3DS else [])))
 		# In the root environment, before any subproject derives its own:
 		# the generated SPIR-V headers' tools must exist before any project builds.
