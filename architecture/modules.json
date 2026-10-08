@@ -170,7 +170,9 @@
         "kind": "backend",
         "owns": "RFC 0027: sepipe, the nanobind module over kiln.api (host tools only); the Python and nanobind headers stay here",
         "paths": ["product/kiln/python/"],
-        "allowedEdges": ["kiln.core", "kiln.composition", "foundation.json", "foundation"]
+        "allowedEdges": ["kiln.core", "kiln.composition", "foundation.json", "foundation"],
+        "externalHeaders": ["nanobind/nanobind.h", "nanobind/stl/optional.h", "nanobind/stl/string.h",
+                            "nanobind/stl/tuple.h", "nanobind/stl/vector.h"]
       },
       {
         "id": "kiln.fixture-platform",
@@ -198,8 +200,17 @@
         ],
         "allowedEdges": [
           "foundation",
-          "content.block-container"
+          "content.block-container",
+          "external.bcdec"
         ]
+      },
+      {
+        "id": "external.bcdec",
+        "owns": "The vendored header-only bcdec block-compression decoder (external/bcdec/README.source.md)",
+        "paths": [
+          "external/bcdec/"
+        ],
+        "allowedEdges": []
       },
       {
         "id": "world.map-container.test-cases",
@@ -750,7 +761,12 @@
           "SDL3/SDL_vulkan.h",
           "UIKit/UIKit.h",
           "vulkan/vulkan.h",
-          "TargetConditionals.h"
+          "TargetConditionals.h",
+          "SDL3/SDL_system.h",
+          "jni.h",
+          "wayland-client.h",
+          "unistd.h",
+          "stdint.h"
         ],
         "uselib": [
           "SDL3",
@@ -1193,6 +1209,7 @@
           "content.studio-model",
           "content.texture-contract",
           "content.vtf-reader",
+          "content.vtf-container",
           "content.vtf-decompress",
           "content.vtf-decompress-zlib",
           "render.shader-library",
@@ -1914,6 +1931,7 @@
       "ctime",
       "deque",
       "exception",
+      "stdexcept",
       "filesystem",
       "fstream",
       "functional",

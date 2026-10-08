@@ -112,8 +112,13 @@ def check(root, block, strip):
             if not re.search(r'#\s*include\b', stripped_lines[line]):
                 continue
             name = match.group(2)
-            candidate = next((p.resolve() for p in (path.parent / name, root / 'public' / name)
-                              if p.is_file()), None)
+            # Beside the file, under public/, or (a qualified name) from the
+            # repository root, as the build's include roots find them.
+            # Normalized without following links: a submodule linked into a
+            # worktree must still resolve inside the root.
+            roots = (path.parent / name, root / 'public' / name) + \
+                ((root / name,) if '/' in name else ())
+            candidate = next((Path(os.path.normpath(p)) for p in roots if p.is_file()), None)
             generated = generated_owner(name, block)
             if candidate is None and generated is not None:
                 # A header the build writes (block['generatedHeaders']): owned
