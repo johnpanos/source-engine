@@ -344,9 +344,10 @@ bool ViewRenderTarget( const MaterialDesc &material, const MaterialValue &value 
 	     SameKey( value.text, "_rt_Camera" ) )
 		return true;
 	// Portal 2's menu composites (console/rt_background, rt_foreground): the
-	// frame the client copied into _rt_FullFrameFB.
+	// frames the client copied into _rt_FullFrameFB and, for the page being
+	// flipped in, _rt_DepthDoubler (transitionpanel.cpp).
 	if ( material.family == "unlit" && value.parameter == "basetexture" &&
-	     SameKey( value.text, "_rt_FullFrameFB" ) )
+	     ( SameKey( value.text, "_rt_FullFrameFB" ) || SameKey( value.text, "_rt_DepthDoubler" ) ) )
 		return true;
 	return material.family == "water" &&
 	       ( ( value.parameter == "reflecttexture" &&

@@ -15,8 +15,10 @@ view's console commands, takes a screenshot and records:
 - the backend's dropped materials (`dropped material draws=`): draws neither
   the core nor the stream drew, which are missing effects, not zero use.
 
-    python3 tools/render/legacy_stream_census.py run --runtime run/runtime-p2-d1 \\
-        --build build-p2 --out <dir> [--view NAME ...]
+    python3 tools/render/legacy_stream_census.py run --out <dir> [--view NAME ...]
+
+Each view boots through tools/quality/portal_boot.py on its kiln profile
+(portal2, or portal for the p1-* views; build them with ./kiln build).
     python3 tools/render/legacy_stream_census.py summarize <dir>
 
 `run` writes <dir>/census.json (schema legacy-stream-census/v1) and exits 1
@@ -76,8 +78,11 @@ VIEWS = {
     "p1-frame-pacing": ("testchmb_a_02", ["god", "notarget", "give weapon_portalgun", "upgrade_portalgun", "upgrade_portalgun", "wait 120", "ent_fire prop_portal fizzle", "setpos -448 150 0", "setang 0 90 0", "wait 90", "wait 120", "+attack", "wait 2", "-attack", "wait 120", "setang 0 270 0", "wait 30", "+attack2", "wait 2", "-attack2", "wait 120", "wait 60", "setang 0 90 0", "wait 60", "+forward", "wait 300", "-forward", "wait 30", "setpos -448 150 0", "setang 0 270 0", "+forward", "wait 300", "-forward", "wait 60"]),
 }
 
-# Views on native Portal (--p1-runtime, --p1-build) rather than Portal 2.
+# Views on native Portal (the portal kiln profile) rather than Portal 2.
 PORTAL1 = {"p1-testchmb-a-00", "p1-testchmb-a-08", "p1-testchmb-a-01", "p1-frame-pacing"}
+# Views whose map is a repository fixture rather than game content: its built
+# content root (tools/quality/portal2_portal_map.py writes it).
+CONTENT = {"portal-walk": "quality-results/portal2-maps/qa_portal_walk/content"}
 # Views judged over every frame after the map settles, not the last ones.
 ALL_FRAMES = {"p1-frame-pacing"}
 
@@ -88,18 +93,16 @@ DROPPED = re.compile(r"dropped material draws=(\d+)\s+(\S+) \[(\w+)\]")
 def boot(args, name, out):
     level, commands = VIEWS[name]
     portal1 = name in PORTAL1
-    runtime = args.p1_runtime if portal1 else args.runtime
-    build = args.p1_build if portal1 else args.build
     stats = out / (name + ".jsonl")
     cmd = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
-           "--runtime", str(runtime.resolve()), "--out", str(out / name),
-           "--game", "portal" if portal1 else "portal2", "--renderer", "native-vulkan",
+           "--profile", "portal" if portal1 else "portal2", "--out", str(out / name),
+           "--renderer", "native-vulkan",
            "--require-vulkan",
            "--headless", "--map", level, "--timeout", str(args.timeout),
            "--capture-wait", "60", "--no-mouse", "--physics", "vphysics_box3d",
            "--engine-arg=-vkframestats", "--engine-arg=" + str(stats)]
-    if build:
-        cmd += ["--build", str(build.resolve())]
+    if name in CONTENT:
+        cmd += ["--content-root", str(ROOT / CONTENT[name])]
     for setting in ("sv_cheats 1", "mat_queue_mode 2", "r_core_world 1",
                     "r_indirect_producer baked"):
         cmd += ["--startup-command", setting]
@@ -142,7 +145,7 @@ def line(record):
 def run(args):
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    views = args.view or [v for v in VIEWS if v not in PORTAL1 or args.p1_runtime]
+    views = args.view or list(VIEWS)
     records = []
     for name in views:
         record = boot(args, name, out)
@@ -164,10 +167,6 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run")
-    r.add_argument("--runtime", type=Path, required=True)
-    r.add_argument("--build", type=Path)
-    r.add_argument("--p1-runtime", type=Path, help="native Portal's runtime (the p1-* views)")
-    r.add_argument("--p1-build", type=Path, help="native Portal's build tree")
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--view", action="append", choices=sorted(VIEWS))
     r.add_argument("--timeout", type=int, default=400)

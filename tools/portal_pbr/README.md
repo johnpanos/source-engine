@@ -23,7 +23,7 @@ light term. The scalar reference is
 creates this as an optional dynamic shader pipeline. Its
 `PbrDirectPipelineSupported()` flag means that the synthetic pipeline was
 created, not that the renderer supports the full `material.pbr.v1` capability.
-[`test_pbr_pixels.cpp`](../../unittests/shaderapivulkantest/test_pbr_pixels.cpp)
+`test_pbr_pixels.cpp` (deleted with the native draw path, 2026-10-08)
 checks three rendered pixels against the scalar BRDF. The recorded Linux RADV
 run passed 18 checks; the Vulkan validation layer was unavailable. See
 [`RFC/0007-progress.md`](../../RFC/0007-progress.md) for the command and

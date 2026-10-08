@@ -417,45 +417,6 @@ public:
 		m_capturePresented = true;
 	}
 
-	// Bring up a bounded demo pipeline: real shader modules, a graphics
-	// pipeline matching the swapchain render pass, and a GPU vertex buffer with
-	// an interleaved position+color triangle. This exercises the pipeline /
-	// shader / vertex-buffer / draw path the material renderer (R32) will use.
-	// Independent of Init(); call it after a successful Init().
-	bool InitDemoTriangle( std::string *outError );
-
-	// When enabled, each subsequent frame rasterizes the demo triangle over the
-	// clear. Requires a prior successful InitDemoTriangle().
-	void SetDrawDemoTriangle( bool enable ) { m_drawDemoTriangle = enable; }
-	bool DemoTriangleReady() const { return m_demoPipeline != VK_NULL_HANDLE; }
-
-	// Bring up a bounded textured-quad pipeline: a device-local RGBA texture
-	// uploaded through a staging buffer with layout transitions, a sampler, a
-	// combined-image-sampler descriptor set, and a pipeline that samples it onto
-	// a quad. Exercises the texture / sampler / descriptor path the material
-	// renderer (R32) will use. Call after a successful Init().
-	bool InitTexturedQuad( std::string *outError );
-	void SetDrawTexturedQuad( bool enable ) { m_drawTexturedQuad = enable; }
-	bool TexturedQuadReady() const { return m_texQuadPipeline != VK_NULL_HANDLE; }
-
-	// Bring up a bounded indexed + uniform-buffer pipeline: an index buffer
-	// (vkCmdDrawIndexed) and a uniform (constant) buffer whose color is bound
-	// through a descriptor set and written by the fragment shader. Exercises the
-	// index-buffer and shader-constant path the material renderer (R32) leans on
-	// most (every material sets shader constants). Call after a successful Init().
-	bool InitIndexedUbo( std::string *outError );
-	void SetDrawIndexedUbo( bool enable ) { m_drawIndexedUbo = enable; }
-	bool IndexedUboReady() const { return m_indexedUboPipeline != VK_NULL_HANDLE; }
-
-	// Bring up a bounded depth-tested pipeline: two overlapping triangles at
-	// different depths drawn far-then-near with depth testing on, proving the
-	// depth attachment resolves occlusion (the near triangle wins regardless of
-	// draw order) -- the capability real 3D scene rendering needs. Call after a
-	// successful Init().
-	bool InitDemoDepth( std::string *outError );
-	void SetDrawDemoDepth( bool enable ) { m_drawDemoDepth = enable; }
-	bool DemoDepthReady() const { return m_demoDepthPipeline != VK_NULL_HANDLE; }
-
 	// Dynamic geometry path used by the material system's mesh interface: a
 	// depth-tested position+color pipeline plus a growable host-visible vertex
 	// buffer. Callers queue triangles during a frame; the next BeginFrame uploads
@@ -1689,7 +1650,6 @@ private:
 	VkResult MapMemory( VulkanMemory memory, void **data );
 	void UnmapMemory( VulkanMemory memory );
 	void FreeMemory( VulkanMemory memory );
-	void DestroyDemoTriangle();
 
 	bool BeginSingleTimeCommands( VkCommandBuffer *outCmd, std::string *outError );
 	// Submits cmd signaling the next value of the adapter's timeline (outValue)
@@ -1698,9 +1658,6 @@ private:
 	// a readback).
 	bool EndSingleTimeCommands(
 	    VkCommandBuffer cmd, std::string *outError, uint64_t *outValue = nullptr );
-	void DestroyTexturedQuad();
-	void DestroyIndexedUbo();
-	void DestroyDemoDepth();
 	void DestroyDynamicMesh();
 	bool CreateDepthResources( std::string *outError );
 
@@ -1950,54 +1907,6 @@ private:
 	std::vector<uint16_t> m_capturedHdrPixels;
 	int m_capturedWidth = 0;
 	int m_capturedHeight = 0;
-
-	// Bounded demo pipeline (R32 draw-path proof), optional.
-	VkPipelineLayout m_demoPipelineLayout = VK_NULL_HANDLE;
-	VkPipeline m_demoPipeline = VK_NULL_HANDLE;
-	VkBuffer m_demoVertexBuffer = VK_NULL_HANDLE;
-	VulkanMemory m_demoVertexMemory = VK_NULL_HANDLE;
-	uint32_t m_demoVertexCount = 0;
-	bool m_drawDemoTriangle = false;
-
-	// Bounded textured-quad pipeline (R32 texture-path proof), optional.
-	VkImage m_texImage = VK_NULL_HANDLE;
-	VulkanMemory m_texMemory = VK_NULL_HANDLE;
-	VkImageView m_texView = VK_NULL_HANDLE;
-	VkSampler m_texSampler = VK_NULL_HANDLE;
-	VkDescriptorSetLayout m_texDescLayout = VK_NULL_HANDLE;
-	VkDescriptorPool m_texDescPool = VK_NULL_HANDLE;
-	VkDescriptorSet m_texDescSet = VK_NULL_HANDLE;
-	VkPipelineLayout m_texQuadPipelineLayout = VK_NULL_HANDLE;
-	VkPipeline m_texQuadPipeline = VK_NULL_HANDLE;
-	VkBuffer m_texQuadVertexBuffer = VK_NULL_HANDLE;
-	VulkanMemory m_texQuadVertexMemory = VK_NULL_HANDLE;
-	uint32_t m_texQuadVertexCount = 0;
-	bool m_drawTexturedQuad = false;
-
-	// Bounded indexed + uniform-buffer pipeline (R32 index/constant proof).
-	VkBuffer m_iuVertexBuffer = VK_NULL_HANDLE;
-	VulkanMemory m_iuVertexMemory = VK_NULL_HANDLE;
-	VkBuffer m_iuIndexBuffer = VK_NULL_HANDLE;
-	VulkanMemory m_iuIndexMemory = VK_NULL_HANDLE;
-	VkBuffer m_iuUniformBuffer = VK_NULL_HANDLE;
-	VulkanMemory m_iuUniformMemory = VK_NULL_HANDLE;
-	void *m_iuUniformMapped = nullptr;
-	VkDescriptorSetLayout m_iuDescLayout = VK_NULL_HANDLE;
-	VkDescriptorPool m_iuDescPool = VK_NULL_HANDLE;
-	VkDescriptorSet m_iuDescSet = VK_NULL_HANDLE;
-	VkPipelineLayout m_iuPipelineLayout = VK_NULL_HANDLE;
-	VkPipeline m_indexedUboPipeline = VK_NULL_HANDLE;
-	uint32_t m_iuIndexCount = 0;
-	float m_iuColor[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
-	bool m_drawIndexedUbo = false;
-
-	// Bounded depth-test demo pipeline (R32 depth/occlusion proof).
-	VkBuffer m_depthDemoVertexBuffer = VK_NULL_HANDLE;
-	VulkanMemory m_depthDemoVertexMemory = VK_NULL_HANDLE;
-	VkPipelineLayout m_demoDepthPipelineLayout = VK_NULL_HANDLE;
-	VkPipeline m_demoDepthPipeline = VK_NULL_HANDLE;
-	uint32_t m_depthDemoVertexCount = 0;
-	bool m_drawDemoDepth = false;
 
 	// Dynamic geometry path (material-system mesh draws).
 	VkPipelineLayout m_dynPipelineLayout = VK_NULL_HANDLE;

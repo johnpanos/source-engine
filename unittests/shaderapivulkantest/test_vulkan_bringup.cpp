@@ -150,176 +150,6 @@ bool RenderCoreFrame( CVulkanContext &ctx, bool *skipped, std::string *error )
 	    submitted ? submitted.Value() : CompletionToken{}, submitted.HasValue(), error );
 }
 
-void CheckPortalCoreReplay( CVulkanContext &ctx, std::string &err )
-{
-	PortalReplayRecorder recorder;
-	ctx.BindCorePassRecorder( &recorder );
-	const int snapshot = ctx.CreateRenderTargetTexture( 64, 64, &err );
-	Check( snapshot >= 0 && ctx.PortalPipelineSupported(), "portal replay resources available" );
-	if ( snapshot >= 0 && ctx.PortalPipelineSupported() )
-	{
-		const float quad[6][8] = { { -0.8f, -0.8f, 0, 1, 1, 1, 0, 0 },
-		    { 0.8f, -0.8f, 0, 1, 1, 1, 1, 0 }, { 0.8f, 0.8f, 0, 1, 1, 1, 1, 1 },
-		    { -0.8f, -0.8f, 0, 1, 1, 1, 0, 0 }, { 0.8f, 0.8f, 0, 1, 1, 1, 1, 1 },
-		    { -0.8f, 0.8f, 0, 1, 1, 1, 0, 1 } };
-		float tangents[6][7];
-		for ( auto &v : tangents )
-		{
-			const float basis[7] = { 0, 0, 1, 1, 0, 0, 1 };
-			std::copy_n( basis, 7, v );
-		}
-		CVulkanContext::PortalConstants portal{};
-		portal.model[0] = portal.model[5] = portal.model[10] = portal.model[15] = 1;
-		std::copy_n( portal.model, 16, portal.viewProj );
-		portal.texXform0[0] = portal.texXform1[1] = 1;
-		portal.openAmount = 1;
-		portal.stage = 0;
-		CVulkanContext::DynRasterState raster;
-		raster.depthTest = raster.depthWrite = false;
-		raster.cullMode = VK_CULL_MODE_NONE;
-		for ( int mode : { 0, 1, 0, 2 } )
-		{
-			const bool product = mode != 1;
-			const bool wrongOrder = mode == 2;
-			ctx.ClearDynamicQueue();
-			ctx.SetRenderTarget( -1 );
-			ctx.SetViewport( 0, 0, 0, 0, 0, 1 );
-			const std::uint32_t policy = render::legacy::kCorePassForwarded |
-			                             render::legacy::kCorePassLegacyOff |
-			                             ( product ? render::legacy::kCorePassCustomEffects : 0 );
-			ctx.QueueCorePass( policy | 1, {} );
-			Check( ctx.QueueCopyToTexture( snapshot, nullptr, nullptr ), "portal snapshot queued" );
-			ctx.QueueCorePass( render::legacy::kCorePassForwarded | 2, {} );
-			ctx.SelectDynamicShader( CVulkanContext::kDynShaderPortalRefract );
-			ctx.SelectDynamicRasterState( raster );
-			ctx.SetDynamicPortalConstants( portal );
-			ctx.SelectDynamicColorSpace( 0 );
-			ctx.BindManagedTexture( snapshot );
-			ctx.QueueDynamicTriangles( &quad[0][0], 6, nullptr, &tangents[0][0] );
-			// Unconsumed copies and ordinary legacy draws must stay suppressed.
-			Check( ctx.QueueCopyToTexture( snapshot, nullptr, nullptr ), "unused snapshot queued" );
-			ctx.SelectDynamicShader( CVulkanContext::kDynShaderConstColor );
-			ctx.SetDynamicConstantColor( 0, 1, 0, 1 );
-			ctx.QueueDynamicTriangles( &quad[0][0], 6 );
-			if ( wrongOrder )
-				ctx.QueueCorePass( render::legacy::kCorePassForwarded | 2, {} );
-			for ( int replay = 0; replay < 2; ++replay )
-			{
-				ctx.RequestCapture();
-				bool skipped = false;
-				const bool rendered = RenderCoreFrame( ctx, &skipped, &err );
-				int width = 0, height = 0;
-				const auto &pixels = ctx.GetCapturedPixels( &width, &height );
-				bool correct = rendered && !skipped && width > 0 && height > 0 && !pixels.empty();
-				if ( correct )
-				{
-					const auto *center = &pixels[( size_t( height / 2 ) * width + width / 2 ) * 4];
-					correct =
-					    PixelClose( pixels.data(), 0, 0, 255, 255, 2 ) &&
-					    ( product && !wrongOrder ? center[0] > 200 && center[1] < 3 && center[2] < 3
-					                             : PixelClose( center, 0, 0, 255, 255, 2 ) );
-				}
-				Check( correct, "portal snapshot stays before child slot and effect after it, "
-				                "including replay" );
-				Check( ctx.LastFrameCost().count[render_vulkan::kCostTargetCopy] ==
-				           ( product ? 1u : 0u ),
-				    "only the consumed portal copy survives product filtering; diagnostics retain "
-				    "none" );
-			}
-		}
-	}
-	ctx.ClearDynamicQueue();
-	ctx.BindCorePassRecorder( nullptr );
-	if ( snapshot >= 0 )
-		ctx.DestroyManagedTexture( snapshot );
-}
-
-// The existing SolidEnergy shader must blend at its original core stream slot.
-void CheckSolidEnergyCoreReplay( CVulkanContext &ctx, std::string &err )
-{
-	PortalReplayRecorder recorder;
-	ctx.BindCorePassRecorder( &recorder );
-	const int texture = ctx.CreateManagedTexture( 1, 1, VK_FORMAT_R8G8B8A8_UNORM, &err );
-	const uint8_t texel[] = { 255, 0, 0, 128 };
-	const bool ready = texture >= 0 && ctx.SolidEnergyPipelineSupported() &&
-	    ctx.UploadManagedTexture( texture, texel, sizeof( texel ), &err );
-	Check( ready, "SolidEnergy replay resources available" );
-	if ( ready )
-	{
-		const float quad[6][8] = { { -0.8f, -0.8f, 0, 1, 1, 1, 0, 0 },
-		    { 0.8f, -0.8f, 0, 1, 1, 1, 1, 0 }, { 0.8f, 0.8f, 0, 1, 1, 1, 1, 1 },
-		    { -0.8f, -0.8f, 0, 1, 1, 1, 0, 0 }, { 0.8f, 0.8f, 0, 1, 1, 1, 1, 1 },
-		    { -0.8f, 0.8f, 0, 1, 1, 1, 0, 1 } };
-		float tangents[6][7];
-		for ( auto &v : tangents )
-		{
-			const float basis[7] = { 0, 0, 1, 1, 0, 0, 1 };
-			std::copy_n( basis, 7, v );
-		}
-		CVulkanContext::SkinConstants energy{};
-		energy.viewProj[0] = energy.viewProj[5] = energy.viewProj[10] = energy.viewProj[15] = 1;
-		energy.texXform0[0] = energy.texXform1[1] = 1;
-		energy.eyePos[2] = 1;
-		energy.ps[6][3] = energy.ps[10][0] = 1; // output intensity and ACTIVE
-		CVulkanContext::DynRasterState raster;
-		raster.depthTest = raster.depthWrite = false;
-		raster.blend = true;
-		raster.srcFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-		raster.dstFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-		for ( int mode : { 0, 1, 0, 2, 3, 4 } )
-		{
-			ctx.ClearDynamicQueue();
-			ctx.SetRenderTarget( -1 );
-			ctx.SetViewport( 0, 0, 0, 0, 0, 1 );
-			const std::uint32_t policy = render::legacy::kCorePassForwarded |
-			                             render::legacy::kCorePassLegacyOff |
-			                             ( mode != 1 ? render::legacy::kCorePassCustomEffects : 0 );
-			ctx.QueueCorePass( policy | ( mode == 3 ? 3u : 2u ), {} );
-			raster.depthTest = mode == 3;
-			energy.viewProj[14] = 0.5f;
-			ctx.SelectDynamicShader( CVulkanContext::kDynShaderSolidEnergy );
-			ctx.SelectDynamicRasterState( raster );
-			ctx.SetDynamicSkinConstants( energy );
-			ctx.SelectDynamicColorSpace( 0 );
-			ctx.SetDynamicOutputScale( 1 );
-			const float clip[1][4] = { { 1, 0, 0, 0 } };
-			ctx.SetDynamicClipPlanes( mode == 4 ? 1 : 0, clip );
-			ctx.BindManagedTexture( texture );
-			ctx.QueueDynamicTriangles( &quad[0][0], 6, nullptr, &tangents[0][0] );
-			// A later core slot is an intentional wrong-order control.
-			if ( mode == 2 )
-				ctx.QueueCorePass( render::legacy::kCorePassForwarded | 2, {} );
-			for ( int replay = 0; replay < 2; ++replay )
-			{
-				ctx.RequestCapture();
-				bool skipped = false;
-				const bool rendered = RenderCoreFrame( ctx, &skipped, &err );
-				int width = 0, height = 0;
-				const auto &pixels = ctx.GetCapturedPixels( &width, &height );
-				bool correct = rendered && !skipped && width > 0 && height > 0 && !pixels.empty();
-				if ( correct )
-				{
-					const auto *left = &pixels[( size_t( height / 2 ) * width + width / 4 ) * 4];
-					const auto *right =
-					    &pixels[( size_t( height / 2 ) * width + 3 * width / 4 ) * 4];
-					correct = PixelClose( pixels.data(), 0, 0, 255, 255, 2 ) &&
-					          ( mode == 0 ? PixelClose( left, 128, 0, 127, 255, 2 )
-					                      : PixelClose( left, 0, 0, 255, 255, 2 ) ) &&
-					          ( mode == 0 || mode == 4 ? PixelClose( right, 128, 0, 127, 255, 2 )
-					                                   : PixelClose( right, 0, 0, 255, 255, 2 ) );
-				}
-				Check( correct, "SolidEnergy blends over core at its slot; replay, diagnostics, "
-				                "depth, clipping and wrong-order controls" );
-			}
-		}
-	}
-	ctx.ClearDynamicQueue();
-	ctx.SetDynamicClipPlanes( 0, nullptr );
-	ctx.BindCorePassRecorder( nullptr );
-	if ( texture >= 0 )
-		ctx.DestroyManagedTexture( texture );
-}
-
 } // namespace
 
 int main( int argc, char **argv )
@@ -457,44 +287,7 @@ int main( int argc, char **argv )
 		}
 	}
 
-	// Real geometry: bring up the demo pipeline (shader modules + graphics
-	// pipeline + GPU vertex buffer), clear to red, and rasterize a green
-	// triangle over it. The center must read back green (a triangle was
-	// actually drawn) while a corner stays red (the clear still shows), which a
-	// clear-only path could never produce.
-	if ( !ctx.InitDemoTriangle( &err ) )
 	{
-		std::fprintf( stderr, "InitDemoTriangle failed: %s\n", err.c_str() );
-		++g_failures;
-	}
-	else
-	{
-		Check( ctx.DemoTriangleReady(), "demo triangle pipeline is ready" );
-		ctx.SetDrawDemoTriangle( true );
-		if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
-		{
-			std::fprintf( stderr, "present/capture (triangle) failed: %s\n", err.c_str() );
-			++g_failures;
-		}
-		else
-		{
-			int cw = 0, ch = 0;
-			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
-			if ( cw > 0 && ch > 0 && !px.empty() )
-			{
-				const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
-				const uint8_t *corner = &px[0]; // top-left, outside the triangle
-				Check( PixelClose( center, 0, 255, 0, 255, 2 ),
-				    "triangle center is green (geometry drawn)" );
-				Check( PixelClose( corner, 255, 0, 0, 255, 2 ),
-				    "frame corner is still red (clear preserved)" );
-			}
-			else
-			{
-				Check( false, "captured a frame with the triangle" );
-			}
-		}
-
 		// A back buffer of the video mode's size, smaller than the window (D3D9's
 		// BackBufferWidth/Height), is presented scaled over the whole drawable.
 		// The clear is blue now: a back buffer copied 1:1 into the top-left would
@@ -522,8 +315,8 @@ int main( int argc, char **argv )
 				{
 					const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
 					const uint8_t *far = &px[( size_t( ch - 2 ) * cw + ( cw - 2 ) ) * 4];
-					Check( PixelClose( center, 0, 255, 0, 255, 2 ),
-					    "scaled present: the triangle is at the window's center" );
+					Check( PixelClose( center, 0, 0, 255, 255, 2 ),
+					    "scaled present: the window's center is the blue clear" );
 					Check( PixelClose( far, 0, 0, 255, 255, 2 ),
 					    "scaled present: the window's far corner is the blue clear" );
 				}
@@ -538,7 +331,6 @@ int main( int argc, char **argv )
 			++g_failures;
 		ctx.GetSwapchainExtent( bw, bh );
 		Check( bw == dw && bh == dh, "a 0 x 0 back buffer follows the drawable again" );
-		ctx.SetDrawDemoTriangle( false );
 	}
 
 	// Vsync (render.present-policy.v1): the request applies at the next frame
@@ -713,81 +505,6 @@ int main( int argc, char **argv )
 		    "the identity ramp (gamma 2.2) presents by blit" );
 	}
 
-	// Texturing: upload a distinctive magenta texture through a staging buffer,
-	// bind it via a descriptor set, and sample it onto a quad. Magenta appears
-	// nowhere else, so the quad center reading back magenta proves the texture
-	// was really uploaded, bound, and sampled; the corner stays red (clear).
-	if ( !ctx.InitTexturedQuad( &err ) )
-	{
-		std::fprintf( stderr, "InitTexturedQuad failed: %s\n", err.c_str() );
-		++g_failures;
-	}
-	else
-	{
-		Check( ctx.TexturedQuadReady(), "textured-quad pipeline is ready" );
-		ctx.SetDrawTexturedQuad( true );
-		if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
-		{
-			std::fprintf( stderr, "present/capture (textured quad) failed: %s\n", err.c_str() );
-			++g_failures;
-		}
-		else
-		{
-			int cw = 0, ch = 0;
-			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
-			if ( cw > 0 && ch > 0 && !px.empty() )
-			{
-				const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
-				const uint8_t *corner = &px[0];
-				Check( PixelClose( center, 255, 0, 255, 255, 2 ),
-				    "quad center is magenta (texture sampled)" );
-				Check( PixelClose( corner, 255, 0, 0, 255, 2 ),
-				    "frame corner is still red (clear preserved)" );
-			}
-			else
-			{
-				Check( false, "captured a frame with the textured quad" );
-			}
-		}
-		ctx.SetDrawTexturedQuad( false );
-	}
-
-	// Depth buffering: two overlapping triangles, near (blue) drawn first, far
-	// (green) drawn second, with depth testing on. If the depth attachment
-	// resolves occlusion, the center stays blue even though green was drawn
-	// last -- the capability real 3D scene rendering needs.
-	if ( !ctx.InitDemoDepth( &err ) )
-	{
-		std::fprintf( stderr, "InitDemoDepth failed: %s\n", err.c_str() );
-		++g_failures;
-	}
-	else
-	{
-		Check( ctx.DemoDepthReady(), "depth-test pipeline is ready" );
-		ctx.SetDrawDemoDepth( true );
-		if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
-		{
-			std::fprintf( stderr, "present/capture (depth) failed: %s\n", err.c_str() );
-			++g_failures;
-		}
-		else
-		{
-			int cw = 0, ch = 0;
-			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
-			if ( cw > 0 && ch > 0 && !px.empty() )
-			{
-				const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
-				Check( PixelClose( center, 0, 0, 255, 255, 2 ),
-				    "near (blue) triangle occludes the later far (green) one (depth test works)" );
-			}
-			else
-			{
-				Check( false, "captured a frame with the depth demo" );
-			}
-		}
-		ctx.SetDrawDemoDepth( false );
-	}
-	Check( ctx.InitDynamicMesh( &err ), "dynamic mesh pipelines initialize" );
 	ctx.ClearDynamicQueue();
 	ctx.ReleaseWorldMesh();
 	Check( !ctx.WorldMeshResident(), "map unload releases world mesh buffers" );
@@ -798,120 +515,6 @@ int main( int argc, char **argv )
 	    "world mesh can upload after release" );
 
 	err.clear();
-
-	// Render-pass merging: a tiled GPU stores and reloads the whole target at
-	// every pass break. Draws that write no color and depth/stencil-only clears
-	// keep the open (sRGB) view, a query spanning them stays in one pass, a
-	// repeated copy with nothing drawn since is made once, and the frame's
-	// clearing pass opens in the view its first draw needs. The frame is: sRGB
-	// draw, query { masked draw, depth/stencil clear, sRGB draw }, two identical
-	// copies, sRGB draw. With merging off (-vkpassmerge 0, the earlier policy)
-	// the same frame takes seven passes and two copies and fails the query.
-	{
-		static const float quad[6][8] = {
-		    { -0.5f, -0.5f, 0.5f, 1, 1, 1, 0, 0 },
-		    { 0.5f, 0.5f, 0.5f, 1, 1, 1, 1, 1 },
-		    { 0.5f, -0.5f, 0.5f, 1, 1, 1, 1, 0 },
-		    { -0.5f, -0.5f, 0.5f, 1, 1, 1, 0, 0 },
-		    { -0.5f, 0.5f, 0.5f, 1, 1, 1, 0, 1 },
-		    { 0.5f, 0.5f, 0.5f, 1, 1, 1, 1, 1 },
-		};
-		const float grey[4] = { 0.5f, 0.5f, 0.5f, 1.0f };
-		const float red[4] = { 1.0f, 0.0f, 0.0f, 1.0f };
-		CVulkanContext::DynRasterState opaque;
-		CVulkanContext::DynRasterState masked;
-		masked.colorWrite = false;
-		const int copyTarget = ctx.CreateRenderTargetTexture( 64, 64, &err );
-		const int query = ctx.CreateOcclusionQuery( &err );
-		const bool srgb = ctx.LinearSpaceSrgbBlending();
-		for ( bool merge : { true, false } )
-		{
-			const char *const mode = merge ? "merged" : "unmerged";
-			ctx.SetPassMerging( merge );
-			ctx.ClearDynamicQueue();
-			ctx.SetClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
-			ctx.SetRenderTarget( -1 );
-			ctx.SelectDynamicShader( CVulkanContext::kDynShaderTextured );
-			ctx.BindManagedTexture( -1 );
-			ctx.SelectDynamicRasterState( opaque );
-			ctx.SelectDynamicColorSpace( CVulkanContext::kColorSrgbWrite );
-			ctx.SetDynamicModulation( grey );
-			ctx.QueueDynamicTriangles( &quad[0][0], 6 );
-			if ( query >= 0 )
-				ctx.QueueBeginOcclusionQuery( query );
-			ctx.SelectDynamicRasterState( masked );
-			ctx.SelectDynamicColorSpace( 0 );
-			ctx.SetDynamicModulation( red );
-			ctx.QueueDynamicTriangles( &quad[0][0], 6 );
-			ctx.QueueClear( false, true, true );
-			ctx.SelectDynamicRasterState( opaque );
-			ctx.SelectDynamicColorSpace( CVulkanContext::kColorSrgbWrite );
-			ctx.SetDynamicModulation( grey );
-			ctx.QueueDynamicTriangles( &quad[0][0], 6 );
-			if ( query >= 0 )
-				ctx.QueueEndOcclusionQuery( query );
-			Check( ctx.QueueCopyToTexture( copyTarget, nullptr, nullptr ), "first copy queues" );
-			Check( ctx.QueueCopyToTexture( copyTarget, nullptr, nullptr ), "repeated copy queues" );
-			ctx.QueueDynamicTriangles( &quad[0][0], 6 );
-			ctx.RequestCapture();
-			bool skip = true;
-			for ( int attempt = 0; skip && attempt < 100; ++attempt )
-			{
-				if ( !ctx.RenderFrame( &skip, &err ) )
-					break;
-				if ( skip )
-					SDL_Delay( 8 );
-			}
-			Check( !skip, "pass-merge frame records" );
-			if ( skip )
-				continue;
-			const render_vulkan::FrameCost &cost = ctx.LastFrameCost();
-			const uint32_t passes = cost.count[render_vulkan::kCostRenderPass];
-			const uint32_t copies = cost.count[render_vulkan::kCostTargetCopy];
-			std::fprintf( stderr, "  %s: %u render passes, %u copies\n", mode, passes, copies );
-			if ( merge )
-			{
-				// The clearing pass (in the sRGB view) and the pass after the copy.
-				Check(
-				    passes == 2, "masked draws, depth/stencil clears and queries break no pass" );
-				Check( copies == 1, "a repeated copy with nothing drawn since is made once" );
-			}
-			else
-			{
-				// Clear, sRGB, UNORM (masked draw and clear), sRGB, two reopened
-				// after the copies, and the UNORM pass the frame ended in.
-				Check( passes == ( srgb ? 7u : 3u ), "without merging, each view change breaks" );
-				Check( copies == 2, "without merging, every copy is made" );
-			}
-			Check( err.empty(), "pass-merge frame presents" );
-			if ( merge && query >= 0 )
-			{
-				const int64_t samples = ctx.OcclusionQueryResult( query, true );
-				Check( samples > 0, "a query spanning a masked and an sRGB draw completes" );
-			}
-			int cw = 0, ch = 0;
-			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
-			if ( cw > 0 && ch > 0 && !px.empty() )
-			{
-				// sRGB(0.5) = 188 in both modes; the masked red draw left no color.
-				const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
-				const uint8_t *corner = &px[0];
-				Check( PixelClose( center, 188, 188, 188, 255, 2 ),
-				    "the sRGB-encoded grey is drawn; the masked draw writes no color" );
-				Check( PixelClose( corner, 0, 0, 0, 255, 0 ),
-				    "the clear stores the same bytes in either view" );
-			}
-			else
-				Check( false, "pass-merge frame captured" );
-		}
-		ctx.SetPassMerging( true );
-		if ( query >= 0 )
-			ctx.DestroyOcclusionQuery( query );
-		ctx.ClearDynamicQueue();
-	}
-
-	CheckPortalCoreReplay( ctx, err );
-	CheckSolidEnergyCoreReplay( ctx, err );
 
 	// A refused encoder never waits on the acquire semaphore. The following
 	// frame must recover without reusing a signalled semaphore or leaking the
