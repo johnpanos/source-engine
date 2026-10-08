@@ -422,7 +422,54 @@ def configure_n3ds(conf):
 	conf.env.DEVKITPRO = devkitpro
 	conf.msg('Selected Nintendo 3DS', devkitpro)
 
+def configure_emscripten(conf):
+	"""--emscripten: cross-compile for WebAssembly (wasm32) with the pinned
+	Emscripten SDK (RFC 0029 W0; quality/toolchain/emscripten.json, prepared
+	by kiln's emscripten toolchain or tools/render/webgpu_lane.py emsdk).
+	Every product is statically composed; the browser's webgpu.h is the
+	pinned Dawn release's emdawnwebgpu port."""
+	import json
+	root = conf.path.abspath()
+	pin = json.load(open(os.path.join(root, 'quality', 'toolchain', 'emscripten.json')))
+	emsdk = conf.options.EMSDK or os.path.join(root, 'dependencies', pin['emsdk']['directory'])
+	bindir = os.path.join(emsdk, 'upstream', 'emscripten')
+	if not os.path.isfile(os.path.join(bindir, 'em++')):
+		conf.fatal('--emscripten needs the pinned emsdk (%s): python3 tools/render/webgpu_lane.py emsdk' % emsdk)
+	conf.environ['EMSDK'] = emsdk
+	conf.environ['EM_CONFIG'] = os.path.join(emsdk, '.emscripten')
+	conf.environ['PATH'] = bindir + os.pathsep + conf.environ.get('PATH', '')
+	conf.environ['CC'] = os.path.join(bindir, 'emcc')
+	conf.environ['CXX'] = os.path.join(bindir, 'em++')
+	conf.environ['AR'] = os.path.join(bindir, 'emar')
+	# Threads are Web Workers on SharedArrayBuffer (cross-origin isolated
+	# pages); wasm exceptions for the engine's few try blocks.
+	common = ['-pthread', '-fwasm-exceptions']
+	conf.env.CFLAGS += common
+	conf.env.CXXFLAGS += common
+	conf.env.LINKFLAGS += common
+	# Programs: the engine's heap grows (to wasm32's 4 GiB); the main and
+	# worker stacks are the desktop's order of magnitude.
+	conf.env.LINKFLAGS += ['-sALLOW_MEMORY_GROWTH=1', '-sINITIAL_MEMORY=268435456',
+		'-sMAXIMUM_MEMORY=4294967296', '-sSTACK_SIZE=8388608',
+		'-sDEFAULT_PTHREAD_STACK_SIZE=2097152',
+		# The host (tools/web/run_node.mjs, the browser page) mounts the game
+		# content before main: NODEFS in Node, OPFS/fetched files in a browser.
+		'-sFORCE_FILESYSTEM=1', '-lnodefs.js', '-sEXPORTED_RUNTIME_METHODS=FS,NODEFS,ENV,callMain',
+		'-sINVOKE_RUN=0', '-sEXIT_RUNTIME=1', '-sPTHREAD_POOL_SIZE=8',
+		# One factory, createSourceEngine(moduleArgs), for every host.
+		'-sMODULARIZE=1', '-sEXPORT_NAME=createSourceEngine',
+		# Function names in stacks (the dev lane's diagnostics).
+		'--profiling-funcs']
+	conf.env.EMSCRIPTEN = True
+	conf.env.EMSDK = emsdk
+	conf.msg('Selected Emscripten', emsdk)
+
 def options(opt):
+	web = opt.add_option_group('WebAssembly options')
+	web.add_option('--emscripten', action='store_true', dest='EMSCRIPTEN', default=False,
+		help='cross-compile for WebAssembly with the pinned Emscripten SDK (RFC 0029)')
+	web.add_option('--emsdk', action='store', dest='EMSDK', default=None,
+		help='the emsdk directory [default: the pin under dependencies/]')
 	n3ds = opt.add_option_group('Nintendo 3DS options')
 	n3ds.add_option('--n3ds', action='store_true', dest='N3DS', default=False,
 		help='cross-compile for the Nintendo 3DS with devkitARM (build-3ds.sh)')
@@ -441,6 +488,8 @@ def options(opt):
 def configure(conf):
 	if getattr(conf.options, 'N3DS', False):
 		configure_n3ds(conf)
+	if getattr(conf.options, 'EMSCRIPTEN', False):
+		configure_emscripten(conf)
 	if getattr(conf.options, 'APPLE_SDK', None):
 		if conf.options.ANDROID_OPTS:
 			conf.fatal('--apple-sdk and --android select different targets')
@@ -497,7 +546,8 @@ def configure(conf):
 	# iOS and tvOS before the generic __APPLE__ (darwin) mapping; clang defines
 	# these macros for their device and simulator targets only. tvOS is part
 	# of the ios (UIKit) family; APPLE_PLATFORM tells the two apart.
-	MACRO_TO_DESTOS = OrderedDict({ '__3DS__' : '3ds', '__ANDROID__' : 'android',
+	MACRO_TO_DESTOS = OrderedDict({ '__3DS__' : '3ds', '__EMSCRIPTEN__' : 'emscripten',
+		'__ANDROID__' : 'android',
 		'__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__' : 'ios',
 		'__ENVIRONMENT_TV_OS_VERSION_MIN_REQUIRED__' : 'ios' })
 	for k in c_config.MACRO_TO_DESTOS:
@@ -506,6 +556,13 @@ def configure(conf):
 	c_config.MACRO_TO_DESTOS  = MACRO_TO_DESTOS
 
 def post_compiler_cxx_configure(conf):
+	if conf.env.DEST_OS == 'emscripten':
+		# Waf knows neither the CPU nor the object format of wasm32.
+		conf.env.DEST_CPU = 'wasm32'
+		conf.env.DEST_BINFMT = 'wasm'
+		# A program is its JavaScript loader beside its .wasm.
+		conf.env.cxxprogram_PATTERN = '%s.js'
+		conf.env.cprogram_PATTERN = '%s.js'
 	if conf.env.DEST_OS == 'ios':
 		# Waf applies its Apple settings (no -Bstatic markers, frameworks,
 		# .dylib patterns) only for DEST_OS darwin.
@@ -521,6 +578,10 @@ def post_compiler_cxx_configure(conf):
 	return
 
 def post_compiler_c_configure(conf):
+	if conf.env.DEST_OS == 'emscripten':
+		# Waf knows neither the CPU nor the object format of wasm32.
+		conf.env.DEST_CPU = 'wasm32'
+		conf.env.DEST_BINFMT = 'wasm'
 	if conf.env.DEST_OS == 'ios':
 		conf.gcc_modifier_darwin()
 	conf.msg('Target OS', conf.env.DEST_OS)

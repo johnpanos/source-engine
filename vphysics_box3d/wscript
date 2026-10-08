@@ -24,6 +24,9 @@ def build_box3d(bld):
 	box3d_env = bld.env.derive()
 	box3d_env.detach()
 	box3d_env.DEFINES = [value for value in bld.env.DEFINES if value == 'NDEBUG']
+	if bld.env.DEST_OS == 'emscripten':
+		# Upstream's wasm path is its SSE2 path on WebAssembly SIMD (core.h).
+		box3d_env.append_unique('CFLAGS', ['-msimd128', '-msse2'])
 
 	root = bld.path.find_dir('../box3d')
 	if not root or not root.find_node('src/core.c'):

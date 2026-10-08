@@ -205,6 +205,10 @@ InitReturnVal_t CSDL3Mgr::Init()
 	// The 3DS's top screen (400x240): the PICA backend (shaderapipica) draws
 	// it through citro3d, so the window carries no graphics API.
 	m_Window = SDL_CreateWindow( "", 400, 240, 0 );
+#elif defined( PLATFORM_WASM )
+	// The browser's canvas (RFC 0029): the render core's WebGPU device takes
+	// its surface from the canvas, so the window carries no graphics API.
+	m_Window = SDL_CreateWindow( "", 1280, 720, pixelDensity | SDL_WINDOW_RESIZABLE );
 #else
 	m_Window = SDL_CreateWindow( "", 1280, 720,
 	    SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN | pixelDensity | SDL_WINDOW_RESIZABLE );

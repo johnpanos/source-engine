@@ -74,7 +74,7 @@ def build(bld):
 		idx      = bld.get_taskgen_count()
 	)
 
-	if bld.env.SDL3 and bld.env.DEST_OS != '3ds': # desktop test programs
+	if bld.env.SDL3 and bld.env.DEST_OS not in ('3ds', 'emscripten'): # desktop test programs
 		bld.program(
 			source = [ '../unittests/sdl3test/voice_record_test.cpp' ],
 			target = 'sdl3_voice_record_test',
@@ -86,7 +86,7 @@ def build(bld):
 			idx = bld.get_taskgen_count()
 		)
 
-	if bld.env.SDL3 and bld.env.DEST_OS != '3ds': # desktop test programs
+	if bld.env.SDL3 and bld.env.DEST_OS not in ('3ds', 'emscripten'): # desktop test programs
 		bld.program(
 			source = ['../unittests/platformtest/sdl3/test_gamepad_slots.cpp'],
 			target = 'input_gamepad_slots_test',

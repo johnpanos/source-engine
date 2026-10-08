@@ -7,7 +7,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#ifdef LINUX
+#if defined( PLATFORM_WASM )
+// No sysctl: the frequency comes from /proc (absent) or the timing fallback.
+#elif defined( LINUX )
 #include <linux/sysctl.h>
 #else
 #include <sys/sysctl.h>
@@ -124,7 +126,7 @@ uint64 CalculateCPUFreq()
 		}
 	}
 
-#if !defined(__arm__) && !defined(__aarch64__)
+#if !(defined(__arm__) || defined(__wasm__)) && !defined(__aarch64__)
 	// fallback mechanism to calculate when failed
 	// Compute the period. Loop until we get 3 consecutive periods that
 	// are the same to within a small error. The error is chosen

@@ -389,7 +389,7 @@ typedef void * HINSTANCE;
 	// On OSX, SIGTRAP doesn't really stop the thread cold when debugging.
 	// So if being debugged, use INT3 which is precise.
 #if defined(OSX) || defined(PLATFORM_BSD)
-# if defined(__arm__) || defined(__aarch64__)
+# if (defined(__arm__) || defined(__wasm__)) || defined(__aarch64__)
 #  ifdef __clang__
 #   define DebuggerBreak()  do { if ( Plat_IsInDebugSession() ) { __builtin_debugtrap(); } else { raise(SIGTRAP); } } while(0)
 #  elif defined __GNUC__
@@ -816,7 +816,7 @@ static FORCEINLINE double fsel(double fComparand, double fValGE, double fLT)
 
 		#endif
 	#endif
-#elif defined (__arm__) || defined (__aarch64__)
+#elif (defined(__arm__) || defined(__wasm__)) || defined (__aarch64__)
 	inline void SetupFPUControlWord() {}
 #else
 	inline void SetupFPUControlWord()
@@ -933,7 +933,7 @@ inline T QWordSwapC( T dw )
 // The typically used methods.
 //-------------------------------------
 
-#if (defined(__i386__) || defined(__amd64__) || defined(__arm__) || defined(__aarch64__)) && !defined(VALVE_LITTLE_ENDIAN)
+#if (defined(__i386__) || defined(__amd64__) || (defined(__arm__) || defined(__wasm__)) || defined(__aarch64__)) && !defined(VALVE_LITTLE_ENDIAN)
 #define VALVE_LITTLE_ENDIAN 1
 #endif
 
@@ -1087,7 +1087,7 @@ PLATFORM_INTERFACE struct tm *		Plat_localtime( const time_t *timep, struct tm *
 
 inline uint64 Plat_Rdtsc()
 {
-#if (defined( __arm__ ) || defined( __aarch64__ )) && defined (POSIX)
+#if ((defined(__arm__) || defined(__wasm__)) || defined( __aarch64__ )) && defined (POSIX)
 	struct timespec t;
 	clock_gettime( CLOCK_REALTIME, &t);
 	return t.tv_sec * 1000000000ULL + t.tv_nsec;

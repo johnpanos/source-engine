@@ -8,6 +8,11 @@
 #endif
 #define NULL 0
 
+// Each signature is the one public/steam declares (in fixed-width types, so
+// this stub needs none of its headers): WebAssembly traps on a call whose
+// signature differs from the definition's.
+#include <stdint.h>
+
 S_API void *g_pSteamClientGameServer;
 void *g_pSteamClientGameServer = NULL;
 
@@ -24,7 +29,7 @@ S_API void SteamAPI_Shutdown() {
 
 }
 
-S_API bool SteamAPI_RestartAppIfNecessary() {
+S_API bool SteamAPI_RestartAppIfNecessary( uint32_t ) {
 	return false;
 }
 
@@ -32,30 +37,30 @@ S_API void SteamAPI_ReleaseCurrentThreadMemory() {
 
 }
 
-S_API void SteamAPI_WriteMiniDump() {
+S_API void SteamAPI_WriteMiniDump( uint32_t, void *, uint32_t ) {
 
 }
 
-S_API void SteamAPI_SetMiniDumpComment() {
+S_API void SteamAPI_SetMiniDumpComment( const char * ) {
 
 }
 
 S_API void SteamAPI_RunCallbacks() {
 }
 
-S_API void SteamAPI_RegisterCallback() {
+S_API void SteamAPI_RegisterCallback( void *, int ) {
 
 }
 
-S_API void SteamAPI_UnregisterCallback() {
+S_API void SteamAPI_UnregisterCallback( void * ) {
 
 }
 
-S_API void SteamAPI_RegisterCallResult() {
+S_API void SteamAPI_RegisterCallResult( void *, uint64_t ) {
 
 }
 
-S_API void SteamAPI_UnregisterCallResult() {
+S_API void SteamAPI_UnregisterCallResult( void *, uint64_t ) {
 
 }
 
@@ -63,11 +68,11 @@ S_API bool SteamAPI_IsSteamRunning() {
 	return false;
 }
 
-S_API void Steam_RunCallbacks() {
+S_API void Steam_RunCallbacks( int32_t, bool ) {
 
 }
 
-S_API void Steam_RegisterInterfaceFuncs() {
+S_API void Steam_RegisterInterfaceFuncs( void * ) {
 }
 
 S_API int Steam_GetHSteamUserCurrent() {
@@ -82,15 +87,15 @@ S_API int SteamAPI_GetHSteamPipe() {
 	return 0;
 }
 
-S_API void SteamAPI_SetTryCatchCallbacks() {
+S_API void SteamAPI_SetTryCatchCallbacks( bool ) {
 
 }
 
-S_API void SteamAPI_SetBreakpadAppID() {
+S_API void SteamAPI_SetBreakpadAppID( uint32_t ) {
 
 }
 
-S_API void SteamAPI_UseBreakpadCrashHandler() {
+S_API void SteamAPI_UseBreakpadCrashHandler( const char *, const char *, const char *, bool, void *, void * ) {
 
 }
 
@@ -174,7 +179,7 @@ S_API int SteamGameServer_GetIPCCallCount() {
 	return 0;
 }
 
-S_API int SteamGameServer_InitSafe() {
+S_API bool SteamGameServer_InitSafe( uint32_t, uint16_t, uint16_t, uint16_t, int, const char * ) {
 	return 0;
 }
 

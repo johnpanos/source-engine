@@ -72,6 +72,8 @@ def build(bld):
 		]
 		if bld.env.DEST_OS == '3ds':
 			source += ['../platform/n3ds/compat/n3ds_compat.cpp']
+		elif bld.env.DEST_OS == 'emscripten':
+			source += ['../platform/wasm/compat/wasm_compat.cpp']
 
 	includes = [
 		'.',

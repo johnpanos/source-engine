@@ -22,7 +22,7 @@ const tchar* GetProcessorVendorId();
 
 static bool cpuid(uint32 function, uint32& out_eax, uint32& out_ebx, uint32& out_ecx, uint32& out_edx)
 {
-#if defined( __arm__ ) || defined( __aarch64__ )
+#if (defined(__arm__) || defined(__wasm__)) || defined( __aarch64__ )
 	return false;
 #elif defined(GNUC)
 
@@ -152,7 +152,7 @@ static bool IsWin98OrOlder()
 
 static bool CheckSSETechnology(void)
 {
-#if defined(__SANITIZE_ADDRESS__) || defined (__arm__)
+#if defined(__SANITIZE_ADDRESS__) || (defined(__arm__) || defined(__wasm__))
 	return false;
 #else
 	if ( IsWin98OrOlder() ) {
@@ -170,7 +170,7 @@ static bool CheckSSETechnology(void)
 
 static bool CheckSSE2Technology(void)
 {
-#if defined( __SANITIZE_ADDRESS__ ) || defined( __arm__ )
+#if defined( __SANITIZE_ADDRESS__ ) || (defined(__arm__) || defined(__wasm__))
 	return false;
 #else
 	uint32 eax,ebx,edx,unused;
@@ -183,7 +183,7 @@ static bool CheckSSE2Technology(void)
 
 bool CheckSSE3Technology(void)
 {
-#if defined( __SANITIZE_ADDRESS__ ) || defined( __arm__ )
+#if defined( __SANITIZE_ADDRESS__ ) || (defined(__arm__) || defined(__wasm__))
 	return false;
 #else
 	uint32 eax,ebx,edx,ecx;
@@ -196,7 +196,7 @@ bool CheckSSE3Technology(void)
 
 bool CheckSSSE3Technology(void)
 {
-#if defined( __SANITIZE_ADDRESS__ ) || defined( __arm__ )
+#if defined( __SANITIZE_ADDRESS__ ) || (defined(__arm__) || defined(__wasm__))
 	return false;
 #else
 	// SSSE 3 is implemented by both Intel and AMD
@@ -211,7 +211,7 @@ bool CheckSSSE3Technology(void)
 
 bool CheckSSE41Technology(void)
 {
-#if defined( __SANITIZE_ADDRESS__ ) || defined( __arm__ )
+#if defined( __SANITIZE_ADDRESS__ ) || (defined(__arm__) || defined(__wasm__))
 	return false;
 #else
 	// SSE 4.1 is implemented by both Intel and AMD
@@ -227,7 +227,7 @@ bool CheckSSE41Technology(void)
 
 bool CheckSSE42Technology(void)
 {
-#if defined( __SANITIZE_ADDRESS__ ) || defined( __arm__ )
+#if defined( __SANITIZE_ADDRESS__ ) || (defined(__arm__) || defined(__wasm__))
 	return false;
 #else
 	// SSE4.2 is an Intel-only feature
@@ -247,7 +247,7 @@ bool CheckSSE42Technology(void)
 
 bool CheckSSE4aTechnology( void )
 {
-#if defined( __SANITIZE_ADDRESS__ ) || defined( __arm__ )
+#if defined( __SANITIZE_ADDRESS__ ) || (defined(__arm__) || defined(__wasm__))
 	return false;
 #else
 	// SSE 4a is an AMD-only feature
@@ -267,7 +267,7 @@ bool CheckSSE4aTechnology( void )
 
 static bool Check3DNowTechnology(void)
 {
-#if defined( __arm__ ) || defined( __SANITIZE_ADDRESS__ ) || ( defined( PLATFORM_BSD ) && defined( COMPILER_CLANG ) )
+#if (defined(__arm__) || defined(__wasm__)) || defined( __SANITIZE_ADDRESS__ ) || ( defined( PLATFORM_BSD ) && defined( COMPILER_CLANG ) )
 	return false;
 #else
 	uint32 eax, unused;
@@ -287,7 +287,7 @@ static bool Check3DNowTechnology(void)
 
 static bool CheckCMOVTechnology()
 {
-#if defined( __arm__ ) || defined( __SANITIZE_ADDRESS__ )
+#if (defined(__arm__) || defined(__wasm__)) || defined( __SANITIZE_ADDRESS__ )
 	return false;
 #else
 	uint32 eax,ebx,edx,unused;
@@ -300,7 +300,7 @@ static bool CheckCMOVTechnology()
 
 static bool CheckFCMOVTechnology(void)
 {
-#if defined( __arm__ ) || defined( __SANITIZE_ADDRESS__ )
+#if (defined(__arm__) || defined(__wasm__)) || defined( __SANITIZE_ADDRESS__ )
 	return false;
 #else
     uint32 eax,ebx,edx,unused;
@@ -313,7 +313,7 @@ static bool CheckFCMOVTechnology(void)
 
 static bool CheckRDTSCTechnology(void)
 {
-#if defined( __arm__ ) || defined( __SANITIZE_ADDRESS__ )
+#if (defined(__arm__) || defined(__wasm__)) || defined( __SANITIZE_ADDRESS__ )
 	return false;
 #else
 	uint32 eax,ebx,edx,unused;
@@ -327,7 +327,7 @@ static bool CheckRDTSCTechnology(void)
 // Return the Processor's vendor identification string, or "Generic_x86" if it doesn't exist on this CPU
 const tchar* GetProcessorVendorId()
 {
-#if defined ( __arm__ )
+#if (defined(__arm__) || defined(__wasm__))
 	return "ARM";
 #else
 	uint32 unused, VendorIDRegisters[3];
@@ -363,6 +363,8 @@ const tchar* GetProcessorArchName()
 	return "i386";
 #elif defined __aarch64__
         return "aarch64";
+#elif defined __wasm__
+	return "wasm32";
 #elif defined __arm__ || defined _M_ARM
         return "arm";
 #else

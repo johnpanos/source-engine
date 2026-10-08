@@ -2617,6 +2617,10 @@ NET_OpenSockets
 */
 void NET_OpenSockets (void)
 {	
+	// -noip: loopback only (the browser product has no UDP, RFC 0029).
+	if ( net_noip )
+		return;
+
 	// Xbox 360 uses VDP protocol to combine encrypted game data with clear voice data
 	const int nProtocol = X360SecureNetwork() ? IPPROTO_VDP : IPPROTO_UDP;
 
@@ -3111,8 +3115,9 @@ void NET_Init( bool bIsDedicated )
 
 	const int nProtocol = X360SecureNetwork() ? IPPROTO_VDP : IPPROTO_UDP;
 
-	// open client socket for masterserver
-	OpenSocketInternal( NS_CLIENT, clientport.GetInt(), PORT_SERVER, "client", nProtocol, true );
+	// open client socket for masterserver (none with -noip)
+	if ( !net_noip )
+		OpenSocketInternal( NS_CLIENT, clientport.GetInt(), PORT_SERVER, "client", nProtocol, true );
 
 	if ( bIsDedicated )
 	{

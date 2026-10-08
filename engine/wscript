@@ -438,7 +438,7 @@ def build(bld):
 		if bld.env.OPUS or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 			libs += ['vaudio_opus']
 
-	if bld.env.ANDROID_SDL3:
+	if bld.env.WEB_OR_MOBILE:
 		libs += ['bzip2']
 	elif bld.env.DEST_OS == 'android':
 		libs += ['SSL', 'CRYPTO'] # android curl was built with openssl

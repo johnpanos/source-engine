@@ -61,6 +61,9 @@
 #include "idedicatedexports.h"
 #include "eifacev21.h"
 #include "cl_steamauth.h"
+#if defined( PLATFORM_WASM )
+#include <emscripten/heap.h>
+#endif
 #include "tier0/etwprof.h"
 
 #include "vgui_baseui_interface.h"
@@ -504,6 +507,11 @@ void Sys_Error_Internal( bool bMinidump, const char *error, va_list argsList )
 	// _exit() avoids calling global destructors in our module, but not in other DLLs.
 	TerminateProcess( GetCurrentProcess(), 100 );
 #else
+#if defined( PLATFORM_WASM )
+	// The browser's page and the Node lane see no message box: the error
+	// is their only report.
+	fprintf( stderr, "Sys_Error: %s\n", text );
+#endif
 	_exit( 100 );
 #endif
 }
@@ -690,6 +698,10 @@ void Sys_InitMemory( void )
 	// The New 3DS has 256 MB (no /proc/meminfo); the engine takes a quarter of
 	// it as its cache budget below.
 	memsize = 256ull * 1024 * 1024;
+#elif defined( PLATFORM_WASM )
+	// WebAssembly (RFC 0029): no /proc; the heap's ceiling (wasm32 and the
+	// product's -sMAXIMUM_MEMORY) is the machine the engine sizes against.
+	memsize = emscripten_get_heap_max();
 #elif defined(OSX) || defined(PLATFORM_BSD)
 	int mib[2] = { CTL_HW, HW_MEMSIZE };
 	u_int namelen = sizeof(mib) / sizeof(mib[0]);

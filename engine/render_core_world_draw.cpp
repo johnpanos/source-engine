@@ -235,18 +235,30 @@ void ReadVariables(
 		// archive holds) never reaches the renderer: the variable is absent
 		// for the core (its neutral value, a flat normal for a bump map),
 		// named once, not a failure of the core.
-		if ( pTexture && pCore && !pCore->TextureResident( pTexture ) &&
-		     !g_pFileSystem->FileExists(
-		         CFmtStr( "materials/%s.vtf", pVar->GetStringValue() ).Get(), "GAME" ) )
+		// Each name is looked up in the content once: a texture that is not
+		// resident yet (or never is, on a device that keeps none) would
+		// otherwise search the file system on every draw.
+		static CUtlDict<bool, int> s_Shipped;
+		bool bShipped = true;
+		if ( pTexture && pCore && !pCore->TextureResident( pTexture ) )
 		{
-			static CUtlDict<bool, int> s_Reported;
-			if ( s_Reported.Find( pVar->GetStringValue() ) == s_Reported.InvalidIndex() )
+			int nKnown = s_Shipped.Find( pVar->GetStringValue() );
+			if ( nKnown == s_Shipped.InvalidIndex() )
 			{
-				s_Reported.Insert( pVar->GetStringValue(), true );
-				Msg( "r_core_world: material %s names %s %s, which the content lacks; the core "
-				     "draws it without\n",
-				    pMaterial->GetName(), pVar->GetName(), pVar->GetStringValue() );
+				const bool bExists = g_pFileSystem->FileExists(
+				    CFmtStr( "materials/%s.vtf", pVar->GetStringValue() ).Get(), "GAME" );
+				nKnown = s_Shipped.Insert( pVar->GetStringValue(), bExists );
+				if ( !bExists )
+				{
+					Msg( "r_core_world: material %s names %s %s, which the content lacks; the "
+					     "core draws it without\n",
+					    pMaterial->GetName(), pVar->GetName(), pVar->GetStringValue() );
+				}
 			}
+			bShipped = s_Shipped[nKnown];
+		}
+		if ( !bShipped )
+		{
 			out.values.Tail() = CUtlString( "" );
 			pTexture = NULL;
 		}
