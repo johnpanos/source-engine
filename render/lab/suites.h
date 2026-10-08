@@ -115,6 +115,7 @@ int RunShadowReceiverPerfSuite( int argc, char **argv );
 int RunBounceSuite( int argc, char **argv );
 int RunGtaoSuite( int argc, char **argv );
 int RunPanelSuite( int argc, char **argv );
+int RunUiSuite( int argc, char **argv );
 
 } // namespace render::lab
 

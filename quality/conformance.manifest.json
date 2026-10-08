@@ -13578,6 +13578,39 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.ui",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K8 UI cohort: the screen UI's draw list (render.ui-draw-list.v1) through render.pass.world's dynamic draws (UiListView) against the legacy 2D path restated independently (UnlitGeneric: the base read through sRGB, the vertex color pow 2.2, a linear target): a command covers exactly the pixels whose centers lie inside its corners after the list's scale and offset and inside its viewport; opaque, $vertexalpha, $additive and $additive with $translucent composite as legacy; point-sampled texels times the vertex color; overlapping commands draw in list order with their own materials; malformed lists are refused whole by name. Bad producers (scale, viewport or materials ignored, the list reordered) must fail. No validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "ui",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 21,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/ui_suite.cpp",
+        "public/render/ui_draw_list.h",
+        "render/pass/world/world_pass.cpp",
+        "render/material/unlit_family.cpp",
+        "render/material/families/surface_program.glsl",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.particles",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

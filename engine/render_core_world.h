@@ -54,4 +54,26 @@ bool RenderCoreWorldDraw_StageOwnsRuntimeLighting();
 void RenderCoreWorld_BeginFrame();
 void RenderCoreWorld_EndFrame();
 
+// One material's variables, defaults and textures as the core reads the
+// world's (render_core_world.h in public/render/composition), captured for a
+// draw the core takes outside the world: the screen UI (RFC 0016
+// render.pass.ui). Desc() borrows the capture's storage.
+class IMaterial;
+struct RenderCoreWorldMaterial;
+class CRenderCoreMaterialCapture
+{
+public:
+	CRenderCoreMaterialCapture();
+	~CRenderCoreMaterialCapture();
+	CRenderCoreMaterialCapture( const CRenderCoreMaterialCapture & ) = delete;
+	CRenderCoreMaterialCapture &operator=( const CRenderCoreMaterialCapture & ) = delete;
+
+	void Capture( IMaterial *pMaterial );
+	const RenderCoreWorldMaterial &Desc() const;
+
+private:
+	struct Storage;
+	Storage *m_pStorage;
+};
+
 #endif // RENDER_CORE_WORLD_H

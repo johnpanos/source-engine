@@ -186,6 +186,15 @@ public:
 
 	std::uint32_t QueueMesh( const legacy::CoreMeshDraw &draw ) override;
 
+	// The screen UI (RFC 0016 K8 UI cohort, render.ui-draw-list.v1), main
+	// thread: the list as a view of dynamic draws of its materials, queued;
+	// its tag, or 0 with why. With no level the pass holds an empty world
+	// for it (a level's SetWorld replaces it).
+	std::uint32_t QueueUiList( const ui_draw_list::ListView &list,
+	    const RenderCoreWorldMaterial *materials, std::string &why );
+	// Why a UI command of this material would be refused, or nullopt.
+	std::optional<std::string> ClaimUiMaterial( const RenderCoreWorldMaterial &material );
+
 	std::size_t RecordOpaqueBatch( std::span<const std::uint32_t> tags,
 	    device::CommandEncoder &encoder, const legacy::CorePassTarget &target ) override;
 	void RecordSlot( std::uint32_t tag, device::CommandEncoder &encoder,
@@ -342,6 +351,8 @@ private:
 	    const RenderCorePosedModel &source, pass::world::WorldView::PosedModel &out ) const;
 	std::vector<pass::world::WorldMaterial> WorldMaterials(
 	    const RenderCoreWorldMaterial *materials, unsigned int materialCount ) const;
+	// A UI material: as the world's, with its base texture at its $frame.
+	pass::world::WorldMaterial UiMaterial( const RenderCoreWorldMaterial &material ) const;
 	// Raw MDL/VVD/VTX bytes per model, kept for zero-staging resupply.
 	struct ModelBytes
 	{

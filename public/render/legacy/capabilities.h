@@ -58,6 +58,9 @@ struct RenderCallQueueHost
 	// 0 for none.
 	int ( *textureHandle )( ITexture *texture ) = nullptr;
 	int ( *lightmapPageHandle )( int page ) = nullptr;
+	// RFC 0016 K8 UI cohort: the shader API handle of one frame of a texture
+	// (an animated material's $frame); 0 for none or a frame it lacks.
+	int ( *textureFrameHandle )( ITexture *texture, int frame ) = nullptr;
 	// Material-system owned, InitParams-initialized defaults. PrecacheVars
 	// only: no neutral material uploads textures or enters the draw list.
 	// Borrowed until the host shuts down after draining its render queue.

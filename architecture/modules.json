@@ -493,6 +493,7 @@
           "public/render/gpu_compute.h",
           "public/render/world_mesh_upload.h",
           "public/render/world_panel.h",
+          "public/render/ui_draw_list.h",
           "public/render/energy_field.h",
           "public/render/sprite_card.h"
         ],

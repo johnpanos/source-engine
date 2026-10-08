@@ -58,6 +58,7 @@
 #include "render/resources/mip_feedback.h"
 #include "render/shadow_tile.h"
 #include "render/sprite_card.h"
+#include "render/ui_draw_list.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -769,6 +770,16 @@ protected:
 	~IModelLevelSource() = default;
 };
 
+// The screen UI's draw list (render.ui-draw-list.v1, render/ui_draw_list.h;
+// RFC 0016 K8 UI cohort) as a view of dynamic draws: each command a dynamic
+// draw of its material (materials[command.material]) in list order, its
+// vertices where the list places them in its viewport (toClip maps the
+// viewport's pixels, with D3D9 pixel centers as every view's does), at depth
+// 0.5, which the $ignorez materials of the toolkit neither test nor write.
+// The view draws no world geometry. The reason when the list is malformed.
+std::optional<std::string> UiListView(
+    const ui_draw_list::ListView &list, std::span<const WorldMaterial> materials, WorldView &out );
+
 class WorldPass
 {
 public:
@@ -836,6 +847,11 @@ public:
 	    const std::optional<std::vector<std::uint32_t>> &surfaceSelection = std::nullopt ) const;
 	// The tag of the slot to mark for the view; 0 when there is nothing to draw.
 	std::uint32_t QueueView( WorldView view );
+	// Whether the pass holds a world (SetWorld, until ClearWorld).
+	bool HasWorld() const;
+	// Main thread: why a dynamic draw of this material would be refused (the
+	// claim QueueView makes, from the same cache), or nullopt when it draws.
+	std::optional<std::string> DynamicClaim( const WorldMaterial &material );
 	// A dynamic draw the frontend's handoff refused before queueing: counted
 	// and named in Stats() as QueueView's own refusals are.
 	void NoteRefusal( std::string reason );

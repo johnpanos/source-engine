@@ -344,6 +344,45 @@ void CheckFailures( IRenderCoreWorld *pWorld )
 
 } // namespace
 
+struct CRenderCoreMaterialCapture::Storage
+{
+	MaterialVars vars;
+	RenderCoreWorldMaterial desc = {};
+};
+
+CRenderCoreMaterialCapture::CRenderCoreMaterialCapture() : m_pStorage( new Storage )
+{
+}
+
+CRenderCoreMaterialCapture::~CRenderCoreMaterialCapture()
+{
+	delete m_pStorage;
+}
+
+void CRenderCoreMaterialCapture::Capture( IMaterial *pMaterial )
+{
+	delete m_pStorage;
+	m_pStorage = new Storage;
+	NeutralMaterials neutrals;
+	ReadVariables( pMaterial, neutrals, m_pStorage->vars );
+	RenderCoreWorldMaterial &desc = m_pStorage->desc;
+	desc.name = pMaterial->GetName();
+	desc.shader = pMaterial->GetShaderName();
+	desc.variableCount = m_pStorage->vars.keys.Count();
+	desc.keys = m_pStorage->vars.keyPtrs.Base();
+	desc.values = m_pStorage->vars.valuePtrs.Base();
+	desc.textures = m_pStorage->vars.textures.Base();
+	desc.defaults = m_pStorage->vars.defaults.Base();
+	// Not a Studio material: its claim decides its blend from its variables.
+	desc.translucent = false;
+	desc.hasProxy = pMaterial->HasProxy();
+}
+
+const RenderCoreWorldMaterial &CRenderCoreMaterialCapture::Desc() const
+{
+	return m_pStorage->desc;
+}
+
 static bool ReadStaticModelFile( const std::string &path, std::string &bytes )
 {
 	CUtlBuffer buffer;

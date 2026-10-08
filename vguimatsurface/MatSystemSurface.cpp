@@ -163,6 +163,22 @@ public:
 };
 static CWorldPanelRecorder s_WorldPanelRecorder;
 
+// VGuiScreenUiRecorder001 (RFC 0010 UI draw list, RFC 0016 K8): the screen
+// UI's consumer, set by the application root.
+class CScreenUiRecorder final : public IScreenUiRecorder
+{
+public:
+	void SetConsumer( IScreenUiConsumer *pConsumer ) override
+	{
+		g_MatSystemSurface.SetScreenUiConsumer( pConsumer );
+	}
+	void GetStats( ScreenUiStats *pStats ) const override
+	{
+		g_MatSystemSurface.GetScreenUiStats( pStats );
+	}
+};
+static CScreenUiRecorder s_ScreenUiRecorder;
+
 #if defined(LINUX) || defined(OSX) || defined(PLATFORM_BSD)
 CUtlDict< CMatSystemSurface::font_entry, unsigned short > CMatSystemSurface::m_FontData;
 #endif
@@ -312,6 +328,8 @@ void *CMatSystemSurface::QueryInterface( const char *pInterfaceName )
 
 	if ( !Q_strcmp( pInterfaceName, VGUI_WORLD_PANEL_RECORDER_INTERFACE_VERSION ) )
 		return static_cast<IWorldPanelRecorder *>( &s_WorldPanelRecorder );
+	if ( !Q_strcmp( pInterfaceName, VGUI_SCREEN_UI_RECORDER_INTERFACE_VERSION ) )
+		return static_cast<IScreenUiRecorder *>( &s_ScreenUiRecorder );
 
 	return BaseClass::QueryInterface( pInterfaceName );
 }
@@ -765,6 +783,209 @@ void CMatSystemSurface::RecordQuads(
 	}
 }
 
+//-----------------------------------------------------------------------------
+// RFC 0010 UI draw list, RFC 0016 K8 (vgui/IScreenUiRecorder.h): the screen
+// UI recorded into render.ui-draw-list.v1 segments for the consumer.
+//-----------------------------------------------------------------------------
+static ConVar vgui_screen_ui_census( "vgui_screen_ui_census", "0", 0,
+    "RFC 0016 render.pass.ui: print each distinct reason a screen UI draw goes through the "
+    "material system instead of the draw list, once" );
+
+void CMatSystemSurface::DrawMesh()
+{
+	if ( !meshBuilder.Recording() )
+	{
+		m_pMesh->Draw();
+		return;
+	}
+	RecordScreenPrimitive();
+}
+
+void CMatSystemSurface::RecordScreenPrimitive()
+{
+	const std::vector<CSurfaceMeshBuilder::Point> &points = meshBuilder.Points();
+	if ( points.empty() )
+		return;
+	IMaterial *pMaterial = m_pScreenUiMaterial ? m_pScreenUiMaterial : (IMaterial *)m_pWhite;
+	const MaterialPrimitiveType_t type = meshBuilder.Type();
+	char szWhy[192] = {};
+	unsigned key = 0;
+	if ( type == MATERIAL_LINES )
+		V_snprintf( szWhy, sizeof( szWhy ), "%s: lines", pMaterial->GetName() );
+	else if ( type != MATERIAL_QUADS && type != MATERIAL_POLYGON && type != MATERIAL_TRIANGLES )
+		V_snprintf(
+		    szWhy, sizeof( szWhy ), "%s: primitive type %d", pMaterial->GetName(), int( type ) );
+	else
+	{
+		// The segment's material, or the consumer's claim of a new one.
+		for ( size_t i = 0; i < m_ScreenUiMaterials.size() && !key; ++i )
+		{
+			if ( m_ScreenUiMaterials[i] == pMaterial )
+				key = m_ScreenUiMaterialKeys[i];
+		}
+		if ( !key )
+		{
+			char szReason[160] = {};
+			key = m_pScreenUiConsumer->ScreenUiMaterial( pMaterial, szReason, sizeof( szReason ) );
+			if ( !key )
+				V_snprintf( szWhy, sizeof( szWhy ), "%s: %s", pMaterial->GetName(), szReason );
+		}
+	}
+	if ( !key )
+	{
+		// Drawn through the material system at this point of the frame.
+		FlushScreenUi();
+		DrawPointsThroughMaterial( pMaterial, type, points.data(), int( points.size() ) );
+		++m_ScreenUiStats.materialDraws;
+		V_strncpy( m_ScreenUiStats.lastReason, szWhy, sizeof( m_ScreenUiStats.lastReason ) );
+		if ( vgui_screen_ui_census.GetBool() )
+		{
+			static CUtlSymbolTable s_Reported;
+			if ( s_Reported.Find( szWhy ) == UTL_INVAL_SYMBOL )
+			{
+				s_Reported.AddString( szWhy );
+				Msg( "vgui_screen_ui_census: material system draws %s\n", szWhy );
+			}
+		}
+		return;
+	}
+
+	std::uint32_t material = std::uint32_t( m_ScreenUiMaterials.size() );
+	for ( size_t i = 0; i < m_ScreenUiMaterials.size(); ++i )
+	{
+		if ( m_ScreenUiMaterials[i] == pMaterial )
+			material = std::uint32_t( i );
+	}
+	if ( material == m_ScreenUiMaterials.size() )
+	{
+		m_ScreenUiMaterials.push_back( pMaterial );
+		m_ScreenUiMaterialKeys.push_back( key );
+	}
+	const std::uint32_t first = std::uint32_t( m_ScreenUiVertices.size() );
+	auto add = [&]( int index )
+	{
+		const CSurfaceMeshBuilder::Point &point = points[index];
+		ui_draw_list::Vertex vertex;
+		vertex.x = point.x;
+		vertex.y = point.y;
+		vertex.s = point.s;
+		vertex.t = point.t;
+		memcpy( vertex.color, point.color, 4 );
+		m_ScreenUiVertices.push_back( vertex );
+		m_ScreenUiPoints.push_back( point );
+	};
+	const int nPoints = int( points.size() );
+	if ( type == MATERIAL_QUADS )
+	{
+		for ( int q = 0; q + 3 < nPoints; q += 4 )
+		{
+			for ( int corner : { 0, 1, 2, 0, 2, 3 } )
+				add( q + corner );
+		}
+	}
+	else if ( type == MATERIAL_POLYGON )
+	{
+		for ( int i = 1; i + 1 < nPoints; ++i )
+		{
+			add( 0 );
+			add( i );
+			add( i + 1 );
+		}
+	}
+	else
+	{
+		for ( int i = 0; i < nPoints - nPoints % 3; ++i )
+			add( i );
+	}
+	const std::uint32_t count = std::uint32_t( m_ScreenUiVertices.size() ) - first;
+	if ( count == 0 )
+		return;
+	if ( !m_ScreenUiCommands.empty() )
+	{
+		ui_draw_list::Command &last = m_ScreenUiCommands.back();
+		if ( last.material == material && last.firstVertex + last.vertexCount == first )
+		{
+			last.vertexCount += count;
+			return;
+		}
+	}
+	m_ScreenUiCommands.push_back( { first, count, material } );
+}
+
+void CMatSystemSurface::FlushScreenUi()
+{
+	if ( m_ScreenUiCommands.empty() )
+	{
+		m_ScreenUiVertices.clear();
+		m_ScreenUiPoints.clear();
+		return;
+	}
+	ui_draw_list::ListView list = {};
+	list.scale = m_flScreenUiScale;
+	list.offset[0] = m_flScreenUiOffset[0];
+	list.offset[1] = m_flScreenUiOffset[1];
+	for ( int i = 0; i < 4; ++i )
+		list.viewport[i] = m_nScreenUiViewport[i];
+	list.vertices = m_ScreenUiVertices.data();
+	list.vertexCount = std::uint32_t( m_ScreenUiVertices.size() );
+	list.commands = m_ScreenUiCommands.data();
+	list.commandCount = std::uint32_t( m_ScreenUiCommands.size() );
+	list.materialCount = std::uint32_t( m_ScreenUiMaterials.size() );
+	if ( m_pScreenUiConsumer &&
+	     m_pScreenUiConsumer->DrawScreenUi( list, m_ScreenUiMaterialKeys.data() ) )
+	{
+		++m_ScreenUiStats.segments;
+		m_ScreenUiStats.commands += m_ScreenUiCommands.size();
+	}
+	else
+	{
+		// Not taken: the segment draws through the material system, as built.
+		++m_ScreenUiStats.declined;
+		for ( size_t i = 0; i < m_ScreenUiCommands.size(); ++i )
+		{
+			const ui_draw_list::Command &command = m_ScreenUiCommands[i];
+			DrawPointsThroughMaterial( m_ScreenUiMaterials[command.material], MATERIAL_TRIANGLES,
+			    &m_ScreenUiPoints[command.firstVertex], int( command.vertexCount ) );
+		}
+	}
+	m_ScreenUiVertices.clear();
+	m_ScreenUiPoints.clear();
+	m_ScreenUiCommands.clear();
+	m_ScreenUiMaterials.clear();
+	m_ScreenUiMaterialKeys.clear();
+}
+
+void CMatSystemSurface::DrawPointsThroughMaterial( IMaterial *pMaterial,
+    MaterialPrimitiveType_t type, const CSurfaceMeshBuilder::Point *pPoints, int nCount )
+{
+	if ( nCount <= 0 )
+		return;
+	IMesh *pMesh = MaterialSystemMesh( pMaterial );
+	if ( !pMesh )
+		return;
+	const int nPrimitives = type == MATERIAL_LINES       ? nCount / 2
+	                        : type == MATERIAL_QUADS     ? nCount / 4
+	                        : type == MATERIAL_TRIANGLES ? nCount / 3
+	                                                     : nCount;
+	CMeshBuilder builder;
+	builder.Begin( pMesh, type, nPrimitives );
+	for ( int i = 0; i < nCount; ++i )
+	{
+		builder.Position3f( pPoints[i].x, pPoints[i].y, pPoints[i].z );
+		builder.Color4ubv( pPoints[i].color );
+		builder.TexCoord2f( 0, pPoints[i].s, pPoints[i].t );
+		builder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 1>();
+	}
+	builder.End();
+	pMesh->Draw();
+}
+
+void CMatSystemSurface::GetScreenUiStats( ScreenUiStats *pStats ) const
+{
+	if ( pStats )
+		*pStats = m_ScreenUiStats;
+}
+
 HFont CMatSystemSurface::GlyphFont( HFont font )
 {
 	if ( !m_pRecording || font == INVALID_FONT || size_t( font ) >= m_FontGlyphSets.size() )
@@ -809,6 +1030,9 @@ HFont CMatSystemSurface::GlyphFont( HFont font )
 //-----------------------------------------------------------------------------
 void CMatSystemSurface::StartDrawingIn3DSpace( const VMatrix &screenToWorld, int pw, int ph, float sw, float sh )
 {
+	// A panel in the world is not the screen list's.
+	FlushScreenUi();
+	meshBuilder.Record( false );
 	g_bInDrawing = true;
 	m_iBoundTexture = -1; 
 
@@ -934,6 +1158,24 @@ void CMatSystemSurface::StartDrawing( void )
 	pRenderContext->MatrixMode( MATERIAL_VIEW );
 	pRenderContext->PushMatrix();
 	pRenderContext->LoadIdentity();
+
+	// RFC 0010 UI draw list, RFC 0016 K8: the screen UI (the back buffer, not
+	// a render target or a panel in the world) is recorded for the consumer.
+	// A vertex's pixel is the projection's above: (x - offset / scale) *
+	// scale in the D3D9 convention, half a pixel less than the port's.
+	if ( m_pScreenUiConsumer && !m_bDrawingIn3DWorld && !m_pRecording &&
+	     pRenderContext->GetRenderTarget() == NULL && m_pScreenUiConsumer->TakesScreenUi() )
+	{
+		m_flScreenUiScale = flScale;
+		m_flScreenUiOffset[0] = 0.5f - g_flPixelOffsetX;
+		m_flScreenUiOffset[1] = 0.5f - g_flPixelOffsetY;
+		m_nScreenUiViewport[0] = x;
+		m_nScreenUiViewport[1] = y;
+		m_nScreenUiViewport[2] = width;
+		m_nScreenUiViewport[3] = height;
+		m_pScreenUiMaterial = NULL;
+		meshBuilder.Record( true );
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -945,6 +1187,10 @@ void CMatSystemSurface::FinishDrawing( void )
 
 	// We're done with scissoring
 	EnableScissor( false );
+
+	// The screen list's last segment, drawn before the projection goes.
+	FlushScreenUi();
+	meshBuilder.Record( false );
 
 	// Restore the matrices
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
@@ -1057,6 +1303,9 @@ void CMatSystemSurface::PopMakeCurrent(VPANEL pPanel)
 	{
 		DrawFlushText();
 	}
+	// A panel's paint is one segment of the screen list: what its Paint drew
+	// through the render context itself stays in order around it.
+	FlushScreenUi();
 
 	int top = m_PaintStateStack.Count() - 1;
 
@@ -1110,11 +1359,23 @@ void CMatSystemSurface::InternalSetMaterial( IMaterial *pMaterial )
 		m_pRecordingMaterial = pMaterial;
 		return;
 	}
+	// So does the screen list, with each primitive (RFC 0010, RFC 0016 K8).
+	if ( meshBuilder.Recording() )
+	{
+		m_pScreenUiMaterial = pMaterial;
+		return;
+	}
 
-	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
-	m_pMesh = pRenderContext->GetDynamicMesh( true, NULL, NULL, pMaterial );
+	m_pMesh = MaterialSystemMesh( pMaterial );
 }
 
+// The material system's dynamic mesh for a material: the surface's one way to
+// draw through the render context (RFC 0016 K9 retires it).
+IMesh *CMatSystemSurface::MaterialSystemMesh( IMaterial *pMaterial )
+{
+	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
+	return pRenderContext->GetDynamicMesh( true, NULL, NULL, pMaterial );
+}
 
 //-----------------------------------------------------------------------------
 // Helper method to initialize vertices (transforms them into screen space too)
@@ -1168,7 +1429,7 @@ void CMatSystemSurface::DrawTexturedLineInternal( const Vertex_t &a, const Verte
 	meshBuilder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 1>();
 
 	meshBuilder.End();
-	m_pMesh->Draw();
+	DrawMesh();
 }
 
 void CMatSystemSurface::DrawLine( int x0, int y0, int x1, int y1 )
@@ -1251,7 +1512,7 @@ void CMatSystemSurface::DrawPolyLine( int *px, int *py ,int n )
 	}
 
 	meshBuilder.End();
-	m_pMesh->Draw();
+	DrawMesh();
 }
 
 
@@ -1284,7 +1545,7 @@ void CMatSystemSurface::DrawQuad( const vgui::Vertex_t &ul, const vgui::Vertex_t
 		return;
 	}
 
-	if ( !m_pMesh )
+	if ( !HasMesh() )
 		return;
 
 	meshBuilder.Begin( m_pMesh, MATERIAL_QUADS, 1 );
@@ -1310,7 +1571,7 @@ void CMatSystemSurface::DrawQuad( const vgui::Vertex_t &ul, const vgui::Vertex_t
 	meshBuilder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 1>();
 
 	meshBuilder.End();
-	m_pMesh->Draw();
+	DrawMesh();
 }
 
 
@@ -1329,7 +1590,7 @@ void CMatSystemSurface::DrawQuadArray( int quadCount, vgui::Vertex_t *pVerts, un
 		return;
 	}
 
-	if ( !m_pMesh )
+	if ( !HasMesh() )
 		return;
 
 	meshBuilder.Begin( m_pMesh, MATERIAL_QUADS, quadCount );
@@ -1405,7 +1666,7 @@ void CMatSystemSurface::DrawQuadArray( int quadCount, vgui::Vertex_t *pVerts, un
 	}
 
 	meshBuilder.End();
-	m_pMesh->Draw();
+	DrawMesh();
 }
 
 
@@ -1463,7 +1724,7 @@ void CMatSystemSurface::DrawFilledRectArray( IntRect *pRects, int numRects )
 		return;
 	}
 
-	if ( !m_pMesh )
+	if ( !HasMesh() )
 		return;
 
 	InternalSetMaterial( );
@@ -1500,7 +1761,7 @@ void CMatSystemSurface::DrawFilledRectArray( IntRect *pRects, int numRects )
 	}
 
 	meshBuilder.End();
-	m_pMesh->Draw();
+	DrawMesh();
 }
 
 //-----------------------------------------------------------------------------
@@ -1625,7 +1886,7 @@ void CMatSystemSurface::DrawFilledRectFade( int x0, int y0, int x1, int y1, unsi
 	meshBuilder.AdvanceVertexF<VTX_HAVEPOS | VTX_HAVECOLOR, 1>();
 
 	meshBuilder.End();
-	m_pMesh->Draw();
+	DrawMesh();
 }
 
 //-----------------------------------------------------------------------------
@@ -1704,7 +1965,7 @@ void CMatSystemSurface::DrawOutlinedCircle(int x, int y, int radius, int segment
 	}
 
 	meshBuilder.End();
-	m_pMesh->Draw();
+	DrawMesh();
 }
 
 
@@ -1953,7 +2214,7 @@ void CMatSystemSurface::DrawTexturedPolygon(int n, Vertex_t *pVertices, bool bCl
 		}
 
 		meshBuilder.End();
-		m_pMesh->Draw();
+		DrawMesh();
 	}
 	else
 	{
@@ -1971,7 +2232,7 @@ void CMatSystemSurface::DrawTexturedPolygon(int n, Vertex_t *pVertices, bool bCl
 		}
 
 		meshBuilder.End();
-		m_pMesh->Draw();
+		DrawMesh();
 	}
 }
 
@@ -3934,6 +4195,9 @@ void CMatSystemSurface::Begin3DPaint( int iLeft, int iTop, int iRight, int iBott
 	// whacking the shared depth buffer
 	if ( RecordingRefuses( "3D paint" ) )
 		return;
+	// The 3D scene draws through the render context, after the screen list
+	// recorded so far.
+	FlushScreenUi();
 	Assert( !m_bDrawingIn3DWorld );
 	if ( m_bDrawingIn3DWorld )
 		return;

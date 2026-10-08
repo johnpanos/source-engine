@@ -99,6 +99,8 @@
 #include "replay_internal.h"
 #endif
 
+#include "render_core_ui.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -684,6 +686,9 @@ void CEngineVGui::Init()
 	// Need to be able to play sounds through vgui
 	g_pMatSystemSurface->InstallPlaySoundFunc( VGui_PlaySound );
 
+	// RFC 0016 render.pass.ui: the screen UI's segments go to the render core.
+	EngineScreenUi_Install();
+
 	COM_TimestampedLog( "Load Scheme File" );
 
 	// load scheme
@@ -991,6 +996,8 @@ extern bool g_bUsingLegacyAppSystems;
 //-----------------------------------------------------------------------------
 void CEngineVGui::Shutdown()
 {
+	EngineScreenUi_Remove();
+
 	if ( IsPC() && CL_IsHL2Demo() ) // if they are playing the demo then open the storefront on shutdown
 	{
 		vgui::system()->ShellExecute("open", "steam://store_demo/220");

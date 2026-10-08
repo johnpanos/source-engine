@@ -12867,3 +12867,104 @@ space and the mesh handoff gives the core world-space vertices; carrying
 object-space positions is a vertex-layout change), and `$flat` with vertex
 color (18 editor/debug materials; flat interpolation needs a second
 vertex/fragment module pair).
+
+## R91 K8 UI cohort, first slice: the screen UI on the core (2026-10-07, user goal)
+
+Goal (user, 2026-10-07): retire the legacy renderer; R91 (K8–K9) with
+first-party legacy-stream use at zero. Starting point, measured on
+`sp_a1_intro4` headless (`r_core_world 1`, queued, product settings): 12
+legacy-stream draws in every settled frame (native `legacy_stream_draws`).
+The captured frame's records name them: 11 VGUI draws (`__vgui_texture_*`,
+the HUD) and one `dev/lumcompare` exposure query. Two materials were dropped
+with no core replacement: `dev/motion_blur` and `engine/shadowbuild` (their
+effects are missing, not drawn by legacy). The K9 static ratchet was 496
+sites in 147 files, matching its record.
+
+What landed:
+
+- **`render.ui-draw-list.v1`** (`public/render/ui_draw_list.h`,
+  `render.contracts`): RFC 0010's UI draw list as one plain definition shared
+  by the surface, the engine and the core. Vertices in UI units with the
+  toolkit's texture coordinates and raw vertex colors; commands in paint order,
+  each a triangle list drawn with one of the list's materials; a vertex lands
+  at `x * scale + offset` back buffer pixels (port convention) inside the
+  list's viewport. How a command composites is its material's: the core claims
+  each material as it claims the world's, and the list holds no blend or color
+  semantics of its own. Lines are not in the list.
+- **The core draws it as the world's dynamic draws**
+  (`render::pass::world::UiListView`, `WorldPass::DynamicClaim`,
+  `WorldPass::HasWorld`): each command becomes a dynamic draw of its claimed
+  material, in list order, so UnlitGeneric's 2D draws use the unlit point of
+  the one surface program (`ClaimUnlit`), not a second UI shader. A first cut
+  with its own gamma-space UI shader (`render.pass.ui`) was deleted before
+  landing: the legacy path reads the base through sRGB, decodes vertex colors
+  (pow 2.2) and writes sRGB (`vertexlitgeneric_dx9_helper.cpp`), which is
+  exactly the unlit point's math, and in the HDR scene the native backend
+  writes the UI linear (`linear_target.glsl`); a separate shader would have
+  been a second, diverging definition. With no level loaded the world pass
+  gets an empty world for screen draws (`CoreWorld::QueueUiList`), so menus
+  draw too.
+- **Composition**: `IRenderCoreUi` (`render_core_ui.h`, `RenderCoreBinding::ui`)
+  over `CoreUi` (`render/composition/core_ui.*`), which queues the list's view
+  and marks its slot in frame order; `CoreWorld::UiMaterial` resolves an
+  animated `$frame` through the new `RenderCallQueueHost::textureFrameHandle`.
+- **Engine**: `engine/render_core_ui.cpp` sets the surface's consumer
+  (`VGuiScreenUiRecorder001`, `public/vgui/IScreenUiRecorder.h`), captures each
+  UI material once per top-level paint with the world's capture
+  (`CRenderCoreMaterialCapture` over `ReadVariables`: values, declared
+  defaults, textures, flags) and asks the core to claim it. `r_core_ui`
+  (default 1) and `r_core_ui_stats`.
+- **Surface** (`vguimatsurface`): the mesh builder is an adapter
+  (`CSurfaceMeshBuilder`) that either forwards to the material system or
+  records the primitive. While the surface paints the screen (the back buffer,
+  not a render target or a panel in the world) every draw site records into
+  the list; each panel's paint is one segment (flushed at `PopMakeCurrent`,
+  before 3D paint and at `FinishDrawing`), so a panel that draws through the
+  render context itself stays in order. A material the core refuses, a line,
+  or a segment it does not take draws through the material system at the same
+  point. `vgui_screen_ui_census 1` prints each distinct reason once. The
+  surface's acquisitions of the render context fell into one helper
+  (`MaterialSystemMesh`), so the K9 ratchet does not grow.
+
+**Lab** (`render_lab suite ui`, `render/lab/ui_suite.cpp`, manifest row
+`render.lab.ui`): 21 checks, 0 failed, validation silent. The oracles restate
+the legacy 2D path independently: exact pixel coverage after scale, offset and
+viewport; opaque, `$vertexalpha`, `$additive` and `$additive` + `$translucent`
+composition in linear light; point-sampled texels times the vertex color;
+list order and per-command materials; malformed lists refused by name. Each
+judgment also runs a bad producer (scale, viewport or materials ignored, the
+list reordered), which must fail.
+
+**Game** (`sp_a1_intro4`, headless, same settings as the baseline):
+
+| | legacy-stream draws per settled frame | UI segments to the core | material-system UI draws |
+| --- | --- | --- | --- |
+| baseline (`r_core_ui 0`) | 12 | 0 | all |
+| core UI (`r_core_ui 1`) | 1 (`dev/lumcompare`) | 663 lists, 0 refused | 0 |
+
+Image parity, one run with time slowed (`host_timescale 0.001`), core, then
+`r_core_ui 0`, then core again: HUD frame core vs legacy 19 pixels above 16
+levels, against 46 between the two core frames (scene noise). Pause menu
+(textured tiles, logo, text, alpha-tested corners): core vs legacy at most 4
+levels, 0 pixels above 16. An earlier cut drew the crosshair brackets paler
+because it composited in gamma space on the linear HDR scene; the fix is the
+dynamic-draw route above.
+
+Frame cost, diagnostic only (desktop host, vsync-capped interval, 400 settled
+frames, two interleaved runs each): backend time 2.52 / 2.52 ms with
+`r_core_ui 0` and 2.82 / 2.95 ms with the core UI. Each segment is its own
+dynamic view (dynamic views never batch). This is an open performance item;
+acceptance needs the bazzite runs and the resolution sweep.
+
+Not done:
+- lines (outlined circles, polylines, `DrawLine`) still draw through the
+  material system (named `<material>: lines`): dynamic draws are triangle lists;
+- the remaining legacy draw on this view is the `dev/lumcompare` exposure
+  query; `dev/motion_blur` and `engine/shadowbuild` are dropped with no core
+  replacement (missing effects to restore on the core);
+- `vguimatsurface` still acquires the render context for the frame setup,
+  stencil, 3D paint and the fallback (14 sites); the static ratchet is unchanged
+  at 496;
+- matched `render_lab` frames of the game's HUD and menu (the lab has the
+  analytic oracles, not a replay of the game's lists);
+- frame cost on target hardware.

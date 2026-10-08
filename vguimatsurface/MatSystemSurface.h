@@ -29,9 +29,11 @@
 #include "tier1/utldict.h"
 #include "tier3/tier3.h"
 #include "tier1/convar.h"
+#include "vgui/IScreenUiRecorder.h"
 #include "vgui/IWorldPanelRecorder.h"
 
 #include <string>
+#include <cstring>
 #include <vector>
 
 using namespace vgui;
@@ -57,6 +59,101 @@ public:
 // Implementation of the VGUI surface on top of the material system
 //
 //-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+// The mesh builder the surface's draws use (RFC 0010 UI draw list, RFC 0016
+// K8): the material system's, or while the surface records the screen UI the
+// points of the primitive being built, in the units Position3f takes. The
+// draw then hands them to the screen list (CMatSystemSurface::DrawMesh).
+//-----------------------------------------------------------------------------
+class CSurfaceMeshBuilder
+{
+public:
+	struct Point
+	{
+		float x, y, z, s, t;
+		unsigned char color[4];
+	};
+
+	void Record( bool bRecord ) { m_bRecord = bRecord; }
+	bool Recording() const { return m_bRecord; }
+	MaterialPrimitiveType_t Type() const { return m_Type; }
+	const std::vector<Point> &Points() const { return m_Points; }
+
+	void Begin( IMesh *pMesh, MaterialPrimitiveType_t type, int nCount )
+	{
+		if ( !m_bRecord )
+		{
+			m_Builder.Begin( pMesh, type, nCount );
+			return;
+		}
+		m_Type = type;
+		m_Points.clear();
+		m_Current = Point();
+	}
+	void End()
+	{
+		if ( !m_bRecord )
+			m_Builder.End();
+	}
+	void Position3f( float x, float y, float z )
+	{
+		if ( !m_bRecord )
+		{
+			m_Builder.Position3f( x, y, z );
+			return;
+		}
+		m_Current.x = x;
+		m_Current.y = y;
+		m_Current.z = z;
+	}
+	void Color4ubv( const unsigned char *rgba )
+	{
+		if ( !m_bRecord )
+		{
+			m_Builder.Color4ubv( rgba );
+			return;
+		}
+		memcpy( m_Current.color, rgba, 4 );
+	}
+	void TexCoord2f( int nStage, float s, float t )
+	{
+		if ( !m_bRecord )
+		{
+			m_Builder.TexCoord2f( nStage, s, t );
+			return;
+		}
+		m_Current.s = s;
+		m_Current.t = t;
+	}
+	void TexCoord2fv( int nStage, const float *st )
+	{
+		if ( !m_bRecord )
+		{
+			m_Builder.TexCoord2fv( nStage, st );
+			return;
+		}
+		m_Current.s = st[0];
+		m_Current.t = st[1];
+	}
+	template <int nFlags, int nTexCoords> void AdvanceVertexF()
+	{
+		if ( !m_bRecord )
+		{
+			m_Builder.AdvanceVertexF<nFlags, nTexCoords>();
+			return;
+		}
+		m_Points.push_back( m_Current );
+		m_Current.s = m_Current.t = 0.0f;
+	}
+
+private:
+	CMeshBuilder m_Builder;
+	bool m_bRecord = false;
+	MaterialPrimitiveType_t m_Type = MATERIAL_TRIANGLES;
+	Point m_Current = Point();
+	std::vector<Point> m_Points;
+};
+
 class CMatSystemSurface : public CTier3AppSystem< IMatSystemSurface >
 {
 	typedef CTier3AppSystem< IMatSystemSurface > BaseClass;
@@ -450,9 +547,9 @@ private:
 	// Location of text rendering
 	int				m_pDrawTextPos[2];
 
-	// Meshbuilder used for drawing
+	// Meshbuilder used for drawing (the screen list's while recording it)
 	IMesh* m_pMesh;
-	CMeshBuilder meshBuilder;
+	CSurfaceMeshBuilder meshBuilder;
 
 	// White material used for drawing non-textured things
 	CMaterialReference m_pWhite;
@@ -515,6 +612,37 @@ private:
 	void GetGlyphQuad( float flPenX, float flPenY, int nPixelOffsetX, int nPixelsWide,
 	    int nPixelsTall, float flFontScale, vgui::Vertex_t &ul, vgui::Vertex_t &lr ) const;
 	CUtlVector<float> m_FontRasterScales;
+
+public:
+	// RFC 0010 UI draw list, RFC 0016 K8 (vgui/IScreenUiRecorder.h): the
+	// consumer the screen UI's segments go to (the engine's render core).
+	void SetScreenUiConsumer( IScreenUiConsumer *pConsumer ) { m_pScreenUiConsumer = pConsumer; }
+	void GetScreenUiStats( ScreenUiStats *pStats ) const;
+
+private:
+	// The primitive the mesh builder just built: drawn through the material
+	// system's mesh, or recorded into the screen list.
+	void DrawMesh();
+	bool HasMesh() const { return meshBuilder.Recording() || m_pMesh != NULL; }
+	void RecordScreenPrimitive();
+	// Hands the screen list's segment to the consumer (or draws it through
+	// the material system), at this point of the frame.
+	void FlushScreenUi();
+	IMesh *MaterialSystemMesh( IMaterial *pMaterial );
+	void DrawPointsThroughMaterial( IMaterial *pMaterial, MaterialPrimitiveType_t type,
+	    const CSurfaceMeshBuilder::Point *pPoints, int nCount );
+	IScreenUiConsumer *m_pScreenUiConsumer = NULL;
+	IMaterial *m_pScreenUiMaterial = NULL;
+	float m_flScreenUiScale = 1.0f;
+	float m_flScreenUiOffset[2] = {};
+	int m_nScreenUiViewport[4] = {};
+	std::vector<ui_draw_list::Vertex> m_ScreenUiVertices;
+	std::vector<CSurfaceMeshBuilder::Point> m_ScreenUiPoints; // as built, for the material path
+	std::vector<ui_draw_list::Command> m_ScreenUiCommands;
+	// The segment's materials, and the consumer's key of each.
+	std::vector<IMaterial *> m_ScreenUiMaterials;
+	std::vector<unsigned> m_ScreenUiMaterialKeys;
+	ScreenUiStats m_ScreenUiStats = {};
 
 public:
 	// RFC 0010 in-world panels (vgui/IWorldPanelRecorder.h): paints a panel

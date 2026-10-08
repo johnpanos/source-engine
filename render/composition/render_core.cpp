@@ -6,11 +6,12 @@
 
 #include "render/composition/render_core.h"
 
-#include "jobsystem/pooled_executor.h"
+#include "jobsystem/task_executor.h"
 #if !defined( RENDER_CORE_NO_NULL )
 #include "render/device/null/provider.h"
 #endif
 #include "core_panels.h"
+#include "core_ui.h"
 #include "core_world.h"
 #include "render/legacy/core_backend.h"
 #include "render/legacy/frame_source.h"
@@ -52,13 +53,15 @@ struct RenderCore
 	// In-world panels (render.pass.panels): their tags reach them through
 	// the router, which sends every other forwarded slot to the world.
 	std::unique_ptr<render::composition::CorePanels> panels;
+	// The screen UI (render.ui-draw-list.v1), drawn as the world's dynamic draws.
+	std::unique_ptr<render::composition::CoreUi> ui;
 	std::unique_ptr<render::composition::ForwardedSlots> forwarded;
 	std::unique_ptr<render::frame::IRenderer> renderer;
 	std::string deviceName;
 	RenderCoreBinding binding;
 	// Pooled culling over the root's compute workers (RenderCoreConfig::
 	// computeWorkers); inline on the caller when the root gave none.
-	std::unique_ptr<jobsystem::PooledExecutor> cullJobs;
+	std::unique_ptr<jobsystem::TaskExecutor> cullJobs;
 	// The indirect-light producers' compute (render.pass.indirect), flushed
 	// ahead of each legacy frame.
 	std::unique_ptr<render::pass::indirect::PortCompute> compute;
@@ -86,6 +89,7 @@ struct RenderCore
 		if ( renderer && world )
 			renderer->RemoveStageHooks( world.get() );
 		forwarded.reset();
+		ui.reset();
 		panels.reset();
 		world.reset();
 		renderer.reset();
@@ -287,7 +291,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	auto core = std::make_unique<RenderCore>();
 	// The core starts no threads: compute work runs on the workers the root
 	// lends it (RFC 0003 "capacity policy").
-	core->cullJobs = std::make_unique<jobsystem::PooledExecutor>( config->computeWorkers );
+	core->cullJobs = std::make_unique<jobsystem::TaskExecutor>( config->computeWorkers );
 	render::device::DeviceRequest request;
 	request.validation = config->validation;
 	auto device = CreateDevice( *descriptor, request, *masked );
@@ -376,6 +380,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->panels =
 	    std::make_unique<render::composition::CorePanels>( *core->frontend, *core->renderer,
 	        core->device->Facts().capabilities.Has( render::device::Capability::kCompute ) );
+	core->ui = std::make_unique<render::composition::CoreUi>( *core->frontend, *core->world );
 	core->forwarded =
 	    std::make_unique<render::composition::ForwardedSlots>( *core->world, *core->panels );
 	core->world->EnableTemporal( config->temporal, config->temporalAssets );
@@ -393,6 +398,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->frontend->SetForwardedRecorder( core->forwarded.get() );
 	core->binding.world = core->world.get();
 	core->binding.panels = core->panels.get();
+	core->binding.ui = core->ui.get();
 	core->binding.deviceName = core->deviceName.c_str();
 	if ( result )
 	{

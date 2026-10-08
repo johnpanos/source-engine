@@ -18,6 +18,7 @@
 #include "render/material/scene_terms.h"
 #include "render/material/surface_program.h"
 #include "render/material/vmt_import.h"
+#include "render/math/matrix.h"
 
 #include <algorithm>
 #include <array>
@@ -1490,6 +1491,29 @@ std::size_t WorldPass::OpaqueBatchSize(
 	const State &s = *m_State;
 	std::lock_guard<std::mutex> guard( s.lock );
 	return s.OpaqueBatchSize( tags, streamEpoch );
+}
+
+bool WorldPass::HasWorld() const
+{
+	std::lock_guard<std::mutex> guard( m_State->lock );
+	return m_State->world != nullptr;
+}
+
+std::optional<std::string> WorldPass::DynamicClaim( const WorldMaterial &material )
+{
+	State &s = *m_State;
+	std::lock_guard<std::mutex> guard( s.lock );
+	const bool stage = s.world && s.world->stage != nullptr;
+	const bool reflection = s.world && s.world->reflection.has_value();
+	std::string key;
+	const auto entry = s.Mapped( material, stage, reflection, key );
+	if ( !entry->material )
+		return entry->material.Error();
+	if ( !entry->claimError.empty() )
+		return entry->claimError;
+	if ( entry->requiresDepthAlpha )
+		return std::string( "$depthblend needs a captured depth-alpha texture" );
+	return std::nullopt;
 }
 
 std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
@@ -6142,6 +6166,58 @@ void WorldPass::RecordBatch(
 		s.stats.lastFailure =
 		    failure.empty() ? "a view named surfaces the pass does not draw" : failure;
 	}
+}
+
+std::optional<std::string> UiListView(
+    const ui_draw_list::ListView &list, std::span<const WorldMaterial> materials, WorldView &out )
+{
+	if ( const char *why = ui_draw_list::Validate( list ) )
+		return std::string( why );
+	if ( list.materialCount != materials.size() )
+		return std::string( "the list names " ) + std::to_string( list.materialCount ) +
+		       " materials but " + std::to_string( materials.size() ) + " were given";
+	out = WorldView();
+	out.drawsWorldGeometry = false;
+	out.viewport = { float( list.viewport[0] ), float( list.viewport[1] ),
+	    float( list.viewport[2] ), float( list.viewport[3] ), 0.0f, 1.0f };
+	const math::float4x4 toClip =
+	    math::PixelToClip( float( list.viewport[2] ), float( list.viewport[3] ) );
+	for ( int r = 0; r < 4; ++r )
+	{
+		out.toClip[r * 4 + 0] = toClip.rows[r].x;
+		out.toClip[r * 4 + 1] = toClip.rows[r].y;
+		out.toClip[r * 4 + 2] = toClip.rows[r].z;
+		out.toClip[r * 4 + 3] = toClip.rows[r].w;
+	}
+	out.dynamicDraws.reserve( list.commandCount );
+	for ( std::uint32_t i = 0; i < list.commandCount; ++i )
+	{
+		const ui_draw_list::Command &command = list.commands[i];
+		if ( command.vertexCount == 0 )
+			continue;
+		WorldView::DynamicDraw draw;
+		draw.material = materials[command.material];
+		draw.vertices.resize( command.vertexCount );
+		draw.indices.resize( command.vertexCount );
+		for ( std::uint32_t v = 0; v < command.vertexCount; ++v )
+		{
+			const ui_draw_list::Vertex &source = list.vertices[command.firstVertex + v];
+			WorldVertex &vertex = draw.vertices[v];
+			// The port's pixel, less the half pixel the view's D3D9
+			// transform is shifted by when it draws.
+			vertex.position[0] =
+			    ui_draw_list::ToPixel( source.x, list.scale, list.offset[0] ) - 0.5f;
+			vertex.position[1] =
+			    ui_draw_list::ToPixel( source.y, list.scale, list.offset[1] ) - 0.5f;
+			vertex.position[2] = 0.5f;
+			vertex.uv[0] = source.s;
+			vertex.uv[1] = source.t;
+			std::copy_n( source.color, 4, vertex.color );
+			draw.indices[v] = v;
+		}
+		out.dynamicDraws.push_back( std::move( draw ) );
+	}
+	return std::nullopt;
 }
 
 } // namespace render::pass::world

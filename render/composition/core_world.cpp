@@ -2718,6 +2718,63 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	return tag;
 }
 
+pass::world::WorldMaterial CoreWorld::UiMaterial( const RenderCoreWorldMaterial &material ) const
+{
+	pass::world::WorldMaterial out = std::move( WorldMaterials( &material, 1 ).front() );
+	// An animated texture's frame ($frame) is the handle of that frame.
+	int frame = 0;
+	ITexture *base = nullptr;
+	for ( int v = 0; v < material.variableCount; ++v )
+	{
+		const char *key = material.keys[v] ? material.keys[v] : "";
+		if ( !std::strcmp( key, "$frame" ) && material.values[v] )
+			frame = std::atoi( material.values[v] );
+		if ( !std::strcmp( key, "$basetexture" ) && material.textures )
+			base = material.textures[v];
+	}
+	if ( frame > 0 && base && m_Host && m_Host->textureFrameHandle )
+	{
+		for ( auto &[key, handle] : out.textures )
+		{
+			if ( key == "$basetexture" )
+				handle = m_Host->textureFrameHandle( base, frame );
+		}
+	}
+	return out;
+}
+
+std::optional<std::string> CoreWorld::ClaimUiMaterial( const RenderCoreWorldMaterial &material )
+{
+	return m_Pass.DynamicClaim( UiMaterial( material ) );
+}
+
+std::uint32_t CoreWorld::QueueUiList(
+    const ui_draw_list::ListView &list, const RenderCoreWorldMaterial *materials, std::string &why )
+{
+	if ( !materials && list.materialCount )
+	{
+		why = "the list's materials are missing";
+		return 0;
+	}
+	std::vector<pass::world::WorldMaterial> converted;
+	converted.reserve( list.materialCount );
+	for ( std::uint32_t i = 0; i < list.materialCount; ++i )
+		converted.push_back( UiMaterial( materials[i] ) );
+	pass::world::WorldView view;
+	if ( std::optional<std::string> malformed = pass::world::UiListView( list, converted, view ) )
+	{
+		why = *malformed;
+		return 0;
+	}
+	view.debug = m_Renderer.AppliedDebug();
+	if ( !m_Pass.HasWorld() )
+		m_Pass.SetWorld( pass::world::WorldData() );
+	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
+	if ( !tag )
+		why = m_Pass.Stats().lastRefusal;
+	return tag;
+}
+
 void CoreWorld::RecordSlot(
     std::uint32_t tag, device::CommandEncoder &encoder, const legacy::CorePassTarget &target )
 {

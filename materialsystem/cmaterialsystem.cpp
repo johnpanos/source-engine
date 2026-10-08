@@ -724,6 +724,14 @@ int RenderCallQueueTextureHandle( ITexture *texture )
 	return static_cast<int>( static_cast<ITextureInternal *>( texture )->GetTextureHandle( 0 ) );
 }
 
+int RenderCallQueueTextureFrameHandle( ITexture *texture, int frame )
+{
+	if ( !texture || texture->IsError() || frame < 0 || frame >= texture->GetNumAnimationFrames() )
+		return 0;
+	return static_cast<int>(
+	    static_cast<ITextureInternal *>( texture )->GetTextureHandle( frame ) );
+}
+
 int RenderCallQueueLightmapPageHandle( int page )
 {
 	if ( page < 0 || page >= g_MaterialSystem.GetLightmaps()->GetNumLightmapPages() )
@@ -752,6 +760,7 @@ DLL_EXPORT const render::legacy::RenderCallQueueHost *MaterialSystem_RenderCallQ
 	s_host.boundMaterial = &RenderCallQueueBoundMaterial;
 	s_host.textureHandle = &RenderCallQueueTextureHandle;
 	s_host.lightmapPageHandle = &RenderCallQueueLightmapPageHandle;
+	s_host.textureFrameHandle = &RenderCallQueueTextureFrameHandle;
 	s_host.neutralMaterial = &RenderCallQueueNeutralMaterial;
 	s_host.materialDefault = &RenderCallQueueMaterialDefault;
 	return &s_host;

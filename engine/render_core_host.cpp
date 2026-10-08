@@ -45,6 +45,7 @@ struct RenderCoreHostState
 	IRenderCoreWorld *world = nullptr;
 	RenderCoreBinding::TemporalControl temporal;
 	IRenderCorePanels *panels = nullptr;
+	IRenderCoreUi *ui = nullptr;
 	gpu_compute::IGpuCompute *gpuCompute = nullptr; // the core's (RFC 0016 K12)
 	std::unique_ptr<render::scene::IRenderScene> worldScene;
 	std::vector<int> worldLeaves; // snapshot index -> leaf, or -(prop + 1) (RFC 0016 K5)
@@ -251,6 +252,7 @@ DLL_EXPORT bool Engine_BindRenderCore( const RenderCoreBinding *pBinding )
 		host.world->SetFileSource( { &CoreFileSize, &CoreFileRead } );
 	host.temporal = pBinding->temporal;
 	host.panels = pBinding->panels;
+	host.ui = pBinding->ui;
 	host.gpuCompute = pBinding->gpuCompute;
 	host.bound = true;
 	return true;
@@ -269,6 +271,11 @@ IRenderCoreWorld *RenderCoreHost_World()
 IRenderCorePanels *RenderCoreHost_Panels()
 {
 	return Host().bound ? Host().panels : nullptr;
+}
+
+IRenderCoreUi *RenderCoreHost_Ui()
+{
+	return Host().bound ? Host().ui : nullptr;
 }
 
 // RFC 0016 K12: each world mesh upload the renderer's provider accepts
