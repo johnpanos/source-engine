@@ -5337,6 +5337,63 @@ CMatCallQueue *CMaterialSystem::GetRenderCallQueue()
 	return pRenderContext ? pRenderContext->GetCallQueueInternal() : NULL;
 }
 
+// Frozen-path: core plumbing (RFC 0016 K9, R91) - every registered shader's
+// parameter table as JSON lines (name, shader flags, and per parameter its
+// name, type, default, flags and help): the extraction the parameter-only
+// provider's tables are generated from.
+CON_COMMAND( mat_dump_shader_table, "mat_dump_shader_table <file>: every registered shader's "
+                                    "parameters as JSON lines (R91 provider extraction)" )
+{
+	if ( args.ArgC() < 2 )
+	{
+		Msg( "usage: mat_dump_shader_table <file>\n" );
+		return;
+	}
+	const int count = g_MaterialSystem.ShaderCount();
+	CUtlVector<IShader *> shaders;
+	shaders.SetCount( count );
+	const int got = count > 0 ? g_MaterialSystem.GetShaders( 0, count, shaders.Base() ) : 0;
+	FileHandle_t file = g_pFullFileSystem->Open( args.Arg( 1 ), "wt" );
+	if ( !file )
+	{
+		Warning( "mat_dump_shader_table: cannot write %s\n", args.Arg( 1 ) );
+		return;
+	}
+	auto clean = []( const char *text )
+	{
+		CUtlString value( text ? text : "" );
+		value = value.Replace( "\\", "/" );
+		value = value.Replace( "\"", "'" );
+		for ( char *c = value.GetForModify(); c && *c; ++c )
+			if ( (unsigned char)*c < 0x20 )
+				*c = ' ';
+		return value;
+	};
+	for ( int i = 0; i < got; ++i )
+	{
+		IShader *shader = shaders[i];
+		if ( !shader )
+			continue;
+		CUtlString line;
+		line.Format( "{\"shader\":\"%s\",\"flags\":%d,\"params\":[", shader->GetName(),
+		    shader->GetFlags() );
+		for ( int p = 0; p < shader->GetNumParams(); ++p )
+		{
+			CUtlString item;
+			item.Format( "%s{\"name\":\"%s\",\"type\":%d,\"default\":\"%s\",\"flags\":%d,"
+			             "\"help\":\"%s\"}",
+			    p ? "," : "", clean( shader->GetParamName( p ) ).Get(),
+			    int( shader->GetParamType( p ) ), clean( shader->GetParamDefault( p ) ).Get(),
+			    shader->GetParamFlags( p ), clean( shader->GetParamHelp( p ) ).Get() );
+			line += item;
+		}
+		line += "]}";
+		g_pFullFileSystem->FPrintf( file, "%s\n", line.Get() );
+	}
+	g_pFullFileSystem->Close( file );
+	Msg( "mat_dump_shader_table: %d shaders -> %s\n", got, args.Arg( 1 ) );
+}
+
 // Frozen-path: core plumbing (RFC 0016 K9, R91) - loads every material a list
 // file names (one material name per line, without "materials/" or ".vmt") and
 // precaches it, so mat_dump_material_state then covers a whole corpus rather
