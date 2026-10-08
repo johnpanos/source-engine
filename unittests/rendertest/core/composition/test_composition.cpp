@@ -518,10 +518,11 @@ int main()
 		                                                render::legacy::kCorePassCustomEffects },
 		    "P7.core-product-retains-portal-effects-before-any-cohort" );
 		const std::vector<std::uint32_t> coreTags = SlotsOfAFrame( *probedBinding );
+		// The screen UI is the core's (render.ui-draw-list.v1): a core-only
+		// frame marks no legacy HUD slot.
 		checks.That( coreTags == std::vector<std::uint32_t>{ render::legacy::CorePassTag(
-		                                                         RENDER_STAGE_OPAQUE, 1 ),
-		                             render::legacy::kCorePassLegacyHud },
-		    "P7.core-scene-permits-legacy-ui-only-at-the-top-level-hud-stage" );
+		                             RENDER_STAGE_OPAQUE, 1 ) },
+		    "P7.core-scene-marks-no-legacy-ui-slot" );
 		render::frame::DebugControls debug;
 		debug.legacy = render::frame::DebugLegacy::kSkip;
 		checks.That(

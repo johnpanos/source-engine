@@ -16237,6 +16237,7 @@
         "render/renderer/renderer.cpp",
         "render/pass/present/feature.cpp",
         "render/legacy/frontend.cpp",
+        "render/legacy/depth_alpha.cpp",
         "render/legacy/material_blocks.cpp",
         "render/material/material.cpp",
         "render/material/vmt_mapping.cpp",
@@ -16358,6 +16359,7 @@
         "render/renderer/renderer.cpp",
         "render/pass/present/feature.cpp",
         "render/legacy/frontend.cpp",
+        "render/legacy/depth_alpha.cpp",
         "render/legacy/material_blocks.cpp",
         "render/material/material.cpp",
         "render/material/vmt_mapping.cpp",
@@ -16452,6 +16454,10 @@
       "profile": "linux-native-gl-gpu",
       "description": "The same on render.device.gl (RFC 0016 K10: 'with compute masked off, composition selects CPU skinning and reports each disabled feature by name; with a required feature missing, composition fails with a structured error'): the OpenGL adapter composed with compute and storage buffers masked through its options.",
       "result_protocol": "checks-v1",
+      "link_flags": [
+        "-lz",
+        "-lzstd"
+      ],
       "sources": [
         "render/shaderlib/shaderlib.cpp",
         "render/shaderlib/core_artifacts.cpp",
@@ -16477,6 +16483,8 @@
         "render/renderer/renderer.cpp",
         "render/pass/present/feature.cpp",
         "render/legacy/frontend.cpp",
+        "render/legacy/depth_alpha.cpp",
+        "texturecontainer/vtf_decompress.cpp",
         "render/legacy/material_blocks.cpp",
         "render/material/material.cpp",
         "render/material/vmt_mapping.cpp",
@@ -16579,6 +16587,10 @@
       "profile": "linux-native-gl-gpu",
       "description": "RFC 0022 E4: the same composition clauses on the GL adapter's OpenGL ES 3.1 dialect, the \"gles\" device of the composition catalog: compute and storage buffers masked through its options select CPU skinning by its declared fallback and report it by name; an undeclared fallback and an unknown capability fail with structured errors.",
       "result_protocol": "checks-v1",
+      "link_flags": [
+        "-lz",
+        "-lzstd"
+      ],
       "sources": [
         "render/shaderlib/shaderlib.cpp",
         "render/shaderlib/core_artifacts.cpp",
@@ -16604,6 +16616,8 @@
         "render/renderer/renderer.cpp",
         "render/pass/present/feature.cpp",
         "render/legacy/frontend.cpp",
+        "render/legacy/depth_alpha.cpp",
+        "texturecontainer/vtf_decompress.cpp",
         "render/legacy/material_blocks.cpp",
         "render/material/material.cpp",
         "render/material/vmt_mapping.cpp",
