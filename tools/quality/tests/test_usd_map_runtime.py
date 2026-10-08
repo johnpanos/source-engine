@@ -1,15 +1,14 @@
 """Runtime oracles for USD map roles (usd_map_runtime.py --roles, RFC 0009 U2).
 
     SOURCE_USD_MAP_TOOLS=<installed tools with vbsp -authored> \\
-    SOURCE_USD_MAP_CLIENT_BUILD=<portal client Waf output> \\
-    SOURCE_USD_MAP_DEDICATED_BUILD=<portal dedicated Waf output> \\
     PYTHONPATH=build/toolchains/openusd-25.11/lib/python \\
         /usr/bin/python3.12 -m unittest tools.quality.tests.test_usd_map_runtime -v
 
 Compiles the U2 role fixture and runs it headless: in the windowless client
 (null renderer, SDL offscreen; the only product that simulates without a
 network player) and in the dedicated server (spawn state and traces). Both
-builds must contain map_entity_probe, map_entity_probe_schedule and
+products (kiln profiles portal and dedicated-linux; SOURCE_USD_MAP_CLIENT_PROFILE
+and SOURCE_USD_MAP_DEDICATED_PROFILE override) must contain map_entity_probe, map_entity_probe_schedule and
 map_trace_probe (game/server/entitylist.cpp). Seeded runtime mutants compile a
 changed map past the output checks and must fail the runtime checks: the
 runtime oracle does not lean on the compile-time one.
@@ -37,8 +36,8 @@ import usd_map_runtime  # noqa: E402
 from test_usd_authoring import ROLES  # noqa: E402
 
 TOOLS = os.environ.get("SOURCE_USD_MAP_TOOLS")
-CLIENT = os.environ.get("SOURCE_USD_MAP_CLIENT_BUILD")
-DEDICATED = os.environ.get("SOURCE_USD_MAP_DEDICATED_BUILD")
+CLIENT = os.environ.get("SOURCE_USD_MAP_CLIENT_PROFILE", "portal")
+DEDICATED = os.environ.get("SOURCE_USD_MAP_DEDICATED_PROFILE", "dedicated-linux")
 RUNTIME = Path(os.environ.get("SOURCE_USD_MAP_RUNTIME", ROOT / "run/runtime"))
 MAP = "usd_roles"
 
@@ -49,9 +48,7 @@ def unchecked(bsp2, report, provenance, profile, runtime):
             "observations": {}}
 
 
-@unittest.skipUnless(TOOLS and CLIENT and DEDICATED,
-                     "set SOURCE_USD_MAP_TOOLS, SOURCE_USD_MAP_CLIENT_BUILD and "
-                     "SOURCE_USD_MAP_DEDICATED_BUILD")
+@unittest.skipUnless(TOOLS, "set SOURCE_USD_MAP_TOOLS")
 class RoleRuntimeTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -91,7 +88,7 @@ class RoleRuntimeTest(unittest.TestCase):
         out = self.scratch / ("run-%s-%s" % (label, product))
         argv = ["--map-file", str(build["bsp2"]), "--map", MAP, "--report",
                 str(build["report"]), "--provenance", str(build["provenance"]), "--roles",
-                "--runtime", str(RUNTIME), "--build", CLIENT if product == "client" else DEDICATED,
+                "--runtime", str(RUNTIME), "--profile", CLIENT if product == "client" else DEDICATED,
                 "--product", product, "--out", str(out)]
         with redirect_stdout(io.StringIO()):
             status = usd_map_runtime.main(argv)
