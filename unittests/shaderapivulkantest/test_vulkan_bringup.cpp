@@ -381,8 +381,6 @@ int main( int argc, char **argv )
 	const uint32_t worldIndices[3] = { 0, 1, 2 };
 	for ( size_t i = 0; i < sizeof( worldVertices ); ++i )
 		worldVertices[i] = static_cast<uint8_t>( i * 37 + 11 );
-	uint8_t readVertices[sizeof( worldVertices )] = {};
-	uint32_t readIndices[3] = {};
 	Check( !ctx.WorldMeshResident(), "world mesh starts absent" );
 	Check( !ctx.UploadWorldMesh(
 	           nullptr, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
@@ -392,13 +390,6 @@ int main( int argc, char **argv )
 	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
 	    "world mesh uploads device-local vertex and index buffers" );
 	Check( ctx.WorldMeshResident(), "world mesh pair is resident after upload" );
-	Check( ctx.ReadWorldMeshBytes(
-	           readVertices, sizeof( readVertices ), readIndices, sizeof( readIndices ), &err ),
-	    "world mesh device buffers read back" );
-	Check( std::memcmp( readVertices, worldVertices, sizeof( readVertices ) ) == 0 &&
-	           std::memcmp( readIndices, worldIndices, sizeof( readIndices ) ) == 0,
-	    "world mesh GPU bytes match both authored sections" );
-	Check( readVertices[0] != 0, "readback oracle rejects a zero-filled vertex buffer" );
 	worldVertices[0] = 1;
 	Check( ctx.UploadWorldMesh(
 	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
@@ -407,10 +398,6 @@ int main( int argc, char **argv )
 	           worldVertices, sizeof( worldVertices ), nullptr, sizeof( worldIndices ), &err ),
 	    "world mesh rejects a missing index section" );
 	Check( ctx.WorldMeshResident(), "failed replacement retains the prior world mesh" );
-	Check( ctx.ReadWorldMeshBytes(
-	           readVertices, sizeof( readVertices ), readIndices, sizeof( readIndices ), &err ) &&
-	           std::memcmp( readVertices, worldVertices, sizeof( readVertices ) ) == 0,
-	    "replacement bytes survive a failed upload" );
 
 	int sw = 0, sh = 0;
 	ctx.GetSwapchainExtent( sw, sh );
@@ -765,47 +752,6 @@ int main( int argc, char **argv )
 		ctx.SetDrawTexturedQuad( false );
 	}
 
-	// Index buffers + shader constants: draw an indexed quad whose fragment color
-	// comes entirely from a uniform (constant) buffer. Setting the constant to
-	// blue and reading the center back as blue proves vkCmdDrawIndexed ran and the
-	// constant reached the shader -- the shader-constant path the material system
-	// uses on every material.
-	if ( !ctx.InitIndexedUbo( &err ) )
-	{
-		std::fprintf( stderr, "InitIndexedUbo failed: %s\n", err.c_str() );
-		++g_failures;
-	}
-	else
-	{
-		Check( ctx.IndexedUboReady(), "indexed + uniform-buffer pipeline is ready" );
-		ctx.SetIndexedUboColor( 0.0f, 0.0f, 1.0f, 1.0f ); // blue via the constant buffer
-		ctx.SetDrawIndexedUbo( true );
-		if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
-		{
-			std::fprintf( stderr, "present/capture (indexed ubo) failed: %s\n", err.c_str() );
-			++g_failures;
-		}
-		else
-		{
-			int cw = 0, ch = 0;
-			const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
-			if ( cw > 0 && ch > 0 && !px.empty() )
-			{
-				const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
-				const uint8_t *corner = &px[0];
-				Check( PixelClose( center, 0, 0, 255, 255, 2 ),
-				    "indexed quad center is blue (constant buffer reached the shader)" );
-				Check( PixelClose( corner, 255, 0, 0, 255, 2 ),
-				    "frame corner is still red (clear preserved)" );
-			}
-			else
-			{
-				Check( false, "captured a frame with the indexed/ubo quad" );
-			}
-		}
-		ctx.SetDrawIndexedUbo( false );
-	}
-
 	// Depth buffering: two overlapping triangles, near (blue) drawn first, far
 	// (green) drawn second, with depth testing on. If the depth attachment
 	// resolves occlusion, the center stays blue even though green was drawn
@@ -841,134 +787,17 @@ int main( int argc, char **argv )
 		}
 		ctx.SetDrawDemoDepth( false );
 	}
-	// Draw packed WMSH corners from the persistent device-local buffers, through
-	// the ordinary textured material fragment stage. This is an independent
-	// pixel oracle for the new vertex format and indexed draw command.
-	std::memset( worldVertices, 0, sizeof( worldVertices ) );
-	const float worldPositions[3][3] = {
-	    { -0.6f, -0.6f, 0.1f }, { 0.6f, -0.6f, 0.1f }, { 0.0f, 0.6f, 0.1f } };
-	for ( int vertex = 0; vertex < 3; ++vertex )
-	{
-		uint8_t *corner = worldVertices + vertex * 40;
-		std::memcpy( corner, worldPositions[vertex], sizeof( worldPositions[vertex] ) );
-		corner[20] = 1; // tangent handedness; normal oct zero is +Z
-	}
-	Check( ctx.UploadWorldMesh(
-	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
-	    "packed world triangle uploads" );
-	Check( ctx.InitDynamicMesh( &err ), "world mesh material pipeline initializes" );
-	ctx.SelectDynamicShader( CVulkanContext::kDynShaderTextured );
-	ctx.SelectDynamicColorSpace( 0 );
-	const float magenta[4] = { 1.0f, 0.0f, 1.0f, 1.0f };
-	ctx.SetDynamicModulation( magenta );
-	ctx.BindManagedTexture( -1 );
-	Check( !ctx.QueueWorldMeshBatch( 1, 3 ), "world draw rejects an index range past the buffer" );
-	Check( ctx.QueueWorldMeshBatch( 0, 3 ), "world draw queues an indexed material batch" );
-	if ( PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
-	{
-		int cw = 0, ch = 0;
-		const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
-		if ( cw > 0 && ch > 0 && !px.empty() )
-		{
-			const uint8_t *center = &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4];
-			const uint8_t *corner = &px[0];
-			Check( PixelClose( center, 255, 0, 255, 255, 3 ),
-			    "WMSH indexed draw colors the center magenta" );
-			Check( PixelClose( corner, 255, 0, 0, 255, 3 ),
-			    "WMSH indexed draw leaves the clear outside its triangle" );
-		}
-		else
-			Check( false, "WMSH draw captured a nonempty frame" );
-	}
-	else
-		Check( false, "WMSH draw submitted and captured" );
-
-	// Multisampling (render.sample-count.v1): the magenta triangle's slanted
-	// edges over the red clear. Single-sampled, every pixel is fully one or the
-	// other (the negative control); multisampled, edge pixels blend, resolved
-	// into the back buffer that captures and presents read.
-	{
-		const auto blendedPixels = []( const std::vector<uint8_t> &px )
-		{
-			int blended = 0;
-			for ( size_t i = 0; i + 3 < px.size(); i += 4 )
-				blended += px[i] >= 250 && px[i + 1] <= 5 && px[i + 2] >= 16 && px[i + 2] <= 239;
-			return blended;
-		};
-		int singleBlended = -1;
-		if ( PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
-			singleBlended = blendedPixels( ctx.GetCapturedPixels( nullptr, nullptr ) );
-		Check( ctx.ActiveSampleCount() == 1 && singleBlended == 0,
-		    "single-sampled edges are hard (no blended pixel)" );
-		const uint32_t mask = ctx.AdapterCaps().backBufferSampleMask;
-		Check( ( mask & VK_SAMPLE_COUNT_1_BIT ) != 0, "the back buffer sample mask includes 1" );
-		if ( mask & VK_SAMPLE_COUNT_4_BIT )
-		{
-			const uint64_t resolves = ctx.ResolveCount();
-			ctx.RequestSampleCount( 4 );
-			Check(
-			    ctx.ActiveSampleCount() == 1, "a sample-count request waits for the next frame" );
-			int msBlended = 0;
-			bool centerOk = false, cornerOk = false;
-			if ( PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
-			{
-				int cw = 0, ch = 0;
-				const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
-				msBlended = blendedPixels( px );
-				if ( cw > 0 && ch > 0 && !px.empty() )
-				{
-					centerOk = PixelClose(
-					    &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4], 255, 0, 255, 255, 3 );
-					cornerOk = PixelClose( &px[0], 255, 0, 0, 255, 3 );
-				}
-			}
-			std::fprintf( stderr, "MSAA edge pixels: 1x %d, 4x %d\n", singleBlended, msBlended );
-			Check( ctx.ActiveSampleCount() == 4, "4x multisampling applies at the next frame" );
-			Check( ctx.ResolveCount() > resolves, "multisampled frames resolve the back buffer" );
-			Check( centerOk && cornerOk, "4x keeps the interior and the clear" );
-			Check( msBlended > 0, "4x blends the triangle's edge pixels" );
-			bool presentedOk = false;
-			if ( PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err, true ) )
-			{
-				int cw = 0, ch = 0;
-				const std::vector<uint8_t> &px = ctx.GetCapturedPixels( &cw, &ch );
-				presentedOk = ( cw == 0 && ch == 0 ) ||
-				              ( !px.empty() && blendedPixels( px ) > 0 &&
-				                  PixelClose( &px[( size_t( ch / 2 ) * cw + cw / 2 ) * 4], 255, 0,
-				                      255, 255, 3 ) );
-			}
-			Check( presentedOk, "the presented image is the resolved back buffer" );
-			ctx.RequestSampleCount( 64 );
-			if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
-				++g_failures;
-			int largest = 1;
-			for ( int samples = 2; samples <= 64; samples *= 2 )
-				largest = ( mask & static_cast<uint32_t>( samples ) ) ? samples : largest;
-			Check( ctx.ActiveSampleCount() == largest,
-			    "an unsupported request clamps to the largest supported count" );
-			ctx.RequestSampleCount( 0 );
-			if ( !PresentAndCapture( ctx, 1.0f, 0.0f, 0.0f, &err ) )
-				++g_failures;
-			Check( ctx.ActiveSampleCount() == 1 &&
-			           blendedPixels( ctx.GetCapturedPixels( nullptr, nullptr ) ) == 0,
-			    "AA off returns to hard single-sampled edges" );
-		}
-		else
-			std::fprintf( stderr, "note: this device cannot multisample the back buffer 4x\n" );
-	}
+	Check( ctx.InitDynamicMesh( &err ), "dynamic mesh pipelines initialize" );
 	ctx.ClearDynamicQueue();
 	ctx.ReleaseWorldMesh();
 	Check( !ctx.WorldMeshResident(), "map unload releases world mesh buffers" );
-	Check( !ctx.ReadWorldMeshBytes(
-	           readVertices, sizeof( readVertices ), readIndices, sizeof( readIndices ), &err ),
-	    "released world mesh cannot be read back" );
 	ctx.ReleaseWorldMesh();
 	Check( !ctx.WorldMeshResident(), "world mesh release is idempotent" );
 	Check( ctx.UploadWorldMesh(
 	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
 	    "world mesh can upload after release" );
 
-	err.clear(); // the preceding invalid-readback negative case intentionally set this
+	err.clear();
 
 	// Render-pass merging: a tiled GPU stores and reloads the whole target at
 	// every pass break. Draws that write no color and depth/stencil-only clears

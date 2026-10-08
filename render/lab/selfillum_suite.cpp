@@ -142,7 +142,7 @@ WorldMaterial Material(
 	material.shader = shader;
 	material.mesh = true;
 	const bool eyeRefract = std::string_view( shader ) == "EyeRefract";
-	if ( !eyeRefract )
+	if ( !eyeRefract && std::string_view( shader ) != "Bik" )
 	{
 		material.variables = { { "$basetexture", "selfillum/two_texels" } };
 		material.textures = { { "$basetexture", kBaseHandle } };
@@ -171,6 +171,11 @@ WorldMaterial Material(
 			material.textures.push_back( { "$corneatexture", kCorneaHandle } );
 		if ( key == "$ambientoccltexture" )
 			material.textures.push_back( { "$ambientoccltexture", kOcclusionHandle } );
+		// Bik: Y and Cb the cornea's uniform 128, Cr the occlusion's 0 | 1.
+		if ( key == "$ytexture" || key == "$cbtexture" )
+			material.textures.push_back( { key, kCorneaHandle } );
+		if ( key == "$crtexture" )
+			material.textures.push_back( { key, kOcclusionHandle } );
 	}
 	return material;
 }
@@ -795,6 +800,48 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		const std::string refused = introClaim ? std::string() : introClaim.Error();
 		results.That( refused.find( "$intro" ) != std::string::npos,
 		    "selfillum.eye-refract.refuse-intro", refused );
+	}
+
+	// Bik (bik_ps2x): Y and Cb 128/255, Cr 0 on the left texel and 1 on the
+	// right. Each pixel is bik_ps2x's RGB, read as sRGB, clamped.
+	{
+		const Variables video = { { "$ytexture", "selfillum/cornea" },
+		    { "$crtexture", "selfillum/eye-occlusion" }, { "$cbtexture", "selfillum/cornea" } };
+		CanvasImage videoImage;
+		if ( auto why = render( video, 0.0f, false, videoImage, true, false, 0, "Bik" ) )
+			return why;
+		const auto expected = []( float cr, int c )
+		{
+			const float y = 128.0f / 255.0f, cb = 128.0f / 255.0f;
+			const float rows[3][4] = { { 1.164123535f, 1.595794678f, 0.0f, -0.87065506f },
+			    { 1.164123535f, -0.813476563f, -0.391448975f, 0.529705048f },
+			    { 1.164123535f, 0.0f, 2.017822266f, -1.081668854f } };
+			const float v = std::clamp(
+			    rows[c][0] * y + rows[c][1] * cr + rows[c][2] * cb + rows[c][3], 0.0f, 1.0f );
+			return v <= 0.04045f ? v / 12.92f : std::pow( ( v + 0.055f ) / 1.055f, 2.4f );
+		};
+		bool converted = true;
+		std::string detail;
+		for ( int c = 0; c < 3; ++c )
+		{
+			const float left = videoImage.At( kEmitX, kRow )[c];
+			const float right = videoImage.At( kPlainX, kRow )[c];
+			converted = converted && Near( left, expected( 0.0f, c ), 0.01f ) &&
+			            Near( right, expected( 1.0f, c ), 0.01f );
+			detail += std::to_string( left ) + "/" + std::to_string( expected( 0.0f, c ) ) + " " +
+			          std::to_string( right ) + "/" + std::to_string( expected( 1.0f, c ) ) + " ";
+		}
+		results.That( converted, "selfillum.video.planes-convert-to-rgb", detail );
+		std::vector<material::VmtPair> partial;
+		partial.push_back( { "$ytexture", "selfillum/cornea" } );
+		auto mapped = material::MapVariables( "Bik", std::move( partial ), {} );
+		const auto partialClaim = mapped
+		                              ? material::ClaimForMesh( mapped.Value(), true )
+		                              : foundation::Expected<device::BlendMode, std::string>(
+		                                    foundation::MakeUnexpected( std::string( "no map" ) ) );
+		const std::string refused = partialClaim ? std::string() : partialClaim.Error();
+		results.That( refused.find( "$crtexture" ) != std::string::npos,
+		    "selfillum.video.refuse-missing-planes", refused );
 	}
 
 	// $selfillum_envmapmask_alpha: the envmap mask's alpha x 8 replaces the

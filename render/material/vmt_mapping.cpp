@@ -83,6 +83,10 @@ constexpr VmtShaderRow kShaders[] = {
         "doubler's previous frame) projected through $alternateviewmatrix, static and an alpha "
         "mask; the decal-modulate point (unlit_family.h ClaimPortalView)" },
     { "portal_dx90", "portal-view", "Portal's DirectX 9 implementation" },
+    { "bik", "video",
+        "Bik (bik_dx90.cpp, bik_ps2x): a Bink frame's Y, Cr and Cb planes converted to RGB, "
+        "fogged; the decal-modulate point (unlit_family.h ClaimVideo)" },
+    { "bik_dx90", "video", "Bik's DirectX 9 implementation" },
     { "portalstaticoverlay", "portal-overlay",
         "PortalStaticOverlay (portalstaticoverlay.cpp, portalstaticoverlay_ps2x): Portal 2's "
         "ghost, the portal seen through walls (reverse depth test), on the decal-modulate "
@@ -135,7 +139,7 @@ constexpr std::string_view kLegacyReason =
 // kLegacyDerivedFamilies a copy.
 constexpr std::string_view kLegacyDerivedFamilies[] = { "lightmapped", "vertexlit", "unlit",
     "depth", "portal-mask", "cable", "decal-modulate", "energy", "modulate", "teeth", "eyes",
-    "blob-shadow", "shadow-build", "portal-overlay", "eye-refract", "portal-view" };
+    "blob-shadow", "shadow-build", "portal-overlay", "eye-refract", "portal-view", "video" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$one", "one", ValueKind::kFloat, "1" },
@@ -195,6 +199,10 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     { "portal-view", "$portalviewproj1", "portalviewproj1", ValueKind::kFloat4, "[0 1 0 0]" },
     { "portal-view", "$portalviewproj2", "portalviewproj2", ValueKind::kFloat4, "[0 0 1 0]" },
     { "portal-view", "$portalviewproj3", "portalviewproj3", ValueKind::kFloat4, "[0 0 0 1]" },
+    // Bik (bik_dx90.cpp's parameters).
+    { "video", "$ytexture", "ytexture", ValueKind::kTexture, "" },
+    { "video", "$crtexture", "crtexture", ValueKind::kTexture, "" },
+    { "video", "$cbtexture", "cbtexture", ValueKind::kTexture, "" },
     // EyeRefract (eye_refract.cpp's parameters; eye_refract_helper.h's
     // InitParams defaults where the shader replaces an undefined value).
     { "eye-refract", "$iris", "iris", ValueKind::kTexture, "" },

@@ -210,33 +210,6 @@ void CVulkanContext::DestroySceneCapture()
 	m_sceneCaptureCurrent = false;
 }
 
-void CVulkanContext::QueueSceneCaptureIfNeeded( uint64_t materialKey )
-{
-	// The first record after a present starts the next frame (AppendRecord);
-	// start it here so the decision below sees that frame's state.
-	if ( m_dynFramePresented )
-		ClearDynamicQueue();
-	const bool stale = !m_sceneCaptureCurrent || m_sceneCaptureTarget != m_dynTarget ||
-	                   ( m_sceneCaptureGlassDrawn && m_sceneCaptureKey != materialKey );
-	if ( !stale || m_sceneCapturesQueued >= kMaxSceneCaptures )
-		return;
-	std::string error;
-	if ( !EnsureSceneCapture( &error ) )
-	{
-		static bool s_reported = false;
-		if ( !s_reported )
-			CaptureLog( "scene capture unavailable: %s\n", error.c_str() );
-		s_reported = true;
-		return;
-	}
-	AppendRecord( kRecordSceneCapture );
-	++m_sceneCapturesQueued;
-	m_sceneCaptureCurrent = true;
-	m_sceneCaptureTarget = m_dynTarget;
-	m_sceneCaptureKey = materialKey;
-	m_sceneCaptureGlassDrawn = false;
-}
-
 bool CVulkanContext::RecordSceneCapture( VkCommandBuffer cmd, int target )
 {
 	ScopedDebugLabel label( m_debugUtils, "scene capture (glass)" );
