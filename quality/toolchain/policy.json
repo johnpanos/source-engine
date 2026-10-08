@@ -287,6 +287,18 @@
       "dialect": "cxx20",
       "rfc": "0001"
     },
+    "platform_resolver": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
+    "platform_resolver_legacyabi": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
+    "platform_file_probe_legacyabi": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
     "unittest": {
       "dialect": "cxx20",
       "rfc": "0001"

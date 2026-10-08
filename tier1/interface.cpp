@@ -38,7 +38,7 @@
 #endif
 
 #ifdef POSIX
-#include <sys/stat.h>
+#include "module_search_bridge.h"
 #endif
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -323,36 +323,13 @@ static bool s_bRunningWithDebugModules = false;
 #define DEFAULT_LIB_PATH "bin/"
 #endif
 
-bool foundLibraryWithPrefix( char *pModuleAbsolutePath, size_t AbsolutePathSize, const char *pPath, const char *pModuleName )
+// The search itself is platform.module-resolver.v1 over the POSIX file probe
+// (R11, tier1/module_search_bridge.cpp); this keeps the legacy signature.
+bool foundLibraryWithPrefix(
+    char *pModuleAbsolutePath, size_t AbsolutePathSize, const char *pPath, const char *pModuleName )
 {
-	char str[1024];
-	Q_strncpy( str, pModuleName, sizeof(str) );
-	V_SetExtension( str, DLL_EXT_STRING, sizeof(str) );
-	bool bFound = false;
-
-	struct stat statBuf;
-	Q_snprintf(pModuleAbsolutePath, AbsolutePathSize, "%s/" DEFAULT_LIB_PATH "lib%s", pPath, str);
-	bFound |= stat(pModuleAbsolutePath, &statBuf) == 0;
-
-	if( !bFound )
-	{
-		Q_snprintf(pModuleAbsolutePath, AbsolutePathSize, "%s/" DEFAULT_LIB_PATH "%s", pPath, str);
-		bFound |= stat(pModuleAbsolutePath, &statBuf) == 0;
-	}
-
-	if( !bFound )
-	{
-		Q_snprintf(pModuleAbsolutePath, AbsolutePathSize, "%s/lib%s", pPath, str);
-		bFound |= stat(pModuleAbsolutePath, &statBuf) == 0;
-	}
-
-	if( !bFound )
-	{
-		Q_snprintf(pModuleAbsolutePath, AbsolutePathSize, "%s/%s", pPath, str);
-		bFound |= stat(pModuleAbsolutePath, &statBuf) == 0;
-	}
-
-	return bFound;
+	return Tier1_FindModuleWithPrefix( pModuleAbsolutePath, AbsolutePathSize, pPath, pModuleName,
+	    DEFAULT_LIB_PATH, DLL_EXT_STRING );
 }
 
 #endif
@@ -462,8 +439,7 @@ CSysModule *Sys_LoadModule( const char *pModuleName, Sys_Flags flags /* = SYS_NO
 		Q_strncpy( szModuleName, pModuleName, sizeof(szModuleName) );
 		V_SetExtension( szModuleName, DLL_EXT_STRING, sizeof(szModuleName) );
 
-		struct stat statBuf;
-		bool bFound = stat(szModuleName, &statBuf) == 0;
+		bool bFound = Tier1_ModulePathExists( szModuleName );
 
 		if( !bFound )
 		{

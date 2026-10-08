@@ -1227,6 +1227,56 @@
       "expect": "pass"
     },
     {
+      "id": "platform.module_resolver",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R11",
+      "result_protocol": "checks-v1",
+      "profile": "linux-headless-core",
+      "contract": "unittests/platformtest/contracts/platform.module-resolver.v1.md",
+      "kind": "positive",
+      "description": "platform.module-resolver.v1 (R11): the shared resolver suite (root-major order, exact attempted list, extension rule, file kinds, verifier policy, invalid names and policies refused before probing, UTF-16 roots with a non-BMP name) against the portable resolver, plus VirtualPath parsing, NativePath joins and lossy display.",
+      "sources": [
+        "unittests/platformtest/module_resolver/test_module_resolver.cpp",
+        "platform/resolver/module_resolver.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.module_resolver.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R11",
+      "result_protocol": "checks-v1",
+      "profile": "linux-headless-core",
+      "contract": "unittests/platformtest/contracts/platform.module-resolver.v1.md",
+      "kind": "sensitivity",
+      "sources": [
+        "unittests/platformtest/module_resolver/test_module_resolver_negative.cpp",
+        "platform/resolver/module_resolver.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.module_search_bridge",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R11",
+      "result_protocol": "checks-v1",
+      "profile": "linux-headless-core",
+      "contract": "unittests/platformtest/contracts/platform.module-resolver.v1.md",
+      "kind": "positive",
+      "description": "R11: Sys_LoadModule's POSIX search (tier1/module_search_bridge.cpp over the resolver and the POSIX probe) against the legacy search frozen verbatim from tier1/interface.cpp, on 400 seeded directory trees (files, directories, links, dangling links, a root that is not UTF-8, roots with a trailing '/'); recorded deviations: no '//' in found paths, '..' names refused.",
+      "sources": [
+        "unittests/platformtest/module_search_bridge/test_module_search_bridge.cpp",
+        "tier1/module_search_bridge.cpp",
+        "platform/posix/file_probe_provider.cpp",
+        "platform/resolver/module_resolver.cpp"
+      ],
+      "timeout_seconds": 120,
+      "expect": "pass"
+    },
+    {
       "id": "platform.foundation.posix",
       "domain": "Q-FOUNDATION",
       "rfc": "0001",
@@ -1249,7 +1299,9 @@
         "platform/posix/virtual_memory_provider.cpp",
         "platform/posix/process_environment_provider.cpp",
         "platform/posix/paths_provider.cpp",
-        "platform/posix/diagnostics_provider.cpp"
+        "platform/posix/diagnostics_provider.cpp",
+        "platform/posix/file_probe_provider.cpp",
+        "platform/resolver/module_resolver.cpp"
       ],
       "min_checks": 2500,
       "timeout_seconds": 120,
@@ -1280,7 +1332,9 @@
         "platform/posix/virtual_memory_provider.cpp",
         "platform/posix/process_environment_provider.cpp",
         "platform/posix/paths_provider.cpp",
-        "platform/posix/diagnostics_provider.cpp"
+        "platform/posix/diagnostics_provider.cpp",
+        "platform/posix/file_probe_provider.cpp",
+        "platform/resolver/module_resolver.cpp"
       ],
       "requires": [
         "env:CONFORMANCE_M32"
@@ -1317,7 +1371,9 @@
         "platform/posix/virtual_memory_provider.cpp",
         "platform/posix/process_environment_provider.cpp",
         "platform/posix/paths_provider.cpp",
-        "platform/posix/diagnostics_provider.cpp"
+        "platform/posix/diagnostics_provider.cpp",
+        "platform/posix/file_probe_provider.cpp",
+        "platform/resolver/module_resolver.cpp"
       ],
       "requires": [
         "env:CONFORMANCE_TSAN"
@@ -1354,7 +1410,9 @@
         "platform/posix/virtual_memory_provider.cpp",
         "platform/posix/process_environment_provider.cpp",
         "platform/posix/paths_provider.cpp",
-        "platform/posix/diagnostics_provider.cpp"
+        "platform/posix/diagnostics_provider.cpp",
+        "platform/posix/file_probe_provider.cpp",
+        "platform/resolver/module_resolver.cpp"
       ],
       "requires": [
         "env:CONFORMANCE_ASAN"
@@ -1384,7 +1442,9 @@
         "platform/win32/virtual_memory_provider.cpp",
         "platform/win32/process_environment_provider.cpp",
         "platform/win32/paths_provider.cpp",
-        "platform/win32/diagnostics_provider.cpp"
+        "platform/win32/diagnostics_provider.cpp",
+        "platform/win32/file_probe_provider.cpp",
+        "platform/resolver/module_resolver.cpp"
       ],
       "requires": [
         "env:CONFORMANCE_WINDOWS_PE"

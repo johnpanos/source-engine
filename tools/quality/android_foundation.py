@@ -28,7 +28,8 @@ PROFILE = os.path.join(ROOT, "quality", "product_profiles", "portal-android-nati
 SOURCES = ["unittests/platformtest/foundation_posix/test_foundation_posix.cpp"] + [
     "platform/posix/%s.cpp" % name for name in (
         "clock_providers", "thread_provider", "virtual_memory_provider",
-        "process_environment_provider", "paths_provider", "diagnostics_provider")]
+        "process_environment_provider", "paths_provider", "diagnostics_provider",
+        "file_probe_provider")] + ["platform/resolver/module_resolver.cpp"]
 REMOTE = "/data/local/tmp/r26_foundation"
 RESULT = re.compile(r"^CONFORMANCE (\d+) (\d+)$", re.M)
 

@@ -13,6 +13,7 @@
 
 #include "platform/contracts/clock.h"
 #include "platform/contracts/diagnostics.h"
+#include "platform/contracts/module_resolver.h"
 #include "platform/contracts/paths.h"
 #include "platform/contracts/process_environment.h"
 #include "platform/contracts/thread.h"
@@ -56,6 +57,15 @@ namespace platform
 
 // OutputDebugStringW, one call per framed message (for an attached debugger).
 [[nodiscard]] std::unique_ptr<IDebugOutput> CreateWin32DebuggerOutput();
+
+// GetFileAttributesW: follows reparse points the way CreateFileW does; reads
+// only kWindowsUtf16 paths (any other flavor is kMissing).
+[[nodiscard]] std::unique_ptr<IFileProbe> CreateWin32FileProbe();
+
+// Native paths from OS strings (null or empty: the empty path), and the
+// current directory.
+NativePath Win32NativePath( const wchar_t *units );
+NativePath Win32CurrentDirectory();
 
 // Writes text reports into `reportDir` (UTF-8, must exist): the reason, pid,
 // time, annotations and a backtrace. With `installHandler` it also installs an

@@ -14,6 +14,7 @@
 
 #include "platform/contracts/clock.h"
 #include "platform/contracts/diagnostics.h"
+#include "platform/contracts/module_resolver.h"
 #include "platform/contracts/paths.h"
 #include "platform/contracts/process_environment.h"
 #include "platform/contracts/thread.h"
@@ -84,6 +85,15 @@ struct PlatformPathValues
 // too long.
 [[nodiscard]] std::unique_ptr<ICrashReporter> CreatePosixCrashReporter(
     const char *reportDir, bool installHandler );
+
+// stat(2): follows symbolic links; reads only kPosixBytes paths (any other
+// flavor is kMissing).
+[[nodiscard]] std::unique_ptr<IFileProbe> CreatePosixFileProbe();
+
+// Native paths from OS strings: bytes as given (null or empty: the empty path),
+// and the current working directory (empty when getcwd fails).
+NativePath PosixNativePath( const char *bytes );
+NativePath PosixCurrentDirectory();
 
 // A reporter with no capture (IsAvailable() false), for profiles without one.
 [[nodiscard]] std::unique_ptr<ICrashReporter> CreateUnavailableCrashReporter();

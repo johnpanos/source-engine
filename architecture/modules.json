@@ -1949,7 +1949,8 @@
         ],
         "allowedEdges": [
           "foundation",
-          "platform.contracts"
+          "platform.contracts",
+          "platform.native-path"
         ],
         "externalHeaders": [
           "unistd.h",
@@ -1970,30 +1971,86 @@
           "time.h",
           "pthread/qos.h",
           "sys/syscall.h",
-          "sys/mman.h"
+          "sys/mman.h",
+          "sys/stat.h"
         ]
       },
       {
         "id": "platform.win32",
         "kind": "backend",
         "owns": "RFC 0001 R26: the Win32 providers of the foundation capabilities",
-        "paths": ["platform/win32/"],
-        "allowedEdges": ["foundation", "platform.contracts"],
-        "externalHeaders": ["windows.h", "process.h", "shellapi.h", "initguid.h", "knownfolders.h", "shlobj.h"]
+        "paths": [
+          "platform/win32/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts",
+          "platform.native-path"
+        ],
+        "externalHeaders": [
+          "windows.h",
+          "process.h",
+          "shellapi.h",
+          "initguid.h",
+          "knownfolders.h",
+          "shlobj.h"
+        ]
+      },
+      {
+        "id": "platform.resolver",
+        "owns": "RFC 0001 rank 5 (R11): the portable module resolver over injected file probes and verifiers",
+        "paths": [
+          "platform/resolver/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts"
+        ]
+      },
+      {
+        "id": "platform.native-path",
+        "kind": "backend",
+        "owns": "RFC 0001 rank 5 (R11): the only access to a NativePath's native storage, for platform backends and the legacy Tier 1 module-search bridge",
+        "paths": [
+          "platform/native_path/"
+        ],
+        "allowedEdges": [
+          "platform.contracts"
+        ]
+      },
+      {
+        "id": "platform.resolver.tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/platformtest/module_resolver/",
+          "unittests/platformtest/file_probe/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts",
+          "platform.resolver",
+          "platform.native-path",
+          "platform.tests",
+          "testing.contracts"
+        ]
       },
       {
         "id": "platform.posix.native-tests",
         "kind": "native-test",
         "paths": [
           "unittests/platformtest/dynamic_library_posix/",
-          "unittests/platformtest/foundation_posix/"
+          "unittests/platformtest/foundation_posix/",
+          "unittests/platformtest/module_search_bridge/"
         ],
         "allowedEdges": [
           "foundation",
           "platform.contracts",
           "platform.posix",
           "platform.tests",
-          "testing.contracts"
+          "testing.contracts",
+          "platform.resolver",
+          "platform.native-path",
+          "platform.resolver.tests"
         ],
         "externalHeaders": [
           "unistd.h",
@@ -2003,15 +2060,32 @@
           "sys/mman.h",
           "sys/socket.h",
           "sys/stat.h",
-          "sys/wait.h"
+          "sys/wait.h",
+          "fcntl.h"
+        ],
+        "legacyIncludes": [
+          "../../../tier1/module_search_bridge.h"
         ]
       },
       {
         "id": "platform.win32.native-tests",
         "kind": "native-test",
-        "paths": ["unittests/platformtest/foundation_win32/"],
-        "allowedEdges": ["foundation", "platform.contracts", "platform.win32", "platform.tests", "testing.contracts"],
-        "externalHeaders": ["windows.h"]
+        "paths": [
+          "unittests/platformtest/foundation_win32/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "platform.contracts",
+          "platform.win32",
+          "platform.tests",
+          "testing.contracts",
+          "platform.resolver",
+          "platform.native-path",
+          "platform.resolver.tests"
+        ],
+        "externalHeaders": [
+          "windows.h"
+        ]
       }
     ],
     "generatedHeaders": [
@@ -2171,6 +2245,15 @@
         ]
       },
       "platform_posix_legacyabi": {
+        "allowedUse": []
+      },
+      "platform_resolver": {
+        "allowedUse": []
+      },
+      "platform_resolver_legacyabi": {
+        "allowedUse": []
+      },
+      "platform_file_probe_legacyabi": {
         "allowedUse": []
       },
       "mapgeometry": {

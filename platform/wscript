@@ -55,7 +55,7 @@ def build(bld):
 			              'posix/clock_providers.cpp', 'posix/thread_provider.cpp',
 			              'posix/virtual_memory_provider.cpp',
 			              'posix/process_environment_provider.cpp', 'posix/paths_provider.cpp',
-			              'posix/diagnostics_provider.cpp' ],
+			              'posix/diagnostics_provider.cpp', 'posix/file_probe_provider.cpp' ],
 			target    = 'platform_posix',
 			name      = 'platform_posix',
 			arch_module = 'platform.posix',
@@ -73,6 +73,39 @@ def build(bld):
 			source    = [ 'posix/dynamic_library_provider.cpp', 'posix/tool_process_provider.cpp' ],
 			target    = 'platform_posix_legacyabi',
 			name      = 'platform_posix_legacyabi',
+			arch_module = 'platform.posix',
+			features  = 'cxx capability_strict',
+			includes  = [ '../public' ],
+			defines   = legacy_abi,
+			use       = [],
+			subsystem = bld.env.MSVC_SUBSYSTEM,
+			idx       = bld.get_taskgen_count()
+		)
+	# Module resolution (RFC 0001 rank 5, R11): the portable resolver, and the
+	# POSIX file probe on its own so products without a dynamic loader (the
+	# 3DS) still get it. Tier 1's Sys_LoadModule search uses the _legacyabi
+	# builds; see platform_composition_legacyabi.
+	for target, defines in ( ( 'platform_resolver', [] ),
+	                         ( 'platform_resolver_legacyabi', legacy_abi ) ):
+		bld.stlib(
+			env       = bld.strict_cpp20_env(),
+			source    = [ 'resolver/module_resolver.cpp' ],
+			target    = target,
+			name      = target,
+			arch_module = 'platform.resolver',
+			features  = 'cxx capability_strict',
+			includes  = [ '../public' ],
+			defines   = defines,
+			use       = [],
+			subsystem = bld.env.MSVC_SUBSYSTEM,
+			idx       = bld.get_taskgen_count()
+		)
+	if bld.env.DEST_OS != 'win32':
+		bld.stlib(
+			env       = bld.strict_cpp20_env(),
+			source    = [ 'posix/file_probe_provider.cpp' ],
+			target    = 'platform_file_probe_legacyabi',
+			name      = 'platform_file_probe_legacyabi',
 			arch_module = 'platform.posix',
 			features  = 'cxx capability_strict',
 			includes  = [ '../public' ],

@@ -130,3 +130,77 @@ Tooling changes made for this:
   spew, minidumps) still use their own implementations. Moving them onto these
   providers is later work. Mod-facing exports stay compatible (user question,
   2026-10-08).
+
+## R11: paths and module resolution (2026-10-08)
+
+R26's hard prerequisite. What R11 asks for, and where it now is:
+
+- **Native and virtual paths distinct.** `public/platform/contracts/path_types.h`
+  defines `VirtualPath`, a validated relative UTF-8 name, and `NativePath`, an
+  opaque value: POSIX bytes or Windows UTF-16. Neither converts to the other
+  implicitly. Joining a `VirtualPath` onto a `NativePath` is the only portable
+  operation, and display text is a separate lossy conversion. Native storage is
+  read only through `platform/native_path/native_path_access.h`. That is a
+  backend module (`platform.native-path`), so archlint refuses any other
+  include; the Tier 1 bridge is its one legacy user.
+- **Resolution and verification separate from opening.**
+  `public/platform/contracts/module_resolver.h` (`platform.module-resolver.v1`):
+  - one portable resolver (`platform/resolver/`);
+  - injected file probes (`CreatePosixFileProbe` and `CreateWin32FileProbe`);
+  - an optional verifier, where signature and validation policy goes. A
+    rejection ends the search.
+
+  The resolver never opens a library. `platform.dynamic-library.v1` opens the
+  resolved path.
+- **The loader bridge converted.** `Sys_LoadModule`'s POSIX search
+  (`foundLibraryWithPrefix` and the absolute-path `stat`) now runs through
+  `tier1/module_search_bridge.cpp`, over the resolver and the POSIX probe. The
+  bridge's control flow, telemetry and messages are unchanged. Tier 1 links the
+  `_legacyabi` builds of the resolver and probe. RFC 0001 rank 5 also names "the
+  extension resolver": no extension host exists yet, and R41 builds its hosts on
+  this resolver.
+- **Encoding, search and failure corpus.**
+  - The shared resolver suite: 51 checks, with 8 bad resolvers caught. It
+    covers root-major order, the exact attempted list, the legacy extension
+    rule, file kinds, verifier policy, invalid names and policies refused before
+    any probe, and UTF-16 roots with a non-BMP name.
+  - The path-type tests: 31 checks, covering refusals including overlong
+    UTF-8 and surrogates, joins, and lossy display of bytes that aren't UTF-8
+    and of unpaired surrogates.
+  - The file-probe suite on native fixtures. On POSIX it covers links, dangling
+    links, a FIFO, and names that are and aren't UTF-8, and 3 bad probes are
+    caught. On Win32 it covers both separators, a non-BMP name and the `NUL`
+    device. An unpaired-surrogate name is created where the file system allows
+    it; Wine refuses, and the test prints that.
+  - `platform.module_search_bridge`: the bridge against the legacy search,
+    frozen verbatim, on 400 seeded trees (1,483 checks, 0 differences). Seeded
+    mutations of the bridge fail it: strict file kinds with 167 failures,
+    swapped patterns with 180.
+
+Recorded deviations of the bridge from the legacy search:
+
+- A found path is the same file but no longer contains `//` when the root ends
+  in `/`.
+- A module name with a `..` segment is refused instead of searched. No caller in
+  this repository passes one literally; names built at run time could.
+- A null Android `APP_LIB_PATH` resolves nothing; it used to probe `(null)/...`.
+
+Evidence:
+
+- Linux x86_64 with g++, clang++, TSan and ASan/UBSan, and i386: the resolver,
+  sensitivity and bridge rows pass, and `platform.foundation.posix` passes with
+  the probe and resolver at 2,752 checks.
+- Windows PE under Wine: `platform.foundation.win32` passes with 2,663 checks.
+- Portal on native Vulkan, built through `./kiln build portal`, boots headless
+  to `testchmb_a_00` with every module resolved through the bridge
+  (`portal_boot.py`).
+- The shared `build-p2` tree builds in full.
+- Android: the binary with the probe and resolver builds for both ABIs. It has
+  not run on a device yet: the tablet's wireless adb session ended before the
+  rerun.
+
+Lesson from this slice: a Tier 1 build-graph change has to land in one step.
+For about ten minutes the shared tree could not configure: the `tier1/wscript`
+edit had a syntax error, and the new targets weren't registered in
+`architecture/modules.json` and `quality/toolchain/policy.json`. That blocked
+another session until it was fixed.

@@ -14,11 +14,14 @@
 
 #include "../clock/clock_conformance.h"
 #include "../diagnostics/diagnostics_conformance.h"
+#include "../file_probe/file_probe_conformance.h"
+#include "../module_resolver/module_resolver_conformance.h"
 #include "../paths/paths_conformance.h"
 #include "../process_environment/process_environment_conformance.h"
 #include "../thread/thread_conformance.h"
 #include "../virtual_memory/virtual_memory_conformance.h"
 #include "../wall_clock/wall_clock_conformance.h"
+#include "../../../platform/resolver/module_resolver.h"
 #include "../../../platform/win32/foundation_providers.h"
 #include "testing/conformance_result.h"
 
@@ -446,6 +449,100 @@ void DiagnosticsSuites()
 	RemoveDirectoryA( dir.c_str() );
 }
 
+void FileProbeAndResolverSuites()
+{
+	wchar_t tempDir[MAX_PATH];
+	GetTempPathW( MAX_PATH, tempDir );
+	const std::wstring root =
+	    std::wstring( tempDir ) + L"r11-probe-" + std::to_wstring( GetCurrentProcessId() );
+	NATIVE_CHECK( CreateDirectoryW( root.c_str(), nullptr ) != 0 );
+	auto touch = []( const std::wstring &path )
+	{
+		HANDLE h = CreateFileW( path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, 0, nullptr );
+		if ( h != INVALID_HANDLE_VALUE )
+		{
+			CloseHandle( h );
+			return true;
+		}
+		return false;
+	};
+	const std::wstring nonBmp = root + L"\\\U0001F600.dll";
+	const std::wstring lone = root + L"\\a" + wchar_t( 0xd800 ) + L".dll";
+	CreateDirectoryW( ( root + L"\\bin" ).c_str(), nullptr );
+	touch( root + L"\\engine.dll" );
+	touch( root + L"\\bin\\server.dll" );
+	NATIVE_CHECK( touch( nonBmp ) );
+	const bool loneCreated = touch( lone );
+
+	using platform::FileKind;
+	auto W = []( const std::wstring &s )
+	{
+		return platform::Win32NativePath( s.c_str() );
+	};
+	platformtest::FileProbeFixture fixture;
+	fixture.cases = {
+	    { W( root + L"\\engine.dll" ), FileKind::kRegularFile, "regular file" },
+	    { W( root + L"/engine.dll" ), FileKind::kRegularFile, "forward separator" },
+	    { W( root + L"\\bin" ), FileKind::kDirectory, "directory" },
+	    { W( root + L"\\missing.dll" ), FileKind::kMissing, "missing" },
+	    { W( root + L"\\engine.dll\\x" ), FileKind::kMissing, "below a file" },
+	    { W( nonBmp ), FileKind::kRegularFile, "non-BMP name" },
+	    { W( L"\\\\.\\NUL" ), FileKind::kOther, "device" },
+	};
+	// Wine keeps names as UTF-8 on the host and cannot store an unpaired
+	// surrogate; Windows can. The case runs where the platform allows it.
+	if ( loneCreated )
+	{
+		fixture.cases.push_back( { W( lone ), FileKind::kRegularFile, "unpaired surrogate name" } );
+	}
+	else
+	{
+		std::printf( "note win32.file-probe: this platform refuses unpaired-surrogate names; case "
+		             "not applicable\n" );
+	}
+	fixture.foreignFlavor = platformtest::Posix( "/usr/lib" );
+	fixture.countEntries = [root]()
+	{
+		int n = 0;
+		WIN32_FIND_DATAW found;
+		HANDLE h = FindFirstFileW( ( root + L"\\*" ).c_str(), &found );
+		while ( h != INVALID_HANDLE_VALUE )
+		{
+			++n;
+			if ( !FindNextFileW( h, &found ) )
+			{
+				FindClose( h );
+				break;
+			}
+		}
+		return n;
+	};
+	auto probe = platform::CreateWin32FileProbe();
+	Tally( "win32.file-probe", platformtest::RunFileProbeConformance( *probe, fixture ) );
+
+	auto resolver = platform::CreateModuleResolver( *probe, nullptr );
+	platform::ModuleSearchPolicy policy;
+	policy.roots = { W( root ) };
+	policy.patterns = { { "bin", "" }, { "", "" } };
+	policy.extension = ".dll";
+	auto server = resolver->Resolve( "server", policy );
+	NATIVE_CHECK( server && server.Value().path == W( root + L"\\bin\\server.dll" ) );
+	auto engine = resolver->Resolve( "engine.so", policy );
+	NATIVE_CHECK( engine && engine.Value().path == W( root + L"\\engine.dll" ) );
+	auto smile = resolver->Resolve( "\xf0\x9f\x98\x80", policy );
+	NATIVE_CHECK( smile && smile.Value().path == W( nonBmp ) );
+	NATIVE_CHECK(
+	    platform::Win32CurrentDirectory().Flavor() == platform::NativePathFlavor::kWindowsUtf16 );
+
+	for ( const std::wstring &f :
+	    { root + L"\\engine.dll", root + L"\\bin\\server.dll", nonBmp, lone } )
+	{
+		DeleteFileW( f.c_str() );
+	}
+	RemoveDirectoryW( ( root + L"\\bin" ).c_str() );
+	RemoveDirectoryW( root.c_str() );
+}
+
 } // namespace
 
 int main( int argc, char **argv )
@@ -490,5 +587,6 @@ int main( int argc, char **argv )
 	ProcessEnvironmentSuites();
 	PathsSuites();
 	DiagnosticsSuites();
+	FileProbeAndResolverSuites();
 	return testing::ReportConformance( g_checks, g_failures );
 }

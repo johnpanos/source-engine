@@ -16,12 +16,15 @@
 
 #include "../clock/clock_conformance.h"
 #include "../diagnostics/diagnostics_conformance.h"
+#include "../file_probe/file_probe_conformance.h"
+#include "../module_resolver/module_resolver_conformance.h"
 #include "../paths/paths_conformance.h"
 #include "../process_environment/process_environment_conformance.h"
 #include "../thread/thread_conformance.h"
 #include "../virtual_memory/virtual_memory_conformance.h"
 #include "../wall_clock/wall_clock_conformance.h"
 #include "../../../platform/posix/foundation_providers.h"
+#include "../../../platform/resolver/module_resolver.h"
 #include "testing/conformance_result.h"
 
 #include <csignal>
@@ -32,6 +35,7 @@
 #include <vector>
 
 #include <dirent.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -536,6 +540,164 @@ void DiagnosticsSuites()
 	rmdir( dir );
 }
 
+// The probe and the resolver over a real directory: every file kind, links,
+// a name that is not UTF-8, and resolution through the legacy patterns from a
+// root whose own name is not UTF-8.
+class CLstatProbe final : public platform::IFileProbe // DEFECT: does not follow links
+{
+public:
+	platform::FileKind Probe( const platform::NativePath &path ) const override
+	{
+		struct stat info{};
+		const std::string &bytes = platform::NativePathAccess::PosixBytes( path );
+		if ( path.Flavor() != platform::NativePathFlavor::kPosixBytes ||
+		     lstat( bytes.c_str(), &info ) != 0 )
+		{
+			return platform::FileKind::kMissing;
+		}
+		return S_ISREG( info.st_mode )   ? platform::FileKind::kRegularFile
+		       : S_ISDIR( info.st_mode ) ? platform::FileKind::kDirectory
+		                                 : platform::FileKind::kOther;
+	}
+};
+
+class CAnythingIsAFile final : public platform::IFileProbe // DEFECT: no kinds
+{
+public:
+	explicit CAnythingIsAFile( const platform::IFileProbe &inner ) : m_inner( inner ) {}
+	platform::FileKind Probe( const platform::NativePath &path ) const override
+	{
+		return m_inner.Probe( path ) == platform::FileKind::kMissing
+		           ? platform::FileKind::kMissing
+		           : platform::FileKind::kRegularFile;
+	}
+
+private:
+	const platform::IFileProbe &m_inner;
+};
+
+class CLossyNames final : public platform::IFileProbe // DEFECT: decodes names as UTF-8
+{
+public:
+	explicit CLossyNames( const platform::IFileProbe &inner ) : m_inner( inner ) {}
+	platform::FileKind Probe( const platform::NativePath &path ) const override
+	{
+		return m_inner.Probe( platform::PosixNativePath( path.ToDisplayString().c_str() ) );
+	}
+
+private:
+	const platform::IFileProbe &m_inner;
+};
+
+void FileProbeAndResolverSuites()
+{
+#if defined( __ANDROID__ )
+	char dir[] = "/data/local/tmp/r11-probe-XXXXXX";
+#else
+	char dir[] = "/tmp/r11-probe-XXXXXX";
+#endif
+	char *base = mkdtemp( dir );
+	NATIVE_CHECK( base != nullptr );
+	if ( base == nullptr )
+	{
+		return;
+	}
+	const std::string root = base;
+	const std::string odd = root + "/\xff\xfe-mod"; // a directory name that is not UTF-8
+	auto touch = []( const std::string &path )
+	{
+		const int fd = open( path.c_str(), O_CREAT | O_WRONLY, 0644 );
+		if ( fd >= 0 )
+		{
+			close( fd );
+		}
+	};
+	mkdir( ( root + "/bin" ).c_str(), 0755 );
+	mkdir( odd.c_str(), 0755 );
+	mkdir( ( odd + "/bin" ).c_str(), 0755 );
+	touch( root + "/engine.so" );
+	touch( root + "/bin/libserver.so" );
+	touch( root + "/\xc3\xa9t\xc3\xa9.so" );
+	touch( root + "/\xff\xfe.so" );
+	touch( odd + "/bin/libclient.so" );
+	symlink( "engine.so", ( root + "/link.so" ).c_str() );
+	symlink( "nowhere.so", ( root + "/dangling.so" ).c_str() );
+	symlink( "bin", ( root + "/bin-link" ).c_str() );
+	mkfifo( ( root + "/pipe" ).c_str(), 0644 );
+
+	using platform::FileKind;
+	auto P = []( const std::string &s )
+	{
+		return platform::PosixNativePath( s.c_str() );
+	};
+	platformtest::FileProbeFixture fixture;
+	fixture.cases = {
+	    { P( root + "/engine.so" ), FileKind::kRegularFile, "regular file" },
+	    { P( root + "/bin" ), FileKind::kDirectory, "directory" },
+	    { P( root + "/missing.so" ), FileKind::kMissing, "missing" },
+	    { P( root + "/link.so" ), FileKind::kRegularFile, "link to a file" },
+	    { P( root + "/bin-link" ), FileKind::kDirectory, "link to a directory" },
+	    { P( root + "/dangling.so" ), FileKind::kMissing, "dangling link" },
+	    { P( root + "/pipe" ), FileKind::kOther, "fifo" },
+	    { P( root + "/\xc3\xa9t\xc3\xa9.so" ), FileKind::kRegularFile, "UTF-8 name" },
+	    { P( root + "/\xff\xfe.so" ), FileKind::kRegularFile, "name that is not UTF-8" },
+	    { P( root + "/engine.so/x" ), FileKind::kMissing, "below a file" },
+	};
+	fixture.foreignFlavor = platformtest::Windows( u"C:\\Windows" );
+	fixture.countEntries = [root]()
+	{
+		int n = 0;
+		DIR *d = opendir( root.c_str() );
+		for ( dirent *e = d ? readdir( d ) : nullptr; e != nullptr; e = readdir( d ) )
+		{
+			++n;
+		}
+		if ( d )
+		{
+			closedir( d );
+		}
+		return n;
+	};
+	auto probe = platform::CreatePosixFileProbe();
+	Tally( "posix.file-probe", platformtest::RunFileProbeConformance( *probe, fixture ) );
+
+	// The same fixture rejects broken probes.
+	CLstatProbe lstatProbe;
+	CAnythingIsAFile anything( *probe );
+	CLossyNames lossy( *probe );
+	NATIVE_CHECK( platformtest::RunFileProbeConformance( lstatProbe, fixture ).failures > 0 );
+	NATIVE_CHECK( platformtest::RunFileProbeConformance( anything, fixture ).failures > 0 );
+	NATIVE_CHECK( platformtest::RunFileProbeConformance( lossy, fixture ).failures > 0 );
+
+	// Resolution through the native probe, from the cwd-style root and from a
+	// root that is not UTF-8.
+	auto resolver = platform::CreateModuleResolver( *probe, nullptr );
+	auto server = resolver->Resolve( "server", platformtest::LegacyPolicy( { P( root ) } ) );
+	NATIVE_CHECK( server && server.Value().path == P( root + "/bin/libserver.so" ) );
+	auto engine = resolver->Resolve( "engine.dll", platformtest::LegacyPolicy( { P( root ) } ) );
+	NATIVE_CHECK( engine && engine.Value().path == P( root + "/engine.so" ) );
+	auto client =
+	    resolver->Resolve( "client", platformtest::LegacyPolicy( { P( root ), P( odd ) } ) );
+	NATIVE_CHECK( client && client.Value().path == P( odd + "/bin/libclient.so" ) &&
+	              client.Value().root == 1 );
+	auto none = resolver->Resolve( "dangling", platformtest::LegacyPolicy( { P( root ) } ) );
+	NATIVE_CHECK( !none && none.Error().status == platform::ResolveStatus::kNotFound &&
+	              none.Error().attempted.size() == 4 );
+	NATIVE_CHECK(
+	    platform::PosixCurrentDirectory().Flavor() == platform::NativePathFlavor::kPosixBytes );
+
+	for ( const char *name : { "/engine.so", "/bin/libserver.so", "/\xc3\xa9t\xc3\xa9.so",
+	          "/\xff\xfe.so", "/link.so", "/dangling.so", "/bin-link", "/pipe" } )
+	{
+		unlink( ( root + name ).c_str() );
+	}
+	unlink( ( odd + "/bin/libclient.so" ).c_str() );
+	rmdir( ( odd + "/bin" ).c_str() );
+	rmdir( odd.c_str() );
+	rmdir( ( root + "/bin" ).c_str() );
+	rmdir( root.c_str() );
+}
+
 } // namespace
 
 int main( int argc, char **argv )
@@ -586,5 +748,6 @@ int main( int argc, char **argv )
 	ProcessEnvironmentSuites( argc, argv );
 	PathsSuites();
 	DiagnosticsSuites();
+	FileProbeAndResolverSuites();
 	return testing::ReportConformance( g_checks, g_failures );
 }
