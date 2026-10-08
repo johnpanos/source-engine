@@ -294,6 +294,11 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 		// glass_fracture_* proxies) draws the same pixels.
 		if ( material.family == "refract" && SameKey( key, "$alpha" ) )
 			continue;
+		// Portal's $fogcompatible (models/portals/portal_*_dynamicmesh.vmt) is
+		// read by no shader and no code in the tree: portal.cpp declares no
+		// such parameter, so its value changes no pixel.
+		if ( material.family == "portal-view" && SameKey( key, "$fogcompatible" ) )
+			continue;
 		// VertexLitGeneric uploads $seamless_scale only when seamless mapping is
 		// on for the base or the detail texture (vertexlitgeneric_dx9_helper.cpp's
 		// "if ( bSeamlessDetail || bSeamlessBase )"), and its declared default is
@@ -337,6 +342,11 @@ bool ViewRenderTarget( const MaterialDesc &material, const MaterialValue &value 
 	// Portal's depth doubler: the frame the client kept in _rt_DepthDoubler.
 	if ( material.family == "portal-view" && value.parameter == "basetexture" &&
 	     SameKey( value.text, "_rt_DepthDoubler" ) )
+		return true;
+	// Portal's texture portals: the portal's view the client drew into
+	// _rt_Portal1 or _rt_Portal2 (portal_1_dynamicmesh, portal_2_dynamicmesh).
+	if ( material.family == "portal-view" && value.parameter == "basetexture" &&
+	     ( SameKey( value.text, "_rt_Portal1" ) || SameKey( value.text, "_rt_Portal2" ) ) )
 		return true;
 	// A monitor's screen: the point_camera view the client drew into
 	// _rt_Camera earlier in the frame (CViewRender::DrawMonitors).
