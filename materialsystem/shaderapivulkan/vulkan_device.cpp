@@ -271,7 +271,6 @@ void CVulkanContext::DescribeDevice( VkPhysicalDevice physical, uint32_t graphic
 	features.samplerAnisotropy = supported.samplerAnisotropy;
 	m_preciseOcclusion = supported.occlusionQueryPrecise == VK_TRUE;
 	// D3D9's wireframe fill mode (materials with $wireframe, Wireframe_DX9).
-	m_fillModeNonSolid = supported.fillModeNonSolid == VK_TRUE;
 	features.fillModeNonSolid = supported.fillModeNonSolid;
 	// D3D9 user clip planes are clip distances. The planes travel in the push
 	// constants, so a device must also hold the widest block that carries them
@@ -425,7 +424,6 @@ bool CVulkanContext::CreateDevice( std::string *outError )
 	vkGetPhysicalDeviceProperties( m_physicalDevice, &props );
 	m_deviceName = props.deviceName;
 	m_vendorId = props.vendorID;
-	m_deviceId = props.deviceID;
 	m_isDiscrete = ( props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU );
 	VkPhysicalDeviceMemoryProperties mem = {};
 	vkGetPhysicalDeviceMemoryProperties( m_physicalDevice, &mem );
@@ -1306,8 +1304,6 @@ bool CVulkanContext::CreateShaderModule( const uint32_t *embedded, size_t embedd
 	m_debugUtils.NameF( VK_OBJECT_TYPE_SHADER_MODULE, *outModule, "%s%s",
 	    resolved.name ? resolved.name : "unindexed shader",
 	    resolved.debugVariant ? " (debug)" : "" );
-	if ( m_debugUtils.Active() )
-		m_moduleNames[*outModule] = resolved.name ? resolved.name : "unindexed shader";
 	// A handle can be reused after its module is destroyed; forget the old one.
 	m_vertexInputLocations.erase( *outModule );
 	uint64_t locations = 0;
@@ -3463,7 +3459,6 @@ void CVulkanContext::RecordDepthToAlpha( VkCommandBuffer cmd, int srcTarget, con
 			Log( "frame copy without depth in alpha: %s\n",
 			    error.empty() ? "no single-sampled depth to copy" : error.c_str() );
 		s_reported = true;
-		++m_lastFrameDepthToAlphaSkipped;
 		return;
 	}
 	ScopedDebugLabel label( m_debugUtils, "depth to alpha" );
@@ -3553,7 +3548,6 @@ void CVulkanContext::RecordDepthToAlpha( VkCommandBuffer cmd, int srcTarget, con
 		    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		    0, 0, nullptr, 0, nullptr, 1, &back );
 	}
-	++m_lastFrameDepthToAlpha;
 }
 
 void CVulkanContext::DestroyDynamicMesh()
@@ -3753,7 +3747,6 @@ bool CVulkanContext::PrepareFrame( bool *outSkip, std::string *outError )
 		// FIFO swapchain's buffers indefinitely around a resize). Skip this frame
 		// and replace the swapchain, which returns its buffers, instead of
 		// blocking forever.
-		++m_acquireTimeouts;
 		Log( "swapchain image not released within %llu ms; recreating the swapchain\n",
 		    static_cast<unsigned long long>( kAcquireTimeoutNs / 1000000 ) );
 		m_acquireTimedOut = true;
@@ -3888,17 +3881,7 @@ void CVulkanContext::QueueCorePass( uint32_t tag, const CorePassTerms &terms )
 {
 	if ( !m_corePassRecorder )
 		return;
-	// AppendRecord starts a new queue after present; publish the policy after
-	// that reset so the following draws see it before vertex conversion.
 	DynDraw &record = AppendRecord( kRecordCorePass );
-	if ( tag == render::legacy::kCorePassLegacyHud )
-		m_queueLegacyHud = true;
-	if ( ( tag & render::legacy::kCorePassForwarded ) &&
-	     ( tag & render::legacy::kCorePassLegacyOff ) )
-	{
-		m_queueCoreOnly = true;
-		m_queueCustomEffects = ( tag & render::legacy::kCorePassCustomEffects ) != 0;
-	}
 	record.corePass = tag;
 	record.corePassTerms = static_cast<uint32_t>( m_corePassTerms.size() );
 	m_corePassTerms.push_back( terms );
@@ -4549,9 +4532,6 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 	// them replays. Only the slots this stream issues are reset, so a result of
 	// an earlier frame that the engine has yet to read survives.
 	m_replayedQueries.clear();
-	m_lastFrameSceneDepthCaptures = 0;
-	m_lastFrameDepthToAlpha = 0;
-	m_lastFrameDepthToAlphaSkipped = 0;
 
 	VkClearValue clears[2] = {};
 	clears[0].color = m_clearColor;
@@ -5339,7 +5319,6 @@ void CVulkanContext::ResolveBackBuffer( VkCommandBuffer cmd, uint32_t imageIndex
 	region.extent = { m_swapExtent.width, m_swapExtent.height, 1 };
 	vkCmdResolveImage( cmd, m_msColor, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	    m_swapImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region );
-	++m_resolveCount;
 
 	VkImageMemoryBarrier out[2] = { in[0], in[1] };
 	out[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -5821,7 +5800,7 @@ bool CVulkanContext::FinishFrame(
 		return false;
 	}
 	const uint64_t value = token.value;
-	m_slotSerial[m_currentFrame] = ++m_submitSerial;
+	++m_submitSerial;
 	m_slotValue[m_currentFrame] = value;
 	m_imageValue[imageIndex] = value;
 	m_serialValues.emplace_back( m_submitSerial, value );
@@ -6280,7 +6259,6 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		m_renderDocFrames.erase( m_renderDocFrames.begin() );
 		m_renderDocArmed = m_renderDocTrigger && m_renderDocTrigger();
 	}
-	m_lastFrameCost = m_frameCost;
 	m_frameCost.Reset();
 	m_prevFrameBeginUs = m_frameBeginUs;
 	m_prevFrameBeginCpuUs = m_frameBeginCpuUs;

@@ -296,9 +296,6 @@ public:
 		m_dynDrawRecords.clear();
 		m_queuedOcclusionQuery = -1;
 		m_corePassTerms.clear();
-		m_queueCoreOnly = false;
-		m_queueCustomEffects = false;
-		m_queueLegacyHud = false;
 		m_frameLabels.clear();
 		m_dynFramePresented = false;
 	}
@@ -1029,9 +1026,6 @@ private:
 	    const VkPipelineVertexInputStateCreateInfo *input, VkShaderModule vertex,
 	    ConsumedVertexInput *storage ) const;
 	std::map<VkShaderModule, uint64_t> m_vertexInputLocations;
-	// Each module's index name (material_spv_index.h), kept while debug labels
-	// are on, to name the pipelines built from it.
-	std::map<VkShaderModule, const char *> m_moduleNames;
 	bool CreateShaderModule(
 	    const uint32_t *code, size_t sizeBytes, VkShaderModule *outModule, std::string *outError );
 	bool CreateBuffer( VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
@@ -1103,7 +1097,6 @@ private:
 	VulkanAdapterCaps m_adapterCaps;
 	int m_requestedSamples = 1;
 	int m_activeSamples = 1;
-	uint64_t m_resolveCount = 0;
 	VkImage m_msColor = VK_NULL_HANDLE;
 	VkImage m_msDepth = VK_NULL_HANDLE;
 	VulkanMemory m_msColorMemory = VK_NULL_HANDLE;
@@ -1127,7 +1120,6 @@ private:
 	std::vector<VkPresentModeKHR> m_surfacePresentModes;
 	bool m_swapchainVSync = true; // the vsync request m_presentMode was selected for
 	uint64_t m_swapchainGeneration = 0;
-	uint64_t m_acquireTimeouts = 0;
 	bool m_acquireTimedOut = false;
 	// An acquire or present reported VK_SUBOPTIMAL_KHR with the surface
 	// unchanged (NoteSuboptimal). On Wayland that is new dmabuf feedback (a
@@ -1182,9 +1174,6 @@ private:
 	// The frame being recorded turned the legacy stream off (RFC 0014,
 	// render::legacy::kCorePassLegacyOff): it presents without the ramp.
 	bool m_frameLegacyOff = false;
-	bool m_queueCustomEffects = false; // product custom effects; off in diagnostics
-	bool m_queueCoreOnly = false;    // frame-ordered slot, before vertex conversion
-	bool m_queueLegacyHud = false;   // top-level HUD stage, scoped to this frame
 	bool m_gammaUnavailable = false; // the pass failed to build; presents blit
 	uint64_t m_gammaPresentCount = 0;
 	VkFormat m_gammaFormat = VK_FORMAT_UNDEFINED; // what the pass was built for
@@ -1201,8 +1190,6 @@ private:
 	VkPipeline m_depthToAlphaPipeline = VK_NULL_HANDLE;
 	VkPipeline m_depthToAlphaMsPipeline = VK_NULL_HANDLE; // reads multisampled depth
 	bool m_depthToAlphaUnavailable = false; // the pass failed to build
-	uint32_t m_lastFrameDepthToAlpha = 0;
-	uint32_t m_lastFrameDepthToAlphaSkipped = 0;
 	VkSampler m_gammaSamplerNearest = VK_NULL_HANDLE;
 	VkSampler m_gammaSamplerLinear = VK_NULL_HANDLE;
 	VkDescriptorPool m_gammaDescriptorPool = VK_NULL_HANDLE;
@@ -1300,7 +1287,6 @@ private:
 	// The depth format can be copied from the attachments and sampled.
 	bool m_sceneDepthUsable = false;
 	bool m_sceneDepthEnabled = true;
-	uint32_t m_lastFrameSceneDepthCaptures = 0;
 	bool EnsureSceneCapture( std::string *outError );
 	void DestroySceneCapture();
 	// Records the copy into the capture images; returns whether depth was copied.
@@ -1414,10 +1400,8 @@ private:
 	};
 	std::vector<RetiredTexture> m_retiredTextures;
 	std::vector<int> m_freeTextureHandles;
-	// Frame submissions: the count so far, the serial each frame slot last
-	// submitted, and the newest serial known complete.
+	// Frame submissions: the count so far and the newest serial known complete.
 	uint64_t m_submitSerial = 0;
-	uint64_t m_slotSerial[kMaxFramesInFlight] = {};
 	uint64_t m_completedSerial = 0;
 	uint32_t m_liveTextureSets = 0;
 	void ReleaseManagedTextureObjects( ManagedTexture &t );
@@ -1567,7 +1551,6 @@ private:
 	std::vector<OcclusionQuerySlot> m_querySlots;
 	int m_queuedOcclusionQuery = -1;
 	bool m_preciseOcclusion = false;
-	bool m_fillModeNonSolid = false;
 	// Issues replayed into the frame being recorded; marked submitted by EndFrame.
 	std::vector<std::pair<int, uint64_t>> m_replayedQueries;
 	void FailUnsubmittedQueries();
@@ -1603,7 +1586,6 @@ private:
 	bool m_frameCaptureHdr = false;
 	bool m_frameCapturePresented = false;
 	int64_t m_recordEndUs = 0;
-	FrameCost m_lastFrameCost;
 	// Records the prepared frame's stages (AttachFrameStage's host work):
 	// all of them, or one.
 	void RecordFrameCommands( VkCommandBuffer cmd );
@@ -1617,7 +1599,6 @@ private:
 	// Selected adapter facts.
 	std::string m_deviceName = "unknown";
 	uint32_t m_vendorId = 0;
-	uint32_t m_deviceId = 0;
 	uint64_t m_deviceLocalMemoryBytes = 0;
 	bool m_isDiscrete = false;
 	bool m_validationEnabled = false;

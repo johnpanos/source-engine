@@ -221,7 +221,6 @@ bool CVulkanContext::RecordSceneDepthCopy(
 	    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT |
 	        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
 	    0, 0, nullptr, 0, nullptr, 2, depthOut );
-	++m_lastFrameSceneDepthCaptures;
 	return true;
 }
 
