@@ -917,6 +917,7 @@ public:
 
 private:
 	struct State;
+	struct Batch; // one RecordBatch call (world_batch.h)
 	std::unique_ptr<State> m_State;
 	// Render sequence: release the (model, level) allocations no view has
 	// selected for kModelLevelIdleFrames recorded frames, and retire the
