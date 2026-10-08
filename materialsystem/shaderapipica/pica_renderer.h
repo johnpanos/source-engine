@@ -59,7 +59,9 @@ enum class UploadFormat : std::uint8_t
 	kRGBA8,  // 4 bytes per texel
 	kETC1,   // render.device.v2's kETC1Rgb
 	kETC1A4, // render.device.v2's kETC1A4
-	kRGBA4   // render.device.v2's kRGBA4Unorm: a 16-bit word per texel (D42)
+	kRGBA4,  // render.device.v2's kRGBA4Unorm: a 16-bit word per texel (D42)
+	kRGBA8Srgb // kRGBA8 decoded from sRGB when sampled (off the 3DS: D3D9's
+	           // per-sampler sRGB read, which the core asks for per import)
 };
 static_assert( sizeof( Vertex ) == 24, "PICA vertex record" );
 

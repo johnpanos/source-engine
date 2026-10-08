@@ -338,6 +338,11 @@ struct PicaTexture
 	CUtlVector<unsigned char> cubeFaces[6];
 	bool dirty = false;
 	pica::Texture gpu;
+	// Off the 3DS: the same levels decoded from sRGB when sampled, made on
+	// the core's first sRGB import (D3D9 reads sRGB per sampler, so a texture
+	// may be read both ways); refreshed with each upload after that.
+	pica::Texture gpuSrgb;
+	bool wantsSrgb = false;
 };
 
 enum MatrixStackId
@@ -713,8 +718,17 @@ void UploadTexture( PicaTexture &texture )
 	}
 	else
 		++g_TextureCounters.uploadFailed;
+#if !defined( PLATFORM_3DS )
+	if ( texture.wantsSrgb && count > 0 &&
+	     texture.gpuSrgb.Upload( pica::UploadFormat::kRGBA8Srgb, texture.baseWidth,
+	         texture.baseHeight, count, levels ) )
+		texture.gpuSrgb.SetWrap( texture.wrapS, texture.wrapT );
+	// Off the 3DS the CPU copy stays: the sRGB twin may be asked for later.
+	if ( false )
+#else
 	// Mipmapped levels are not updated in place: drop the CPU copy.
 	if ( mipped )
+#endif
 	{
 		texture.levels.Purge();
 		texture.levelHashes.Purge();
@@ -2147,8 +2161,20 @@ public:
 	{
 		PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
 		// The PICA200 decodes no sRGB: the reduced model asks for none.
-		// Elsewhere the texture's one (linear) view serves both.
+		// Elsewhere an sRGB import reads the texture's sRGB twin.
 #if !defined( PLATFORM_3DS )
+		if ( texture && srgb && !texture->renderTarget && !texture->cube )
+		{
+			if ( !texture->wantsSrgb )
+			{
+				texture->wantsSrgb = true;
+				texture->dirty = true; // the next upload makes the twin
+			}
+			if ( texture->dirty )
+				UploadTexture( *texture );
+			if ( texture->gpuSrgb.Valid() )
+				return render::device::TextureId{ texture->gpuSrgb.Id() };
+		}
 		srgb = false;
 #endif
 		if ( !texture || srgb )
@@ -2382,10 +2408,11 @@ public:
 		target.specular = false;
 #else
 		// The full model's LDR terms, as shaderapivulkan's LDR path passes
-		// them (this shader API reports HDR_TYPE_NONE): gamma-encoded pages
-		// scaled by 2^2.2, no tone-mapping scale, the eye (c10), env maps at
-		// 1, and specular unless mat_fastspecular is off or mat_fullbright 2.
-		target.lightmapScale = 1.0f;
+		// them (this shader API reports HDR_TYPE_NONE): lightmap pages scaled
+		// by 2^2.2, no tone-mapping scale, the eye (c10), env maps at 1, and
+		// specular unless mat_fastspecular is off or mat_fullbright 2. Albedo
+		// is read through sRGB twins (CPicaCoreTextures::Import).
+		target.lightmapScale = powf( 2.0f, 2.2f );
 		target.outputScale = 1.0f;
 		{
 			float eye[4];

@@ -458,6 +458,7 @@ bool Texture::Upload(
 	desc.format = format == UploadFormat::kETC1     ? Format::kETC1Rgb
 	              : format == UploadFormat::kETC1A4 ? Format::kETC1A4
 	              : format == UploadFormat::kRGBA4  ? Format::kRGBA4Unorm
+	              : format == UploadFormat::kRGBA8Srgb ? Format::kRGBA8Srgb
 	                                                : Format::kRGBA8Unorm;
 	desc.width = std::uint32_t( width );
 	desc.height = std::uint32_t( height );
@@ -485,7 +486,7 @@ bool Texture::Upload(
 		const std::uint32_t w = std::uint32_t( width >> level ),
 		                    h = std::uint32_t( height >> level );
 		const std::size_t bytes =
-		    format == UploadFormat::kRGBA8   ? std::size_t( w ) * h * 4
+		    format == UploadFormat::kRGBA8 || format == UploadFormat::kRGBA8Srgb ? std::size_t( w ) * h * 4
 		    : format == UploadFormat::kRGBA4 ? std::size_t( w ) * h * 2
 		        : std::size_t( w / 4 ) * ( h / 4 ) * ( format == UploadFormat::kETC1 ? 8 : 16 );
 		auto buffer = Device().CreateUploadBuffer(
