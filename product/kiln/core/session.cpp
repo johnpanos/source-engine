@@ -77,6 +77,8 @@ struct RunState
 	std::optional<product::PackageManifest> manifest;
 	std::optional<product::LaunchResult> launch;
 	std::map<std::string, fs::path> locations;
+	std::vector<std::string> mountSets;
+	fs::path sourceRoot;
 };
 
 std::vector<std::string> StringList( const Value *value )
@@ -139,6 +141,8 @@ public:
 		    packageSection ? packageSection->FindString( "directory" ) : nullptr;
 		request.output = m_State.tree / ( directory ? *directory : std::string( "package" ) );
 		request.locations = m_State.locations;
+		request.mountSets = m_State.mountSets;
+		request.sourceRoot = m_State.sourceRoot;
 		for ( const std::string &name : m_Consumes )
 		{
 			if ( const Artifact *artifact = inputs.Get( name ) )
@@ -451,7 +455,10 @@ foundation::Expected<std::map<std::string, fs::path>, Error> Session::ResolveLoc
 				path.replace( at, token.size(), value );
 		}
 		std::error_code ec;
-		if ( !path.empty() && fs::exists( path, ec ) )
+		// A writable location (a cache a stage fills) may not exist yet.
+		const Value *create = member.second.Find( "create" );
+		const bool writable = create && create->IsBool() && create->AsBool();
+		if ( !path.empty() && ( writable || fs::exists( path, ec ) ) )
 			locations[member.first] = path;
 	}
 	return locations;
@@ -479,6 +486,20 @@ foundation::Expected<PipelineResult, Error> Session::Run( const PipelineRequest 
 	state.flavor = flavor;
 	state.tree = m_Config.outRoot / profile.TreeName( flavor );
 	state.extraArguments = request.arguments;
+	state.sourceRoot = m_Config.sourceRoot;
+	// Selected mount sets must be declared (content.mount_sets).
+	{
+		const Value *content = profile.document.Find( "content" );
+		const Value *sets = content ? content->Find( "mount_sets" ) : nullptr;
+		for ( const std::string &name : request.mountSets )
+		{
+			if ( !sets || !sets->Find( name ) )
+				return foundation::MakeUnexpected(
+				    Fail( "profile", "\"" + name + "\" is not a mount set of " + profile.name +
+				                         " (content.mount_sets)" ) );
+		}
+		state.mountSets = request.mountSets;
+	}
 
 	// Resolve every provider the request needs before touching anything.
 	auto toolchain = m_Catalog.Toolchain( profile.toolchain );

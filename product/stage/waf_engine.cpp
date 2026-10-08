@@ -26,7 +26,7 @@ constexpr const char *kStampName = ".kiln-configure.json";
 // Configuration inputs besides the wscripts Waf recorded (the same set
 // tools/quality/ensure_configured.py watches).
 constexpr const char *kInputRoots[] = { "waf", "scripts/waifulib", "quality/toolchain",
-    "quality/profiles", "architecture/modules.json" };
+    "quality/profiles", "quality/product_profiles", "architecture/modules.json" };
 
 std::string ReadFile( const fs::path &path )
 {
@@ -235,13 +235,18 @@ public:
 			reason = "first configure";
 		else if ( *recorded != digest )
 			reason = "configure options or toolchain changed";
+		else if ( const std::string *cache = stamp.FindString( "cache_digest" );
+		    !cache || *cache != HashHex( ReadFile( tree / "c4che" / "_cache.py" ) ) )
+			reason = "the tree was configured outside kiln";
 		else if ( auto stale = StaleInput( source, tree ) )
 			reason = "configuration input changed: " + *stale;
 
 		Value evidence = Value::Object();
-		Value &argumentList = evidence.Set( "configure_arguments", Value::Array() );
+		// A value, not a reference into `evidence`: later Set calls may move it.
+		Value argumentList = Value::Array();
 		for ( const std::string &argument : arguments.Value() )
 			argumentList.Push( Value::String( argument ) );
+		evidence.Set( "configure_arguments", argumentList );
 		evidence.Set( "configure_digest", Value::String( digest ) );
 		evidence.Set( "tree", Value::String( tree.string() ) );
 
@@ -260,6 +265,8 @@ public:
 			newStamp.Set( "digest", Value::String( digest ) );
 			newStamp.Set( "arguments", argumentList );
 			newStamp.Set( "toolchain", Value::String( identity ) );
+			newStamp.Set( "cache_digest",
+			    Value::String( HashHex( ReadFile( tree / "c4che" / "_cache.py" ) ) ) );
 			if ( !WriteFileAtomic( tree / kStampName, newStamp.WritePretty() + "\n" ) )
 				return foundation::MakeUnexpected(
 				    ProviderError{ "io", "cannot record the configure digest" } );

@@ -19,7 +19,7 @@ def build(bld):
 	bld.stlib(env=strict, source=['composition/composition.cpp'], target='kiln_composition',
 		name='kiln_composition', arch_module='kiln.composition', features='cxx',
 		includes=['../../public'],
-		use=['kiln_core', 'product_toolchain_linux', 'product_stage_waf', 'product_package_linux_dir', 'product_stage_fstop', 'platform_posix', 'jobsystem'],
+		use=['kiln_core', 'product_toolchain_linux', 'product_stage_waf', 'product_package_linux_dir', 'product_stage_fstop', 'product_stage_video_av1', 'platform_posix', 'jobsystem'],
 		install_path=None)
 	bld.program(env=strict, source=['app/kiln_main.cpp'], target='kiln', name='kiln',
 		arch_module='kiln.app', features='cxx cxxprogram', includes=['../../public'],

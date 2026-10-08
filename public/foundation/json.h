@@ -67,6 +67,8 @@ public:
 	// The string member's value, or nullptr when absent or not a string.
 	const std::string *FindString( std::string_view key ) const;
 
+	// The returned reference is valid until the next Push or Set on this
+	// value (the storage may move); do not hold it across them.
 	Value &Push( Value value );
 	Value &Set( std::string key, Value value );
 

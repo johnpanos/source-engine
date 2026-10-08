@@ -34,9 +34,11 @@ constexpr const char *kUsage =
     "  profiles explain <profile>     provenance and derived facts\n"
     "  doctor <profile>               host prerequisites, present or unavailable\n"
     "  build <profile> [--flavor <f>] Waf configure (when changed), build and install\n"
+    "  content <profile> [--flavor <f>] build, then the content stages\n"
     "  package <profile> [--flavor <f>] build, then lay out the platform package (the runtime)\n"
     "  switches <profile>             the profile's launch switches\n"
-    "  play <profile> [map] [--set <switch>]... [--flavor <f>] [--dry-run] [-- args]\n"
+    "  play <profile> [map] [--set <switch>]... [--mounts <set>]... [--flavor <f>] [--dry-run] [-- "
+    "args]\n"
     "  run <profile> [map] [--set <switch>]... [--flavor <f>] [--dry-run] [-- args]\n";
 
 class StderrSink final : public product::IDiagnosticSink
@@ -91,7 +93,8 @@ int Exec( const kiln::LaunchPlan &plan )
 	std::cout.flush();
 	std::cerr.flush();
 	std::string error;
-	platform::ExecReplacingProcess( plan.argv, plan.environment, plan.workingDirectory.string(), error );
+	platform::ExecReplacingProcess(
+	    plan.argv, plan.environment, plan.workingDirectory.string(), error );
 	std::cerr << "kiln: " << error << " (kiln play builds and packages first)\n";
 	return 127;
 }
@@ -210,16 +213,20 @@ int main( int argc, char **argv )
 		}
 		return ok ? 0 : 1;
 	}
-	if ( ( command == "build" || command == "package" ) && args.size() >= 2 )
+	if ( ( command == "build" || command == "content" || command == "package" ) &&
+	     args.size() >= 2 )
 	{
 		kiln::PipelineRequest request;
 		request.profile = args[1];
-		request.upTo =
-		    command == "build" ? product::StageRole::kEngine : product::StageRole::kPackage;
+		request.upTo = command == "build"     ? product::StageRole::kEngine
+		               : command == "content" ? product::StageRole::kContent
+		                                      : product::StageRole::kPackage;
 		for ( size_t i = 2; i < args.size(); ++i )
 		{
 			if ( args[i] == "--flavor" && i + 1 < args.size() )
 				request.flavor = args[++i];
+			else if ( args[i] == "--mounts" && i + 1 < args.size() )
+				request.mountSets.push_back( args[++i] );
 			else
 				return Usage();
 		}
@@ -279,6 +286,8 @@ int main( int argc, char **argv )
 				request.flavor = args[++i];
 			else if ( args[i] == "--device" && i + 1 < args.size() )
 				request.device = args[++i];
+			else if ( args[i] == "--mounts" && i + 1 < args.size() )
+				request.mountSets.push_back( args[++i] );
 			else if ( args[i] == "--dry-run" )
 				dryRun = true;
 			else if ( args[i].rfind( "-", 0 ) != 0 && !request.map )
@@ -300,6 +309,7 @@ int main( int argc, char **argv )
 			build.profile = request.profile;
 			build.flavor = request.flavor;
 			build.upTo = product::StageRole::kPackage;
+			build.mountSets = request.mountSets;
 			auto built = session.Run( build );
 			if ( !built )
 				return Failure( json, built.Error() );

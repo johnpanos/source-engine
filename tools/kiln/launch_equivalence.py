@@ -84,6 +84,8 @@ MODES = {
                     "portal2-linux-native-vulkan", "p2",
                     {"VIDEO_ARGS": "-video-provider bink", "QUEUE_ARGS": "", "PHYSICS": "vphysics"}),
     "play_p2_fsr": (["./play_p2_fsr"], ["portal2-fsr"], "portal2-fsr", "p2"),
+    "play_p2-workshop": (["./play_p2", "--workshop"], ["portal2", "--mounts", "p2ce-workshop"],
+                         "portal2-linux-native-vulkan", "p2"),
     "play_fstop": (["./play_fstop"], ["fstop"], "fstop-linux-native-vulkan", "fstop"),
     "play_fstop-map": (["./play_fstop", "+map", "lab_01"], ["fstop", "--", "+map", "lab_01"],
                        "fstop-linux-native-vulkan", "fstop"),
@@ -333,22 +335,24 @@ def check(selected, keep):
         record.check(same_argv, mode + ": kiln play --dry-run gives the old launcher's argv", detail)
         record.check(same_env, mode + ": and its environment", detail)
         record.check(same_cwd, mode + ": and its working directory")
-        if profile not in packaged:
-            kiln("package", kiln_args[0])
-            packaged[profile] = Path(json.loads(kiln("play", kiln_args[0], "--dry-run"))["runtime"])
-            old_count, new_count, problems = compare_manifests(runtime, packaged[profile])
-            evidence["manifests"][profile] = {"old_entries": old_count, "kiln_entries": new_count,
-                                              "differences": problems[:50]}
+        mounts = [kiln_args[i + 1] for i, arg in enumerate(kiln_args[:-1]) if arg == "--mounts"]
+        key = "+".join([profile] + mounts)
+        if key not in packaged:
+            kiln("package", kiln_args[0], *[x for m in mounts for x in ("--mounts", m)])
+            packaged[key] = Path(json.loads(kiln("play", kiln_args[0], "--dry-run"))["runtime"])
+            old_count, new_count, problems = compare_manifests(runtime, packaged[key])
+            evidence["manifests"][key] = {"old_entries": old_count, "kiln_entries": new_count,
+                                          "differences": problems[:50]}
             record.check(not problems, mode + ": the kiln runtime has the old runtime's manifest (%d entries)"
                          % old_count, "; ".join(problems[:5]))
             if not problems:
                 # Seeded: one changed byte in a copied file must be caught.
-                victim = next((p for p in sorted(Path(packaged[profile]).rglob("*.txt"))
+                victim = next((p for p in sorted(Path(packaged[key]).rglob("*.txt"))
                                if p.is_file() and not p.is_symlink()), None)
                 if victim:
                     saved = victim.read_bytes()
                     victim.write_bytes(saved + b" ")
-                    _, _, seeded = compare_manifests(runtime, packaged[profile])
+                    _, _, seeded = compare_manifests(runtime, packaged[key])
                     victim.write_bytes(saved)
                     record.check(bool(seeded), mode + ": seeded difference caught: a changed runtime file")
     for name, (mode, kiln_args) in SEEDED.items():

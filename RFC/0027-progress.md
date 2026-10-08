@@ -245,7 +245,7 @@ equivalence gate (argv, environment and staged-runtime manifest) passes.
 | Slice | Scope | State |
 | --- | --- | --- |
 | L1a | launch model, `.kiln/local.json` bindings, `kiln play`/`run --dry-run`, `kiln switches`, argv/environment equivalence | done (below) |
-| L1b | `linux-dir` packager, mount sets and content locators, `video.av1`, manifest equivalence, real `kiln play` | in progress: Portal, Portal 2, FSR and F-Stop equal; Workshop and `video.av1` open |
+| L1b | `linux-dir` packager, mount sets and content locators, `video.av1`, manifest equivalence, real `kiln play` | done (below) |
 | L1c | `coop-pair` and `external-install` run providers, `user`/`private`/`none` display sessions | planned |
 | L1d | `sepipe` and `play_embedded`; the 35 harness modules and the CI workflows | planned |
 | L1e | AGENTS.md and memory notes, the deletions, the root allowlist | planned |
@@ -352,5 +352,42 @@ argv, environment and working directory in every mode; four runtimes
 faults (a changed runtime byte per runtime, a dropped switch, a swapped
 switch order, an extra map) caught.
 
-Open in L1b: the P2:CE Workshop mount set (`./play_p2 --workshop`) and the
-`video.av1` compiler.
+- **Mount sets:** `content.mount_sets` names package-time variants; `kiln
+  play|package --mounts <set>` selects them, and steps or gameinfo lines
+  tagged `mount_set` run only when selected. An undeclared set is refused
+  by name. The P2:CE Workshop set is the `extract-packs` op, a port of
+  `stage_workshop`: include/exclude selection, whole-model ownership, the
+  VPHY 0x0100 refusal, dropped VMT keys, namespace moves of VMT texture
+  references and MDL `$cdmaterials`, per-pack stamps (sizes and
+  nanosecond times of the archives) and `mounts.json`, written as Python's
+  `json.dumps(indent=1)`. Its runtime equals `./play_p2 --workshop`'s:
+  2,972 entries.
+- **`video.av1`:** `product.stage.video-av1` (`video-av1`, role `content`)
+  ports `transcode_av1.py`: the CRF ladder, the frame/size/audio/SSIM
+  gates, and `manifest.json` (sorted keys, the same per-clip key), driving
+  ffmpeg and ffprobe through the process provider one clip at a time (the
+  provider runs one process at a time; SVT-AV1 threads each encode). It
+  agrees that all 59 retail clips are current in the shared cache, and on a
+  scratch clip both implementations write identical manifests; the WebM
+  bytes differ in 16 bytes exactly as two Python runs do (the muxer's random
+  segment UID), so the stage declares statistical determinism. A locator
+  may be `"create": true`, a writable cache that need not exist yet.
+- **`kiln content <profile>`** runs the pipeline up to the content stages.
+- **Fixed on the way:**
+  - `kiln.core`'s Waf stage watches `quality/product_profiles` as
+    `ensure_configured.py` does, and its configure stamp records a digest
+    of Waf's `c4che`, so a tree reconfigured outside kiln (the old
+    launchers' `ensure_configured.py` did that to kiln's trees and dropped
+    their install prefix) is reconfigured.
+  - A dangling reference in the Waf stage (an argument list held across
+    later `Value::Set` calls) wrote garbage into the configure stamp's
+    informational `arguments` and could throw `std::bad_alloc`; the same
+    pattern in `extract-packs` is fixed too, and `foundation/json.h` now
+    states that `Set`/`Push` references end at the next `Set`/`Push`.
+  - A dangling temporary in the AV1 stage's range-for (C++20 does not
+    extend it) crashed the first encode.
+
+Evidence at the end of L1b: `kiln.launch-equivalence` 13 modes, 52/0
+(argv, environment, working directory; five runtimes equal: Portal,
+Portal 2, Portal 2 + Workshop, FSR, F-Stop; seeded faults caught);
+`kiln.l0` 122/0; archlint and its 176 tests pass; style clean.

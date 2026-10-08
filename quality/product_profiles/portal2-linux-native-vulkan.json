@@ -169,14 +169,22 @@
         "optional": true
       },
       {
+        "op": "extract-packs",
+        "mount_set": "p2ce-workshop",
+        "from": "steam-workshop",
+        "manifest": "quality/materials/p2ce-workshop-mounts.json",
+        "format": "p2ce-workshop-mounts/v1",
+        "into": "workshop"
+      },
+      {
         "op": "search-paths",
         "file": "portal2/gameinfo.txt",
         "lines": [
           "game+mod\t\t\t|gameinfo_path|custom/*",
           {
-            "each_directory": "workshop",
-            "line": "game+mod\t\t\t|gameinfo_path|../workshop/{item}",
-            "when_exists": "workshop"
+            "mount_set": "p2ce-workshop",
+            "each_record": "workshop/mounts.json",
+            "line": "game+mod\t\t\t|gameinfo_path|../workshop/{item}"
           },
           {
             "when_exists": "media_av1/update/media",
@@ -250,12 +258,28 @@
       },
       "av1-media": {
         "default": "{root}/run/media-av1",
-        "description": "AV1 transcodes of the retail movies (tools/video/transcode_av1.py, P2_AV1_MEDIA); absent means no AV1 movies are mounted"
+        "description": "AV1 transcodes of the retail movies, filled by the video-av1 stage (P2_AV1_MEDIA); the packager links them when manifest.json exists",
+        "create": true
       },
       "published-maps": {
         "default": "{root}/run/maps",
         "description": "Maps published by the map pipeline, mounted as portal2/custom/pbrt-<map>"
+      },
+      "steam-workshop": {
+        "default": "{home}/.local/share/Steam/steamapps/workshop/content/440000",
+        "description": "The Steam Workshop content of P2:CE (app 440000)"
+      }
+    },
+    "mount_sets": {
+      "p2ce-workshop": {
+        "description": "The opt-in P2:CE Workshop packs of quality/materials/p2ce-workshop-mounts.json, ahead of retail content (./play_p2 --workshop)"
       }
     }
+  },
+  "pipeline": {
+    "stages": [
+      "waf-engine",
+      "video-av1"
+    ]
   }
 }

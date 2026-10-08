@@ -16,6 +16,7 @@
 #include "jobsystem/graph_executor.h"
 #include "kiln/api.h"
 #include "product/contracts.h"
+#include "product/package_linux_dir.h"
 #include "product/profile.h"
 #include "product/stage_waf.h"
 #include "product/toolchain_linux.h"
@@ -823,6 +824,13 @@ void FixturePlatformChecks( const Workbench &bench, platform::IToolProcessProvid
 //-----------------------------------------------------------------------------
 // The launch plan (RFC 0027 L1): templates over variables, switches, workspace.
 
+kiln::PlayRequest Play( const std::string &profile )
+{
+	kiln::PlayRequest request;
+	request.profile = profile;
+	return request;
+}
+
 std::vector<std::string> PlanArgv(
     kiln::Session &session, kiln::PlayRequest request, kiln::Error *error = nullptr )
 {
@@ -906,7 +914,7 @@ void LaunchPlanChecks( const Workbench &bench, platform::IToolProcessProvider &p
 	Check( PlanArgv( session, request, &error ).front() == "<refused>",
 	    "launch.repeated-switch-refused" );
 
-	auto plan = session.PlanLaunch( kiln::PlayRequest{ "game", {}, {}, {}, {}, {}, nullptr } );
+	auto plan = session.PlanLaunch( Play( "game" ) );
 	Check( plan && plan.Value().environment.size() == 2 &&
 	           plan.Value().environment[0].value ==
 	               ( bench.root / "out" / "game" / "runtime" ).string() + "/bin:{inherit}" &&
@@ -921,18 +929,51 @@ void LaunchPlanChecks( const Workbench &bench, platform::IToolProcessProvider &p
 	kiln::Session workspace( catalog, posix, executor, sink, personal );
 	const std::vector<std::string> bound = { "./run_me", "-game", "demo", "-w", "2560", "-h",
 	    "1440", "+core", "1", "+producer", "probe", "-assets", root + "/assets", "+map", "mine" };
-	Check( PlanArgv( workspace, kiln::PlayRequest{ "game", {}, {}, {}, {}, {}, nullptr } ) == bound,
+	Check( PlanArgv( workspace, Play( "game" ) ) == bound,
 	    "launch.workspace-binds-resolution-windowed-map-and-variables" );
 
 	auto badSet = kiln::Session( catalog, posix, executor, sink, config )
-	                  .PlanLaunch( kiln::PlayRequest{ "bad-set", {}, {}, {}, {}, {}, nullptr } );
+	                  .PlanLaunch( Play( "bad-set" ) );
 	Check( !badSet && badSet.Error().detail.find( "undeclared" ) != std::string::npos,
 	    "launch.switch-setting-an-undeclared-variable-refused" );
-	auto badVar = session.PlanLaunch( kiln::PlayRequest{ "bad-var", {}, {}, {}, {}, {}, nullptr } );
+	auto badVar = session.PlanLaunch( Play( "bad-var" ) );
 	Check( !badVar && badVar.Error().detail.find( "nowhere" ) != std::string::npos,
 	    "launch.unknown-template-variable-refused" );
 	auto switches = session.Switches( "game" );
 	Check( switches && switches.Value().size() == 5, "launch.switches-listed" );
+}
+
+void PackagerUnitChecks( const Workbench &bench, platform::IToolProcessProvider &posix )
+{
+	Check( product::GlobMatch( "bin/*.so", "bin/libengine.so" ) && !product::GlobMatch( "bin/*.so", "bin/sub/x.so" ) &&
+	           product::GlobMatch( "**", "a/b/c" ) && product::GlobMatch( "*/bin/*.so", "portal/bin/libclient.so" ) &&
+	           !product::GlobMatch( "hl2_launcher", "bin/hl2_launcher" ) && product::GlobMatch( "a/**/z", "a/b/c/z" ),
+	    "package.glob-segments" );
+	// A mount set must be declared by the profile.
+	const fs::path profiles = bench.root / "mount-profiles";
+	fixture::WriteBytes( profiles / "fixture.json",
+	    R"({"schema": "source-product-profile/v2", "id": "m", "description": "m",
+	      "toolchain": {"family": "host", "version": ")" + HostCompilerVersion( posix, "c++" ) + R"(", "cxx": "c++"},
+	      "build": {"toolchain": "fixture-host", "flavors": {"dev": {"description": "d"}}},
+	      "pipeline": {"stages": ["fixture-compile"]},
+	      "content": {"mount_sets": {"extra": {"description": "e"}}}})" );
+	fixture::FakeDevice device;
+	product::ProviderCatalog catalog = fixture::ComposeFixtureCatalog( device, posix );
+	jobsystem::DeterministicExecutor executor;
+	NullSink sink;
+	kiln::SessionConfig config;
+	config.sourceRoot = bench.source;
+	config.profileRoot = profiles;
+	config.outRoot = bench.root / "mount-out";
+	config.hostTag = "fixture-any";
+	kiln::Session session( catalog, posix, executor, sink, config );
+	kiln::PipelineRequest request;
+	request.profile = "fixture";
+	request.mountSets = { "nope" };
+	auto refused = session.Run( request );
+	Check( !refused && refused.Error().detail.find( "nope" ) != std::string::npos, "package.undeclared-mount-set-refused" );
+	request.mountSets = { "extra" };
+	Check( session.Run( request ).HasValue(), "package.declared-mount-set-accepted" );
 }
 } // namespace
 
@@ -971,6 +1012,7 @@ int main()
 	CatalogChecks( *posix );
 	FixturePlatformChecks( bench, *posix );
 	LaunchPlanChecks( bench, *posix );
+	PackagerUnitChecks( bench, *posix );
 	Check( posix->LiveProcessCount() == 0, "no process outlives its request" );
 
 	fs::remove_all( root, ec );

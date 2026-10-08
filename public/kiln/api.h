@@ -91,6 +91,7 @@ struct PipelineRequest
 	product::StageRole upTo = product::StageRole::kEngine;
 	std::optional<std::string> device;  // a workspace device, for deploy and run
 	std::vector<std::string> arguments; // appended to the launch arguments
+	std::vector<std::string> mountSets; // content.mount_sets to package
 	const product::ICancellation *cancel = nullptr;
 };
 
@@ -124,6 +125,7 @@ struct PlayRequest
 	std::vector<std::string> switches;
 	std::vector<std::string> arguments;
 	std::optional<std::string> device;
+	std::vector<std::string> mountSets;
 	const product::ICancellation *cancel = nullptr;
 };
 

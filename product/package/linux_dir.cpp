@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cstring>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -100,6 +102,13 @@ public:
 			if ( m_Request.cancel && m_Request.cancel->IsCancelled() )
 				return foundation::MakeUnexpected( Fail( std::string( kCancelled ), "" ) );
 			const std::string *op = step.FindString( "op" );
+			if ( const std::string *set = step.FindString( "mount_set" ) )
+			{
+				// A mount set's step runs only when the set is selected.
+				if ( std::find( m_Request.mountSets.begin(), m_Request.mountSets.end(), *set ) ==
+				     m_Request.mountSets.end() )
+					continue;
+			}
 			if ( !op )
 				return foundation::MakeUnexpected(
 				    Fail( "invalid-step", "a package step names its op" ) );
@@ -118,6 +127,8 @@ public:
 				done = SearchPaths( step );
 			else if ( *op == "extract" )
 				done = Extract( step );
+			else if ( *op == "extract-packs" )
+				done = ExtractPacks( step );
 			else
 				return foundation::MakeUnexpected(
 				    Fail( "invalid-step", "unknown package op \"" + *op + "\"" ) );
@@ -564,6 +575,26 @@ private:
 			if ( !text )
 				return foundation::MakeUnexpected(
 				    Fail( "invalid-step", "a search-paths entry has a line" ) );
+			if ( const std::string *set = line.FindString( "mount_set" ) )
+			{
+				if ( std::find( m_Request.mountSets.begin(), m_Request.mountSets.end(), *set ) ==
+				     m_Request.mountSets.end() )
+					continue;
+			}
+			if ( const std::string *record = line.FindString( "each_record" ) )
+			{
+				// One line per pack of an extraction record, in its order.
+				auto parsed = foundation::json::Parse( ReadBytes( m_Runtime / *record ) );
+				const Value *packs =
+				    parsed && parsed.Value().IsObject() ? parsed.Value().Find( "packs" ) : nullptr;
+				for ( const Value &pack :
+				    packs && packs->IsArray() ? packs->Items() : std::vector<Value>{} )
+				{
+					if ( const std::string *id = pack.FindString( "id" ) )
+						body += "\n" + indent + "\t" + Replace( *text, "{item}", *id );
+				}
+				continue;
+			}
 			if ( const std::string *when = line.FindString( "when_exists" ) )
 			{
 				if ( !fs::exists( m_Runtime / *when, ec ) )
@@ -647,6 +678,470 @@ private:
 			return written;
 		m_Owned.entries[*path] = "file:" + HashHex( bytes );
 		m_Owned.roles[*path] = "content";
+		return {};
+	}
+
+	// A model is taken whole from one pack: its files share a unit.
+	static std::optional<std::string> ModelUnit( const std::string &path )
+	{
+		if ( path.rfind( "models/", 0 ) != 0 )
+			return std::nullopt;
+		for ( const char *suffix :
+		    { ".dx90.vtx", ".dx80.vtx", ".sw.vtx", ".vtx", ".mdl", ".vvd", ".phy", ".ani" } )
+		{
+			const std::string ending( suffix );
+			if ( path.size() >= ending.size() &&
+			     path.compare( path.size() - ending.size(), ending.size(), ending ) == 0 )
+				return path.substr( 0, path.size() - ending.size() );
+		}
+		return std::nullopt;
+	}
+
+	// The VPHY version of each solid of a .phy file (-1 for a headerless one).
+	static std::optional<std::vector<int>> CollisionVersions( const std::string &data )
+	{
+		const auto i32 = [&]( size_t at )
+		{
+			std::uint32_t v = 0;
+			std::memcpy( &v, data.data() + at, 4 );
+			return static_cast<std::int32_t>( v );
+		};
+		if ( data.size() < 16 )
+			return std::nullopt;
+		const std::int32_t headerSize = i32( 0 ), solids = i32( 8 );
+		size_t position = static_cast<size_t>( headerSize );
+		std::vector<int> versions;
+		for ( std::int32_t i = 0; i < solids; ++i )
+		{
+			if ( position + 12 > data.size() )
+				return std::nullopt;
+			const std::int32_t size = i32( position );
+			const bool vphy = data.compare( position + 4, 4, "VPHY" ) == 0;
+			std::uint16_t version = 0;
+			std::memcpy( &version, data.data() + position + 8, 2 );
+			versions.push_back( vphy ? static_cast<std::int16_t>( version ) : -1 );
+			position += 4 + static_cast<size_t>( size );
+		}
+		return versions;
+	}
+
+	static bool LowerEquals( const std::string &text, size_t at, const std::string &lowerWord )
+	{
+		if ( at + lowerWord.size() > text.size() )
+			return false;
+		for ( size_t i = 0; i < lowerWord.size(); ++i )
+		{
+			if ( std::tolower( static_cast<unsigned char>( text[at + i] ) ) !=
+			     static_cast<unsigned char>( lowerWord[i] ) )
+				return false;
+		}
+		return true;
+	}
+
+	// drop_vmt_keys: remove the lines ^[ \t]*"?KEY"?[ \t][^\n]*\n (any case).
+	static foundation::Expected<std::string, ProviderError> DropKeys(
+	    const std::string &path, std::string data, const Value *drops )
+	{
+		for ( const Value &drop :
+		    drops && drops->IsArray() ? drops->Items() : std::vector<Value>{} )
+		{
+			const std::string *dropPath = drop.FindString( "path" );
+			const std::string *key = drop.FindString( "key" );
+			if ( !dropPath || !key || Lower( *dropPath ) != path )
+				continue;
+			const std::string lowerKey = Lower( *key );
+			std::string out;
+			int removed = 0;
+			size_t start = 0;
+			while ( start < data.size() )
+			{
+				const size_t end = data.find( '\n', start );
+				if ( end == std::string::npos )
+				{
+					out += data.substr( start );
+					break;
+				}
+				size_t i = start;
+				while ( i < end && ( data[i] == ' ' || data[i] == '\t' ) )
+					++i;
+				if ( i < end && data[i] == '"' && !LowerEquals( data, i, lowerKey ) )
+					++i;
+				bool match = LowerEquals( data, i, lowerKey );
+				if ( match )
+				{
+					size_t j = i + lowerKey.size();
+					if ( j < end && data[j] == '"' )
+						++j;
+					match = j < end && ( data[j] == ' ' || data[j] == '\t' );
+				}
+				if ( match )
+					++removed;
+				else
+					out += data.substr( start, end + 1 - start );
+				start = end + 1;
+			}
+			if ( !removed )
+				return foundation::MakeUnexpected(
+				    Fail( "invalid-input", path + " has no " + *key + " to drop" ) );
+			data = std::move( out );
+		}
+		return data;
+	}
+
+	// Replace every case-insensitive occurrence of `from` followed by '"' or
+	// white space (Python's (?=["\s]) lookahead).
+	static std::string ReplaceBeforeQuoteOrSpace(
+	    const std::string &text, const std::string &from, const std::string &to )
+	{
+		const std::string lowerFrom = Lower( from );
+		std::string out;
+		size_t i = 0;
+		while ( i < text.size() )
+		{
+			if ( LowerEquals( text, i, lowerFrom ) && i + from.size() < text.size() )
+			{
+				const char next = text[i + from.size()];
+				if ( next == '"' || next == ' ' || next == '\t' || next == '\n' || next == '\r' ||
+				     next == '\f' || next == '\v' )
+				{
+					out += to;
+					i += from.size();
+					continue;
+				}
+			}
+			out += text[i++];
+		}
+		return out;
+	}
+
+	static std::pair<std::string, int> ReplaceAllNoCase(
+	    const std::string &text, const std::string &from, const std::string &to )
+	{
+		const std::string lowerFrom = Lower( from );
+		std::string out;
+		int count = 0;
+		size_t i = 0;
+		while ( i < text.size() )
+		{
+			if ( !lowerFrom.empty() && LowerEquals( text, i, lowerFrom ) )
+			{
+				out += to;
+				i += from.size();
+				++count;
+				continue;
+			}
+			out += text[i++];
+		}
+		return { out, count };
+	}
+
+	// namespaced: move a pack's materials from namespace.from to namespace.to.
+	static foundation::Expected<std::pair<std::string, std::string>, ProviderError> Namespaced(
+	    std::string path, std::string data, const Value &space,
+	    const std::vector<std::string> &files )
+	{
+		const std::string *from = space.FindString( "from" );
+		const std::string *to = space.FindString( "to" );
+		if ( !from || !to || from->size() != to->size() )
+			return foundation::MakeUnexpected(
+			    Fail( "invalid-input", "a namespace move keeps the name length" ) );
+		const std::string materials = "materials/" + *from;
+		if ( path.rfind( materials, 0 ) == 0 )
+		{
+			path = "materials/" + *to + path.substr( materials.size() );
+			if ( path.size() >= 4 && path.compare( path.size() - 4, 4, ".vmt" ) == 0 )
+			{
+				std::vector<std::string> refs;
+				for ( const std::string &file : files )
+				{
+					if ( file.rfind( materials, 0 ) == 0 && file.size() > 4 &&
+					     file.compare( file.size() - 4, 4, ".vtf" ) == 0 )
+					{
+						const std::string ref = file.substr( 10, file.size() - 14 );
+						if ( std::find( refs.begin(), refs.end(), ref ) == refs.end() )
+							refs.push_back( ref );
+					}
+				}
+				std::stable_sort( refs.begin(), refs.end(),
+				    []( const std::string &a, const std::string &b )
+				    {
+					    return a.size() > b.size();
+				    } );
+				for ( const std::string &ref : refs )
+				{
+					const std::string moved = *to + ref.substr( from->size() );
+					data = ReplaceBeforeQuoteOrSpace( data, ref, moved );
+					data = ReplaceBeforeQuoteOrSpace( data, Replace( ref, "/", "\\" ), moved );
+				}
+			}
+		}
+		else if ( path.size() >= 4 && path.compare( path.size() - 4, 4, ".mdl" ) == 0 )
+		{
+			int replaced = 0;
+			for ( const auto &[a, b] : { std::pair{ *from, *to },
+			          std::pair{ Replace( *from, "/", "\\" ), Replace( *to, "/", "\\" ) } } )
+			{
+				auto [text, count] = ReplaceAllNoCase( data, a, b );
+				data = std::move( text );
+				replaced += count;
+			}
+			if ( !replaced )
+				return foundation::MakeUnexpected(
+				    Fail( "invalid-input", path + " has no $cdmaterials " + *from + " to move" ) );
+		}
+		return std::pair{ path, data };
+	}
+
+	static long long MtimeNs( const fs::path &path )
+	{
+		std::error_code ec;
+		const auto time = fs::last_write_time( path, ec );
+		const auto system = std::chrono::file_clock::to_sys( time );
+		return static_cast<long long>(
+		    std::chrono::duration_cast<std::chrono::nanoseconds>( system.time_since_epoch() )
+		        .count() );
+	}
+
+	// extract-packs: the manifest's VPK packs, filtered and rewritten, into
+	// <into>/<id>, with a stamp per pack and <into>/mounts.json, the record
+	// of what each pack supplies (stage_portal2_runtime.stage_workshop).
+	foundation::Expected<void, ProviderError> ExtractPacks( const Value &step )
+	{
+		const std::string *from = step.FindString( "from" );
+		const std::string *manifestName = step.FindString( "manifest" );
+		const std::string *into = step.FindString( "into" );
+		if ( !from || !manifestName || !into )
+			return foundation::MakeUnexpected(
+			    Fail( "invalid-step", "extract-packs needs from, manifest and into" ) );
+		const fs::path manifestPath = m_Request.sourceRoot / *manifestName;
+		auto parsed = foundation::json::Parse( ReadBytes( manifestPath ) );
+		if ( !parsed || !parsed.Value().IsObject() )
+			return foundation::MakeUnexpected(
+			    Fail( "invalid-input", "cannot read " + manifestPath.string() ) );
+		const Value &manifest = parsed.Value();
+		const std::string *format = step.FindString( "format" );
+		const std::string *actual = manifest.FindString( "format" );
+		if ( format && ( !actual || *actual != *format ) )
+			return foundation::MakeUnexpected( Fail(
+			    "invalid-input", manifestPath.string() + " is not a " + *format + " manifest" ) );
+		const Value *packs = manifest.Find( "packs" );
+		const fs::path root = Location( *from );
+		const fs::path base = m_Runtime / *into;
+		content::FileByteSource source;
+		std::map<std::string, std::unique_ptr<content::VpkArchive>> archives;
+		std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::string>>>>
+		    chosen;
+		Value missing = Value::Object();
+		std::map<std::string, std::string> owner;
+		std::error_code ec;
+		for ( const Value &pack :
+		    packs && packs->IsArray() ? packs->Items() : std::vector<Value>{} )
+		{
+			const std::string id =
+			    pack.FindString( "id" ) ? *pack.FindString( "id" ) : std::string();
+			const fs::path directory = root / id;
+			std::string error;
+			if ( !root.empty() && fs::is_regular_file( directory / "pak01_dir.vpk", ec ) )
+				archives[id] = content::VpkArchive::Open(
+				    source, ( directory / "pak01_dir.vpk" ).string(), error );
+			if ( !archives[id] )
+			{
+				missing.Set( id, Value::String( "not installed" ) );
+				continue;
+			}
+			std::vector<std::string> include, exclude;
+			for ( const Value &item :
+			    pack.Find( "include" ) ? pack.Find( "include" )->Items() : std::vector<Value>{} )
+				include.push_back( item.Text() );
+			for ( const Value &item :
+			    pack.Find( "exclude" ) ? pack.Find( "exclude" )->Items() : std::vector<Value>{} )
+				exclude.push_back( item.Text() );
+			std::vector<std::pair<std::string, std::string>> files;
+			for ( const content::VpkEntry &entry : archives[id]->Entries() )
+			{
+				const std::string path = Replace( Lower( entry.path ), "\\", "/" );
+				const auto starts = [&]( const std::vector<std::string> &prefixes )
+				{
+					return std::any_of( prefixes.begin(), prefixes.end(),
+					    [&]( const std::string &p )
+					    {
+						    return path.rfind( p, 0 ) == 0;
+					    } );
+				};
+				if ( !starts( include ) || starts( exclude ) ||
+				     std::find( exclude.begin(), exclude.end(), path ) != exclude.end() )
+					continue;
+				if ( auto unit = ModelUnit( path ) )
+				{
+					auto [it, inserted] = owner.emplace( *unit, id );
+					if ( it->second != id )
+						continue;
+				}
+				auto existing = std::find_if( files.begin(), files.end(),
+				    [&]( const auto &f )
+				    {
+					    return f.first == path;
+				    } );
+				if ( existing != files.end() )
+					existing->second = entry.path;
+				else
+					files.emplace_back( path, entry.path );
+			}
+			chosen.emplace_back( id, std::move( files ) );
+		}
+		for ( const auto &[id, files] : chosen )
+		{
+			for ( const auto &[path, name] : files )
+			{
+				if ( path.size() < 4 || path.compare( path.size() - 4, 4, ".phy" ) != 0 )
+					continue;
+				std::string data;
+				archives[id]->Read( name, data );
+				auto versions = CollisionVersions( data );
+				if ( !versions )
+					return foundation::MakeUnexpected( Fail( "invalid-input",
+					    "workshop " + id + " " + path + ": truncated collision data" ) );
+				for ( int version : *versions )
+				{
+					if ( version != -1 && version != 0x100 )
+						return foundation::MakeUnexpected( Fail( "invalid-input",
+						    "workshop " + id + " " + path +
+						        ": collision version is not loadable; exclude the model in " +
+						        manifestPath.filename().string() ) );
+				}
+			}
+		}
+		fs::create_directories( base, ec );
+		Value report = Value::Object();
+		report.Set( "format", Value::String( "p2ce-workshop-mount-record/v1" ) );
+		report.Set( "manifest", Value::String( manifestPath.string() ) );
+		// Filled below and set last, in the record's member order.
+		Value reportPacks = Value::Array();
+		std::vector<std::string> mounted;
+		for ( const Value &pack : packs->Items() )
+		{
+			const std::string id = *pack.FindString( "id" );
+			auto picked = std::find_if( chosen.begin(), chosen.end(),
+			    [&]( const auto &c )
+			    {
+				    return c.first == id;
+			    } );
+			if ( picked == chosen.end() )
+				continue;
+			const auto &files = picked->second;
+			const fs::path sourceDirectory = root / id;
+			Value stamp = Value::Object();
+			stamp.Set(
+			    "namespace", pack.Find( "namespace" ) ? *pack.Find( "namespace" ) : Value() );
+			stamp.Set(
+			    "drop_keys", pack.Find( "drop_keys" ) ? *pack.Find( "drop_keys" ) : Value() );
+			Value &stampArchives = stamp.Set( "archives", Value::Object() );
+			std::vector<std::string> archiveNames;
+			for ( auto it = fs::directory_iterator( sourceDirectory, ec );
+			    !ec && it != fs::directory_iterator(); it.increment( ec ) )
+			{
+				const std::string name = it->path().filename().string();
+				if ( name.rfind( "pak01_", 0 ) == 0 && it->path().extension() == ".vpk" )
+					archiveNames.push_back( name );
+			}
+			std::sort( archiveNames.begin(), archiveNames.end() );
+			for ( const std::string &name : archiveNames )
+			{
+				Value pair = Value::Array();
+				pair.Push( Value::Number(
+				    static_cast<long long>( fs::file_size( sourceDirectory / name, ec ) ) ) );
+				pair.Push( Value::Number( MtimeNs( sourceDirectory / name ) ) );
+				stampArchives.Set( name, std::move( pair ) );
+			}
+			std::vector<std::string> paths;
+			for ( const auto &file : files )
+				paths.push_back( file.first );
+			std::sort( paths.begin(), paths.end() );
+			Value &stampFiles = stamp.Set( "files", Value::Array() );
+			for ( const std::string &path : paths )
+				stampFiles.Push( Value::String( path ) );
+			const fs::path target = base / id;
+			const fs::path stampFile = target / ".workshop-source.json";
+			auto previous = foundation::json::Parse( ReadBytes( stampFile ) );
+			if ( !previous || !( previous.Value() == stamp ) )
+			{
+				fs::remove_all( target, ec );
+				const std::string prefix = *into + "/" + id + "/";
+				for ( auto it = m_Owned.entries.begin(); it != m_Owned.entries.end(); )
+				{
+					if ( it->first.rfind( prefix, 0 ) == 0 )
+					{
+						m_Owned.roles.erase( it->first );
+						it = m_Owned.entries.erase( it );
+					}
+					else
+						++it;
+				}
+				const Value *space = pack.Find( "namespace" );
+				for ( const auto &[path, name] : files )
+				{
+					std::string data;
+					archives[id]->Read( name, data );
+					auto dropped = DropKeys( path, data, pack.Find( "drop_keys" ) );
+					if ( !dropped )
+						return foundation::MakeUnexpected( dropped.Error() );
+					std::string outPath = path;
+					std::string outData = std::move( dropped ).Value();
+					if ( space && space->IsObject() )
+					{
+						auto moved = Namespaced( outPath, outData, *space, paths );
+						if ( !moved )
+							return foundation::MakeUnexpected( moved.Error() );
+						outPath = moved.Value().first;
+						outData = moved.Value().second;
+					}
+					auto written = WriteAtomic( target / outPath, outData );
+					if ( !written )
+						return written;
+					m_Owned.entries[*into + "/" + id + "/" + outPath] =
+					    "file:" + HashHex( outData );
+					m_Owned.roles[*into + "/" + id + "/" + outPath] = "content";
+				}
+				fs::create_directories( target, ec );
+				auto written = WriteAtomic( stampFile, stamp.WritePretty( 1 ) + "\n" );
+				if ( !written )
+					return written;
+			}
+			Value record = Value::Object();
+			record.Set( "id", Value::String( id ) );
+			record.Set( "title",
+			    Value::String( pack.FindString( "title" ) ? *pack.FindString( "title" ) : "" ) );
+			record.Set( "source", Value::String( ( sourceDirectory / "pak01_dir.vpk" ).string() ) );
+			record.Set( "files", Value::Number( static_cast<long long>( files.size() ) ) );
+			long long materials = 0, models = 0;
+			for ( const auto &file : files )
+			{
+				const std::string &p = file.first;
+				materials += p.size() >= 4 && p.compare( p.size() - 4, 4, ".vmt" ) == 0;
+				models += p.size() >= 4 && p.compare( p.size() - 4, 4, ".mdl" ) == 0;
+			}
+			record.Set( "materials", Value::Number( materials ) );
+			record.Set( "models", Value::Number( models ) );
+			reportPacks.Push( std::move( record ) );
+			mounted.push_back( id );
+		}
+		report.Set( "packs", std::move( reportPacks ) );
+		report.Set( "unavailable", missing );
+		for ( auto it = fs::directory_iterator( base, ec ); !ec && it != fs::directory_iterator();
+		    it.increment( ec ) )
+		{
+			std::error_code inner;
+			const std::string name = it->path().filename().string();
+			if ( it->is_directory( inner ) &&
+			     std::find( mounted.begin(), mounted.end(), name ) == mounted.end() )
+				fs::remove_all( it->path(), inner );
+		}
+		const std::string text = report.WritePretty( 1 ) + "\n";
+		auto written = WriteAtomic( base / "mounts.json", text );
+		if ( !written )
+			return written;
+		m_Owned.entries[*into + "/mounts.json"] = "file:" + HashHex( text );
+		m_Owned.roles[*into + "/mounts.json"] = "config";
 		return {};
 	}
 

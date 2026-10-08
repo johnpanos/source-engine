@@ -385,6 +385,10 @@ struct PackageRequest
 	// workspace's content_locations): name -> directory. A locator the host
 	// lacks is absent; the form decides whether that is fatal.
 	std::map<std::string, std::filesystem::path> locations;
+	// The mount sets selected for this package (content.mount_sets).
+	std::vector<std::string> mountSets;
+	// The repository, for profile data that names its files (read-only).
+	std::filesystem::path sourceRoot;
 };
 
 struct ManifestEntry
