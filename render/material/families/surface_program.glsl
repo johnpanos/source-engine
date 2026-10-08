@@ -2372,6 +2372,102 @@ void EnergySurface()
 	outColor = EncodeOutput( clamp( result, 0.0, 1.0 ) );
 }
 
+// HLSL's smoothstep, defined for a reversed range (portal_refract_ps2x relies
+// on it), and its linear form.
+float PortalSmoothstep( float edge0, float edge1, float x )
+{
+	const float t = clamp( ( x - edge0 ) / ( edge1 - edge0 ), 0.0, 1.0 );
+	return t * t * ( 3.0 - 2.0 * t );
+}
+float PortalLinearstep( float edge0, float edge1, float x )
+{
+	return clamp( ( x - edge0 ) / ( edge1 - edge0 ), 0.0, 1.0 );
+}
+
+// The legacy refraction coordinate of a world point (portal_refract_ps2x's
+// projected position: ( x, -y ) + w, halved, over w).
+vec2 PortalScreenUv( vec3 position )
+{
+	const vec4 clip = frame.motionCurrentToClip * vec4( position, 1.0 );
+	return vec2( clip.x, -clip.y ) / clip.w * 0.5 + 0.5;
+}
+
+// PortalRefract's color stages (portal_refract_vs20 and portal_refract_ps2x,
+// the vertex stage's affine terms evaluated per pixel). material.tint: x the
+// time (0 reads the shaders' time), y the open amount, z the activity, w the
+// color scale; baseUv is $texturetransform's 2x2 part applied.
+void PortalRefractSurface( bool refract )
+{
+	const float kOuterBorder = 0.075;
+	const float kInnerBorder = kOuterBorder * 4.0;
+	const vec2 uv = baseUv * ( 1.0 + kOuterBorder ) - kOuterBorder * 0.5;
+	const float open = PortalSmoothstep( 0.0, 1.0, clamp( material.tint.y, 0.0, 1.0 ) );
+	const float openSquared = open * open;
+	const vec2 stretch = uv * 2.0 - 1.0;
+	const float radius = length( stretch );
+	const float cutout = step( radius, openSquared );
+	if ( refract )
+	{
+		// Stage 0: the snapshot warped outward around the opening, along the
+		// surface's projected tangent frame, darkened in a ring as it opens.
+		if ( radius > 1.0 )
+			discard; // alpha test GREATER 0.5 of step( radius, 1 )
+		const vec2 unwarped = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
+		const vec2 center = PortalScreenUv( worldPosition );
+		const vec2 projTangent = PortalScreenUv( worldPosition + normalize( tangentS ) ) - center;
+		const vec2 projBinormal = PortalScreenUv( worldPosition + normalize( tangentT ) ) - center;
+		vec2 tangentRefract = -normalize( stretch ) * openSquared *
+		                      ( 1.0 - pow( clamp( radius, 0.0, 1.0 ), 64.0 ) );
+		tangentRefract *= PortalSmoothstep( open * 1.5, open, radius );
+		tangentRefract *= 32.0; // the portal's radius
+#if defined( SEEDED_PORTAL_REFRACT_UNWARPED )
+		const vec2 warped = unwarped;
+#else
+		const vec2 warped =
+		    unwarped + tangentRefract.x * projTangent - tangentRefract.y * projBinormal;
+#endif
+		float ring = PortalLinearstep( openSquared - 0.01, clamp( open * 2.0, 0.0, 1.0 ), radius );
+		ring = abs( ring * 2.0 - 1.0 ) * 0.15 + 0.85;
+		// The snapshot holds the scene as stored: written back in its encoding.
+		outColor = EncodeOutput( vec4( RefractSceneColor( warped ) * ring, 1.0 ) );
+		return;
+	}
+	// Stage 2: the flame rim.
+	const float time = material.tint.x > 0.0 ? material.tint.x : mod( frame.water.x, 1000.0 );
+	const float openVertex = clamp( material.tint.y + 0.001, 0.0, 1.0 );
+	const vec2 noiseUv = ( baseUv - 0.5 ) / openVertex + 0.5;
+	const float scroll = time * 0.0275;
+	const vec4 noiseCoord =
+	    vec4( noiseUv * 0.3 + vec2( scroll, 0.0 ), noiseUv * 0.3 - vec2( scroll, 0.0 ) );
+	const float outer =
+	    ( 1.0 - PortalLinearstep( openSquared, openSquared + kOuterBorder, radius ) ) *
+	    ( 1.0 - cutout );
+	const float inner = PortalLinearstep( openSquared - kInnerBorder, openSquared, radius ) * cutout;
+	const float activity = clamp( material.tint.z, 0.0, 1.0 );
+	const float fadeIn = max( clamp( open * 2.5, 0.0, 1.0 ), 1.0 - activity );
+	float mask = ( inner + outer ) * fadeIn;
+	vec4 noise1 = texture( sampler2D( baseTexture, baseSampler ), noiseCoord.xy );
+	const vec4 noise2 =
+	    texture( sampler2D( baseTexture, baseSampler ), noiseCoord.wz - noise1.rg * 0.02 );
+	noise1 = texture( sampler2D( baseTexture, baseSampler ), noiseCoord.xy - noise2.rg * 0.02 );
+	float noise = ( noise1.g + noise2.g ) * 0.5;
+	const float activeWithNoise = PortalSmoothstep( 0.0, noise, activity );
+	const float border = 1.0 - PortalSmoothstep( mask - 0.875, mask + 0.875, noise );
+	noise = border;
+	mask *= border;
+	const float transparency = clamp( mask + cutout * ( 1.0 - activeWithNoise ), 0.0, 1.0 ) * 1.5;
+	const float shift = pow( abs( uv.y ), 1.5 ) * 0.8 + 0.2;
+	const float ramp = pow( noise, 0.5 ) * shift * transparency;
+	const vec3 flame =
+	    texture( sampler2D( emissionTexture, emissionSampler ), vec2( ramp, 0.5 ) ).rgb *
+	    material.tint.w;
+	if ( transparency <= 1.0 / 255.0 )
+		discard; // alpha test GREATER 1/255
+	// The legacy frame buffer's blend saw the source alpha clamped to 1; the
+	// core's float scene would not clamp it.
+	outColor = Output( flame, min( transparency, 1.0 ) );
+}
+
 void main()
 {
 	if ( kPortalMask )
@@ -2392,6 +2488,11 @@ void main()
 	// Points without image specular leave the SSR targets empty (weight 0:
 	// render.pass.ssr leaves their pixels unchanged).
 	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );
+	if ( kDecalModulate && material.baseDecode.y > 3.5 )
+	{
+		PortalRefractSurface( material.baseDecode.y > 4.5 );
+		return;
+	}
 	if ( kDecalModulate && material.baseDecode.y > 2.5 )
 	{
 		// ShadowBuild (shadowbuildtexture_ps2x): white with the caster's base

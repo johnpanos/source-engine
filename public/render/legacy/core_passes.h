@@ -264,7 +264,8 @@ enum class CoreMeshKind : std::uint8_t
 	kScreenEffect,       // the engine bloom chain (render.pass.post consumes it by name)
 	kParticle, // SpriteCard particle cards (render.sprite-card.v1), independent of other dynamic draws
 	kEnergy,    // SolidEnergy fields, bridges and beams (the core's energy point)
-	kBlobShadow // render-to-texture shadows: ShadowBuild casters and Shadow decals
+	kBlobShadow, // render-to-texture shadows: ShadowBuild casters and Shadow decals
+	kPortal      // PortalRefract's refraction and flame stages (the core's portal point)
 };
 struct CoreMeshDraw
 {

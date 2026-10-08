@@ -13167,3 +13167,22 @@ portal's far view reads dark against legacy: to be compared next.
   LightmappedGeneric does.
   - `sp_a2_laser_intro`: no longer dropped, 0 core refusals; the floor
     matches the legacy renderer's frame by eye.
+- **Portal refraction and flame rim on the core** (PortalRefract stages 0
+  and 2). These were the last legacy-stream draws on the census, kept as
+  custom effects. Both stages are now modes of the decal-modulate point:
+  - Stage 0 warps the scene color snapshot outward around the opening,
+    along the surface's projected tangent frame (`motionToClip`, which the
+    mesh handoff now fills with the draw's own transform), darkens it in a
+    ring, and writes it back in the snapshot's encoding.
+  - Stage 2 draws the flame from `$portalmasktexture` noise through the
+    `$portalcolortexture` ramp. The source alpha is clamped to 1, as the
+    legacy 8-bit frame buffer's blend saw it.
+  - The frozen backend gives both stages a new mesh kind, `kPortal`, and
+    tries the core before the retained custom-effect path.
+  - `render.lab.portal-refract` 11/0: stage 0 is exact to 1e-5 against a
+    C++ restatement of `portal_refract_vs20`/`ps2x`; the unwarped seeded
+    program is caught (sensitivity 2/0).
+  - Census `portal-walk`: legacy stream draws per frame 3 → 0, the frame
+    matching the retained one (mean difference 0.004 levels).
+  - Open on the same view: PortalStaticOverlay (`_noz` overlays) and
+    EyeRefract (Chell's eyes) are still dropped.

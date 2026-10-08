@@ -475,6 +475,11 @@ std::optional<std::string> DepthClaim( const ParameterBlock &block, bool portal 
 	                                               : std::span<const std::string_view>( depthKeys ) );
 }
 
+bool PortalColorStage( const MaterialDesc &material, const ParameterBlock &block )
+{
+	return material.family == "portal-mask" && detail::ReadParameter( block, "stage" ) != 1.0f;
+}
+
 constexpr std::string_view kProgramNames[] = {
     "lightmapped", "unlit", "preview", "pbr", "refract", "water", "depth" };
 }
@@ -539,8 +544,9 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 	            nativeReflectionProbes );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
+	// Scene color is the target's (the composition's capture), as for meshes.
 	if ( material.family == "depth" || material.family == "portal-mask" )
-		return ClaimForMesh( material, false, false );
+		return ClaimForMesh( material, false, material.family == "portal-mask" );
 	if ( material.family == "lightmapped" )
 	{
 		const LightmappedClaim claim = ClaimLightmapped( *block );
@@ -636,6 +642,13 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 	const std::optional<ParameterBlock> block = BlockFor( material, &why, nativeReflectionProbes );
 	if ( !block )
 		return foundation::MakeUnexpected( why );
+	if ( PortalColorStage( material, *block ) )
+	{
+		const UnlitClaim claim = ClaimPortalRefract( *block, sceneColorAvailable );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return claim.blend;
+	}
 	if ( material.family == "depth" || material.family == "portal-mask" )
 	{
 		if ( auto unread = DepthClaim( *block, material.family == "portal-mask" ) )
@@ -736,6 +749,25 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	ResolvedProgram out;
 	out.twoSided =
 	    IsSprite( material ) || IsSpriteCard( material ) || detail::ReadFlag( *block, "nocull" );
+	if ( PortalColorStage( material, *block ) )
+	{
+		const UnlitClaim claim = ClaimPortalRefract( *block, s.sceneColorAvailable );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		SurfaceTextures textures;
+		textures.baseSrgb = false;
+		textures.base = TextureOf( material, "portalmasktexture" );
+		textures.emission = TextureOf( material, "portalcolortexture" );
+		auto request = s.lightmapped->Program().Request(
+		    claim.Variant( s.layout ), claim.constants, textures );
+		if ( !request )
+			return foundation::MakeUnexpected( std::string( "a portal pipeline was refused" ) );
+		out.name = "unlit";
+		out.request = std::move( request ).Value();
+		out.blend = claim.blend;
+		out.sceneColor = claim.constants.baseDecode[1] > 4.5f; // stage 0 reads the snapshot
+		return out;
+	}
 	if ( material.family == "depth" || material.family == "portal-mask" )
 	{
 		if ( auto unread = DepthClaim( *block, material.family == "portal-mask" ) )

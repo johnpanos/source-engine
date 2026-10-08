@@ -70,6 +70,8 @@ int RunSuite( int argc, char **argv )
 		return RunVisibilitySuite( argc - 1, argv + 1 );
 	if ( name == "blob-shadow" )
 		return RunBlobShadowSuite( argc - 1, argv + 1 );
+	if ( name == "portal-refract" )
+		return RunPortalRefractSuite( argc - 1, argv + 1 );
 	if ( name == "posed-model" )
 		return RunPosedModelSuite( argc - 1, argv + 1 );
 	if ( name == "sprite" )

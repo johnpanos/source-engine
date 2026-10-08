@@ -2647,6 +2647,9 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	}
 	pass::world::WorldView view;
 	std::copy_n( draw.toClip, 16, view.toClip );
+	// The unjittered camera transform the shaders project world points with
+	// (PortalRefract's refraction; the current motion position).
+	std::copy_n( draw.toClip, 16, view.motionToClip );
 	view.viewport = draw.viewport;
 	view.depthAlphaHandle = draw.depthAlphaHandle;
 	view.depthAlphaRange = draw.depthAlphaRange;

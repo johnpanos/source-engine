@@ -4694,6 +4694,9 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 			IMaterialVar *stage = material->FindVar( "$stage", &found, false );
 			if ( found && stage->GetIntValue() == 1 )
 				return CoreMeshKind::kDepthMask;
+			// Frozen-path: core progress (RFC 0016 K8) - the refraction and
+			// flame stages to the core's portal point.
+			return CoreMeshKind::kPortal;
 		}
 		if ( !V_stricmp( shader, "WriteZ" ) || !V_stricmp( shader, "WriteZ_DX9" ) )
 			return CoreMeshKind::kDepthMask;
@@ -5171,10 +5174,13 @@ bool CEmptyMesh::EmitToCoreQueue()
 
 void CEmptyMesh::EmitToNativeQueue()
 {
-	// Frozen-path: core progress (RFC 0016 K8) - SolidEnergy goes to the core's
-	// energy point first; only a draw the core refuses stays on the stream.
-	if ( g_CurrentSolidEnergy && g_VulkanContext.CoreOnlyQueue() &&
-	     g_VulkanContext.RetainsSolidEnergy() && EmitToCoreQueue() )
+	// Frozen-path: core progress (RFC 0016 K8) - SolidEnergy and PortalRefract's
+	// color stages go to the core first; only a draw the core refuses stays on
+	// the stream.
+	if ( g_VulkanContext.CoreOnlyQueue() &&
+	     ( ( g_CurrentSolidEnergy && g_VulkanContext.RetainsSolidEnergy() ) ||
+	         g_VulkanContext.RetainsPortalEffect( g_CurrentPortalStage ) ) &&
+	     EmitToCoreQueue() )
 		return;
 	if ( g_VulkanContext.CoreOnlyQueue() && !g_VulkanContext.RetainsQueryInput() &&
 	     !g_VulkanContext.RetainsPortalEffect( g_CurrentPortalStage ) &&

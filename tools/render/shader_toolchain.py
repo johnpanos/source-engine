@@ -511,6 +511,8 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSEEDED_CARD_DISTANCE_ALPHA_IGNORED",)),
         ("kBlobShadowOneSample", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_BLOB_SHADOW_ONE_SAMPLE",)),
+        ("kPortalRefractUnwarped", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_PORTAL_REFRACT_UNWARPED",)),
         ("kCardVertexColorIgnored", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_CARD_VERTEX_COLOR_IGNORED",)),
         ("kCardAddSelfIgnored", FAMILIES + "/surface.frag",

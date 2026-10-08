@@ -443,6 +443,67 @@ UnlitClaim ClaimShadowBuild( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimPortalRefract( const ParameterBlock &block, bool sceneColorAvailable )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "portal-mask" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	constexpr std::string_view keys[] = { "model", "nocull", "nofog", "translucent", "stage",
+	    "portalopenamount", "portalstatic", "portalmasktexture", "portalcolortexture",
+	    "portalcolorscale", "texturetransform", "time", "alphatest", "alphatestreference" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the portal point does not draw " + *unread;
+		return claim;
+	}
+	const int stage = int( ReadParameter( block, "stage" ) );
+	if ( stage != 0 && stage != 2 )
+	{
+		claim.reason = "PortalRefract stage " + std::to_string( stage ) +
+		               " is not a color stage (stage 1 is the aperture mask)";
+		return claim;
+	}
+	if ( stage == 0 && !sceneColorAvailable )
+	{
+		claim.reason = "PortalRefract stage 0 needs the scene color snapshot";
+		return claim;
+	}
+	if ( stage == 2 && ( !detail::TextureBound( block, "portalmasktexture" ) ||
+	                       !detail::TextureBound( block, "portalcolortexture" ) ) )
+	{
+		claim.reason = "PortalRefract stage 2 needs $portalmasktexture and $portalcolortexture";
+		return claim;
+	}
+	// Stage 0 is opaque (alpha test GREATER 0.5), stage 2 blends SRC_ALPHA,
+	// ONE_MINUS_SRC_ALPHA (alpha test GREATER 1/255); neither writes alpha.
+	claim.blend = stage == 2 ? device::BlendMode::kAlpha : device::BlendMode::kOpaque;
+	claim.alphaWrite = false;
+	claim.decalModulate = true;
+	claim.baseParameter = "portalmasktexture";
+	SurfaceConstants &constants = claim.constants;
+	// $texturetransform's 2x2 part: dot( float2, float4 ) drops the
+	// translation column (portal_refract_vs20).
+	for ( std::size_t i :
+	    { std::size_t( 0 ), std::size_t( 1 ), std::size_t( 4 ), std::size_t( 5 ) } )
+		constants.baseTransform[i] = ReadParameter( block, "texturetransform", i );
+	constants.baseTransform[2] = constants.baseTransform[3] = 0.0f;
+	constants.baseTransform[6] = constants.baseTransform[7] = 0.0f;
+	// baseDecode.y 4: stage 2, 5: stage 0. tint.x the time (the CurrentTime
+	// proxy's $time, % 1000; 0 reads the shaders' time), .y the open amount,
+	// .z the portal's activity (1 - $portalstatic), .w $portalcolorscale.
+	constants.baseDecode[1] = stage == 2 ? 4.0f : 5.0f;
+	const float time = ReadParameter( block, "time" );
+	constants.tint[0] = time > 0.0f ? time - std::floor( time / 1000.0f ) * 1000.0f : 0.0f;
+	constants.tint[1] = ReadParameter( block, "portalopenamount" );
+	constants.tint[2] = 1.0f - ReadParameter( block, "portalstatic" );
+	constants.tint[3] = ReadParameter( block, "portalcolorscale" );
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimModulate( const ParameterBlock &block )
 {
 	UnlitClaim claim;

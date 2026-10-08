@@ -114,6 +114,14 @@ UnlitClaim ClaimBlobShadow( const ParameterBlock &block );
 // caster's base alpha times its alpha, added (ONE, ONE) into the shadow page
 // without depth; without a base texture the coverage is 1.
 UnlitClaim ClaimShadowBuild( const ParameterBlock &block );
+// PortalRefract's color stages (portal_refract_helper.cpp, portal_refract_ps2x)
+// on the decal-modulate point. Stage 0 warps the scene color snapshot around
+// the opening (opaque, alpha-tested to the portal's oval; it needs the
+// snapshot, sceneColorAvailable). Stage 2 is the flame rim: noise
+// ($portalmasktexture, as the base) through the color ramp
+// ($portalcolortexture, as the emission) times $portalcolorscale, alpha
+// blended. Stage 1 is the portal-mask depth point's.
+UnlitClaim ClaimPortalRefract( const ParameterBlock &block, bool sceneColorAvailable );
 // Modulate (modulate_dx9.cpp, modulate_ps2x): the decal-modulate point with
 // saturate( base x $color/$alpha x vertex color ), its color lerped from the
 // neutral 0.5 by its alpha, fog to the neutral grey. $mod2x blends
