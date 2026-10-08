@@ -8709,15 +8709,18 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 				// A texture of another dimension than the shader declares (e.g. a
 				// cubemap bound to a 2D base sampler slot) falls back to the default
 				// set of the declared dimension to avoid VUID-vkCmdDrawIndexed-viewType-07752.
-				const auto sampledSet = [&]( int handle, int srgbFlag,
-				                            bool expectCube = false ) -> VkDescriptorSet
+				// Its own set when its dimensionality is the slot's, else the white default.
+				const auto sampledSet = [&]( int handle, int srgbFlag, bool expectCube = false,
+				                            bool expectVolume = false ) -> VkDescriptorSet
 				{
 					if ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
 					     handle != openTarget )
 					{
 						const bool isCube = ManagedTextureIsCube( handle );
 						const bool isVolume = ManagedTextureIsVolume( handle );
-						if ( expectCube ? isCube : ( !isCube && !isVolume ) )
+						if ( expectCube     ? isCube
+						     : expectVolume ? isVolume
+						                    : ( !isCube && !isVolume ) )
 						{
 							const ManagedTexture &t =
 							    m_managedTextures[static_cast<size_t>( handle )];
@@ -8732,13 +8735,12 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 								return t.descSet;
 						}
 					}
-					if ( expectCube && m_whiteCubeHandle >= 0 &&
-					     m_whiteCubeHandle < static_cast<int>( m_managedTextures.size() ) &&
-					     m_managedTextures[static_cast<size_t>( m_whiteCubeHandle )].descSet !=
-					         VK_NULL_HANDLE )
-					{
-						return m_managedTextures[static_cast<size_t>( m_whiteCubeHandle )].descSet;
-					}
+					const int white = expectCube     ? m_whiteCubeHandle
+					                  : expectVolume ? m_whiteVolumeHandle
+					                                 : -1;
+					if ( white >= 0 && white < static_cast<int>( m_managedTextures.size() ) &&
+					     m_managedTextures[static_cast<size_t>( white )].descSet != VK_NULL_HANDLE )
+						return m_managedTextures[static_cast<size_t>( white )].descSet;
 					return m_dynTexDescSet;
 				};
 				if ( portal )
@@ -8887,15 +8889,12 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					// shaders/screenspace_post.frag: s0 source, s1 frame buffer,
 					// s2..s5 color-correction volumes (the white volume without
 					// one), then the constants.
-					const auto volume = [&]( int handle )
-					{
-						return sampledSet(
-						    ManagedTextureIsVolume( handle ) ? handle : m_whiteVolumeHandle, 0 );
-					};
 					const VkDescriptorSet sets[7] = { sampledSet( d.texHandle, kColorSrgbReadBase ),
 					    sampledSet( d.samplerHandles[1], kColorSrgbReadLightmap ),
-					    volume( d.samplerHandles[2] ), volume( d.samplerHandles[3] ),
-					    volume( d.samplerHandles[4] ), volume( d.samplerHandles[5] ),
+					    sampledSet( d.samplerHandles[2], 0, false, true ),
+					    sampledSet( d.samplerHandles[3], 0, false, true ),
+					    sampledSet( d.samplerHandles[4], 0, false, true ),
+					    sampledSet( d.samplerHandles[5], 0, false, true ),
 					    m_skinUbos[static_cast<size_t>( m_currentFrame ) % m_skinUbos.size()].set };
 					const uint32_t offset = skinOffsets[static_cast<size_t>( d.skin )];
 					vkCmdBindDescriptorSets( cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
