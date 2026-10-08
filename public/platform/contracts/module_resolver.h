@@ -57,7 +57,7 @@ class IModuleVerifier
 {
 public:
 	virtual ~IModuleVerifier() = default;
-	virtual VerifyResult Verify( const NativePath &candidate ) = 0;
+	virtual VerifyResult VerifyCandidate( const NativePath &candidate ) = 0;
 };
 
 // One place to look: an optional directory below the root and a prefix glued to
