@@ -23,7 +23,7 @@ ktx-reader step builds under dependencies/, outside every Waf output tree) to
 upload a map's LMAP lightmap. Enable it in a client
 tree, for example the one ./play boots, with
 
-    python3 tools/quality/pbrt_map_toolchain.py configure-client --build build
+    python3 tools/quality/pbrt_map_toolchain.py configure-client --profile portal
 
 which adds `--ktx-source-root/--ktx-build-root` to the tree's stored Waf
 options; the next ./play (or waf build) rebuilds the affected modules.
@@ -171,30 +171,18 @@ def provision_ktx_reader(profile, linked, sources, jobs):
     write_stamp(build, revision)
 
 
-def configure_client(profile, linked, build):
-    """Add the pinned KTX reader to a client tree's stored Waf options."""
+def configure_client(profile, linked, client_profile):
+    """Build a client kiln profile with the pinned KTX reader: its `ktx`
+    flavor (fragments/linux-x86_64-desktop.json owns the two KTX roots)."""
     reader = absolute(profile["layout"]["ktx_reader_build"])
-    source = absolute(profile["layout"]["ktx_reader_source"])
     revision = linked["ktx"]["dependencies"]["ktx_software"]["revision"]
     if not stamp_matches(reader, revision):
         raise SystemExit("the KTX reader is not provisioned; run: provision --steps ktx-reader")
-    # Add the two options to the tree's stored configure options, then replay
-    # them the way ./play does. `waf configure --reconfigure` must not be used:
-    # it overwrites every stored option with the parser's truthy defaults
-    # (a native Vulkan Portal tree becomes RENDER_BACKEND=legacy GAMES=hl2).
-    stored = absolute(build) / "configuration.py"
-    wafdirs = sorted(ROOT.glob(".waf3-*/waflib"))
-    if not stored.is_file() or not wafdirs:
-        raise SystemExit("%s is not a configured Waf tree" % build)
-    sys.path.insert(0, str(wafdirs[-1].parent))
-    from waflib import ConfigSet
-    configuration = ConfigSet.ConfigSet()
-    configuration.load(str(stored))
-    configuration["OPTIONS"]["KTX_SOURCE_ROOT"] = str(source)
-    configuration["OPTIONS"]["KTX_BUILD_ROOT"] = str(reader)
-    configuration.store(str(stored))
-    import ensure_configured
-    ensure_configured.reconfigure(absolute(build))
+    try:
+        built = sepipe_loader.session().build(client_profile, flavor="ktx")
+    except Exception as error:  # sepipe.KilnError, sepipe_loader.LoadError
+        raise SystemExit("kiln build %s --flavor ktx: %s" % (client_profile, error))
+    print("[client] %s" % built["tree"])
 
 
 def provision_compile_tools(profile, jobs):
@@ -427,13 +415,13 @@ def main():
     check = commands.add_parser("check")
     check.add_argument("--toolchain", type=Path)
     client = commands.add_parser("configure-client",
-                                 help="enable the pinned KTX lightmap reader in a client tree")
-    client.add_argument("--build", type=Path, default=Path("build"),
-                        help="configured native Vulkan Waf output tree (default: build)")
+                                 help="build a client kiln profile with the pinned KTX reader")
+    client.add_argument("--profile", default="portal",
+                        help="client kiln profile, built at its ktx flavor (default: portal)")
     args = parser.parse_args()
     profile, linked = load_profiles()
     if args.command == "configure-client":
-        configure_client(profile, linked, args.build)
+        configure_client(profile, linked, args.profile)
         return
     toolchain_file = absolute(profile["layout"]["toolchain_file"])
     if args.command == "check":
