@@ -57,6 +57,11 @@ jobs:
         key: android-ccache-${{ matrix.abi }}-${{ github.sha }}
         restore-keys: android-ccache-${{ matrix.abi }}-
 
+    # RFC 0016 K4: the render core embeds SPIR-V the build generates with the
+    # pinned shader tools (host tools, built from sha256-pinned sources).
+    - name: Build the pinned shader tools
+      run: python3 tools/render/shader_toolchain.py build
+
     - name: Build and verify the APK
       run: ./build-android-apk.sh --abi ${{ matrix.abi }} --ccache
 

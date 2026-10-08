@@ -9,7 +9,7 @@ jobs:
   # pin the ubuntu-24.04 runner's compilers). The Windows lanes stay on
   # waf.bat until kiln has a Windows host (MSVC runners are optional).
   build-dedicated-windows-i386:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v2
@@ -21,7 +21,7 @@ jobs:
         ./waf.bat build
 
   build-dedicated-windows-amd64:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v2
