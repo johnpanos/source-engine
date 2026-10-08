@@ -210,7 +210,10 @@ public:
 			    ProviderError{ "invalid-request", arguments.Error().Describe() } );
 
 		const fs::path source = inputs.SourceRoot();
-		const fs::path tree = inputs.TreeRoot();
+		// out/<profile>/<flavor>/: the Waf tree (and its lock) in build/, the
+		// installed products in install/, beside the runtime and artifacts.
+		const fs::path tree = inputs.TreeRoot() / "build";
+		const fs::path prefix = inputs.TreeRoot() / "install";
 		std::error_code ec;
 		fs::create_directories( tree, ec );
 		if ( ec )
@@ -245,7 +248,7 @@ public:
 		if ( !reason.empty() )
 		{
 			std::vector<std::string> argv = { m_Python, ( source / "waf" ).string(), "configure",
-			    "-o", tree.string(), "--prefix=" + ( tree / "install" ).string() };
+			    "-o", tree.string(), "--prefix=" + prefix.string() };
 			argv.insert( argv.end(), arguments.Value().begin(), arguments.Value().end() );
 			if ( inputs.Diagnostics() )
 				inputs.Diagnostics()->Report(
@@ -278,7 +281,7 @@ public:
 		Artifact install;
 		install.name = std::string( kEngineInstallArtifact );
 		install.type = "install";
-		install.path = tree / "install";
+		install.path = prefix;
 		install.digest = InstallDigest( install.path );
 		install.facts.Set( "tree", Value::String( tree.string() ) );
 		outputs.Publish( std::move( install ) );

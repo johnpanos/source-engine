@@ -31,7 +31,10 @@ constexpr const char *kUsage =
     "  profiles resolve <profile>     the profile with its extends chain merged\n"
     "  profiles explain <profile>     provenance and derived facts\n"
     "  doctor <profile>               host prerequisites, present or unavailable\n"
-    "  build <profile> [--flavor <f>] Waf configure (when changed), build and install\n";
+    "  build <profile> [--flavor <f>] Waf configure (when changed), build and install\n"
+    "  switches <profile>             the profile's launch switches\n"
+    "  play <profile> [map] [--set <switch>]... [--flavor <f>] [--dry-run] [-- args]\n"
+    "  run <profile> [map] [--set <switch>]... [--flavor <f>] [--dry-run] [-- args]\n";
 
 class StderrSink final : public product::IDiagnosticSink
 {
@@ -216,6 +219,67 @@ int main( int argc, char **argv )
 			          << "evidence: " << result.Value().evidenceFile.string() << '\n';
 		}
 		return 0;
+	}
+	if ( command == "switches" && args.size() == 2 )
+	{
+		auto switches = session.Switches( args[1] );
+		if ( !switches )
+			return Failure( json, switches.Error() );
+		if ( json )
+		{
+			Value list = Value::Array();
+			for ( const auto &entry : switches.Value() )
+			{
+				Value item = Value::Object();
+				item.Set( "name", Value::String( entry.name ) );
+				item.Set( "description", Value::String( entry.description ) );
+				list.Push( std::move( item ) );
+			}
+			std::cout << list.WritePretty() << '\n';
+		}
+		else
+		{
+			for ( const auto &entry : switches.Value() )
+				std::cout << "  --set " << entry.name << "\n      " << entry.description << '\n';
+		}
+		return 0;
+	}
+	if ( ( command == "play" || command == "run" ) && args.size() >= 2 )
+	{
+		kiln::PlayRequest request;
+		request.profile = args[1];
+		bool dryRun = false;
+		for ( size_t i = 2; i < args.size(); ++i )
+		{
+			if ( args[i] == "--" )
+			{
+				request.arguments.assign( args.begin() + static_cast<long>( i ) + 1, args.end() );
+				break;
+			}
+			if ( args[i] == "--set" && i + 1 < args.size() )
+				request.switches.push_back( args[++i] );
+			else if ( args[i] == "--flavor" && i + 1 < args.size() )
+				request.flavor = args[++i];
+			else if ( args[i] == "--device" && i + 1 < args.size() )
+				request.device = args[++i];
+			else if ( args[i] == "--dry-run" )
+				dryRun = true;
+			else if ( args[i].rfind( "-", 0 ) != 0 && !request.map )
+				request.map = args[i];
+			else
+				return Usage();
+		}
+		auto plan = session.PlanLaunch( request );
+		if ( !plan )
+			return Failure( json, plan.Error() );
+		if ( dryRun )
+		{
+			std::cout << kiln::ToJson( plan.Value() ).WritePretty() << '\n';
+			return 0;
+		}
+		return Failure( json,
+		    kiln::Error{ "unavailable", "launching needs the linux-dir packager (RFC 0027 L1b); "
+		                                "use --dry-run for the launch plan" } );
 	}
 	return Usage();
 }

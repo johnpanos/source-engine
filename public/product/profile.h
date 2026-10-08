@@ -143,6 +143,8 @@ struct Switch
 	std::string description;
 	std::vector<std::string> arguments;
 	std::vector<std::string> conflicts;
+	// Launch variables the switch sets (launch.variables names them).
+	std::map<std::string, std::vector<std::string>> sets;
 };
 
 // A validated schema v2 profile and its derived facts. Everything here is a
@@ -166,6 +168,8 @@ struct ResolvedProfile
 	std::string defaultFlavor;
 	std::vector<std::string> stages;
 	std::vector<Switch> switches;
+	// launch.variables: named argument lists the launch templates splice.
+	std::map<std::string, std::vector<std::string>> launchVariables;
 
 	bool Buildable() const { return !fragment && !toolchain.empty(); }
 	const Flavor *FindFlavor( std::string_view flavor ) const;

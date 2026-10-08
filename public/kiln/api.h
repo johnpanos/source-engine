@@ -112,6 +112,37 @@ struct DoctorResult
 	product::DoctorReport report;
 };
 
+// `kiln play`, `kiln run`: what to launch. Switches are the profile's named
+// launch switches, in the order given; `arguments` is the `--` tail.
+struct PlayRequest
+{
+	std::string profile;
+	std::optional<std::string> flavor;
+	std::optional<std::string> map;
+	std::vector<std::string> switches;
+	std::vector<std::string> arguments;
+	std::optional<std::string> device;
+	const product::ICancellation *cancel = nullptr;
+};
+
+// One resolved launch: the program, its argv (argv[0] is the executable as
+// the profile names it, relative to the working directory), the environment
+// changes and the working directory. An environment value may contain
+// "{inherit}", the variable's inherited value, which the run provider fills.
+struct LaunchPlan
+{
+	std::string profile;
+	std::string flavor;
+	std::filesystem::path tree;
+	std::filesystem::path runtime;
+	std::filesystem::path workingDirectory;
+	std::vector<std::string> argv;
+	std::vector<platform::ToolProcessEnvironmentOverride> environment;
+	std::vector<std::string> switches;
+	std::string displaySession;
+	std::string runProvider;
+};
+
 class Session
 {
 public:
@@ -131,6 +162,13 @@ public:
 	    const std::string &nameOrAlias );
 	// Runs the profile's stage graph up to request.upTo.
 	[[nodiscard]] foundation::Expected<PipelineResult, Error> Run( const PipelineRequest &request );
+	// The launch a play or run request would make, without building or
+	// starting anything (`kiln play --dry-run`).
+	[[nodiscard]] foundation::Expected<LaunchPlan, Error> PlanLaunch(
+	    const PlayRequest &request ) const;
+	// The profile's launch switches (`kiln switches`).
+	[[nodiscard]] foundation::Expected<std::vector<product::Switch>, Error> Switches(
+	    const std::string &nameOrAlias ) const;
 
 	const SessionConfig &Config() const { return m_Config; }
 
@@ -151,6 +189,7 @@ foundation::json::Value ToJson( const ProfileSummary &summary );
 foundation::json::Value ToJson( const PipelineResult &result );
 foundation::json::Value ToJson( const DoctorResult &result );
 foundation::json::Value ExplainJson( const product::ResolvedProfile &profile );
+foundation::json::Value ToJson( const LaunchPlan &plan );
 
 } // namespace kiln
 

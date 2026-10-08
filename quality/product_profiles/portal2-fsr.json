@@ -12,33 +12,12 @@
     "render_fsr411": true
   },
   "launch": {
-    "arguments": [
-      "-physics",
-      "vphysics_box3d",
-      "-physics_shape_inertia",
-      "+cl_render_start_graph",
-      "2",
-      "+sv_querycache_job_graph",
-      "2",
-      "-vkemitparallel",
-      "1",
-      "+mat_colorcorrection",
-      "1",
-      "+mat_queue_mode",
-      "2",
-      "+sv_cheats",
-      "1",
-      "+r_core_world",
-      "1",
-      "+r_indirect_producer",
-      "baked",
-      "+r_core_runtime_direct",
-      "1",
-      "+r_core_area_lights",
-      "0",
-      "-fsr",
-      "-fsr-assets",
-      "external/fsr411/assets"
-    ]
+    "variables": {
+      "fsr_args": [
+        "-fsr",
+        "-fsr-assets",
+        "{root}/external/fsr411/assets"
+      ]
+    }
   }
 }

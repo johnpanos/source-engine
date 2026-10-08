@@ -820,6 +820,120 @@ void FixturePlatformChecks( const Workbench &bench, platform::IToolProcessProvid
 	}
 }
 
+//-----------------------------------------------------------------------------
+// The launch plan (RFC 0027 L1): templates over variables, switches, workspace.
+
+std::vector<std::string> PlanArgv(
+    kiln::Session &session, kiln::PlayRequest request, kiln::Error *error = nullptr )
+{
+	auto plan = session.PlanLaunch( request );
+	if ( !plan )
+	{
+		if ( error )
+			*error = plan.Error();
+		return { "<refused>" };
+	}
+	return plan.Value().argv;
+}
+
+void LaunchPlanChecks( const Workbench &bench, platform::IToolProcessProvider &posix )
+{
+	const fs::path profiles = bench.root / "launch-profiles";
+	fixture::WriteBytes( profiles / "game.json",
+	    R"({"schema": "source-product-profile/v2", "id": "g", "description": "g",
+	  "aliases": ["game"],
+	  "launch": {"executable": "run_me", "game": "demo", "default_map": "start",
+	    "map_arguments": ["+map", "{map}"],
+	    "variables": {"width": ["800"], "height": ["600"], "windowed": ["-windowed"], "producer": ["baked"],
+	                  "core": ["+core", "1"], "assets": ["{root}/assets"]},
+	    "arguments": ["-game", "{game}", "-w", "{width}", "-h", "{height}", "{windowed}", "{switches}", "{core}",
+	                  "+producer", "{producer}", "-assets", "{assets}", "{map_arguments}", "{args}"],
+	    "environment": {"LD_LIBRARY_PATH": "{runtime}/bin:{inherit}", "GAME": "{game}"},
+	    "switches": {
+	      "validate": {"description": "v", "arguments": ["-validate"]},
+	      "probe": {"description": "p", "arguments": ["-probe", "x"]},
+	      "sdf": {"description": "s", "set": {"producer": ["sdf"]}},
+	      "no-core": {"description": "n", "arguments": ["-nocore"], "set": {"core": []}, "conflicts": ["core"]},
+	      "core": {"description": "c", "set": {"core": ["+core", "1"]}, "conflicts": ["no-core"]}}}})" );
+	fixture::WriteBytes( profiles / "bad-set.json",
+	    R"({"schema": "source-product-profile/v2", "id": "b", "description": "b",
+	  "launch": {"executable": "x", "arguments": [], "variables": {},
+	    "switches": {"s": {"description": "s", "set": {"undeclared": ["1"]}}}}})" );
+	fixture::WriteBytes( profiles / "bad-var.json",
+	    R"({"schema": "source-product-profile/v2", "id": "c", "description": "c",
+	  "launch": {"executable": "x", "arguments": ["{nowhere}"]}})" );
+	fixture::FakeDevice device;
+	product::ProviderCatalog catalog = fixture::ComposeFixtureCatalog( device, posix );
+	jobsystem::DeterministicExecutor executor;
+	NullSink sink;
+	kiln::SessionConfig config;
+	config.sourceRoot = bench.source;
+	config.profileRoot = profiles;
+	config.outRoot = bench.root / "out";
+	config.hostTag = "fixture-any";
+	kiln::Session session( catalog, posix, executor, sink, config );
+
+	kiln::PlayRequest request;
+	request.profile = "game";
+	const std::string root = bench.source.string();
+	const std::vector<std::string> plain = { "./run_me", "-game", "demo", "-w", "800", "-h", "600",
+	    "-windowed", "+core", "1", "+producer", "baked", "-assets", root + "/assets", "+map",
+	    "start" };
+	Check( PlanArgv( session, request ) == plain, "launch.template-splices-variables" );
+	request.switches = { "probe", "validate", "sdf", "no-core" };
+	request.map = "other";
+	request.arguments = { "-console", "+x 1" };
+	const std::vector<std::string> switched = { "./run_me", "-game", "demo", "-w", "800", "-h",
+	    "600", "-windowed", "-probe", "x", "-validate", "-nocore", "+producer", "sdf", "-assets",
+	    root + "/assets", "+map", "other", "-console", "+x 1" };
+	Check( PlanArgv( session, request ) == switched,
+	    "launch.switches-append-in-order-and-set-variables" );
+	request.switches = { "validate", "probe" };
+	auto reordered = PlanArgv( session, request );
+	Check( std::find( reordered.begin(), reordered.end(), "-validate" ) <
+	           std::find( reordered.begin(), reordered.end(), "-probe" ),
+	    "launch.switch-order-is-the-request-order" );
+	kiln::Error error;
+	request.switches = { "core", "no-core" };
+	Check( PlanArgv( session, request, &error ).front() == "<refused>" && error.code == "switch" &&
+	           error.detail.find( "conflicts" ) != std::string::npos,
+	    "launch.conflicting-switches-refused" );
+	request.switches = { "nope" };
+	Check( PlanArgv( session, request, &error ).front() == "<refused>" &&
+	           error.detail.find( "nope" ) != std::string::npos,
+	    "launch.unknown-switch-refused-by-name" );
+	request.switches = { "validate", "validate" };
+	Check( PlanArgv( session, request, &error ).front() == "<refused>",
+	    "launch.repeated-switch-refused" );
+
+	auto plan = session.PlanLaunch( kiln::PlayRequest{ "game", {}, {}, {}, {}, {}, nullptr } );
+	Check( plan && plan.Value().environment.size() == 2 &&
+	           plan.Value().environment[0].value ==
+	               ( bench.root / "out" / "game" / "runtime" ).string() + "/bin:{inherit}" &&
+	           plan.Value().environment[1].value == std::string( "demo" ) &&
+	           plan.Value().workingDirectory == bench.root / "out" / "game" / "runtime",
+	    "launch.environment-and-working-directory" );
+
+	kiln::SessionConfig personal = config;
+	personal.workspaceText =
+	    R"({"resolution": [2560, 1440], "windowed": false, "default_map": "mine",
+	  "profiles": {"game": {"launch": {"variables": {"producer": ["probe"]}}}}})";
+	kiln::Session workspace( catalog, posix, executor, sink, personal );
+	const std::vector<std::string> bound = { "./run_me", "-game", "demo", "-w", "2560", "-h",
+	    "1440", "+core", "1", "+producer", "probe", "-assets", root + "/assets", "+map", "mine" };
+	Check( PlanArgv( workspace, kiln::PlayRequest{ "game", {}, {}, {}, {}, {}, nullptr } ) == bound,
+	    "launch.workspace-binds-resolution-windowed-map-and-variables" );
+
+	auto badSet = kiln::Session( catalog, posix, executor, sink, config )
+	                  .PlanLaunch( kiln::PlayRequest{ "bad-set", {}, {}, {}, {}, {}, nullptr } );
+	Check( !badSet && badSet.Error().detail.find( "undeclared" ) != std::string::npos,
+	    "launch.switch-setting-an-undeclared-variable-refused" );
+	auto badVar = session.PlanLaunch( kiln::PlayRequest{ "bad-var", {}, {}, {}, {}, {}, nullptr } );
+	Check( !badVar && badVar.Error().detail.find( "nowhere" ) != std::string::npos,
+	    "launch.unknown-template-variable-refused" );
+	auto switches = session.Switches( "game" );
+	Check( switches && switches.Value().size() == 5, "launch.switches-listed" );
+}
 } // namespace
 
 int main()
@@ -856,6 +970,7 @@ int main()
 	DisplayChecks();
 	CatalogChecks( *posix );
 	FixturePlatformChecks( bench, *posix );
+	LaunchPlanChecks( bench, *posix );
 	Check( posix->LiveProcessCount() == 0, "no process outlives its request" );
 
 	fs::remove_all( root, ec );

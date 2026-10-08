@@ -22,36 +22,79 @@
   },
   "launch": {
     "game": "portal2",
-    "default_map": "sp_a1_intro1",
     "executable": "hl2_launcher",
+    "map_arguments": [
+      "+map",
+      "{map}"
+    ],
+    "variables": {
+      "job_args": [
+        "+cl_render_start_graph",
+        "2",
+        "+sv_querycache_job_graph",
+        "2",
+        "-vkemitparallel",
+        "1"
+      ],
+      "mat_args": [
+        "+mat_colorcorrection",
+        "1"
+      ],
+      "video": [],
+      "renderer_args": [],
+      "fsr_args": []
+    },
     "arguments": [
+      "-game",
+      "portal2",
       "-physics",
-      "vphysics_box3d",
-      "-physics_shape_inertia",
-      "+cl_render_start_graph",
-      "2",
-      "+sv_querycache_job_graph",
-      "2",
-      "-vkemitparallel",
-      "1",
-      "+mat_colorcorrection",
-      "1",
-      "+mat_queue_mode",
-      "2",
-      "+sv_cheats",
-      "1",
-      "+r_core_world",
-      "1",
+      "{physics}",
+      "{physics_args}",
+      "{job_args}",
+      "{mat_args}",
+      "{queue}",
+      "{video}",
+      "{switches}",
+      "{core_world}",
       "+r_indirect_producer",
-      "baked",
+      "{producer}",
       "+r_core_runtime_direct",
-      "1",
+      "{runtime_direct}",
       "+r_core_area_lights",
-      "0"
+      "{area_lights}",
+      "{renderer_args}",
+      "{fsr_args}",
+      "{map_arguments}",
+      "{args}"
     ],
     "environment": {
       "SteamAppId": "620",
-      "SteamGameId": "620"
+      "SteamGameId": "620",
+      "LD_LIBRARY_PATH": "{runtime}/bin:{inherit}"
+    },
+    "switches": {
+      "null": {
+        "description": "No rendering (the null device), for headless checks",
+        "set": {
+          "renderer_args": [
+            "-renderer",
+            "null"
+          ],
+          "core_world": []
+        },
+        "conflicts": [
+          "core-world"
+        ]
+      },
+      "bink": {
+        "description": "Retail Bink movies instead of the AV1 transcodes (VIDEO_ARGS=\"-video-provider bink\")",
+        "set": {
+          "video": [
+            "-video-provider",
+            "bink"
+          ]
+        }
+      }
     }
   }
 }

@@ -235,3 +235,66 @@ python3 tools/quality/conformance.py check --suite kiln.l0 --suite kiln.profiles
     --suite kiln.profiles.parity.sensitivity --suite kiln.rebuild.portal2 --suite hammer.adapters.mcp
 python3 -m unittest discover -s tools/archlint/tests
 ```
+
+## L1: desktop cutover (in progress, 2026-10-07)
+
+User direction: "Continue on L1." Worked in slices on `kiln-l0` in
+`../source-engine-kiln`; nothing is deleted until the whole launch-
+equivalence gate (argv, environment and staged-runtime manifest) passes.
+
+| Slice | Scope | State |
+| --- | --- | --- |
+| L1a | launch model, `.kiln/local.json` bindings, `kiln play`/`run --dry-run`, `kiln switches`, argv/environment equivalence | done (below) |
+| L1b | `linux-dir` packager, mount sets and content locators, `video.av1`, manifest equivalence, real `kiln play` | next |
+| L1c | `coop-pair` and `external-install` run providers, `user`/`private`/`none` display sessions | planned |
+| L1d | `sepipe` and `play_embedded`; the 35 harness modules and the CI workflows | planned |
+| L1e | AGENTS.md and memory notes, the deletions, the root allowlist | planned |
+
+### L1a: launch model and argv/environment equivalence
+
+- **Launch as data.** `launch.variables` are named argument lists;
+  `launch.arguments` and `launch.map_arguments` are templates where an
+  element `{name}` splices a variable, `{switches}` the selected switches'
+  arguments in request order, `{args}` the `--` tail and `{map_arguments}`
+  the map arguments when a map is given; `{root}`, `{runtime}` and `{game}`
+  are single values, and `{inherit}` in an environment value is the
+  inherited value. Switches append `arguments` and `set` variables; a
+  switch setting an undeclared variable, an unknown or conflicting switch,
+  a repeated switch and an unknown template variable are refused by name.
+  The workspace binds `resolution`, `windowed`, `frame_cap`, `default_map`
+  and per-profile `launch.variables`.
+- **Why variables:** `render_flags.sh` keeps state (core world, the
+  indirect producer, runtime direct light, area lights) and emits it at a
+  fixed place after the switches' own arguments, and each launcher puts the
+  user's arguments and `--null` somewhere else. Appending alone could not
+  reproduce them.
+- **Profiles:** the render-switches and desktop-launch fragments are now
+  variables and switches; Portal, Portal 2, Portal 2 FSR and F-Stop carry
+  their launchers' exact templates and environments (F-Stop takes no render
+  switches, as `./play_fstop`). `null` and `bink` are per game, because the
+  launchers place them differently.
+- **Commands:** `kiln play <profile> [map] [--set <switch>]... [--flavor f]
+  [--dry-run] [-- args]`, `kiln run` (the same), `kiln switches <profile>`.
+  Without `--dry-run`, play and run refuse until L1b's packager exists.
+- **Tree layout** (changed for L1b): the Waf tree and its lock are now
+  `out/<profile>/<flavor>/build/`, installing into `.../install/`, beside
+  `runtime/`, `artifacts/` and `kiln-evidence/`. The old staging scans a
+  whole build tree for the launcher and found Waf's install copy too.
+
+Evidence (`kiln.launch-equivalence`, `tools/kiln/launch_equivalence.py`):
+12 modes, each run through the real old launcher (staging included) until
+it exec()s the game, captured by an `LD_PRELOAD` shim
+(`tools/kiln/exec_capture.c`) and compared with `kiln play --dry-run`;
+argv, launcher-set environment and working directory are equal in every
+mode. Recorded differences: `BUILD_DIR`, `RENDERER`, `RUNTIME`,
+`BASE_RUNTIME` and `MAP` (`./play` -> `run.sh` plumbing) and `CCACHE_DIR`
+(exported by `launcher_ccache.sh` for the build; the compiler cache moves
+to the engine stage). Seeded: a dropped switch, a swapped order of two
+argument switches and an extra map are caught. 39 checks, 0 failures.
+`kiln.l0` grows to 119 checks (11 launch-plan checks). The old launchers
+build through Waf lock aliases into kiln's trees and stage into scratch
+runtimes under `out/launch-equivalence/`; nothing in `run/` changes.
+
+Not yet covered: `./play_p2 --release` (the release trees are not built
+yet), `--workshop`, `--retail`, `./play_p2_coop`, and every manifest
+comparison (L1b, L1c).

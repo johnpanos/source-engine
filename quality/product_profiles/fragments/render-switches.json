@@ -1,71 +1,144 @@
 {
   "schema": "source-product-fragment/v2",
   "id": "render-switches-v2",
-  "description": "The render switches of tools/quality/render_flags.sh as profile data (RFC 0027 decision 18). A launch passes the profile's arguments, then each selected switch's arguments; later console values win. --native is the default and --null is the `null` switch; --dxvk went with DXVK Native (deleted 2026-10-07, RFC 0028 decision 10). The defaults these switches override (+r_core_world 1, +r_indirect_producer baked, +r_core_runtime_direct 1, +r_core_area_lights 0) are in each game profile's launch.arguments. L1's launch-equivalence check compares them with the launchers.",
+  "description": "The render switches of tools/quality/render_flags.sh as profile data (RFC 0027 decision 18). render_flags.sh emits, after the arguments of the switches given (in order), the core-world arguments and the archived lighting settings; here they are the variables core_world, producer, runtime_direct and area_lights, which switches set, spliced by each game profile's launch.arguments where its launcher puts them. --native is the default; --null differs per launcher, so each game profile defines its `null` switch; --dxvk went with DXVK Native (deleted 2026-10-07, RFC 0028 decision 10).",
   "launch": {
+    "variables": {
+      "core_world": [
+        "+sv_cheats",
+        "1",
+        "+r_core_world",
+        "1"
+      ],
+      "producer": [
+        "baked"
+      ],
+      "runtime_direct": [
+        "1"
+      ],
+      "area_lights": [
+        "0"
+      ]
+    },
     "switches": {
-      "null": {
-        "description": "No rendering (the null device), for headless checks",
-        "arguments": ["-renderer", "null"]
-      },
       "core-world": {
         "description": "The render core draws the BSP world it can (RFC 0016 K5, r_core_world 1, strict); legacy draws the rest. The default",
-        "arguments": ["+sv_cheats", "1", "+r_core_world", "1"],
-        "conflicts": ["no-core-world", "no-core"]
+        "set": {
+          "core_world": [
+            "+sv_cheats",
+            "1",
+            "+r_core_world",
+            "1"
+          ]
+        },
+        "conflicts": [
+          "no-core-world",
+          "no-core"
+        ]
       },
       "no-core-world": {
         "description": "The legacy world only (r_core_world 0)",
-        "arguments": ["+r_core_world", "0"],
-        "conflicts": ["core-world"]
+        "set": {
+          "core_world": []
+        },
+        "conflicts": [
+          "core-world"
+        ]
       },
       "no-core": {
         "description": "No render core at all (-norendercore): the legacy backend alone, as before RFC 0016",
-        "arguments": ["-norendercore", "+r_core_world", "0"],
-        "conflicts": ["core-world", "core-probe-empty", "core-probe-seeded-clear"]
+        "arguments": [
+          "-norendercore"
+        ],
+        "set": {
+          "core_world": []
+        },
+        "conflicts": [
+          "core-world"
+        ]
       },
       "core-probe-empty": {
         "description": "Core-pass probe at each view's opaque stage: empty (RFC 0016 K5 step 3)",
-        "arguments": ["-render-core-passes", "empty"],
-        "conflicts": ["core-probe-seeded-clear", "no-core"]
+        "arguments": [
+          "-render-core-passes",
+          "empty"
+        ],
+        "conflicts": [
+          "core-probe-seeded-clear"
+        ]
       },
       "core-probe-seeded-clear": {
         "description": "Core-pass probe at each view's opaque stage: seeded-clear (RFC 0016 K5 step 3)",
-        "arguments": ["-render-core-passes", "seeded-clear"],
-        "conflicts": ["core-probe-empty", "no-core"]
+        "arguments": [
+          "-render-core-passes",
+          "seeded-clear"
+        ],
+        "conflicts": [
+          "core-probe-empty"
+        ]
       },
       "no-legacy-ports": {
         "description": "Native Vulkan without the stdshader GLSL ports (-novklegacyports)",
-        "arguments": ["-novklegacyports"]
+        "arguments": [
+          "-novklegacyports"
+        ]
       },
       "validate": {
         "description": "Khronos validation with synchronization validation (-vkvalidate)",
-        "arguments": ["-vkvalidate"]
+        "arguments": [
+          "-vkvalidate"
+        ]
       },
       "moving-light-gi": {
         "description": "Runtime indirect light for moved and switched lights (RFC 0011's SDF producer). Off by default: moving-light GI is out of scope (user decision, 2026-09-30)",
-        "arguments": ["+r_indirect_producer", "sdf"]
+        "set": {
+          "producer": [
+            "sdf"
+          ]
+        }
       },
       "baked-direct": {
         "description": "The bake's direct light on the core's world (+r_core_runtime_direct 0) instead of every light drawn at runtime, shadowed",
-        "arguments": ["+r_core_runtime_direct", "0"]
+        "set": {
+          "runtime_direct": [
+            "0"
+          ]
+        }
       },
       "area-lights": {
         "description": "Runtime LTC area lights (+r_core_area_lights 1). Off by default (user direction, 2026-10-06)",
-        "arguments": ["+r_core_area_lights", "1"]
+        "set": {
+          "area_lights": [
+            "1"
+          ]
+        }
       },
       "soft-shadows": {
         "description": "Soft shadows (PCSS) on (+r_core_shadow_pcss 1; off by default)",
-        "arguments": ["+r_core_shadow_pcss", "1"],
-        "conflicts": ["hard-shadows"]
+        "arguments": [
+          "+r_core_shadow_pcss",
+          "1"
+        ],
+        "conflicts": [
+          "hard-shadows"
+        ]
       },
       "hard-shadows": {
         "description": "Soft shadows (PCSS) off (+r_core_shadow_pcss 0)",
-        "arguments": ["+r_core_shadow_pcss", "0"],
-        "conflicts": ["soft-shadows"]
+        "arguments": [
+          "+r_core_shadow_pcss",
+          "0"
+        ],
+        "conflicts": [
+          "soft-shadows"
+        ]
       },
       "probe-bounce": {
         "description": "The probe volume's projected bounce on (+r_core_probe_bounce 1)",
-        "arguments": ["+r_core_probe_bounce", "1"]
+        "arguments": [
+          "+r_core_probe_bounce",
+          "1"
+        ]
       }
     }
   }
