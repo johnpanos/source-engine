@@ -15954,7 +15954,7 @@
       "contract": "unittests/rendertest/contracts/render.output.v1.md",
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
-      "description": "render.pass.post (RFC 0016 K8 \"Post and screen effects\") on render.device.vulkan with real pixels: a 64x32 linear scene goes through the engine's bloom chain (ported from screenspace_post.frag: the downsample shapes sRGB-encoded clipped taps by the r_bloomtint luminance and exponent, the 13-tap blur, BlurFilterY's 1/width vertical step kept as a named quirk, the bloom amount) and render.pass.output, which adds the bloom to the tone-mapped frame in its sRGB encoding. Judged against a CPU oracle written from the fxc sources: the 8-bit quarter-size bloom and the output within two levels; without a bloom the output is the legacy clip; the height-step oracle differs from the quirk by more than ten levels (a discriminating case). Claims: the chain's shaders are claimed by role with $bloomamount and the cvar tint; Counter-Strike's shape, Engine_Post's software AA and other screenspace programs are refused by name. Seeded programs (linear shaping, the 1/height step, the bloom before the tone map) each fail. The Khronos validation layer reports no message.",
+      "description": "render.pass.post (RFC 0016 K8 \"Post and screen effects\") on render.device.vulkan with real pixels: a 64x32 linear scene goes through the engine's bloom chain (ported from screenspace_post.frag: the downsample shapes sRGB-encoded clipped taps by the r_bloomtint luminance and exponent, the 13-tap blur, BlurFilterY's 1/width vertical step kept as a named quirk, the bloom amount) and render.pass.output, which adds the bloom to the tone-mapped frame in its sRGB encoding. Judged against a CPU oracle written from the fxc sources: the 8-bit quarter-size bloom and the output within two levels; without a bloom the output is the legacy clip; the height-step oracle differs from the quirk by more than ten levels (a discriminating case). Claims: the chain's shaders are claimed by role with $bloomamount and the cvar tint; Counter-Strike's shape, Engine_Post's software AA and other screenspace programs are refused by name. MotionBlur (motion_blur_ps2x) is claimed with $MOTIONBLURINTERNAL and $motionblurmax and blurs the finished frame (tone map and bloom) in its sRGB encoding, within two levels of its oracle. Seeded programs (linear shaping, the 1/height step, the bloom before the tone map, the motion blur averaged in linear light) each fail. The Khronos validation layer reports no message.",
       "result_protocol": "checks-v1",
       "sources": [
         "render/shaderlib/shaderlib.cpp",
@@ -15984,7 +15984,7 @@
         "render/pass/post/post.cpp",
         "unittests/rendertest/core/pass/post/test_post.cpp"
       ],
-      "min_checks": 24,
+      "min_checks": 30,
       "extra_flags": [
         "-O2",
         "-pthread",
@@ -16029,7 +16029,7 @@
         "render/pass/post/post.cpp",
         "unittests/rendertest/core/pass/post/test_post.cpp"
       ],
-      "min_checks": 21,
+      "min_checks": 26,
       "extra_flags": [
         "-O2",
         "-pthread",

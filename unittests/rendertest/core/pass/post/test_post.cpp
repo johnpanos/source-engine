@@ -21,9 +21,17 @@
 //			O1 the output adds the bloom to the tone-mapped frame in its sRGB
 //			   encoding (within two levels); without a bloom it is the legacy
 //			   clip alone, byte for byte as before;
+//			M1 MotionBlur (motion_blur_ps2x): the output blurs the finished
+//			   frame (tone map and bloom) along the global, falling and roll
+//			   vectors, clamped in length, 7 bilinear taps at this height,
+//			   averaged in the frame's sRGB encoding (within two levels of the
+//			   oracle); the blur is visible; the claim carries
+//			   $MOTIONBLURINTERNAL and $motionblurmax and refuses malformed
+//			   values by name;
 //			P1 non-finite parameters and an empty scene are refused;
 //			S1 seeded programs (shaping linear values, the vertical step by
-//			   1 / height, the bloom added before the tone map) each fail.
+//			   1 / height, the bloom added before the tone map, the motion
+//			   blur averaged in linear light) each fail.
 //
 //=============================================================================//
 
@@ -217,6 +225,55 @@ std::vector<double> OracleOutput( const std::vector<float> &scene, const Image *
 	return out;
 }
 
+// MotionBlur over the finished frame: motion is the global vector xy, the
+// falling and roll intensities and the longest length (screen fractions).
+constexpr float kMotion[5] = { 0.1f, 0.05f, 0.2f, 0.1f, 0.15f };
+
+std::vector<double> OracleMotion(
+    const std::vector<float> &scene, const Image *bloom, const float *motion )
+{
+	Image frame{ kWidth, kHeight, {} };
+	for ( std::uint32_t y = 0; y < kHeight; ++y )
+		for ( std::uint32_t x = 0; x < kWidth; ++x )
+		{
+			const float *t = &scene[( std::size_t( y ) * kWidth + x ) * 4];
+			const Rgb b =
+			    bloom ? bloom->Sample( ( x + 0.5 ) / kWidth, ( y + 0.5 ) / kHeight ) : Rgb{};
+			Rgb encoded{};
+			for ( int c = 0; c < 3; ++c )
+				encoded[c] = SrgbEncode( t[c] * kExposure ) + b[c];
+			frame.texels.push_back( encoded );
+		}
+	const int samples = kHeight >= 1080 ? 15 : kHeight >= 720 ? 11 : 7;
+	std::vector<double> out;
+	for ( std::uint32_t y = 0; y < kHeight; ++y )
+		for ( std::uint32_t x = 0; x < kWidth; ++x )
+		{
+			const double u = ( x + 0.5 ) / kWidth, v = ( y + 0.5 ) / kHeight;
+			double fx = u * 2 - 1, fy = v * 2 - 1;
+			const double rx = fy * motion[3], ry = -fx * motion[3];
+			const double scale = ( fx * fx + fy * fy ) * -std::abs( motion[2] );
+			double bx = motion[0] + fx * scale + rx, by = -motion[1] + fy * scale + ry;
+			const double length = std::sqrt( bx * bx + by * by );
+			if ( length > motion[4] )
+			{
+				bx *= motion[4] / length;
+				by *= motion[4] / length;
+			}
+			Rgb sum{};
+			for ( int i = 0; i < samples; ++i )
+			{
+				const Rgb tap =
+				    frame.Sample( u + bx / ( samples - 1 ) * i, v + by / ( samples - 1 ) * i );
+				for ( int c = 0; c < 3; ++c )
+					sum[c] += tap[c] / samples;
+			}
+			for ( int c = 0; c < 3; ++c )
+				out.push_back( std::clamp( sum[c], 0.0, 1.0 ) * 255.0 );
+		}
+	return out;
+}
+
 // --- running ------------------------------------------------------------------
 
 bool Wait( device::IRenderDevice2 &device, device::CompletionToken token )
@@ -247,7 +304,7 @@ struct Programs
 };
 
 Frame Run( device::IRenderDevice2 &device, const std::vector<float> &scene, bool withBloom,
-    const Programs &programs, const post::BloomParams &params )
+    const Programs &programs, const post::BloomParams &params, const float *motion = nullptr )
 {
 	Frame frame;
 	auto bloomRenderer = post::BloomRenderer::CreateWithFragment( device, programs.post );
@@ -324,6 +381,11 @@ Frame Run( device::IRenderDevice2 &device, const std::vector<float> &scene, bool
 		direct.bloom = bloom;
 		output::OutputParams outputParams;
 		outputParams.exposure = params.exposure;
+		if ( motion )
+		{
+			std::copy( motion, motion + 4, outputParams.motionBlur );
+			outputParams.motionBlurMax = motion[4];
+		}
 		recorded = recorded && outputRenderer.Value()->Record( e, direct, outputParams ).HasValue();
 		e.TransitionTexture( target.Value(), device::ResourceUsage::kColorAttachment,
 		    device::ResourceUsage::kCopySource );
@@ -434,6 +496,18 @@ void Claims( testing::Checks &checks )
 	checks.That( !post::ClaimPostDraw( "screenspace_general_dx9", other ),
 	    "C1.another-screenspace-program-is-refused" );
 	checks.That( !post::ClaimPostDraw( "VertexLitGeneric", {} ), "C1.a-surface-shader-is-refused" );
+	const V blur[] = {
+	    { "$MOTIONBLURINTERNAL", "[0.1 -0.2 0.3 0.4]" }, { "$motionblurmax", "0.04" } };
+	auto motion = post::ClaimPostDraw( "MotionBlur_dx9", blur );
+	checks.That( motion && motion.Value().role == post::PostRole::kMotionBlur &&
+	                 motion.Value().motionBlur[1] == -0.2f &&
+	                 motion.Value().motionBlur[3] == 0.4f && motion.Value().motionBlurMax == 0.04f,
+	    "M1.motion-blur-is-claimed-with-its-vector-and-clamp" );
+	const V garbled[] = { { "$MOTIONBLURINTERNAL", "[0.1 x]" } };
+	const V negative[] = { { "$motionblurmax", "-1" } };
+	checks.That( !post::ClaimPostDraw( "MotionBlur", garbled ) &&
+	                 !post::ClaimPostDraw( "MotionBlur", negative ),
+	    "M1.malformed-motion-blur-values-are-refused" );
 }
 
 } // namespace
@@ -494,6 +568,18 @@ int main()
 		checks.That( plain.ok && WorstOutput( plain.output, plainOracle ) <= 1,
 		    "O1.without-a-bloom-the-output-is-the-legacy-clip" );
 
+		// M1: the motion blur of the finished frame.
+		const std::vector<double> motionOracle = OracleMotion( scene, &bloomOracle, kMotion );
+		const Frame blurred = Run( *device, scene, true, {}, Params(), kMotion );
+		if ( checks.That( blurred.ok, "M1.the-blurred-frame-runs" ) )
+		{
+			const int error = WorstOutput( blurred.output, motionOracle );
+			std::printf( "render.pass.post (%s): motion blur within %d levels\n", backend, error );
+			checks.That( error <= 2, "M1.the-motion-blur-matches-the-oracle" );
+			checks.That(
+			    WorstOutput( blurred.output, withOracle ) > 10, "M1.the-motion-blur-is-visible" );
+		}
+
 		// P1: refusals.
 		{
 			auto renderer = post::BloomRenderer::Create( *device );
@@ -527,18 +613,23 @@ int main()
 			const char *name;
 			Programs programs;
 			bool bloomCheck;
+			bool motion = false;
 		};
 		const Seeded defects[] = {
 		    { "S1.shaping-linear-values-is-detected", { seeded::kPostLinearShape, {} }, true },
 		    { "S1.the-vertical-step-by-height-is-detected", { seeded::kPostBlurYHeightStep, {} },
 		        true },
 		    { "S1.the-bloom-before-the-tone-map-is-detected",
-		        { {}, seeded::kOutputBloomBeforeToneMap }, false } };
+		        { {}, seeded::kOutputBloomBeforeToneMap }, false },
+		    { "S1.the-motion-blur-in-linear-light-is-detected",
+		        { {}, seeded::kOutputMotionBlurLinear }, false, true } };
 		for ( const Seeded &defect : defects )
 		{
-			const Frame bad = Run( *device, scene, true, defect.programs, Params() );
+			const Frame bad = Run( *device, scene, true, defect.programs, Params(),
+			    defect.motion ? kMotion : nullptr );
 			const int error = !bad.ok             ? 255
 			                  : defect.bloomCheck ? WorstBloom( bad.bloom, bloomOracle )
+			                  : defect.motion     ? WorstOutput( bad.output, motionOracle )
 			                                      : WorstOutput( bad.output, withOracle );
 			std::printf( "render.pass.post: %s -> %d levels\n", defect.name, error );
 			checks.That( error > 2, defect.name );

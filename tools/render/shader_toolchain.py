@@ -284,7 +284,9 @@ GENERATED = {
         ("kPostBlurYHeightStep", POST + "/post.frag",
          DEVICE_OPTIONS + ("-DSEEDED_POST_BLUR_Y_HEIGHT_STEP",)),
         ("kOutputBloomBeforeToneMap", OUTPUT + "/output.frag",
-         DEVICE_OPTIONS + ("-DSEEDED_BLOOM_BEFORE_TONE_MAP",)))),
+         DEVICE_OPTIONS + ("-DSEEDED_BLOOM_BEFORE_TONE_MAP",)),
+        ("kOutputMotionBlurLinear", OUTPUT + "/output.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_MOTION_BLUR_LINEAR",)))),
     "indirect_spv.h": ("render::pass::indirect::spirv",
         "render.pass.indirect: the indirect-light producers' GPU work (RFC 0016 K12, "
         "RFC 0011's SDF producer)", (

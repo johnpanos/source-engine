@@ -44,6 +44,9 @@ VIEWS = {
     "jump-intro": ("sp_a3_jump_intro", []),
     "coop-multifling": ("mp_coop_multifling_1", []),
     "intro2-spawn": ("sp_a1_intro2", []),
+    # In front of the first fizzler (trigger_portal_cleanser at 128 -432 64).
+    "fizzler-close": ("sp_a2_fizzler_intro", ["cmd noclip", "cmd setpos 128 -250 0",
+                                             "cmd setang 0 -90 0", "wait 60"]),
     "intro3-spawn": ("sp_a1_intro3", []),
     "wakeup-spawn": ("sp_a1_wakeup", []),
     # The portal fixture room (tools/quality/portal2_portal_map.py): blue on

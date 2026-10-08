@@ -63,6 +63,8 @@ private:
 	{
 		bool downsample = false, blurX = false, blurY = false, add = false, enabled = true;
 		pass::post::BloomParams params;
+		float motionBlur[4] = {}; // MotionBlur's claim; all 0 is no blur this frame
+		float motionBlurMax = 0.0f;
 	};
 	device::IRenderDevice2 *m_Device = nullptr;
 	std::unique_ptr<pass::post::BloomRenderer> m_Bloom;

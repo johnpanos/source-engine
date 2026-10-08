@@ -13079,3 +13079,33 @@ Remaining on this view: the portal static overlays
 (`models/portals/portalstaticoverlay_1/_2` drawn by legacy, `_noz` dropped),
 Chell's eyes (`gambler_eyeball_l/_r`, dropped) and motion blur (dropped). The
 portal's far view reads dark against legacy: to be compared next.
+
+## R91: SolidEnergy and motion blur on the core (2026-10-07, user goal "get rid of the legacy renderer")
+
+- **SolidEnergy** (fizzlers, light bridges, tractor beams): the frozen
+  backend maps the shader to a new typed mesh kind, `CoreMeshKind::kEnergy`.
+  The core's energy point claims it (`ClaimEnergy`, proven in `render_lab`'s
+  energy suites). Generic surface meshes are not accepted in product
+  core-only mode, so the fizzlers had stayed on the stream as custom effects.
+  A SolidEnergy draw the core refuses still falls back to the legacy stream.
+  Census `fizzler-close` (`sp_a2_fizzler_intro` at the first cleanser):
+  legacy stream draws per frame 3 -> 0. The core frame matches the legacy
+  frame by eye; the flow field is animated, so the two cannot match exactly.
+- **Motion blur** (`dev/motion_blur`, MotionBlur_dx9, which was dropped):
+  `render.pass.post` claims it with `$MOTIONBLURINTERNAL`, plus
+  `$motionblurmax`, which the frontend passes from
+  `mat_motion_blur_percent_of_screen_max`. `render.pass.output` blurs the
+  finished frame (tone map and bloom) along motion_blur_ps2x's global,
+  falling and roll vectors. The vector's length is clamped. It takes 7, 11 or
+  15 bilinear taps by the frame's height, averaged in the frame's sRGB
+  encoding. The pass costs nothing without blur.
+  - `render.pass.post`: 30 checks; the blur is within 1 level of its CPU
+    oracle; the claim refuses malformed values by name; the seeded
+    linear-light average is caught at 33 levels.
+  - `render.pass.post.gl`: 26 checks (1 level).
+  - `render.output`: 27 checks.
+  - The motion blur material leaves the census's dropped list.
+  - Frame time is unmeasured.
+- Open on the same views: render-to-texture shadows (`engine/shadowbuild`,
+  `decals/rendershadow`; RFC 0016 keeps blob shadows), the rendermode-5
+  laser sprite (refused: `$refractamount`), and `$distancealpha` sparks.

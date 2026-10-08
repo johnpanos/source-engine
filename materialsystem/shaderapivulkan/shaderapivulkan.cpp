@@ -4658,11 +4658,16 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 		// it by name and draws it once in the output stage (RFC 0016 K8).
 		if ( !V_stricmp( shader, "Downsample_nohdr" ) || !V_stricmp( shader, "BlurFilterX" ) ||
 		     !V_stricmp( shader, "BlurFilterY" ) || !V_stricmp( shader, "Engine_Post" ) ||
-		     !V_stricmp( shader, "Engine_Post_dx9" ) ||
+		     !V_stricmp( shader, "Engine_Post_dx9" ) || !V_stricmp( shader, "MotionBlur" ) ||
+		     !V_stricmp( shader, "MotionBlur_dx9" ) ||
 		     ( !V_stricmp( material->GetName(), "dev/bloomadd" ) &&
 		         ( !V_stricmp( shader, "screenspace_general" ) ||
 		             !V_stricmp( shader, "screenspace_general_dx9" ) ) ) )
 			return CoreMeshKind::kScreenEffect;
+		// Frozen-path: core progress (RFC 0016 K8) - SolidEnergy to the core's
+		// energy point.
+		if ( !V_stricmp( shader, "SolidEnergy" ) || !V_stricmp( shader, "SolidEnergy_dx9" ) )
+			return CoreMeshKind::kEnergy;
 		// Frozen-path: core progress (RFC 0016 K8 particles) - SpriteCard's
 		// card records to the core's sprite card point.
 		if ( !V_stricmp( shader, "Spritecard" ) || !V_stricmp( shader, "Spritecard_DX8" ) )
@@ -5012,6 +5017,18 @@ bool CEmptyMesh::EmitToCoreQueue()
 			variables.push_back( { "$bloomtint", values.back().c_str(), nullptr, 0 } );
 		}
 	}
+	// Frozen-path: core progress (RFC 0016 K8) - MotionBlur's length clamp is
+	// a cvar, not its material; render.pass.post takes it as "$motionblurmax".
+	if ( !V_stricmp( g_pBoundMaterial->GetShaderName(), "MotionBlur" ) ||
+	     !V_stricmp( g_pBoundMaterial->GetShaderName(), "MotionBlur_dx9" ) )
+	{
+		static ConVarRef percentMax( "mat_motion_blur_percent_of_screen_max" );
+		if ( percentMax.IsValid() )
+		{
+			values.emplace_back( std::to_string( percentMax.GetFloat() / 100.0f ) );
+			variables.push_back( { "$motionblurmax", values.back().c_str(), nullptr, 0 } );
+		}
+	}
 	render::legacy::CoreMeshDraw draw;
 	draw.kind = CoreMeshKindFor( g_pBoundMaterial );
 	draw.name = g_pBoundMaterial->GetName();
@@ -5108,6 +5125,11 @@ bool CEmptyMesh::EmitToCoreQueue()
 
 void CEmptyMesh::EmitToNativeQueue()
 {
+	// Frozen-path: core progress (RFC 0016 K8) - SolidEnergy goes to the core's
+	// energy point first; only a draw the core refuses stays on the stream.
+	if ( g_CurrentSolidEnergy && g_VulkanContext.CoreOnlyQueue() &&
+	     g_VulkanContext.RetainsSolidEnergy() && EmitToCoreQueue() )
+		return;
 	if ( g_VulkanContext.CoreOnlyQueue() && !g_VulkanContext.RetainsQueryInput() &&
 	     !g_VulkanContext.RetainsPortalEffect( g_CurrentPortalStage ) &&
 	     !( g_CurrentSolidEnergy && g_VulkanContext.RetainsSolidEnergy() ) )

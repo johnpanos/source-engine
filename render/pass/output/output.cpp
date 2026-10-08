@@ -9,6 +9,7 @@
 #include "render/shaderlib/core_artifacts.h"
 #include "render/graph/executor.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace render::pass::output
@@ -24,9 +25,11 @@ struct Constants
 {
 	float params[4] = {};        // exposure, scene peak, headroom, 0
 	std::uint32_t modes[4] = {}; // encoding, tone map (1) or a debug view (0), scaled (1)
-	float extent[4] = {};        // the target's width and height, 1 to add the bloom
+	float extent[4] = {};        // the target's width and height, 1 to add the bloom,
+	                             // the motion blur's longest vector
+	float motion[4] = {};        // the motion blur: global xy, falling, roll
 };
-static_assert( sizeof( Constants ) == 48 );
+static_assert( sizeof( Constants ) == 64 );
 
 Constants MakeConstants( const OutputParams &params, OutputEncoding encoding, std::uint32_t width,
     std::uint32_t height, bool scaled )
@@ -41,6 +44,11 @@ Constants MakeConstants( const OutputParams &params, OutputEncoding encoding, st
 	constants.modes[2] = scaled ? 1u : 0u;
 	constants.extent[0] = float( width );
 	constants.extent[1] = float( height );
+	if ( params.toneMap )
+	{
+		std::copy( params.motionBlur, params.motionBlur + 4, constants.motion );
+		constants.extent[3] = params.motionBlurMax;
+	}
 	return constants;
 }
 
@@ -54,6 +62,11 @@ bool ValidParams( const OutputParams &params, OutputEncoding encoding )
 	     params.scenePeak > kMaxScenePeak )
 		return false;
 	if ( !std::isfinite( params.headroom ) || params.headroom < 1.0f )
+		return false;
+	for ( float component : params.motionBlur )
+		if ( !std::isfinite( component ) )
+			return false;
+	if ( !std::isfinite( params.motionBlurMax ) || params.motionBlurMax < 0.0f )
 		return false;
 	// An 8-bit target shows the standard range.
 	return encoding == OutputEncoding::kLinear || encoding == OutputEncoding::kPq ||

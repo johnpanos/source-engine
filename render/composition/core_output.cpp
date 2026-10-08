@@ -91,6 +91,8 @@ bool CoreOutput::Record( device::CommandEncoder &encoder, const legacy::CoreOutp
 	params.headroom = targets.headroom;
 	params.linearScale = targets.linearScale;
 	params.toneMap = targets.toneMap;
+	std::copy( post.motionBlur, post.motionBlur + 4, params.motionBlur );
+	params.motionBlurMax = post.motionBlurMax;
 	encoder.BeginLabel( "output (render.pass.output)" );
 	const bool recorded = renderer->Record( encoder, direct, params ).HasValue();
 	encoder.EndLabel();
@@ -152,6 +154,10 @@ void CoreOutput::RecordPost( std::uint32_t tag )
 	case pass::post::PostRole::kAdd:
 		m_FramePost.add = true;
 		m_FramePost.enabled = claim.bloomEnabled;
+		break;
+	case pass::post::PostRole::kMotionBlur:
+		std::copy( claim.motionBlur, claim.motionBlur + 4, m_FramePost.motionBlur );
+		m_FramePost.motionBlurMax = claim.motionBlurMax;
 		break;
 	}
 	// Kept: a capture records the same stream again (the queue is bounded).

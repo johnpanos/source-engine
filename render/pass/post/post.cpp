@@ -143,6 +143,33 @@ foundation::Expected<PostClaim, std::string_view> ClaimPostDraw(
 			claim.bloomEnabled = FloatOf( *value, 1.0f ) != 0.0f;
 		return claim;
 	}
+	if ( EqualsNoCase( shader, "MotionBlur" ) || EqualsNoCase( shader, "MotionBlur_dx9" ) )
+	{
+		claim.role = PostRole::kMotionBlur;
+		if ( auto value = Find( variables, "$motionblurinternal" ) )
+		{
+			const std::string text( *value );
+			const char *cursor = text.c_str();
+			for ( float &component : claim.motionBlur )
+			{
+				while ( *cursor == '[' || *cursor == ' ' )
+					++cursor;
+				char *end = nullptr;
+				const float parsed = std::strtof( cursor, &end );
+				if ( end == cursor || !Finite( parsed ) )
+					return foundation::MakeUnexpected( std::string_view(
+					    "post: MotionBlur $motionblurinternal is not four numbers" ) );
+				component = parsed;
+				cursor = end;
+			}
+		}
+		if ( auto value = Find( variables, "$motionblurmax" ) )
+			claim.motionBlurMax = FloatOf( *value, -1.0f );
+		if ( claim.motionBlurMax < 0.0f )
+			return foundation::MakeUnexpected(
+			    std::string_view( "post: MotionBlur $motionblurmax is negative" ) );
+		return claim;
+	}
 	if ( EqualsNoCase( shader, "screenspace_general" ) ||
 	     EqualsNoCase( shader, "screenspace_general_dx9" ) )
 	{

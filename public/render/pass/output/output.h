@@ -83,6 +83,13 @@ struct OutputParams
 	float headroom = 1.0f;  // finite, >= 1; exactly 1 on an 8-bit target
 	float linearScale = 1.0f; // positive; scene white in the linear target's units
 	bool toneMap = true;    // false for a debug view: the encoding alone
+	// RFC 0016 K8 "Post and screen effects": MotionBlur's blur of the
+	// finished frame (motion_blur_ps2x), in its sRGB encoding after the tone
+	// map and the bloom: the global vector xy in screen fractions, the
+	// falling and roll intensities (all 0, or a debug view: no blur), and the
+	// vector's longest length in screen fractions (finite, >= 0).
+	float motionBlur[4] = {};
+	float motionBlurMax = 0.0f;
 };
 
 struct OutputTargets

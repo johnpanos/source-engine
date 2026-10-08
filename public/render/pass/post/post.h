@@ -65,6 +65,7 @@ enum class PostRole : std::uint8_t
 	kBlurX,      // BlurFilterX
 	kBlurY,      // BlurFilterY: carries $bloomamount
 	kAdd,        // Engine_Post (bloom add) or screenspace_general's bloomadd
+	kMotionBlur, // MotionBlur: render.pass.output blurs the finished frame
 };
 
 // One legacy draw's material, as the mesh handoff passes it.
@@ -82,6 +83,12 @@ struct PostClaim
 	// "$bloomtint" "[r g b e]"; $bloomtintenable 0 gives 1/3 grey, exponent 1.
 	float tint[4] = { 0.3f, 0.59f, 0.11f, 2.2f };
 	bool bloomEnabled = true; // kAdd: Engine_Post's $bloomenable
+	// kMotionBlur: $MOTIONBLURINTERNAL (the global blur vector xy in screen
+	// fractions, falling and roll intensities; all 0 is no blur this frame)
+	// and mat_motion_blur_percent_of_screen_max / 100, which the frontend
+	// passes as "$motionblurmax".
+	float motionBlur[4] = {};
+	float motionBlurMax = 0.04f;
 };
 
 // Claims a legacy draw by its shader and variables, or names why not.
