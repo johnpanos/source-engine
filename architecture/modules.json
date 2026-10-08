@@ -110,6 +110,12 @@
         "allowedEdges": ["product.contracts"]
       },
       {
+        "id": "product.stage.fstop",
+        "owns": "RFC 0027: the F-Stop content stage (fstop-content), ported from stage_fstop_runtime.py",
+        "paths": ["public/product/stage_fstop.h", "product/stage/fstop_content.cpp"],
+        "allowedEdges": ["product.contracts", "content.vpk"]
+      },
+      {
         "id": "product.package.linux-dir",
         "owns": "RFC 0027: the linux-dir packager: a persistent runnable directory from profile steps",
         "paths": ["public/product/package_linux_dir.h", "product/package/"],
@@ -125,7 +131,7 @@
         "id": "kiln.composition",
         "owns": "RFC 0027: the default provider catalog (ComposeDefaultCatalog)",
         "paths": ["public/kiln/composition.h", "product/kiln/composition/"],
-        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.stage.waf", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
+        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.stage.waf", "product.stage.fstop", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
       },
       {
         "id": "kiln.app",
@@ -1912,8 +1918,9 @@
       "product_toolchain_linux": {"allowedUse": ["product_contracts"]},
       "product_stage_waf": {"allowedUse": ["product_contracts"]},
       "product_package_linux_dir": {"allowedUse": ["product_contracts", "content_vpk"]},
+      "product_stage_fstop": {"allowedUse": ["product_contracts", "content_vpk"]},
       "kiln_core": {"allowedUse": ["product_contracts", "product_profile", "foundation_json", "jobsystem"]},
-      "kiln_composition": {"allowedUse": ["kiln_core", "product_toolchain_linux", "product_stage_waf", "product_package_linux_dir", "platform_posix", "jobsystem"]},
+      "kiln_composition": {"allowedUse": ["kiln_core", "product_toolchain_linux", "product_stage_waf", "product_package_linux_dir", "product_stage_fstop", "platform_posix", "jobsystem"]},
       "kiln": {"allowedUse": ["kiln_composition", "kiln_core", "foundation_json", "platform_posix"]},
       "kiln_fixture_platform": {"allowedUse": ["product_contracts", "product_profile", "foundation_json"]},
       "kilntest": {"allowedUse": ["kiln_fixture_platform", "kiln_core", "product_toolchain_linux", "product_stage_waf", "product_contracts", "product_profile", "foundation_json", "platform_posix", "jobsystem"]},

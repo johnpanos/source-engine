@@ -16,8 +16,8 @@ namespace platform
 {
 
 void ExecReplacingProcess( const std::vector<std::string> &argv,
-    const std::vector<ToolProcessEnvironmentOverride> &environment, const std::string &workingDirectory,
-    std::string &error )
+    const std::vector<ToolProcessEnvironmentOverride> &environment,
+    const std::string &workingDirectory, std::string &error )
 {
 	if ( argv.empty() )
 	{
@@ -34,7 +34,8 @@ void ExecReplacingProcess( const std::vector<std::string> &argv,
 		std::string value = *entry.value;
 		const char *inherited = std::getenv( entry.name.c_str() );
 		const std::string marker = "{inherit}";
-		for ( size_t at = value.find( marker ); at != std::string::npos; at = value.find( marker, at ) )
+		for ( size_t at = value.find( marker ); at != std::string::npos;
+		    at = value.find( marker, at ) )
 		{
 			const std::string replacement = inherited ? inherited : "";
 			value.replace( at, marker.size(), replacement );
@@ -52,7 +53,8 @@ void ExecReplacingProcess( const std::vector<std::string> &argv,
 		args.push_back( const_cast<char *>( argument.c_str() ) );
 	args.push_back( nullptr );
 	execv( args[0], args.data() );
-	error = "cannot start " + argv.front() + " in " + workingDirectory + ": " + std::strerror( errno );
+	error =
+	    "cannot start " + argv.front() + " in " + workingDirectory + ": " + std::strerror( errno );
 }
 
 } // namespace platform

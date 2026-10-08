@@ -284,6 +284,12 @@ public:
 	const std::string &Flavor() const { return m_Flavor; }
 	const std::filesystem::path &SourceRoot() const { return m_SourceRoot; }
 	const std::filesystem::path &TreeRoot() const { return m_TreeRoot; }
+	// Resolved content locators (content.locators), name -> directory.
+	const std::map<std::string, std::filesystem::path> &Locations() const { return m_Locations; }
+	void SetLocations( std::map<std::string, std::filesystem::path> locations )
+	{
+		m_Locations = std::move( locations );
+	}
 	const ToolchainEnvironment *Toolchain() const { return m_Toolchain; }
 	platform::IToolProcessProvider *Processes() const { return m_Processes; }
 	IDiagnosticSink *Diagnostics() const { return m_Diagnostics; }
@@ -305,6 +311,7 @@ private:
 	IDiagnosticSink *m_Diagnostics;
 	const ICancellation *m_Cancel;
 	std::vector<std::string> m_Undeclared;
+	std::map<std::string, std::filesystem::path> m_Locations;
 };
 
 // What a stage produces. A stage stages its files under StagingDirectory()

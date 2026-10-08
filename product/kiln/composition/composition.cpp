@@ -8,6 +8,7 @@
 
 #include "jobsystem/graph_executor.h"
 #include "product/package_linux_dir.h"
+#include "product/stage_fstop.h"
 #include "product/stage_waf.h"
 #include "product/toolchain_linux.h"
 
@@ -70,6 +71,8 @@ foundation::Expected<product::ProviderCatalog, Error> ComposeDefaultCatalog(
 	if ( auto error = AddTo( catalog, product::CreateLinuxClangToolchain( processes ) ) )
 		return foundation::MakeUnexpected( *error );
 	if ( auto error = AddTo( catalog, product::CreateWafEngineStage() ) )
+		return foundation::MakeUnexpected( *error );
+	if ( auto error = AddTo( catalog, product::CreateFstopContentStage() ) )
 		return foundation::MakeUnexpected( *error );
 	if ( auto error = AddTo( catalog, product::CreateLinuxDirPackager() ) )
 		return foundation::MakeUnexpected( *error );

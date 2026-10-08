@@ -245,7 +245,7 @@ equivalence gate (argv, environment and staged-runtime manifest) passes.
 | Slice | Scope | State |
 | --- | --- | --- |
 | L1a | launch model, `.kiln/local.json` bindings, `kiln play`/`run --dry-run`, `kiln switches`, argv/environment equivalence | done (below) |
-| L1b | `linux-dir` packager, mount sets and content locators, `video.av1`, manifest equivalence, real `kiln play` | in progress: Portal, Portal 2 and FSR equal; F-Stop, Workshop and `video.av1` open |
+| L1b | `linux-dir` packager, mount sets and content locators, `video.av1`, manifest equivalence, real `kiln play` | in progress: Portal, Portal 2, FSR and F-Stop equal; Workshop and `video.av1` open |
 | L1c | `coop-pair` and `external-install` run providers, `user`/`private`/`none` display sessions | planned |
 | L1d | `sepipe` and `play_embedded`; the 35 harness modules and the CI workflows | planned |
 | L1e | AGENTS.md and memory notes, the deletions, the root allowlist | planned |
@@ -329,7 +329,28 @@ comparison (L1b, L1c).
   Portal (1,686 entries), Portal 2 and Portal 2 FSR are equal, and a changed
   byte in a runtime file is caught. 10 modes, 39 checks, 0 failures.
 
-Open in L1b: F-Stop's staging assembles content (its gameinfo from Portal's,
-merged sound, particle, HUD and localization files, Portal 2 models copied
-through a search-path resolver); it becomes a C++ content stage provider.
-Then the P2:CE Workshop mount set and the `video.av1` compiler.
+- **F-Stop:** `product.stage.fstop` (`fstop-content`, role `content`) is
+  a C++ port of `stage_fstop_runtime.py`'s content assembly: the gameinfo
+  derived from Portal's, the lower-case `fstop_valve*` mirrors of depot 852
+  (Python's component-wise path order decides case duplicates), the merged
+  sound-script, particle, HUD-layout and UTF-16 localization files, the
+  authored scripts and the Portal 2 shop-door model with its materials and
+  textures, read through a small search-path resolver over `content.vpk`.
+  Its patterns are hand-written matchers (strict modules take no regex
+  header). The packager overlays its artifact, links kept as links. The
+  runtime equals a freshly staged Python runtime: 14,000 entries.
+  Recorded defect not carried over: the Python stager appends its F-Stop
+  lines to the sound and particle manifests again on every re-staging (its
+  resolver finds its own previous output first); kiln always produces the
+  fresh result, and the gate compares against a fresh Python staging.
+- The packager now keeps its ownership record when a later step fails, so
+  a seed that finished is not lost to the next run.
+
+Evidence: `kiln.launch-equivalence`, 12 modes, 47 checks, 0 failures:
+argv, environment and working directory in every mode; four runtimes
+(Portal 1,686 entries, Portal 2, Portal 2 FSR, F-Stop 14,000) equal; seeded
+faults (a changed runtime byte per runtime, a dropped switch, a swapped
+switch order, an extra map) caught.
+
+Open in L1b: the P2:CE Workshop mount set (`./play_p2 --workshop`) and the
+`video.av1` compiler.

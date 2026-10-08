@@ -20816,14 +20816,14 @@
       "contract": "public/kiln/api.h",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0027 L1 launch-equivalence gate, argv and environment half: for each launcher mode (./play native, null, map with switches, render state, environment overrides; ./play_p2 plain, map, switches, environment overrides; ./play_p2_fsr; ./play_fstop with and without a map) the old launcher runs for real until it exec()s the game (tools/kiln/exec_capture.c records and stops that exec), and `kiln play --dry-run` must give the same argv, launcher-set environment and working directory, paths normalized, apart from the recorded differences (./play -> run.sh plumbing variables; CCACHE_DIR). A dropped switch, a swapped switch order and an extra map are caught. Needs installed Portal and Portal 2 content and the F-Stop depot.",
+      "description": "RFC 0027 L1 launch-equivalence gate, argv and environment half: for each launcher mode (./play native, null, map with switches, render state, environment overrides; ./play_p2 plain, map, switches, environment overrides; ./play_p2_fsr; ./play_fstop with and without a map) the old launcher runs for real until it exec()s the game (tools/kiln/exec_capture.c records and stops that exec), and `kiln play --dry-run` must give the same argv, launcher-set environment and working directory, paths normalized, and `kiln package` must lay out a runtime with the old staging's manifest (files by SHA-256, links by resolved target; Portal, Portal 2, Portal 2 FSR and F-Stop, the F-Stop reference freshly staged), apart from the recorded differences (./play -> run.sh plumbing variables; CCACHE_DIR). A dropped switch, a swapped switch order and an extra map are caught. Needs installed Portal and Portal 2 content and the F-Stop depot.",
       "command": [
         "{python}",
         "tools/kiln/launch_equivalence.py",
         "check"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 39,
+      "min_checks": 47,
       "timeout_seconds": 3600,
       "requires": [
         "path:out/host-linux-x86_64/product/kiln/kiln"
@@ -20831,7 +20831,9 @@
       "sources": [
         "tools/kiln/launch_equivalence.py",
         "tools/kiln/exec_capture.c",
-        "product/kiln/core/launch.cpp"
+        "product/kiln/core/launch.cpp",
+        "product/package/linux_dir.cpp",
+        "product/stage/fstop_content.cpp"
       ],
       "expect": "pass"
     }

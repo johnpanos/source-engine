@@ -122,7 +122,12 @@ public:
 				return foundation::MakeUnexpected(
 				    Fail( "invalid-step", "unknown package op \"" + *op + "\"" ) );
 			if ( !done )
+			{
+				// What earlier steps placed stays owned (a later run skips a
+				// finished seed), so the record is kept even on failure.
+				(void)SaveRecord();
 				return done;
+			}
 		}
 		return SaveRecord();
 	}
@@ -366,9 +371,11 @@ private:
 		    !ec && it != fs::recursive_directory_iterator(); it.increment( ec ) )
 		{
 			std::error_code inner;
-			if ( !it->is_regular_file( inner ) )
+			const bool link = it->is_symlink( inner );
+			if ( !link && !it->is_regular_file( inner ) )
 				continue;
-			const std::string relative = fs::relative( it->path(), root, inner ).generic_string();
+			// Lexical: a link's own path, not its target's.
+			const std::string relative = it->path().lexically_relative( root ).generic_string();
 			if ( std::any_of( include.begin(), include.end(),
 			         [&]( const std::string &pattern )
 			         {
@@ -382,6 +389,15 @@ private:
 			    Fail( "missing-input", "overlay of " + *name + " matched no file" ) );
 		for ( const std::string &relative : files )
 		{
+			// The artifact's links stay links (a content stage's mirrors).
+			if ( fs::is_symlink( root / relative, ec ) )
+			{
+				auto linked =
+				    LinkEntry( fs::read_symlink( root / relative, ec ), relative, "content" );
+				if ( !linked )
+					return linked;
+				continue;
+			}
 			auto copied = CopyEntry( root / relative, relative,
 			    relative.find( ".so" ) != std::string::npos ? "module" : "executable" );
 			if ( !copied )

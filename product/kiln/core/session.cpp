@@ -680,6 +680,7 @@ foundation::Expected<PipelineResult, Error> Session::Run( const PipelineRequest 
 			product::StageInputs inputs( profile, flavor, m_Config.sourceRoot, state.tree,
 			    step.descriptor.consumes, state.artifacts, &environment, &m_Processes,
 			    &m_Diagnostics, request.cancel );
+			inputs.SetLocations( state.locations );
 			product::StageOutputs outputs( staging );
 			auto ran = step.stage->Run( inputs, outputs );
 			std::string problem;

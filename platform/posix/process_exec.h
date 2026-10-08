@@ -21,8 +21,8 @@ namespace platform
 // `workingDirectory` and execs argv[0] (a path, relative to that directory
 // when relative). Returns only on failure, with a description in `error`.
 void ExecReplacingProcess( const std::vector<std::string> &argv,
-    const std::vector<ToolProcessEnvironmentOverride> &environment, const std::string &workingDirectory,
-    std::string &error );
+    const std::vector<ToolProcessEnvironmentOverride> &environment,
+    const std::string &workingDirectory, std::string &error );
 
 } // namespace platform
 

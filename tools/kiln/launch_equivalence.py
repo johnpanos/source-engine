@@ -167,16 +167,22 @@ def lock_aliases(build, name):
 def align_published_maps():
     """The old staging reads run/maps beside its own scripts; give a linked
     worktree the same store kiln's workspace names (both see one store)."""
-    local = ROOT / "run" / "maps"
-    if MAIN_RUN != ROOT / "run" and not local.exists():
-        local.parent.mkdir(parents=True, exist_ok=True)
-        local.symlink_to(MAIN_RUN / "maps", target_is_directory=True)
+    for name in ("maps", "runtime-p2"):
+        local = ROOT / "run" / name
+        if MAIN_RUN != ROOT / "run" and not local.exists() and (MAIN_RUN / name).exists():
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.symlink_to(MAIN_RUN / name, target_is_directory=True)
 
 
 def old_launch(mode, argv, profile, kind, extra_env):
     capture = SCRATCH / ("capture-%s.bin" % mode)
     capture.unlink(missing_ok=True)
     runtime = SCRATCH / ("runtime-" + kind)
+    if kind == "fstop":
+        # stage_fstop_runtime.py appends its F-Stop lines again on every
+        # re-staging (a recorded defect kiln does not carry over), so the
+        # reference is a freshly staged runtime.
+        shutil.rmtree(runtime, ignore_errors=True)
     build = tree(profile)
     env = {k: v for k, v in os.environ.items()
            if k not in ("SDL_VIDEODRIVER", "SDL_VIDEO_DRIVER", "LD_LIBRARY_PATH", "SteamAppId", "SteamGameId",
