@@ -507,6 +507,8 @@ GENERATED = {
         "RFC 0016 K8 particles)", (
         ("kCardFrameBlendIgnored", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_CARD_FRAME_BLEND_IGNORED",)),
+        ("kCardDistanceAlphaIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_CARD_DISTANCE_ALPHA_IGNORED",)),
         ("kCardVertexColorIgnored", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_CARD_VERTEX_COLOR_IGNORED",)),
         ("kCardAddSelfIgnored", FAMILIES + "/surface.frag",

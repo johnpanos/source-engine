@@ -13123,3 +13123,16 @@ portal's far view reads dark against legacy: to be compared next.
     scratch keys.
   - `fizzler-close`: the laser beam is drawn by the core and leaves the
     dropped list.
+- **Distance-coded spark cards** (`particle/sparks/sparks`: SpriteCard with
+  `$distancealpha 1`) were refused and so dropped. The core's sprite card
+  point now claims `$distancealpha`: the blended frame is cleared below alpha
+  0.5, as CS:GO's `spritecard_ps2x` does with SOFTEDGES and OUTLINE off.
+  - `$softedges` is inert: `spritecard.cpp` sets SOFTEDGES from `$outline`.
+  - `$outline` with distance alpha is refused by name.
+  - `render.lab.particles` 30/0 (a second frame pair whose blended alpha
+    crosses 0.5): above the threshold the card equals the plain card; below
+    it the background is unchanged.
+  - The sensitivity run catches 7 of 7 seeded programs, including the new
+    distance alpha one (8 checks).
+  - `fizzler-close` drops only the render-to-texture shadows
+    (`engine/shadowbuild`, `decals/rendershadow`).

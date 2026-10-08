@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <tuple>
 
 namespace render::lab
 {
@@ -39,6 +40,10 @@ constexpr float kOverbright = 2.0f;
 constexpr int kBaseHandle = 1;
 constexpr int kNormalHandle = 2;
 constexpr int kDepthHandle = 3;
+// A second frame pair for $distancealpha: alpha 160 and 64, so the blended
+// alpha is 0.53 at the fixture's blend 0.25 and 0.34 at 0.75.
+constexpr int kDistanceHandle = 4;
+constexpr unsigned kDistanceAlpha[] = { 160, 64 };
 // The depth copy's byte: the opaque scene at 80/255 of the 192-unit range,
 // just behind the card's clip z of 60.
 constexpr unsigned kSceneDepthByte = 80;
@@ -48,11 +53,13 @@ constexpr float kDepthScale = 4.0f;
 class ParticleTextures final : public IWorldTextures
 {
 public:
-	TextureId baseLinear, baseSrgb, normal, depth;
+	TextureId baseLinear, baseSrgb, normal, depth, distanceLinear, distanceSrgb;
 	TextureId Import( int handle, bool decoded ) override
 	{
 		if ( handle == kBaseHandle )
 			return decoded ? baseSrgb : baseLinear;
+		if ( handle == kDistanceHandle )
+			return decoded ? distanceSrgb : distanceLinear;
 		if ( handle == kNormalHandle )
 			return normal;
 		if ( handle == kDepthHandle && !decoded )
@@ -84,14 +91,15 @@ void SetClip( WorldView &view )
 // One screen-aligned card of radius .5 at (0, 0, 60): the D3D view is the
 // identity (eye at the origin looking down +z), so the card covers the
 // view's middle half. Each frame's sheet rectangle is a point at its texel.
-WorldView::DynamicDraw Card( std::vector<std::pair<std::string, std::string>> variables )
+WorldView::DynamicDraw Card( std::vector<std::pair<std::string, std::string>> variables,
+    int handle = kBaseHandle, float blend = kBlend )
 {
 	WorldView::DynamicDraw draw;
 	draw.material.name = "particle/lab_card";
 	draw.material.shader = "Spritecard";
 	draw.material.variables = std::move( variables );
 	draw.material.variables.emplace_back( "$basetexture", "particle/lab_card_frames" );
-	draw.material.textures.emplace_back( "$basetexture", kBaseHandle );
+	draw.material.textures.emplace_back( "$basetexture", handle );
 	constexpr float kCorners[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
 	for ( const auto &corner : kCorners )
 	{
@@ -105,7 +113,7 @@ WorldView::DynamicDraw Card( std::vector<std::pair<std::string, std::string>> va
 		const float frame1[4] = { .75f, .5f, .75f, .5f };
 		std::copy_n( frame0, 4, record.texCoords[0] );
 		std::copy_n( frame1, 4, record.texCoords[1] );
-		record.texCoords[2][0] = kBlend;
+		record.texCoords[2][0] = blend;
 		record.texCoords[2][2] = .5f; // radius
 		record.texCoords[3][0] = corner[0];
 		record.texCoords[3][1] = corner[1];
@@ -321,6 +329,13 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		if ( !staged )
 			return "particle frame texture staging failed";
 		( srgb ? imports.baseSrgb : imports.baseLinear ) = staged.Value().texture;
+		texels[3] = std::byte( kDistanceAlpha[0] );
+		texels[7] = std::byte( kDistanceAlpha[1] );
+		auto distance = textures.Stage(
+		    srgb ? "particles/distance-srgb" : "particles/distance-linear", desc, texels );
+		if ( !distance )
+			return "particle distance texture staging failed";
+		( srgb ? imports.distanceSrgb : imports.distanceLinear ) = distance.Value().texture;
 	}
 	{
 		TextureDesc desc;
@@ -426,6 +441,48 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		    "particles.depth-feather", detail );
 		results.That(
 		    feather < .1, "particles.depth-feather.fixture-near-scene", std::to_string( feather ) );
+	}
+
+	// $distancealpha: above alpha 0.5 the card is the plain card; below it
+	// the frame is cleared and the background shows through unchanged.
+	{
+		auto distanceView = [&]( bool distance, float blend )
+		{
+			std::vector<std::pair<std::string, std::string>> variables = { { "$translucent", "1" },
+			    { "$overbrightfactor", overbright }, { "$softedges", "1" } };
+			if ( distance )
+				variables.emplace_back( "$distancealpha", "1" );
+			WorldView view;
+			SetClip( view );
+			view.dynamicDraws.push_back( Card( std::move( variables ), kDistanceHandle, blend ) );
+			return view;
+		};
+		CanvasImage plainAbove, distanceAbove, plainBelow, distanceBelow;
+		for ( auto [image, distance, blend] :
+		    { std::tuple{ &plainAbove, false, kBlend }, std::tuple{ &distanceAbove, true, kBlend },
+		        std::tuple{ &plainBelow, false, .75f }, std::tuple{ &distanceBelow, true, .75f } } )
+			if ( auto why = render( distanceView( distance, blend ), kBackground, *image ) )
+				return "particles.distance-alpha: " + *why;
+		const float *pa = plainAbove.At( kSize / 2, kSize / 2 );
+		const float *da = distanceAbove.At( kSize / 2, kSize / 2 );
+		const float *pb = plainBelow.At( kSize / 2, kSize / 2 );
+		const float *db = distanceBelow.At( kSize / 2, kSize / 2 );
+		bool same = true, cleared = true, plainDraws = false;
+		for ( unsigned c = 0; c < 3; ++c )
+		{
+			same &= std::abs( pa[c] - da[c] ) < .002f;
+			cleared &= std::abs( db[c] - kBackground[c] ) < .002f;
+			plainDraws |= std::abs( pb[c] - kBackground[c] ) > .02f;
+		}
+		results.That( same, "particles.distance-alpha.above-threshold-is-the-plain-card",
+		    std::to_string( pa[0] ) + "/" + std::to_string( da[0] ) );
+		results.That( cleared && plainDraws,
+		    "particles.distance-alpha.below-threshold-is-cleared",
+		    std::to_string( db[0] ) + " plain " + std::to_string( pb[0] ) );
+		const auto outline = pass.QueueView( CardView( { { "$distancealpha", "1" }, { "$outline", "1" } } ) );
+		results.That(
+		    !outline && pass.Stats().lastRefusal.find( "$outline" ) != std::string::npos,
+		    "particles.refuse.distance-outline", pass.Stats().lastRefusal );
 	}
 
 	// Claims and refusals by name.
@@ -545,6 +602,8 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 
 const Seeded kSeeded[] = {
     { "frame-blend-ignored", spirv::kCardFrameBlendIgnored, "particles.frame-blend" },
+    { "distance-alpha-ignored", spirv::kCardDistanceAlphaIgnored,
+        "particles.distance-alpha.below-threshold-is-cleared" },
     { "vertex-color-ignored", spirv::kCardVertexColorIgnored,
         "particles.frame-blend.vertex-color" },
     { "addself-ignored", spirv::kCardAddSelfIgnored, "particles.addself" },

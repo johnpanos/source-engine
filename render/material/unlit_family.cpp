@@ -227,7 +227,7 @@ UnlitClaim ClaimSpriteCard( const ParameterBlock &block )
 	    "minsize", "maxsize", "startfadesize", "endfadesize", "maxdistance", "farfadeinterval",
 	    "useinstancing", "sequence_blend_mode", "zoomanimateseq2", "dualsequence",
 	    "maxlumframeblend1", "maxlumframeblend2", "extractgreenalpha", "addbasetexture2",
-	    "ramptexture", "selfillum" };
+	    "ramptexture", "selfillum", "distancealpha", "softedges", "outline" };
 	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
 	{
 		claim.reason = "the sprite card point does not draw " + *unread;
@@ -259,6 +259,15 @@ UnlitClaim ClaimSpriteCard( const ParameterBlock &block )
 	if ( detail::TextureBound( block, "ramptexture" ) )
 	{
 		claim.reason = "$ramptexture needs the sprite card point's color ramp";
+		return claim;
+	}
+	// Distance-coded alpha (spritecard_ps2x DISTANCEALPHA): the blended
+	// frame is cleared below alpha 0.5. spritecard.cpp sets SOFTEDGES from
+	// $outline, not $softedges, so without an outline $softedges is inert.
+	const bool distanceAlpha = ReadFlag( block, "distancealpha" );
+	if ( distanceAlpha && ReadFlag( block, "outline" ) )
+	{
+		claim.reason = "$outline needs the sprite card point's distance-coded outline";
 		return claim;
 	}
 	const float overbright = ReadParameter( block, "overbrightfactor" );
@@ -305,6 +314,7 @@ UnlitClaim ClaimSpriteCard( const ParameterBlock &block )
 	constants.meshModes[1] = 1.0f;
 	constants.meshModes[2] = addSelf;
 	constants.meshModes[3] = mod2x ? 1.0f : 0.0f;
+	constants.meshControls[0] = distanceAlpha ? 1.0f : 0.0f;
 	claim.claimed = true;
 	return claim;
 }

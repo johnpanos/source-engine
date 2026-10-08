@@ -371,6 +371,10 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     // SpriteCard (spritecard.cpp's parameters and defaults; RFC 0016 K8 particles).
     { "unlit", "$orientation", "orientation", ValueKind::kInt, "0" },
     { "unlit", "$splinetype", "splinetype", ValueKind::kInt, "0" },
+    // Portal 2-era distance-coded cards (CS:GO spritecard.cpp's declarations).
+    { "unlit", "$distancealpha", "distancealpha", ValueKind::kInt, "0" },
+    { "unlit", "$softedges", "softedges", ValueKind::kInt, "0" },
+    { "unlit", "$outline", "outline", ValueKind::kInt, "0" },
     { "unlit", "$overbrightfactor", "overbrightfactor", ValueKind::kFloat, "1" },
     { "unlit", "$addself", "addself", ValueKind::kFloat, "0" },
     { "unlit", "$addbasetexture2", "addbasetexture2", ValueKind::kFloat, "0" },

@@ -1861,7 +1861,8 @@ float DepthBlendFade()
 // the lightmap offset), times $overbrightfactor (surfaceControls.y), then
 // either premultiplied by alpha and brightened by $addself's weight times
 // itself (meshModes.z) before the vertex color, or times the vertex color and
-// alpha. $mod2x (meshModes.w) writes a dimensionless factor toward the
+// alpha; $distancealpha (meshControls.x) first clears texels below alpha
+// 0.5. $mod2x (meshModes.w) writes a dimensionless factor toward the
 // blend's neutral 0.5, as the decal-modulate point does: no exposure, fog
 // or output encoding. Card radiance is emitted: SpriteCard has no lighting.
 void SpriteCardSurface()
@@ -1873,6 +1874,11 @@ void SpriteCardSurface()
 	const vec4 frame1 = texture( sampler2D( baseTexture, baseSampler ), lightmapUv );
 #endif
 	vec4 blended = mix( frame0, frame1, lightmapOffset );
+#ifndef SEEDED_CARD_DISTANCE_ALPHA_IGNORED
+	// $distancealpha (meshControls.x): distance-coded alpha, cleared below 0.5.
+	if ( material.meshControls.x > 0.5 && blended.a < 0.5 )
+		blended = vec4( 0.0 );
+#endif
 	float vertexAlpha = color.a;
 	if ( material.surfaceControls.z > 0.5 )
 		vertexAlpha *= DepthBlendFade();
