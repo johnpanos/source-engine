@@ -286,7 +286,6 @@ void CVulkanContext::DescribeDevice( VkPhysicalDevice physical, uint32_t graphic
 	              1, std::min( 16, static_cast<int>( properties.limits.maxSamplerAnisotropy ) ) )
 	        : 1;
 	m_anisotropyLevel = std::min( 4, m_maxAnisotropy );
-	m_portalPushSupported = properties.limits.maxPushConstantsSize >= kPortalPushBytes;
 	m_descriptorSetLimit = properties.limits.maxBoundDescriptorSets;
 	// Volume textures (the white volume, color-correction volumes, the SDF
 	// shadow field) are checked against it whichever pipelines exist.
@@ -1479,93 +1478,8 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 	if ( m_dynamicResourcesReady )
 		return true;
 
-	// --- "$basetexture" material pipeline: the default texture sampled when a
-	// draw binds none. The textured shader MULTIPLIES by this sample, so the only
-	// correct default is opaque white -- the multiplicative identity, matching
-	// what D3D9 gets from TEXTURE_WHITE. A patterned default would silently tint
-	// or mask every draw whose material texture is missing, turning a texture
-	// residency gap into a whole-frame corruption that looks like a raster bug. ---
+	// --- The managed textures' samplers and descriptor sets ---
 	{
-		const uint32_t texW = 1, texH = 1;
-		const uint8_t texels[texW * texH * 4] = { 255, 255, 255, 255 };
-		VkImageCreateInfo ii = {};
-		ii.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-		ii.imageType = VK_IMAGE_TYPE_2D;
-		ii.format = VK_FORMAT_R8G8B8A8_UNORM;
-		ii.extent = { texW, texH, 1 };
-		ii.mipLevels = 1;
-		ii.arrayLayers = 1;
-		ii.samples = VK_SAMPLE_COUNT_1_BIT;
-		ii.tiling = VK_IMAGE_TILING_OPTIMAL;
-		ii.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-		ii.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		ii.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		if ( !CreateImage( ii, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &m_dynTexImage, &m_dynTexMemory,
-		         "dynamic texture", outError ) )
-			return false;
-		m_debugUtils.Name( VK_OBJECT_TYPE_IMAGE, m_dynTexImage, "built-in fallback texture" );
-
-		VkBuffer staging = VK_NULL_HANDLE;
-		VulkanMemory stagingMem = VK_NULL_HANDLE;
-		if ( !CreateBuffer( sizeof( texels ), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-		         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		         &staging, &stagingMem, outError ) )
-			return false;
-		void *mapped = nullptr;
-		MapMemory( stagingMem, &mapped );
-		std::memcpy( mapped, texels, sizeof( texels ) );
-		UnmapMemory( stagingMem );
-
-		VkCommandBuffer cmd = VK_NULL_HANDLE;
-		if ( !BeginSingleTimeCommands( &cmd, outError ) )
-		{
-			vkDestroyBuffer( m_device, staging, nullptr );
-			FreeMemory( stagingMem );
-			return false;
-		}
-		VkImageMemoryBarrier toDst = {};
-		toDst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-		toDst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		toDst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		toDst.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toDst.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toDst.image = m_dynTexImage;
-		toDst.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-		toDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-		    VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toDst );
-		VkBufferImageCopy copy = {};
-		copy.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
-		copy.imageExtent = { texW, texH, 1 };
-		vkCmdCopyBufferToImage(
-		    cmd, staging, m_dynTexImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy );
-		VkImageMemoryBarrier toRead = toDst;
-		toRead.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		toRead.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		toRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		toRead.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-		vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT,
-		    VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toRead );
-		uint64_t uploaded = 0;
-		if ( !EndSingleTimeCommands( cmd, outError, &uploaded ) )
-		{
-			vkDestroyBuffer( m_device, staging, nullptr );
-			FreeMemory( stagingMem );
-			return false;
-		}
-		ReleaseBufferAfter( uploaded, staging, stagingMem );
-
-		VkImageViewCreateInfo iv = {};
-		iv.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		iv.image = m_dynTexImage;
-		iv.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		iv.format = VK_FORMAT_R8G8B8A8_UNORM;
-		iv.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-		if ( vkCreateImageView( m_device, &iv, nullptr, &m_dynTexView ) != VK_SUCCESS )
-		{
-			SetError( outError, "vkCreateImageView (dynamic texture) failed" );
-			return false;
-		}
 		// One sampler per state combination. Material textures tile: world UVs
 		// span many repeats, so clamping by default would collapse every tiled
 		// surface onto its edge texel. Wrap is D3D9's default; Source clamps the
@@ -1596,9 +1510,8 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 			SetError( outError, "vkCreateDescriptorSetLayout (dynamic texture) failed" );
 			return false;
 		}
-		// One combined-image-sampler set for the built-in texture plus one per
-		// material-supplied managed texture, so each draw can sample its own texture
-		// (per-draw binding). Sized for a map's texture set.
+		// One combined-image-sampler set per managed texture the copies and
+		// captures sample. Sized for a map's texture set.
 		VkDescriptorPoolSize ps = {};
 		ps.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		ps.descriptorCount = kMaxManagedTexSets;
@@ -1614,38 +1527,6 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 			SetError( outError, "vkCreateDescriptorPool (dynamic texture) failed" );
 			return false;
 		}
-		VkDescriptorSetAllocateInfo da = {};
-		da.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		da.descriptorPool = m_dynTexDescPool;
-		da.descriptorSetCount = 1;
-		da.pSetLayouts = &m_dynTexDescLayout;
-		if ( vkAllocateDescriptorSets( m_device, &da, &m_dynTexDescSet ) != VK_SUCCESS )
-		{
-			SetError( outError, "vkAllocateDescriptorSets (dynamic texture) failed" );
-			return false;
-		}
-		VkDescriptorImageInfo dii = {};
-		dii.sampler = m_dynTexSampler;
-		dii.imageView = m_dynTexView;
-		dii.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		VkWriteDescriptorSet wds = {};
-		wds.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		wds.dstSet = m_dynTexDescSet;
-		wds.dstBinding = 0;
-		wds.descriptorCount = 1;
-		wds.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		wds.pImageInfo = &dii;
-		vkUpdateDescriptorSets( m_device, 1, &wds, 0, nullptr );
-		m_whiteCubeHandle = CreateManagedTexture(
-		    1, 1, VK_FORMAT_R8G8B8A8_UNORM, outError, 0, 1, VK_FORMAT_UNDEFINED, true );
-		NameManagedTexture( m_whiteCubeHandle, "white cube" );
-		if ( m_whiteCubeHandle < 0 )
-			return false;
-		const uint8_t white[4] = { 255, 255, 255, 255 };
-		for ( uint32_t face = 0; face < 6; ++face )
-			if ( !UploadManagedTexture(
-			         m_whiteCubeHandle, white, sizeof( white ), outError, 0, face ) )
-				return false;
 		// The white volume: what an unread 3D sampler reads (the post
 		// passes' unused color-correction volumes, the PBR frame set's
 		// shadow field when the map has none).
@@ -1656,26 +1537,6 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 		if ( m_whiteVolumeHandle < 0 || !UploadManagedTexture( m_whiteVolumeHandle, whiteVolume,
 		                                    sizeof( whiteVolume ), outError ) )
 			return false;
-		// The reflection probes' neutral inputs: a two-cube array and a table
-		// whose first word (the probe count) is 0, bound where a map has none.
-		m_neutralProbeCubesHandle = CreateManagedTexture(
-		    1, 1, VK_FORMAT_R8G8B8A8_UNORM, outError, 0, 1, VK_FORMAT_UNDEFINED, true, 1, 2 );
-		NameManagedTexture( m_neutralProbeCubesHandle, "neutral reflection cubes" );
-		if ( m_neutralProbeCubesHandle < 0 )
-			return false;
-		for ( uint32_t face = 0; face < 12; ++face )
-			if ( !UploadManagedTexture(
-			         m_neutralProbeCubesHandle, white, sizeof( white ), outError, 0, face ) )
-				return false;
-		m_neutralProbeTableHandle = CreateManagedTexture(
-		    1, 1, VK_FORMAT_R32_UINT, outError, 0, 1, VK_FORMAT_UNDEFINED, false );
-		NameManagedTexture( m_neutralProbeTableHandle, "neutral reflection table" );
-		const uint32_t noProbes = 0;
-		if ( m_neutralProbeTableHandle < 0 ||
-		     !UploadManagedTexture( m_neutralProbeTableHandle,
-		         reinterpret_cast<const uint8_t *>( &noProbes ), sizeof( noProbes ), outError ) )
-			return false;
-		SetManagedTextureSamplerState( m_neutralProbeTableHandle, kSamplerClampU | kSamplerClampV );
 		// Opaque black 1x1: what a deferred render target samples (and thereby
 		// "reads") before its storage is allocated on first use.
 		m_unrenderedTargetHandle = CreateManagedTexture(
@@ -1690,13 +1551,6 @@ bool CVulkanContext::InitDynamicMesh( std::string *outError )
 	Log( "dynamic mesh resources ready (scene depth %s)\n",
 	    m_sceneDepthUsable ? "readable" : "unavailable" );
 	return true;
-}
-
-void CVulkanContext::SetDirectLights( const DirectLight *lights, uint32_t count )
-{
-	m_directLightCount = std::min( count, kMaxDirectLights );
-	for ( uint32_t i = 0; i < m_directLightCount; ++i )
-		m_directLights[i] = lights[i];
 }
 
 uint32_t CVulkanContext::MaxSampledTextureDimension() const
@@ -2113,10 +1967,6 @@ void CVulkanContext::DestroyManagedTexture( int handle )
 		m_pendingUploadData.clear();
 	m_retiredTextures.push_back( { slot, handle, m_submitSerial + 1 } );
 	slot = ManagedTexture();
-	if ( m_dynBoundTexHandle == handle )
-		m_dynBoundTexHandle = -1;
-	if ( m_dynLightmapHandle == handle )
-		m_dynLightmapHandle = -1;
 	if ( m_dynTarget == handle )
 		m_dynTarget = -1;
 	RetireCompletedTextures();
@@ -2925,8 +2775,6 @@ CVulkanContext::DynDraw &CVulkanContext::AppendRecord( int kind )
 	d.target = m_dynTarget;
 	d.tag = m_dynTag;
 	std::memcpy( d.viewport, m_dynViewport, sizeof( d.viewport ) );
-	d.scissorEnabled = m_dynScissorEnabled;
-	std::memcpy( d.scissor, m_dynScissor, sizeof( d.scissor ) );
 	m_dynDrawRecords.push_back( d );
 	return m_dynDrawRecords.back();
 }
@@ -2947,15 +2795,6 @@ void CVulkanContext::SetViewport( int x, int y, int width, int height, float min
 	m_dynViewport[3] = static_cast<float>( height );
 	m_dynViewport[4] = minZ;
 	m_dynViewport[5] = maxZ;
-}
-
-void CVulkanContext::SetScissor( bool enable, int x, int y, int width, int height )
-{
-	m_dynScissorEnabled = enable;
-	m_dynScissor[0] = x;
-	m_dynScissor[1] = y;
-	m_dynScissor[2] = width;
-	m_dynScissor[3] = height;
 }
 
 void CVulkanContext::QueueClear( bool color, bool depth, bool stencil )
@@ -3115,7 +2954,7 @@ std::string CVulkanContext::DescribeStream() const
 	struct Totals
 	{
 		int target;
-		size_t draws, clears, copies, vertices;
+		size_t clears, copies, other;
 	};
 	std::vector<Totals> totals;
 	std::string order;
@@ -3128,18 +2967,15 @@ std::string CVulkanContext::DescribeStream() const
 				t = &e;
 		if ( !t )
 		{
-			totals.push_back( { d.target, 0, 0, 0, 0 } );
+			totals.push_back( { d.target, 0, 0, 0 } );
 			t = &totals.back();
 		}
-		if ( d.kind == kRecordDraw )
-		{
-			++t->draws;
-			t->vertices += d.indexCount > 0 ? d.indexCount : d.vertexCount;
-		}
-		else if ( d.kind == kRecordClear )
+		if ( d.kind == kRecordClear )
 			++t->clears;
-		else
+		else if ( d.kind == kRecordCopy )
 			++t->copies;
+		else
+			++t->other;
 		if ( d.target != last && order.size() < 400 )
 			order += ( d.target < 0 ? std::string( " bb" ) : " " + std::to_string( d.target ) );
 		last = d.target;
@@ -3148,8 +2984,8 @@ std::string CVulkanContext::DescribeStream() const
 	for ( const Totals &t : totals )
 	{
 		char line[160];
-		snprintf( line, sizeof( line ), "target %d: draws=%zu clears=%zu copies=%zu verts=%zu\n",
-		    t.target, t.draws, t.clears, t.copies, t.vertices );
+		snprintf( line, sizeof( line ), "target %d: clears=%zu copies=%zu queries/slots=%zu\n",
+		    t.target, t.clears, t.copies, t.other );
 		out += line;
 	}
 	out += "order:" + order + "\n";
@@ -3169,15 +3005,7 @@ std::vector<CVulkanContext::StreamRecordInfo> CVulkanContext::DescribeStreamReco
 		info.clearColor = d.clearColor;
 		info.clearDepth = d.clearDepth;
 		std::memcpy( info.clearValue, d.clearValue, sizeof( info.clearValue ) );
-		info.shaderIndex = d.shaderIndex;
-		info.texHandle = d.texHandle;
-		info.raster = d.raster;
-		// Elements drawn: an indexed draw renders its index count.
-		info.vertexCount = d.indexCount > 0 ? d.indexCount : d.vertexCount;
-		std::memcpy( info.modulation, d.modulation, sizeof( info.modulation ) );
 		std::memcpy( info.viewport, d.viewport, sizeof( info.viewport ) );
-		std::memcpy( info.texXform0, d.texXform0, sizeof( info.texXform0 ) );
-		std::memcpy( info.texXform1, d.texXform1, sizeof( info.texXform1 ) );
 		out.push_back( info );
 	}
 	return out;
@@ -3317,25 +3145,15 @@ int CVulkanContext::RecordBackBufferDepthReads( const DynDraw &r )
 		return kKeepNone;
 	switch ( r.kind )
 	{
-	case kRecordDraw:
-	{
-		const DynRasterState &s = r.raster;
-		const bool depth = s.depthTest && s.depthCompare != VK_COMPARE_OP_ALWAYS;
-		const bool stencil = s.stencilEnable && s.stencilCompare != VK_COMPARE_OP_ALWAYS;
-		return ( depth ? kKeepDepth : 0 ) | ( stencil ? kKeepStencil : 0 );
-	}
 	case kRecordClear:
 		return kKeepNone;
 	case kRecordCopy:
 		return r.copyDepthToAlpha ? kKeepDepth : kKeepNone;
 	case kRecordQueryBegin:
 	case kRecordQueryEnd:
-		// A query counts the samples of the draws inside it, which are judged
-		// by their own state (the auto-exposure histogram draws at the end of
-		// every HDR frame test no depth).
 		return kKeepNone;
 	default:
-		return kKeepDepthStencil; // scene captures (they copy depth) and anything new
+		return kKeepDepthStencil; // core slots, and anything new
 	}
 }
 
@@ -3378,7 +3196,7 @@ bool CVulkanContext::FirstPassWantsSrgb() const
 		// A slot closes the pass; the view it reopens with is chosen there.
 		if ( r.kind == kRecordCorePass )
 			continue;
-		if ( r.target != -1 || r.kind == kRecordCopy || r.kind == kRecordSceneCapture )
+		if ( r.target != -1 || r.kind == kRecordCopy )
 			return false;
 		if ( !RecordViewAgnostic( r ) )
 			return RecordWantsSrgb( r );
@@ -3766,34 +3584,12 @@ void CVulkanContext::RecordDepthToAlpha( VkCommandBuffer cmd, int srcTarget, con
 void CVulkanContext::DestroyDynamicMesh()
 {
 	m_dynamicResourcesReady = false;
-	for ( const auto &entry : m_dynTexPipelines )
-		vkDestroyPipeline( m_device, entry.second, nullptr );
-	m_dynTexPipelines.clear();
-	for ( const auto &entry : m_worldTexPipelines )
-		vkDestroyPipeline( m_device, entry.second, nullptr );
-	m_worldTexPipelines.clear();
-	for ( const auto &entry : m_portalPipelines )
-		vkDestroyPipeline( m_device, entry.second, nullptr );
-	m_portalPipelines.clear();
 	DestroyDepthToAlpha();
-	for ( VkShaderModule *module : { &m_portalVert, &m_portalFrag } )
-	{
-		if ( *module != VK_NULL_HANDLE )
-			vkDestroyShaderModule( m_device, *module, nullptr );
-		*module = VK_NULL_HANDLE;
-	}
-	for ( VkPipelineShaderStageCreateInfo &stage : m_texTemplate.stages )
-	{
-		if ( stage.module != VK_NULL_HANDLE )
-			vkDestroyShaderModule( m_device, stage.module, nullptr );
-		stage.module = VK_NULL_HANDLE;
-	}
 	if ( m_dynTexDescPool != VK_NULL_HANDLE )
 	{
 		vkDestroyDescriptorPool( m_device, m_dynTexDescPool, nullptr );
 		m_dynTexDescPool = VK_NULL_HANDLE;
 	}
-	m_dynTexDescSet = VK_NULL_HANDLE;
 	m_msDepthSampleSet = VK_NULL_HANDLE; // freed with the pool
 	if ( m_dynTexDescLayout != VK_NULL_HANDLE )
 	{
@@ -3807,28 +3603,11 @@ void CVulkanContext::DestroyDynamicMesh()
 		sampler = VK_NULL_HANDLE;
 	}
 	m_dynTexSampler = VK_NULL_HANDLE; // one of m_samplers
-	if ( m_dynTexView != VK_NULL_HANDLE )
-	{
-		vkDestroyImageView( m_device, m_dynTexView, nullptr );
-		m_dynTexView = VK_NULL_HANDLE;
-	}
-	if ( m_dynTexImage != VK_NULL_HANDLE )
-	{
-		vkDestroyImage( m_device, m_dynTexImage, nullptr );
-		m_dynTexImage = VK_NULL_HANDLE;
-	}
-	if ( m_dynTexMemory != VK_NULL_HANDLE )
-	{
-		FreeMemory( m_dynTexMemory );
-		m_dynTexMemory = VK_NULL_HANDLE;
-	}
 	// The device is idle here: every texture, deleted or not, can go.
 	for ( ManagedTexture &t : m_managedTextures )
 		ReleaseManagedTextureObjects( t );
 	m_managedTextures.clear();
 	m_whiteVolumeHandle = -1;
-	m_neutralProbeCubesHandle = m_neutralProbeTableHandle = -1;
-	m_reflectionProbeHandle = m_reflectionTableHandle = -1;
 	m_sceneColorHandle = -1;
 	m_sceneDepthHandle = -1;
 	m_sceneDepthCaptured = false;
@@ -3884,323 +3663,6 @@ void CVulkanContext::DestroyStreamBuffer( StreamBuffer &stream )
 	if ( stream.memory != VK_NULL_HANDLE )
 		FreeMemory( stream.memory );
 	stream = StreamBuffer();
-}
-
-bool CVulkanContext::UploadWorldMesh( const void *vertices, size_t vertexBytes, const void *indices,
-    size_t indexBytes, std::string *outError )
-{
-	if ( !IsValid() || !vertices || !indices || !vertexBytes || !indexBytes ||
-	     vertexBytes > 512ull * 1024 * 1024 || indexBytes > 512ull * 1024 * 1024 - vertexBytes )
-	{
-		SetError( outError, "invalid WMSH upload request or Vulkan device" );
-		return false;
-	}
-
-	StreamBuffer newVertices;
-	StreamBuffer newIndices;
-	StreamBuffer staging;
-	const size_t stagingBytes = vertexBytes + indexBytes;
-	if ( !CreateBuffer( vertexBytes,
-	         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-	             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-	         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &newVertices.buffer, &newVertices.memory,
-	         outError ) ||
-	     !CreateBuffer( indexBytes,
-	         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-	             VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-	         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &newIndices.buffer, &newIndices.memory,
-	         outError ) ||
-	     !CreateBuffer( stagingBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-	         &staging.buffer, &staging.memory, outError ) )
-	{
-		DestroyStreamBuffer( staging );
-		DestroyStreamBuffer( newIndices );
-		DestroyStreamBuffer( newVertices );
-		return false;
-	}
-	void *mapped = nullptr;
-	const VkResult mapResult = MapMemory( staging.memory, &mapped );
-	if ( mapResult != VK_SUCCESS )
-	{
-		SetError(
-		    outError, std::string( "WMSH staging map failed: " ) + ResultString( mapResult ) );
-		DestroyStreamBuffer( staging );
-		DestroyStreamBuffer( newIndices );
-		DestroyStreamBuffer( newVertices );
-		return false;
-	}
-	staging.mapped = mapped;
-	std::memcpy( mapped, vertices, vertexBytes );
-	std::memcpy( static_cast<uint8_t *>( mapped ) + vertexBytes, indices, indexBytes );
-	VkCommandBuffer cmd = VK_NULL_HANDLE;
-	if ( !BeginSingleTimeCommands( &cmd, outError ) )
-	{
-		DestroyStreamBuffer( staging );
-		DestroyStreamBuffer( newIndices );
-		DestroyStreamBuffer( newVertices );
-		return false;
-	}
-	const VkBufferCopy vertexCopy = { 0, 0, vertexBytes };
-	const VkBufferCopy indexCopy = { vertexBytes, 0, indexBytes };
-	vkCmdCopyBuffer( cmd, staging.buffer, newVertices.buffer, 1, &vertexCopy );
-	vkCmdCopyBuffer( cmd, staging.buffer, newIndices.buffer, 1, &indexCopy );
-	VkBufferMemoryBarrier barriers[2] = {};
-	for ( int i = 0; i < 2; ++i )
-	{
-		barriers[i].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-		barriers[i].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-		barriers[i].dstAccessMask =
-		    i == 0 ? VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT : VK_ACCESS_INDEX_READ_BIT;
-		barriers[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barriers[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barriers[i].buffer = i == 0 ? newVertices.buffer : newIndices.buffer;
-		barriers[i].offset = 0;
-		barriers[i].size = VK_WHOLE_SIZE;
-	}
-	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-	    0, 0, nullptr, 2, barriers, 0, nullptr );
-	uint64_t uploadValue = 0;
-	const bool uploaded = EndSingleTimeCommands( cmd, outError, &uploadValue );
-	if ( uploaded )
-		ReleaseStreamBufferAfter( uploadValue, staging );
-	else
-	{
-		DestroyStreamBuffer( staging );
-		DestroyStreamBuffer( newIndices );
-		DestroyStreamBuffer( newVertices );
-		return false;
-	}
-
-	SetWorldLightmapHandle( -1 );
-	SetProbeVolumeHandles( -1, -1, 0 );
-	SetProbeDeltaHandle( -1 );
-	SetShadowField( -1, nullptr, 0.0f, nullptr );
-	SetReflectionProbes( nullptr, 0, 0, 0, 0, nullptr );
-	// Submitted frames may still read the old mesh; nothing recorded later
-	// does (a replay binds the resident buffers). Released behind the newest
-	// submission's value, without waiting.
-	ReleaseStreamBufferAfter( m_hostDevice->SubmittedValue(), m_worldIndexBuffer );
-	ReleaseStreamBufferAfter( m_hostDevice->SubmittedValue(), m_worldVertexBuffer );
-	newVertices.capacity = vertexBytes;
-	newIndices.capacity = indexBytes;
-	m_worldVertexBuffer = newVertices;
-	m_worldIndexBuffer = newIndices;
-	m_worldVertexCount = static_cast<uint32_t>( vertexBytes / 40 );
-	m_worldIndexCount = static_cast<uint32_t>( indexBytes / sizeof( uint32_t ) );
-	++m_worldMeshRevision;
-	return true;
-}
-
-void CVulkanContext::SetWorldLightmapHandle( int handle )
-{
-	SetWorldLightmapHandles( handle, handle >= 0 ? m_worldLightmapDirectHandle : -1,
-	    handle >= 0 ? m_worldLightmapIndirectHandle : -1 );
-}
-
-void CVulkanContext::SetWorldLightmapHandles( int total, int direct, int indirect )
-{
-	int *const slots[3] = {
-	    &m_worldLightmapHandle, &m_worldLightmapDirectHandle, &m_worldLightmapIndirectHandle };
-	const int values[3] = { total, direct, indirect };
-	for ( int i = 0; i < 3; ++i )
-	{
-		if ( *slots[i] == values[i] )
-			continue;
-		const int old = *slots[i];
-		*slots[i] = values[i];
-		if ( old >= 0 )
-			DestroyManagedTexture( old );
-	}
-}
-
-void CVulkanContext::SetProbeDeltaHandle( int atlas )
-{
-	if ( m_probeDeltaHandle == atlas )
-		return;
-	const int old = m_probeDeltaHandle;
-	m_probeDeltaHandle = atlas;
-	if ( old >= 0 )
-		DestroyManagedTexture( old );
-}
-
-void CVulkanContext::SetShadowField(
-    int handle, const float origin[3], float voxel, const uint32_t dims[3] )
-{
-	if ( m_shadowFieldHandle >= 0 && m_shadowFieldHandle != handle )
-		DestroyManagedTexture( m_shadowFieldHandle );
-	m_shadowFieldHandle = handle;
-	for ( int k = 0; k < 3; ++k )
-	{
-		m_shadowFieldOrigin[k] = handle >= 0 ? origin[k] : 0.0f;
-		m_shadowFieldDims[k] = handle >= 0 ? static_cast<float>( dims[k] ) : 0.0f;
-	}
-	m_shadowFieldOrigin[3] = handle >= 0 ? voxel : 0.0f;
-}
-
-// The probe words as an R32_UINT texture (kProbeTableWidth wide) the shaders
-// fetch by index (world_pbr_probe.glsl ReflectionProbesWord).
-static const uint32_t kProbeTableWidth = 4096;
-
-// The words padded to whole rows of the table texture.
-static std::vector<uint32_t> ProbeTableTexels( const std::vector<uint32_t> &words, uint32_t *rows )
-{
-	*rows = ( uint32_t( words.size() ) + kProbeTableWidth - 1 ) / kProbeTableWidth;
-	std::vector<uint32_t> table( size_t( *rows ) * kProbeTableWidth, 0 );
-	std::copy( words.begin(), words.end(), table.begin() );
-	return table;
-}
-
-bool CVulkanContext::SetReflectionProbes( const uint32_t *words, uint32_t wordCount, uint32_t count,
-    uint32_t faceSize, uint32_t mips, const uint8_t *blocks, std::string *outError )
-{
-	const auto release = [this]()
-	{
-		if ( m_reflectionProbeHandle >= 0 )
-			DestroyManagedTexture( m_reflectionProbeHandle );
-		if ( m_reflectionTableHandle >= 0 )
-			DestroyManagedTexture( m_reflectionTableHandle );
-		m_reflectionProbeHandle = m_reflectionTableHandle = -1;
-	};
-	if ( !words )
-	{
-		release();
-		m_reflectionProbeWords.clear();
-		return true;
-	}
-	if ( count == 0 || mips == 0 || faceSize == 0 || !blocks || wordCount < 16 )
-	{
-		if ( outError )
-			*outError = "reflection probe upload is malformed";
-		return false;
-	}
-	// Two cubes at least: one probe's array would be a plain cube view.
-	const uint32_t cubes = std::max( count, 2u );
-	std::string detail;
-	const int radiance = CreateManagedTexture( int( faceSize ), int( faceSize ),
-	    VK_FORMAT_BC6H_UFLOAT_BLOCK, &detail, 0, mips, VK_FORMAT_UNDEFINED, true, 1, cubes );
-	NameManagedTexture( radiance, "RPRB reflection probes" );
-	bool ok = radiance >= 0;
-	size_t offset = 0;
-	for ( uint32_t level = 0; ok && level < mips; ++level )
-	{
-		const uint32_t size = faceSize >> level;
-		const size_t faceBytes = size_t( ( size + 3 ) / 4 ) * ( ( size + 3 ) / 4 ) * 16;
-		for ( uint32_t layer = 0; ok && layer < 6 * count; ++layer )
-		{
-			ok =
-			    UploadManagedTexture( radiance, blocks + offset, faceBytes, &detail, level, layer );
-			offset += faceBytes;
-		}
-	}
-	if ( !ok )
-	{
-		if ( radiance >= 0 )
-			DestroyManagedTexture( radiance );
-		if ( outError )
-			*outError = "reflection probe cube array upload failed: " + detail;
-		return false;
-	}
-	SetManagedTextureSamplerState(
-	    radiance, kSamplerClampU | kSamplerClampV | kSamplerLinear | kSamplerMipLinear );
-	std::vector<uint32_t> copy( words, words + wordCount );
-	copy[4] = uint32_t( m_reflectionProbeMode );
-	copy[5] = 0; // no relight in this backend
-	uint32_t rows = 0;
-	const std::vector<uint32_t> table = ProbeTableTexels( copy, &rows );
-	const int tableHandle = CreateManagedTexture(
-	    int( kProbeTableWidth ), int( rows ), VK_FORMAT_R32_UINT, &detail, 0, 1 );
-	NameManagedTexture( tableHandle, "RPRB probe table" );
-	if ( tableHandle < 0 ||
-	     !UploadManagedTexture( tableHandle, reinterpret_cast<const uint8_t *>( table.data() ),
-	         table.size() * 4, &detail ) )
-	{
-		DestroyManagedTexture( radiance );
-		if ( tableHandle >= 0 )
-			DestroyManagedTexture( tableHandle );
-		if ( outError )
-			*outError = "reflection probe table upload failed: " + detail;
-		return false;
-	}
-	// Fetched by index: nearest, clamped.
-	SetManagedTextureSamplerState( tableHandle, kSamplerClampU | kSamplerClampV );
-	release();
-	m_reflectionProbeHandle = radiance;
-	m_reflectionTableHandle = tableHandle;
-	m_reflectionProbeWords.swap( copy );
-	return true;
-}
-
-void CVulkanContext::SetReflectionProbeMode( int mode )
-{
-	// Valid modes are 0..3 and 5..7 (reflection_probes.h); anything else
-	// is the default blend.
-	if ( mode < 0 || mode > 7 || mode == 4 )
-		mode = 1;
-	if ( mode == m_reflectionProbeMode )
-		return;
-	m_reflectionProbeMode = mode;
-	if ( m_reflectionTableHandle < 0 || m_reflectionProbeWords.size() < 16 )
-		return;
-	// A new table with the new mode word; the old one is retired behind the
-	// frames that read it.
-	std::string error;
-	m_reflectionProbeWords[4] = uint32_t( mode );
-	uint32_t rows = 0;
-	const std::vector<uint32_t> table = ProbeTableTexels( m_reflectionProbeWords, &rows );
-	const int handle = CreateManagedTexture(
-	    int( kProbeTableWidth ), int( rows ), VK_FORMAT_R32_UINT, &error, 0, 1 );
-	if ( handle < 0 ||
-	     !UploadManagedTexture(
-	         handle, reinterpret_cast<const uint8_t *>( table.data() ), table.size() * 4, &error ) )
-	{
-		if ( handle >= 0 )
-			DestroyManagedTexture( handle );
-		Log( "mat_reflection_probes %d not applied: %s\n", mode, error.c_str() );
-		return;
-	}
-	SetManagedTextureSamplerState( handle, kSamplerClampU | kSamplerClampV );
-	DestroyManagedTexture( m_reflectionTableHandle );
-	m_reflectionTableHandle = handle;
-}
-
-void CVulkanContext::SetProbeVolumeHandles( int atlas, int grids, uint32_t gridCount )
-{
-	int *const slots[2] = { &m_probeAtlasHandle, &m_probeGridHandle };
-	const int values[2] = { atlas, grids };
-	for ( int i = 0; i < 2; ++i )
-	{
-		if ( *slots[i] == values[i] )
-			continue;
-		const int old = *slots[i];
-		*slots[i] = values[i];
-		if ( old >= 0 )
-			DestroyManagedTexture( old );
-	}
-	m_probeGridCount = atlas >= 0 && grids >= 0 ? gridCount : 0;
-}
-
-void CVulkanContext::ReleaseWorldMesh()
-{
-	if ( m_device == VK_NULL_HANDLE )
-		return;
-	++m_worldMeshRevision;
-	SetWorldLightmapHandle( -1 );
-	SetProbeVolumeHandles( -1, -1, 0 );
-	SetProbeDeltaHandle( -1 );
-	SetShadowField( -1, nullptr, 0.0f, nullptr );
-	SetReflectionProbes( nullptr, 0, 0, 0, 0, nullptr );
-	// Released behind the newest submission, without waiting (UploadWorldMesh).
-	ReleaseStreamBufferAfter( m_hostDevice->SubmittedValue(), m_worldIndexBuffer );
-	ReleaseStreamBufferAfter( m_hostDevice->SubmittedValue(), m_worldVertexBuffer );
-	m_worldVertexCount = 0;
-	m_worldIndexCount = 0;
-}
-
-bool CVulkanContext::WorldMeshResident() const
-{
-	return m_worldVertexBuffer.buffer != VK_NULL_HANDLE &&
-	       m_worldIndexBuffer.buffer != VK_NULL_HANDLE;
 }
 
 bool CVulkanContext::WaitForSubmittedFrame( uint64_t serial, uint64_t timeoutNs )
@@ -4474,9 +3936,7 @@ bool CVulkanContext::SkipLegacyRecord( const DynDraw &d, bool legacyOff, bool le
 	// Depth-alpha snapshots are ordered inputs to core soft particles. Their
 	// producer must survive the suppression of replaced legacy draws.
 	return legacyOff && !legacyHud &&
-	       ( ( d.kind == kRecordDraw && !d.coreCustomEffect && !d.queryInput ) ||
-	           ( d.kind == kRecordCopy && !d.corePortalCopy && !d.copyDepthToAlpha ) ||
-	           d.kind == kRecordSceneCapture ||
+	       ( ( d.kind == kRecordCopy && !d.corePortalCopy && !d.copyDepthToAlpha ) ||
 	           ( d.kind == kRecordClear && !d.clearDepth && !d.clearStencil ) );
 }
 
@@ -5198,7 +4658,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 				{
 					const DynDraw &n = m_dynDrawRecords[next];
 					if ( n.target != r.target || n.kind == kRecordCopy ||
-					     n.kind == kRecordSceneCapture || n.kind == kRecordCorePass )
+					     n.kind == kRecordCorePass )
 						break;
 					if ( !RecordViewAgnostic( n ) )
 						return RecordWantsSrgb( n );
@@ -5305,7 +4765,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 				}
 				continue;
 			}
-			if ( d.kind == kRecordDraw || d.kind == kRecordClear )
+			if ( d.kind == kRecordClear )
 				lastCopy = nullptr;
 			const bool wantSrgb = viewFor( recordIndex );
 			if ( !passOpen || d.target != openTarget || wantSrgb != openSrgb )
@@ -7124,11 +6584,6 @@ void CVulkanContext::Shutdown()
 
 	if ( m_device != VK_NULL_HANDLE )
 	{
-		DestroyStreamBuffer( m_worldIndexBuffer );
-		DestroyStreamBuffer( m_worldVertexBuffer );
-		m_worldVertexCount = 0;
-		m_worldIndexCount = 0;
-		++m_worldMeshRevision;
 		DestroyDynamicMesh();
 		DestroySwapchainObjects();
 		DestroyMsaaTargets();

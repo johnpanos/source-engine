@@ -204,30 +204,6 @@ int main( int argc, char **argv )
 
 	Check( ctx.IsValid(), "context is valid after Init" );
 	Check( ctx.DeviceName()[0] != '\0', "adapter reported a device name" );
-	// Exercise map-scoped WMSH buffer ownership on a real device. A failed
-	// replacement must leave the previous pair resident, while explicit release
-	// and context shutdown both retire them after GPU work completes.
-	uint8_t worldVertices[3 * 40] = {};
-	const uint32_t worldIndices[3] = { 0, 1, 2 };
-	for ( size_t i = 0; i < sizeof( worldVertices ); ++i )
-		worldVertices[i] = static_cast<uint8_t>( i * 37 + 11 );
-	Check( !ctx.WorldMeshResident(), "world mesh starts absent" );
-	Check( !ctx.UploadWorldMesh(
-	           nullptr, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
-	    "world mesh rejects a missing vertex section" );
-	Check( !ctx.WorldMeshResident(), "failed first upload leaves no world mesh" );
-	Check( ctx.UploadWorldMesh(
-	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
-	    "world mesh uploads device-local vertex and index buffers" );
-	Check( ctx.WorldMeshResident(), "world mesh pair is resident after upload" );
-	worldVertices[0] = 1;
-	Check( ctx.UploadWorldMesh(
-	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
-	    "world mesh replacement uploads after prior GPU work" );
-	Check( !ctx.UploadWorldMesh(
-	           worldVertices, sizeof( worldVertices ), nullptr, sizeof( worldIndices ), &err ),
-	    "world mesh rejects a missing index section" );
-	Check( ctx.WorldMeshResident(), "failed replacement retains the prior world mesh" );
 
 	int sw = 0, sh = 0;
 	ctx.GetSwapchainExtent( sw, sh );
@@ -265,7 +241,6 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "resize failed: %s\n", err.c_str() );
 		++g_failures;
 	}
-	Check( ctx.WorldMeshResident(), "world mesh survives presentation resize" );
 	if ( !PresentAndCapture( ctx, 0.0f, 1.0f, 0.0f, &err ) )
 	{
 		std::fprintf( stderr, "present/capture (green) failed: %s\n", err.c_str() );
@@ -506,13 +481,6 @@ int main( int argc, char **argv )
 	}
 
 	ctx.ClearDynamicQueue();
-	ctx.ReleaseWorldMesh();
-	Check( !ctx.WorldMeshResident(), "map unload releases world mesh buffers" );
-	ctx.ReleaseWorldMesh();
-	Check( !ctx.WorldMeshResident(), "world mesh release is idempotent" );
-	Check( ctx.UploadWorldMesh(
-	           worldVertices, sizeof( worldVertices ), worldIndices, sizeof( worldIndices ), &err ),
-	    "world mesh can upload after release" );
 
 	err.clear();
 
@@ -544,7 +512,6 @@ int main( int argc, char **argv )
 
 	ctx.Shutdown();
 	Check( !ctx.IsValid(), "context is invalid after Shutdown" );
-	Check( !ctx.WorldMeshResident(), "device shutdown releases world mesh buffers" );
 
 	SDL_DestroyWindow( window );
 	SDL_Quit();

@@ -1,116 +1,68 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Validate WMSH uploads and retain map-scoped GPU resources.
+// Purpose: Validate WMSH uploads; the render core's world stage owns the
+// map's GPU resources.
 //
 //===========================================================================//
 
 #include "vulkan_world_mesh_upload.h"
-
-#include "vulkan_device.h"
-#include "vulkan_world_lightmap.h"
-#include "tier0/dbg.h"
-
-#include <string>
 
 namespace render_vulkan
 {
 
 bool CVulkanWorldMeshUpload::Upload( const world_mesh_gpu::WorldMeshUploadRequest &request )
 {
-	if ( !request.vertexCount || !request.indexCount ||
+	if ( !request.vertices || !request.indices || !request.vertexCount || !request.indexCount ||
 	     request.vertexBytes != size_t( request.vertexCount ) * 40 ||
 	     request.indexBytes != size_t( request.indexCount ) * sizeof( uint32_t ) )
 		return false;
-	std::string error;
-	if ( !m_context.UploadWorldMesh(
-	         request.vertices, request.vertexBytes, request.indices, request.indexBytes, &error ) )
-	{
-		Warning( "[NativeVulkan] WMSH upload failed: %s\n", error.c_str() );
-		return false;
-	}
+	m_resident = true;
 	return true;
 }
 
 bool CVulkanWorldMeshUpload::UploadLightmap(
     const world_mesh_gpu::WorldLightmapUploadRequest &request )
 {
-	std::string error;
-	if ( !UploadWorldLightmapLayers( m_context, request, &error ) )
-	{
-		Warning( "[NativeVulkan] WMSH LMAP rejected: %s\n", error.c_str() );
-		return false;
-	}
-	// A partial update (moving occluders) is not news.
-	if ( !request.regions )
-		Msg( "[NativeVulkan] WMSH LMAP ready (%u x %u, linear RGBA16F, %u layer%s)\n",
-		    request.width, request.height, request.layerCount, request.layerCount == 1 ? "" : "s" );
-	return true;
+	(void)request;
+	return m_resident;
 }
 
 bool CVulkanWorldMeshUpload::UploadProbeVolume(
     const world_mesh_gpu::ProbeVolumeUploadRequest &request )
 {
-	std::string error;
-	if ( !UploadWorldProbeVolume( m_context, request, &error ) )
-	{
-		Warning( "[NativeVulkan] PRBV rejected: %s\n", error.c_str() );
-		return false;
-	}
-	// Producers republish the volume as often as every frame: report its
-	// first upload per map, not each update.
-	if ( !m_probeVolumeReported )
-		Msg( "[NativeVulkan] PRBV ready (%u x %u atlas, %u grid%s)\n", request.atlasWidth,
-		    request.atlasHeight, request.gridCount, request.gridCount == 1 ? "" : "s" );
-	m_probeVolumeReported = true;
-	return true;
+	(void)request;
+	return m_resident;
 }
 
 bool CVulkanWorldMeshUpload::UploadShadowField(
     const world_mesh_gpu::ShadowFieldUploadRequest &request )
 {
-	std::string error;
-	if ( !UploadWorldShadowField( m_context, request, &error ) )
-	{
-		Warning( "[NativeVulkan] SDF shadow field rejected: %s\n", error.c_str() );
-		return false;
-	}
-	if ( request.distances )
-		Msg( "[NativeVulkan] SDF shadow field ready (%u x %u x %u, %.1f-unit voxels)\n",
-		    request.dims[0], request.dims[1], request.dims[2], request.voxel );
-	return true;
+	(void)request;
+	return m_resident;
 }
 
 bool CVulkanWorldMeshUpload::UploadReflectionProbes(
     const world_mesh_gpu::ReflectionProbesUploadRequest &request )
 {
-	std::string error;
-	if ( !UploadWorldReflectionProbes( m_context, request, &error ) )
-	{
-		Warning( "[NativeVulkan] RPRB reflection probes rejected: %s\n", error.c_str() );
-		return false;
-	}
-	if ( request.data )
-		Msg( "[NativeVulkan] RPRB reflection probes ready (%u probe%s, %u mips of %u px faces)\n",
-		    request.probeCount, request.probeCount == 1 ? "" : "s", request.mipCount,
-		    request.faceSize );
-	return true;
+	(void)request;
+	return m_resident;
 }
 
 bool CVulkanWorldMeshUpload::DrawBatch( uint32_t firstIndex, uint32_t indexCount )
 {
-	return m_context.WorldMeshResident() && indexCount && m_drawBatch &&
-	       m_drawBatch( firstIndex, indexCount );
+	(void)firstIndex;
+	(void)indexCount;
+	return false;
 }
 
 void CVulkanWorldMeshUpload::Release()
 {
-	m_probeVolumeReported = false;
-	m_context.ReleaseWorldMesh();
+	m_resident = false;
 }
 
 bool CVulkanWorldMeshUpload::IsResident() const
 {
-	return m_context.WorldMeshResident();
+	return m_resident;
 }
 
 } // namespace render_vulkan

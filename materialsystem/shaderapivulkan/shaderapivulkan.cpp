@@ -702,12 +702,6 @@ static bool SsbumpBasisNormalized()
 }
 
 // RFC 0011 indirect-light debug view (CVulkanContext::SetIndirectLightView).
-// R50-PARALLAX: the map's RPRB reflection probes (shaders/reflection_probes.glsl).
-static ConVar mat_reflection_probes( "mat_reflection_probes", "1", FCVAR_CHEAT,
-    "The map's reflection probes: 0 off (a map's older LMAP-band probe, if any), 1 blended and "
-    "parallax-corrected, 2 the nearest capture alone (Source 1's switch), 3 blended but "
-    "direction-only; add 4 to show the blend weights (each probe's colour by rank) instead of "
-    "radiance" );
 static ConVar mat_indirect_view( "mat_indirect_view", "0", FCVAR_CHEAT,
     "Indirect-light debug view: 0 off, 1 indirect diffuse light (irradiance / pi), "
     "2 indirect diffuse radiance, 3 all diffuse light (the bake, the producer's change and the "
@@ -1220,28 +1214,14 @@ static void ReportUnimplementedEntries()
 	}
 	fprintf(
 	    stderr, "[vulkan] captured frame stream:\n%s", g_VulkanContext.DescribeStream().c_str() );
-	auto textureName = []( int handle ) -> const char *
-	{
-		if ( handle >= 0 && static_cast<size_t>( handle ) < g_TextureRecords.size() )
-			return g_TextureRecords[static_cast<size_t>( handle )].name.c_str();
-		return "(none)";
-	};
 	// Indexed by CVulkanContext::kRecord*.
-	static const char *const kKinds[] = { "draw", "clear", "copy", "qbeg", "qend", "scap" };
+	static const char *const kKinds[] = { "?", "clear", "copy", "qbeg", "qend", "?", "slot" };
 	for ( const auto &r : g_VulkanContext.DescribeStreamRecords() )
 	{
 		const bool bKnownKind = r.kind >= 0 && r.kind < static_cast<int>( ARRAYSIZE( kKinds ) );
-		fprintf( stderr,
-		    "[vulkan]   %-5s tgt=%-4d sh=%d blend=%d verts=%-6u mod=%.2f,%.2f,%.2f,%.2f "
-		    "vcol=%.2f,%.2f,%.2f vp=%.0f,%.0f,%.0f,%.0f uv=[%.2f..%.2f,%.2f..%.2f] "
-		    "xf=%.2f,%.2f,%.2f,%.2f/%.2f,%.2f,%.2f,%.2f tex=%s\n",
-		    bKnownKind ? kKinds[r.kind] : "?", r.target, r.shaderIndex, r.raster.blend,
-		    r.vertexCount, r.modulation[0], r.modulation[1], r.modulation[2], r.modulation[3],
-		    r.firstColor[0], r.firstColor[1], r.firstColor[2], r.viewport[0], r.viewport[1],
-		    r.viewport[2], r.viewport[3], r.uvMin[0], r.uvMax[0], r.uvMin[1], r.uvMax[1],
-		    r.texXform0[0], r.texXform0[1], r.texXform0[2], r.texXform0[3], r.texXform1[0],
-		    r.texXform1[1], r.texXform1[2], r.texXform1[3],
-		    r.kind == 0 ? textureName( r.texHandle ) : textureName( r.target ) );
+		fprintf( stderr, "[vulkan]   %-5s tgt=%-4d vp=%.0f,%.0f,%.0f,%.0f\n",
+		    bKnownKind ? kKinds[r.kind] : "?", r.target, r.viewport[0], r.viewport[1],
+		    r.viewport[2], r.viewport[3] );
 	}
 
 	ReportDeviceThreads();
@@ -1824,17 +1804,6 @@ public:
 			return;
 		InvokePendingModeChangeCallbacks();
 		FollowPresentation();
-		g_VulkanContext.SetReflectionProbeMode( mat_reflection_probes.GetInt() );
-		// The engine's RFC 0011 probe-volume switches (lightcache.cpp) also
-		// govern per-pixel sampling: 0 off, 1 with visibility, 2 without.
-		// r_probevolume 2 keeps the volume to the ambient cube (the path
-		// non-PBR model families take).
-		static ConVarRef r_probevolume( "r_probevolume" );
-		static ConVarRef r_probevolume_visibility( "r_probevolume_visibility" );
-		g_VulkanContext.SetProbeVolumeSampling(
-		    r_probevolume.IsValid() && r_probevolume.GetInt() != 1                      ? 0
-		    : r_probevolume_visibility.IsValid() && !r_probevolume_visibility.GetBool() ? 2
-		                                                                                : 1 );
 		std::string error;
 		(void)RunVulkanFrame( &error );
 		g_VulkanContext.EndStreamFrame();
@@ -3019,63 +2988,7 @@ static bool DescribeNativeVulkanAdapter( int adapter, render::RenderAdapterInfo 
 	return true;
 }
 
-static bool DrawWorldMaterialBatch( uint32_t firstIndex, uint32_t indexCount )
-{
-	NoteDeviceUse( "IWorldMeshUpload::DrawBatch" );
-	CEmptyMesh mesh( false );
-	mesh.SetWorldMeshBatch( firstIndex, indexCount );
-	mesh.Draw( 0, static_cast<int>( indexCount ) );
-	return mesh.WorldMeshDrawQueued();
-}
-
-static render_vulkan::CVulkanWorldMeshUpload g_WorldMeshUpload(
-    g_VulkanContext, DrawWorldMaterialBatch );
-
-// RFC 0011 G2: the engine's per-frame light set. WMSH PBR adds its unbaked
-// point and spot lights as direct light (the first kMaxDirectLights of them;
-// baked lights are already in the bake, and directional ones have no dynamic
-// source today).
-class CVulkanLightSetConsumer final : public light_set::ILightSetConsumer
-{
-public:
-	void PublishLightSet( const light_set::Snapshot &snapshot ) override
-	{
-		NoteDeviceUse( "ILightSetConsumer::PublishLightSet" );
-		using Direct = render_vulkan::CVulkanContext::DirectLight;
-		Direct lights[render_vulkan::CVulkanContext::kMaxDirectLights];
-		uint32_t count = 0;
-		// The strongest unbaked lights at the viewer, not the first in table
-		// order (render/direct_light_selection.h).
-		for ( size_t index : light_set::SelectDirectLights(
-		          snapshot, render_vulkan::CVulkanContext::kMaxDirectLights ) )
-		{
-			const light_set::RuntimeLight &light = snapshot.lights[index];
-			Direct &out = lights[count++];
-			out = Direct();
-			for ( int k = 0; k < 3; ++k )
-			{
-				out.position[k] = light.position[k];
-				out.color[k] = light.color[k];
-				out.direction[k] = light.direction[k];
-			}
-			out.radius = light.radius;
-			out.minLight = light.minLight;
-			if ( light.falloff == light_set::LightFalloff::InverseSquare )
-			{
-				out.inverseSquare = 1.0f;
-				out.sourceRadius = light.sourceRadius;
-			}
-			if ( light.shape == light_set::LightShape::Spot )
-			{
-				out.outerCos = light.outerCos;
-				out.innerCos = light.innerCos;
-			}
-		}
-		g_VulkanContext.SetDirectLights( lights, count );
-	}
-};
-
-static CVulkanLightSetConsumer g_LightSetConsumer;
+static render_vulkan::CVulkanWorldMeshUpload g_WorldMeshUpload;
 
 // RFC 0011 G6: the renderer's compute service (render/gpu_compute.h) for
 // engine-side GPU producers, over the device's compute resources. Dispatches
@@ -3344,7 +3257,6 @@ static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *servi
 	services->hardware = &g_ShaderAPIEmpty;
 	services->debugTextures = &g_ShaderAPIEmpty;
 	services->worldMeshUpload = &g_WorldMeshUpload;
-	services->lightSetConsumer = &g_LightSetConsumer;
 	g_GpuCompute.Install();
 	services->gpuCompute = &g_GpuCompute;
 	services->corePassSlots = &g_CorePassSlots;
@@ -4031,8 +3943,7 @@ static void ReportDroppedMaterials()
 			    r.target, r.clearColor, r.clearDepth, r.clearValue[0], r.clearValue[1],
 			    r.clearValue[2], r.clearValue[3] );
 		else
-			fprintf( stderr, "[vulkan]   frame %s tgt=%d blend=%d verts=%u material=%s\n",
-			    r.kind == 0 ? "draw" : "copy", r.target, r.raster.blend, r.vertexCount,
+			fprintf( stderr, "[vulkan]   frame record %d tgt=%d material=%s\n", r.kind, r.target,
 			    MaterialTagName( r.tag ) );
 	}
 	for ( const auto &entry : g_DroppedMaterials )
@@ -6080,6 +5991,7 @@ void CShaderAPIVulkan::ApplyDepthBiasState( render_vulkan::CVulkanContext::DynRa
 		normalized = config.m_DepthBias_Normal != 0.0f ? 1.0f / config.m_DepthBias_Normal : 0.0f;
 	}
 	raster.depthBiasEnable = slope != 0.0f || normalized != 0.0f;
+	g_VulkanContext.SetDynamicDepthBias( normalized, slope );
 }
 
 namespace
@@ -8978,7 +8890,10 @@ void CShaderAPIVulkan::ClearStencilBufferRectangle(
 void CShaderAPIVulkan::SetScissorRect( const int nLeft, const int nTop, const int nRight,
     const int nBottom, const bool bEnableScissor )
 {
-	g_VulkanContext.SetScissor( bEnableScissor, nLeft, nTop, nRight - nLeft, nBottom - nTop );
+	// The core's draws take no scissor from this interface (RFC 0016 K9 gap):
+	// reported, not applied.
+	if ( bEnableScissor )
+		NoteUnimplemented( "SetScissorRect" );
 }
 
 static bool ReadHdrPixels(

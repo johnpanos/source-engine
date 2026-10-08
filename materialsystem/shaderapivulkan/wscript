@@ -46,8 +46,6 @@ def build(bld):
 		'vulkan_mesh_layout.cpp',
 		'vulkan_adapter.cpp',
 		'vulkan_scene_capture.cpp',
-		'vulkan_world_lightmap.cpp',
-		'vulkan_world_reflection_probes.cpp',
 		'vulkan_world_mesh_upload.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]

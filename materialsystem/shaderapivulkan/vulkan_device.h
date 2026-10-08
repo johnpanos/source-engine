@@ -155,46 +155,6 @@ public:
 	uint32_t MaxSampledTextureDimension() const;
 	int MaxAnisotropicLevel() const { return m_maxAnisotropy; }
 	void SetAnisotropicLevel( int level );
-	// Upload the validated WMSH vertex/index sections once for this map. These
-	// buffers are independent of the frame stream and survive presentation resize.
-	// The old pair survives a failed replacement; Release waits for GPU readers.
-	bool UploadWorldMesh( const void *vertices, size_t vertexBytes, const void *indices,
-	    size_t indexBytes, std::string *outError );
-	void SetWorldLightmapHandle( int handle );
-	// The map's lightmap layers (LMAP v2): the total page and its separated
-	// direct and indirect light, -1 where the map carries none. Replacing a
-	// layer destroys the previous image behind the frames that sample it;
-	// SetWorldLightmapHandle( -1 ) releases every layer.
-	void SetWorldLightmapHandles( int total, int direct, int indirect );
-	int WorldLightmapTotalHandle() const { return m_worldLightmapHandle; }
-	// The map's RFC 0011 PRBV probe volume: its RGBA16F atlas and the RGBA32F
-	// grid table (mapcontainer::WriteProbeGridTable), -1 when the map carries
-	// none. Replacing or releasing (-1, -1, 0) destroys the previous images
-	// behind the frames that sample them; ReleaseWorldMesh releases them.
-	void SetProbeVolumeHandles( int atlas, int grids, uint32_t gridCount );
-	// RFC 0011 G9: the map's SDF shadow field (handle -1: none; the old one
-	// is destroyed behind the frames that may read it).
-	void SetShadowField( int handle, const float origin[3], float voxel, const uint32_t dims[3] );
-	// R50-PARALLAX: the map's RPRB (v8) reflection probes: `blocks` are the
-	// BC6H radiance cube array as the lump stores it (mip-major, then probe,
-	// then face; `count` cubes of `faceSize` and `mips` levels) and `words` the
-	// probe buffer (mapcontainer::WriteReflectionProbeBuffer), which the shaders
-	// read as an R32_UINT texture (null `words`: no probes). The context keeps
-	// the words and applies `mat_reflection_probes` by rewriting the mode word
-	// into a new table texture; each replaced texture is destroyed behind the
-	// frames that sample it. This backend does not relight probes. The checked
-	// upload is vulkan_world_reflection_probes.cpp's UploadWorldReflectionProbes.
-	bool SetReflectionProbes( const uint32_t *words, uint32_t wordCount, uint32_t count,
-	    uint32_t faceSize, uint32_t mips, const uint8_t *blocks, std::string *outError = nullptr );
-	void SetReflectionProbeMode( int mode );
-	bool ProbeVolumeResident() const { return m_probeAtlasHandle >= 0 && m_probeGridCount > 0; }
-	int ProbeAtlasHandle() const { return m_probeAtlasHandle; }
-	int ProbeDeltaHandle() const { return m_probeDeltaHandle; }
-	// RFC 0011 G4: a BakedPlusDelta producer's change volume (an RGBA16F atlas
-	// in the volume's layout whose indirect layer holds the signed change),
-	// sampled with the volume's grid table; -1 when none. Replacing or
-	// releasing destroys the previous image behind the frames that sample it.
-	void SetProbeDeltaHandle( int atlas );
 	// RFC 0011 G5 compute foundation: what the device enabled (queried per
 	// device, enabled through the VkPhysicalDeviceFeatures2 chain), its
 	// compute resources, and compute work recorded at the start of the next
@@ -212,34 +172,6 @@ public:
 		m_computeFlush = std::move( flush );
 	}
 	uint64_t CompletedFrameSerial() const { return m_completedSerial; }
-	// Whether PBRMetalRough models can sample the volume per pixel (their
-	// probe-volume variants were built).
-	static constexpr uint32_t kPbrDescriptorSets = 3;
-	// RFC 0011 G2: the frame's unbaked lights (dynamic and entity lights from
-	// the engine's light set, render/light_set.h) that WMSH PBR adds as direct
-	// light, through the legacy dlight falloff times the Lambert cosine. At most
-	// kMaxDirectLights (one 512-byte constants block); read when a frame is
-	// recorded. The GPU layout is shaders/world_pbr.frag's DirectLights block.
-	struct DirectLight
-	{
-		float position[3] = {};
-		float radius = 0.0f;
-		float color[3] = {};
-		float minLight = 0.0f;
-		float direction[3] = { 0, 0, -1 };
-		float outerCos = -2.0f; // below -1: no cone
-		float innerCos = 1.0f;
-		float inverseSquare = 0.0f; // 1: light_set::InverseSquareFalloff, else Falloff
-		float sourceRadius = 0.0f;  // the emitting sphere (inverse square)
-		float pad = 0.0f;
-	};
-	static constexpr uint32_t kMaxDirectLights = 7;
-	void SetDirectLights( const DirectLight *lights, uint32_t count );
-	// Per-pixel probe sampling: 0 off (models use their ambient cube), 1 with
-	// the visibility test, 2 without it. Read when a frame is recorded.
-	void SetProbeVolumeSampling( int mode ) { m_probeSampling = mode < 0 || mode > 2 ? 0 : mode; }
-	void ReleaseWorldMesh();
-	bool WorldMeshResident() const;
 
 	// A frame (RFC 0016 K3). The frame's commands are recorded into a port
 	// encoder of the render core: the legacy frontend's frame graph, or
@@ -395,65 +327,10 @@ public:
 		m_sceneCaptureCurrent = false;
 		m_sceneCapturesQueued = 0;
 	}
-	// paintblob.frag's combo flags (SkinConstants::combos, c27.x of
-	// paintblob_helper.cpp); the draw clears kPaintBlobEnvMap when the bound
-	// environment map is not a cube.
-	enum
-	{
-		kPaintBlobBackSurface = 1,
-		kPaintBlobLightWarp = 2,
-		kPaintBlobFresnelWarp = 4,
-		kPaintBlobOpacityTexture = 8,
-		kPaintBlobInteriorLayer = 16,
-		kPaintBlobContactShadow = 32,
-		kPaintBlobSpecMask = 64,
-		kPaintBlobEnvMap = 128
-	};
-	// lightmapped.frag's static combo flags (SkinConstants::combos).
-	enum
-	{
-		kLightmappedBaseTexture2 = 1,
-		kLightmappedDetailTexture = 2,
-		kLightmappedBumpmap = 4,
-		kLightmappedSsbump = 8,
-		kLightmappedBumpmap2 = 16,
-		kLightmappedCubemap = 32,
-		kLightmappedEnvmapMask = 64,
-		kLightmappedBaseAlphaEnvmapMask = 128,
-		kLightmappedSelfIllum = 256,
-		kLightmappedNormalMapAlphaEnvmapMask = 512,
-		kLightmappedDiffuseBumpmap = 1024,
-		kLightmappedBaseTextureNoEnvmap = 2048,
-		kLightmappedBaseTexture2NoEnvmap = 4096,
-		kLightmappedBumpMask = 8192,
-		kLightmappedMaskedBlending = 16384,
-		// Portal 2's paint pass (LightmappedPaint, shaders/lightmappedpaint.frag)
-		// on the lightmapped layout, and its THICKPAINT combo.
-		kLightmappedPaint = 32768,
-		kLightmappedPaintThick = 65536
-	};
-	// screenspace_post.frag's passes (SkinConstants::combos).
-	enum
-	{
-		kPostDownsample = 1,
-		kPostBlur = 2,
-		kPostEnginePost = 3
-	};
 	// Volume textures (the material system's colour-correction lookups and the
 	// white volume) are available once the dynamic resources hold the white
 	// volume, as they were before the post pipeline was deleted (e32f58361).
 	bool VolumeTexturesSupported() const { return m_whiteVolumeHandle >= 0; }
-	// The textured pipeline's alternative pixel stages (alphaParams.y), per draw:
-	// 0 the material shader the flags describe, 2 shadow_ps2x's projected
-	// render-to-texture shadow, 3 spritecard_ps2x (its second animation frame,
-	// blend factor and ADDSELF weight travel in the vertex record; see
-	// demo_dyn_tex.frag). 1 is taken by "multiply by the lightmap".
-	enum
-	{
-		kTexturedModeDefault = 0,
-		kTexturedModeShadow = 2,
-		kTexturedModeSpriteCard = 3
-	};
 	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
 	// material's IShaderShadow selects: blend factors (applied to color and alpha
 	// alike, as D3D9 does without separate alpha blending) and the depth test,
@@ -506,6 +383,16 @@ public:
 		bool wireframe = false;
 	};
 
+	// The depth bias of the core's draws (ApplyDepthBiasState): D3D9 supplies
+	// a normalized bias; the port's constant factor is in depth buffer units
+	// (the D32 float scale is approximate near depth 0.5).
+	void SetDynamicDepthBias( float normalized, float slopeFactor )
+	{
+		m_dynDepthBiasConstant =
+		    normalized *
+		    ( m_depthFormat == VK_FORMAT_D32_SFLOAT_S8_UINT ? 8388608.0f : 16777216.0f );
+		m_dynDepthBiasSlope = slopeFactor;
+	}
 	float DynamicDepthBiasConstant() const { return m_dynDepthBiasConstant; }
 	float DynamicDepthBiasSlope() const { return m_dynDepthBiasSlope; }
 	// Bits of the depth-stencil attachment's stencil aspect (0 when the device
@@ -528,9 +415,6 @@ public:
 		// floats and the planes) and of PortalRefract (48 floats and the planes).
 		kTexturedPushBytes = ( 32 + 4 * kMaxClipPlanes ) * 4,
 		kPortalPushBytes = ( 48 + 4 * kMaxClipPlanes ) * 4,
-		// The skin shader: cViewProj, two texture transform rows, cEyePos and two
-		// parameter vectors (36 floats), then the planes.
-		kSkinPushBytes = ( 36 + 4 * kMaxClipPlanes ) * 4
 	};
 	// kMaxClipPlanes when the device can clip (shaderClipDistance and push
 	// constants wide enough for the planes), else 0.
@@ -600,35 +484,6 @@ public:
 	{
 		kMaxSamplers = 16
 	};
-	// PortalRefract's constants, in its registers' terms (portal_refract_vs20.fxc
-	// and portal_refract_ps2x.fxc). The model and view-projection matrices are
-	// laid out like SetDynamicTransform's; `stage` is the STAGE static combo.
-	struct PortalConstants
-	{
-		float model[16];
-		float viewProj[16];
-		float texXform0[4]; // SHADER_SPECIFIC_CONST_1
-		float texXform1[4]; // SHADER_SPECIFIC_CONST_2
-		float time = 0.0f;  // SHADER_SPECIFIC_CONST_0.x, already mod 1000
-		float openAmount = 0.0f;
-		float active = 1.0f; // 1 - $PortalStatic
-		float colorScale = 0.0f;
-		int stage = 0;
-	};
-	// The skin shader's constants: the pixel shader registers c0..c31 as the
-	// material's dynamic state wrote them (skin_dx9_helper.cpp), and the vertex
-	// stage's cViewProj, cBaseTexCoordTransform and cEyePos. `combos` holds the
-	// skin_ps20b static combos as skin.frag's flags.
-	struct SkinConstants
-	{
-		float ps[32][4];
-		float viewProj[16];
-		float texXform0[4];
-		float texXform1[4];
-		float eyePos[4];
-		int combos = 0;
-		int numLights = 0;
-	};
 	// A draw's pixel fog (common_ps_fxc.h FinalOutput's BlendPixelFog), in the
 	// D3D9 registers' terms: the fog color (g_LinearFogColor, c29) with the pixel
 	// fog type in w (0 range, 1 height, -1 the shader does not fog); the pass's
@@ -648,68 +503,6 @@ public:
 		{
 			return std::memcmp( this, &other, sizeof( DrawFog ) ) == 0;
 		}
-	};
-	struct PbrWorldScene
-	{
-		float eye[4] = { 0, 0, 1, 0 };
-		float lightDirection[4] = { 0, 0, -1, 0 };
-		// No direct light unless a caller supplies one: a map's WMSH lightmap
-		// already holds all baked light, and a default white light added
-		// spurious specular to every map (glints on every normal-mapped edge).
-		float lightRadiance[4] = { 0, 0, 0, 0 };
-		// Alpha cutoff (< 0 disables), normal map enable, $emissionscale (0: no
-		// emission) and the $envmap cube's mip count (0: the map probe).
-		float material[4] = { -1, 0, 0, 0 };
-		// Glass only: transmission (0..1), index of refraction, thickness in
-		// world units (0 = a thin sheet), unused.
-		float glass[4] = { 1, 1.5f, 0, 0 };
-	};
-	// The optional maps of an opaque WMSH PBR material: an sRGB emission
-	// color (decoded by the shader) times `emissionScale`, and an $envmap cube
-	// replacing the map probe. A handle that is not uploaded, or an envmap that
-	// is not a cube, fails the selection rather than drawing without it.
-	// The draw's sampler slots that carry them to sets 5 and 6.
-	enum
-	{
-		kPbrWorldEmissionSampler = 5,
-		kPbrWorldEnvironmentSampler = 6
-	};
-	struct PbrWorldMaps
-	{
-		int emission = -1;
-		float emissionScale = 0.0f;
-		int environment = -1;
-		// $clearcoat weight (0: no coat) and its roughness, both in [0, 1].
-		float clearCoat = 0.0f;
-		float clearCoatRoughness = 0.03f;
-	};
-	// Transmissive PBR (glass) on WMSH batches. Its draw refracts the scene
-	// captured just before it: the first glass draw after anything else was
-	// drawn or cleared on the target queues a scene capture (color mip chain and
-	// depth), and so does a glass draw of another `materialKey`, so glass behind
-	// glass shows through. A frame makes at most kMaxSceneCaptures captures;
-	// later glass reuses the last one.
-	struct PbrGlassParams
-	{
-		float transmission = 1.0f;
-		float ior = 1.5f;
-		float thickness = 0.0f; // world units through the glass; 0 = a thin sheet
-		uint64_t materialKey = 0;
-	};
-	enum
-	{
-		kMaxSceneCaptures = 16
-	};
-	enum
-	{
-		kPbrModelNormalMap = 1,
-		kPbrModelEmission = 2,
-		kPbrModelEnvMap = 4,
-		kPbrModelMapProbe = 8, // set per draw when a map LMAP atlas is resident
-		kPbrModelClearCoat = 32,
-		// Set per draw when the producer's change volume is bound beside the
-		// probe volume (R50-RELIGHT: relit reflection probes).
-		kPbrModelProbeChange = 64
 	};
 	// Which of the textured pipeline's inputs and output are sRGB-encoded, as the
 	// material's IShaderShadow EnableSRGBRead/EnableSRGBWrite declared them: an
@@ -753,23 +546,7 @@ public:
 		kFragmentSpriteVertexAlpha = 65536,
 		kFragmentLightmappedEnvmap = 131072,
 		kFragmentRefract = 262144,
-		kFragmentRefractBlur = 524288,
-		kFragmentBaseAlphaEnvmapMask = 1048576,
 		kFragmentNormalAlphaEnvmapMask = 2097152,
-		// spritecard_ps2x's DEPTHBLEND: the vertex alpha feathered against the
-		// frame copy's depth alpha bound at sampler 2 (set 3); the modulation's
-		// alpha carries c2.x.
-		kFragmentSpriteDepthBlend = 4194304,
-		// With kFragmentRefract only: Portal 2's LOCALREFRACT, which refracts the
-		// base texture in texture space. It shares the bit of the envmap mask that
-		// only the other (LightmappedGeneric envmap) branch reads; every bit a
-		// float flag word holds exactly is in use.
-		kFragmentRefractLocal = kFragmentBaseAlphaEnvmapMask,
-		// With the SpriteCard stage only: spritecard_ps2x's MOD2X ($mod2x, a
-		// DST_COLOR:SRC_COLOR blend), whose output fades to 0.5 (the blend's
-		// identity) as alpha falls. It shares kFragmentSky's bit: sky draws take
-		// their own branch, and neither stage nor the device reads the bit.
-		kFragmentSpriteMod2x = kFragmentSky
 	};
 
 	// Render targets (IShaderAPI SetRenderTarget and TEXTURE_CREATE_RENDERTARGET).
@@ -826,7 +603,6 @@ public:
 		           : 0;
 	}
 	void SetViewport( int x, int y, int width, int height, float minZ, float maxZ );
-	void SetScissor( bool enable, int x, int y, int width, int height );
 	// Clear the current viewport of the current target to the clear color
 	// (SetClearColor) and/or to depth 1.
 	void QueueClear( bool color, bool depth, bool stencil = false );
@@ -879,17 +655,7 @@ public:
 		bool clearColor;
 		bool clearDepth;
 		float clearValue[4];
-		int shaderIndex;
-		int texHandle;
-		DynRasterState raster;
-		uint32_t vertexCount;
-		float modulation[4];
-		float firstColor[3];
 		float viewport[6];
-		float uvMin[2];
-		float uvMax[2];
-		float texXform0[4];
-		float texXform1[4];
 	};
 	std::vector<StreamRecordInfo> DescribeStreamRecords() const;
 
@@ -1560,24 +1326,6 @@ private:
 	float m_dynDepthBiasSlope = 0.0f;
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
 	// mesh UVs, bound through a descriptor set (its own layout adds the sampler).
-	// One textured pipeline per distinct DynRasterState (see RasterStateKey),
-	// built from m_texTemplate when a draw first needs it.
-	// Keyed by RasterStateKey, with bit 32 set for pipelines of the sRGB passes.
-	std::map<uint64_t, VkPipeline> m_dynTexPipelines;
-	std::map<uint64_t, VkPipeline> m_worldTexPipelines;
-	// `extended`: kWorldPbrDirectLights (world_pbr.frag -DDIRECT_LIGHTS, the
-	// frame's direct-light block in set 2) and kWorldPbrRuntimeIndirect
-	// (-DRUNTIME_INDIRECT, the producer's indirect atlas in the frame set), on
-	// m_worldPbrExtendedLayout.
-	// kWorldPbrDeltaVolume (-DDELTA_VOLUME, the change volume in the frame
-	// set) is on m_worldPbrDeltaLayout and excludes kWorldPbrRuntimeIndirect;
-	// alone it is also the indirect view's variant.
-	enum
-	{
-		kWorldPbrDirectLights = 1,
-		kWorldPbrRuntimeIndirect = 2,
-		kWorldPbrDeltaVolume = 4,
-	};
 	// Scene capture (vulkan_scene_capture.cpp): managed textures the size of the
 	// back buffer. Color is the swapchain format with its sRGB view and a full
 	// mip chain; depth is the depth format, sampled through a depth-only view.
@@ -1606,40 +1354,14 @@ private:
 	// is built through, the variants built this session, and the files.
 	enum PipelineFamily
 	{
-		kPipelineTextured = 0,
-		kPipelinePortal = 1,
-		kPipelineSkin = 2,
-		kPipelinePbrDirect = 3,
-		kPipelineSolidEnergy = 4,
-		kPipelinePbrModel = 5,
-		kPipelinePbrModelEnv = 6,
-		kPipelineLightmapped = 7,
-		kPipelinePost = 8,
-		kPipelinePaintBlob = 9,
-		kPipelineLightmappedPaint = 10,
-		kPipelineFamilies,
-		// A legacy port's pipelines: this plus its program index.
-		kPipelineLegacyFirst = 100
 	};
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
 	std::vector<std::pair<int, uint64_t>> m_pipelineVariants;
 	std::string m_pipelineStoreDirectory;
 
 	// PortalRefract pipelines, one per raster state, built on first use.
-	std::map<uint64_t, VkPipeline> m_portalPipelines;
 	int m_whiteVolumeHandle = -1;
 	uint32_t m_maxImageDimension3D = 0;
-	struct SkinUniformBuffer
-	{
-		VkBuffer buffer = VK_NULL_HANDLE;
-		VulkanMemory memory = VK_NULL_HANDLE;
-		void *mapped = nullptr;
-		VkDeviceSize capacity = 0;
-		VkDescriptorSet set = VK_NULL_HANDLE;
-	};
-	VkShaderModule m_portalVert = VK_NULL_HANDLE;
-	VkShaderModule m_portalFrag = VK_NULL_HANDLE;
-	bool m_portalPushSupported = false;
 	// D3D9 blends a draw that writes sRGB (SRGBWRITEENABLE) in linear space: the
 	// destination is decoded, blended and encoded again. Such draws render
 	// through sRGB-format views of the same attachments (mutable-format swapchain
@@ -1664,27 +1386,6 @@ private:
 	std::uint64_t m_opaqueCandidates = 0;
 	std::uint64_t m_opaqueBatches = 0;
 	std::uint64_t m_opaqueFollowers = 0;
-	// The fixed-function state every textured pipeline shares; only the blend and
-	// depth state vary. Kept (with its shader modules) for pipelines built later.
-	struct TexturedPipelineTemplate
-	{
-		VkPipelineShaderStageCreateInfo stages[2];
-		// Binding 0 is the frame's vertex stream; binding 1 the per-draw fog
-		// stream (DrawFog, one record per instance), locations 7..10.
-		VkVertexInputBindingDescription bindings[2];
-		VkVertexInputAttributeDescription attrs[11];
-		VkPipelineVertexInputStateCreateInfo vin;
-		VkPipelineInputAssemblyStateCreateInfo ia;
-		VkPipelineViewportStateCreateInfo vp;
-		VkPipelineRasterizationStateCreateInfo rs;
-		VkPipelineMultisampleStateCreateInfo ms;
-		VkDynamicState dynStates[6];
-		VkPipelineDynamicStateCreateInfo dyn;
-	};
-	TexturedPipelineTemplate m_texTemplate = {};
-	VkImage m_dynTexImage = VK_NULL_HANDLE;
-	VulkanMemory m_dynTexMemory = VK_NULL_HANDLE;
-	VkImageView m_dynTexView = VK_NULL_HANDLE;
 	VkSampler m_dynTexSampler = VK_NULL_HANDLE;
 	// Sampler per addressing/filter combination, including anisotropy.
 	VkSampler m_samplers[kSamplerStates] = {};
@@ -1692,8 +1393,6 @@ private:
 	int m_anisotropyLevel = 1;
 	VkDescriptorSetLayout m_dynTexDescLayout = VK_NULL_HANDLE;
 	VkDescriptorPool m_dynTexDescPool = VK_NULL_HANDLE;
-	VkDescriptorSet m_dynTexDescSet = VK_NULL_HANDLE;
-	int m_whiteCubeHandle = -1;
 	// 1x1 opaque black: what a deferred render target samples before it has
 	// storage (a new target reads opaque black).
 	int m_unrenderedTargetHandle = -1;
@@ -1744,30 +1443,11 @@ private:
 	};
 	std::vector<ManagedTexture> m_managedTextures;
 	uint64_t m_nextTextureContentRevision = 1;
-	int m_worldLightmapHandle = -1;
-	int m_worldLightmapDirectHandle = -1;
-	int m_worldLightmapIndirectHandle = -1;
-	int m_probeAtlasHandle = -1;
-	int m_shadowFieldHandle = -1;
-	int m_reflectionProbeHandle = -1;   // the radiance cube array
-	int m_reflectionTableHandle = -1;   // the probe buffer's words, R32_UINT
-	int m_neutralProbeCubesHandle = -1; // a cube array bound without probes
-	int m_neutralProbeTableHandle = -1; // a table whose count is 0
-	int m_reflectionProbeMode = 1;
-	std::vector<uint32_t> m_reflectionProbeWords;
-	float m_shadowFieldOrigin[4] = {}; // xyz the first voxel centre, w the voxel size
-	float m_shadowFieldDims[4] = {};
-	int m_probeGridHandle = -1;
-	uint32_t m_probeGridCount = 0;
-	int m_probeDeltaHandle = -1;
 	ComputeCaps m_computeCaps;
 	DeviceFeatureChain m_featureChain;
 	ComputeResources m_compute;
 	std::vector<std::function<void( VkCommandBuffer, uint64_t )>> m_computeWork;
 	std::function<void( VkCommandBuffer, uint64_t )> m_computeFlush;
-	int m_probeSampling = 1;
-	DirectLight m_directLights[kMaxDirectLights] = {};
-	uint32_t m_directLightCount = 0;
 	// Deleted textures awaiting the completion of the submission that may still
 	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
 	struct RetiredTexture
@@ -1800,12 +1480,6 @@ private:
 	// shared by CreateRenderTargetTexture and MaterializeRenderTarget).
 	bool BuildRenderTargetStorage( ManagedTexture &t, std::string *outError );
 	void RetireCompletedTextures();
-	// The managed texture currently bound (BindManagedTexture); captured per draw.
-	int m_dynBoundTexHandle = -1;
-	int m_dynLightmapHandle = -1;
-	int m_dynSamplerHandles[kMaxSamplers] = {
-	    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
-	// The skin constants of this frame's skin draws (DynDraw::skin indexes them).
 	// A persistently mapped host-visible buffer the frame's stream is copied
 	// into. Each frame slot has its own: a slot's fence has signalled when its
 	// frame begins, so its buffers are free to rewrite or regrow, while the
@@ -1818,11 +1492,6 @@ private:
 		VkDeviceSize capacity = 0;
 	};
 	// The frame's distinct DrawFog records (vertex binding 1, per instance).
-	StreamBuffer m_worldVertexBuffer;
-	StreamBuffer m_worldIndexBuffer;
-	uint32_t m_worldVertexCount = 0;
-	uint32_t m_worldIndexCount = 0;
-	uint64_t m_worldMeshRevision = 1;
 	// Texel uploads small enough to defer (a font glyph, a lightmap patch): the
 	// texels are copied here and the copy is recorded at the start of the next
 	// frame's command buffer, ahead of every draw that frame replays, instead of
@@ -1870,41 +1539,32 @@ private:
 	// kDynVertexFloats per vertex (QueueDynamicTriangles documents the record).
 	// Index lists of indexed draws, each relative to its draw's first vertex.
 	uint64_t m_streamEpoch = 1;
-	// Each IMesh::Draw becomes one record capturing the state current at that
-	// draw (transform, shader, constant color), so the many objects the engine
-	// draws in a frame each render with their own state instead of all collapsing
-	// to the last-set state.
+	// The ordered stream of what the legacy interface still issues between the
+	// core's passes: clears, render-target copies, occlusion query markers and
+	// the core passes' slots.
 	enum
 	{
-		kRecordDraw = 0,
 		kRecordClear = 1,
 		kRecordCopy = 2,
 		kRecordQueryBegin = 3,
 		kRecordQueryEnd = 4,
-		// Copies the open target's color and depth to the scene capture images
-		// (RecordSceneCapture), outside any pass, for the glass draws after it.
-		kRecordSceneCapture = 5,
 		// A core pass's slot (RFC 0016 K5, core_passes.h): the replay closes
 		// its pass and runs the slot's section of the scene record there.
 		kRecordCorePass = 6
 	};
 	struct DynDraw
 	{
-		// Draws, clears and render-target copies share one ordered stream, since
+		// Clears, copies and slots share one ordered stream, since
 		// their relative order across render targets is what the frame means.
-		int kind = kRecordDraw;
+		int kind = kRecordClear;
 		int target = -1; // render-target texture handle; -1 = swapchain image
 		int tag = -1;    // caller-defined identity (diagnostics only)
 		// x, y, width, height, minZ, maxZ; width <= 0 means the whole target.
 		float viewport[6] = { 0, 0, 0, 0, 0, 1 };
-		bool scissorEnabled = false;
-		int scissor[4] = { 0, 0, 0, 0 }; // x, y, width, height
 		bool clearColor = false;
 		bool clearDepth = false;
 		float clearValue[4] = { 0, 0, 0, 1 };
 		int copyDst = -1;
-		bool coreCustomEffect = false; // retained custom shader at its original stream position
-		bool queryInput = false;       // non-writing geometry counted by an enclosing query
 		bool corePortalCopy = false;   // the preceding snapshot consumed by a retained effect
 		uint32_t corePass = 0;      // kRecordCorePass: the slot's tag
 		uint32_t corePassTerms = 0; // and its terms (m_corePassTerms)
@@ -1917,43 +1577,7 @@ private:
 		// A copy whose alpha then takes the source's depth (DepthToAlpha).
 		bool copyDepthToAlpha = false;
 		DepthToAlpha copyDepth = {};
-		uint32_t firstVertex = 0;
-		uint32_t vertexCount = 0;
-		// Indexed draws only (indexCount > 0): the range of m_dynIndices drawn.
-		uint32_t firstIndex = 0;
-		uint32_t indexCount = 0;
-		bool worldMesh = false;
-		uint64_t worldMeshRevision = 0;
-		int shaderIndex = 0;
-		float transform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-		float color[4] = { 1, 1, 1, 1 };
-		// UnlitGeneric material state captured at this draw (cModulationColor and
-		// the two rows of cBaseTextureTransform).
-		float modulation[4] = { 1, 1, 1, 1 };
-		float texXform0[4] = { 1, 0, 0, 0 };
-		float texXform1[4] = { 0, 1, 0, 0 };
-		float pbrAngles[4] = { 1, 1, 1, 1 };
-		PbrWorldScene pbrWorld;
-		float monitorContrast = 0.0f;
-		DynRasterState raster;
-		float depthBiasConstant = 0.0f;
-		float depthBiasSlope = 0.0f;
-		float alphaRef = -1.0f;   // $alphatest reference; < 0 disables
-		int texHandle = -1;       // managed texture bound at this draw (-1 = built-in)
-		int lightmapHandle = -1;  // lightmap page multiplied in (-1 = none)
-		int colorFlags = 0;       // kColorSrgb* inputs/output encoding
-		float outputScale = 1.0f; // linear scale before the output encode
 		bool clearStencil = false;
-		uint32_t stencilRef = 0;
-		uint32_t stencilTestMask = 0xFF;
-		uint32_t stencilWriteMask = 0xFF;
-		int clipPlaneCount = 0;
-		float clipPlanes[kMaxClipPlanes][4] = {};
-		int samplerHandles[kMaxSamplers] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-		    -1, -1 }; // samplers 1..15 ([0] unused)
-		PortalConstants portal;
-		DrawFog fog;
-		int texturedMode = kTexturedModeDefault; // the textured pipeline's alphaParams.y
 	};
 	std::vector<DynDraw> m_dynDrawRecords;
 	std::vector<CorePassTerms> m_corePassTerms; // the kRecordCorePass records' terms
@@ -1967,27 +1591,10 @@ private:
 	};
 	std::vector<FrameLabel> m_frameLabels;
 	void ReplayFrameLabels( size_t *cursor, size_t throughRecord );
-	// The sampler sets of a frame in flight: a pool reset when the frame slot
-	// is reused, and the sets already written this frame by their images.
-	struct LegacySamplerPool
-	{
-		VkDescriptorPool pool = VK_NULL_HANDLE;
-		uint32_t capacity = 0;
-		std::map<std::vector<uint64_t>, VkDescriptorSet> written;
-	};
-	struct LegacyStages
-	{
-		VkShaderModule vert = VK_NULL_HANDLE;
-		VkShaderModule frag = VK_NULL_HANDLE;
-		bool failed = false;
-		std::map<uint64_t, VkPipeline> pipelines;
-	};
 	// Target/viewport/scissor state captured by each record.
 	int m_dynTarget = -1;
 	int m_dynTag = -1;
 	float m_dynViewport[6] = { 0, 0, 0, 0, 0, 1 };
-	bool m_dynScissorEnabled = false;
-	int m_dynScissor[4] = { 0, 0, 0, 0 };
 	// Set by EndStreamFrame; the next record discards the presented frame.
 	bool m_dynFramePresented = false;
 	DynDraw &AppendRecord( int kind );
@@ -2030,8 +1637,6 @@ private:
 	// (kKeepDepth | kKeepStencil). Unknown kinds count as reading both.
 	static bool SkipLegacyRecord( const DynDraw &record, bool legacyOff, bool legacyHud );
 	static int RecordBackBufferDepthReads( const DynDraw &r );
-	// Raster-key bits for DynRasterState::specCombos + 1 (bits 40-57).
-	static constexpr uint64_t kSpecCombosKeyMask = 0x3FFFF;
 	bool RecordViewAgnostic( const DynDraw &r ) const;
 	bool FirstPassWantsSrgb() const;
 

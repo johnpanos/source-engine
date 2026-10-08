@@ -12,18 +12,15 @@
 namespace render_vulkan
 {
 
-class CVulkanContext;
-
+// The render core's world stage draws the map's WMSH from its own copy
+// (RFC 0016 K5/K12); this device keeps no GPU copy of the mesh, lightmap,
+// probe volume, shadow field or reflection probes. It validates the mesh
+// request, records that the map is resident (the engine keeps the map's WMSH
+// bytes for the stage only while it is), and draws no batch: the engine then
+// draws its brush batches, which reach the core like any other mesh.
 class CVulkanWorldMeshUpload final : public world_mesh_gpu::IWorldMeshUpload
 {
 public:
-	using DrawMaterialBatch = bool ( * )( uint32_t firstIndex, uint32_t indexCount );
-
-	CVulkanWorldMeshUpload( CVulkanContext &context, DrawMaterialBatch drawBatch )
-	    : m_context( context ), m_drawBatch( drawBatch )
-	{
-	}
-
 	bool Upload( const world_mesh_gpu::WorldMeshUploadRequest &request ) override;
 	bool UploadLightmap( const world_mesh_gpu::WorldLightmapUploadRequest &request ) override;
 	bool UploadProbeVolume( const world_mesh_gpu::ProbeVolumeUploadRequest &request ) override;
@@ -35,9 +32,7 @@ public:
 	bool IsResident() const override;
 
 private:
-	CVulkanContext &m_context;
-	DrawMaterialBatch m_drawBatch;
-	bool m_probeVolumeReported = false; // this map's first PRBV upload was logged
+	bool m_resident = false;
 };
 
 } // namespace render_vulkan
