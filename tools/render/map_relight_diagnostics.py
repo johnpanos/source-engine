@@ -427,8 +427,7 @@ def main(argv=None):
     parser.add_argument("--max-global-weight", type=parse_global_limit, action="append",
                         default=[], help="fail if region exceeds mean global probe weight")
     parser.add_argument("--modes", nargs="+", choices=tuple(MODES), default=DEFAULT_MODES)
-    parser.add_argument("--runtime", type=Path, default=swipe.ROOT / "run/runtime-p2")
-    parser.add_argument("--build", type=Path, default=swipe.ROOT / "build-p2")
+    swipe.sepipe_loader.add_arguments(parser, "portal2-fsr")
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
     parser.add_argument("--tone-map-scale", type=float, default=4.0,

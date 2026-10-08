@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Boot a Portal 2 map headless and capture a scripted set of views.
 
-The Portal 2 build (`build-p2`) is staged into a private runtime (never the
-user's run/runtime-p2, whose cfg a headless run would overwrite) with the
+The portal2 kiln profile is packaged into a private runtime (never the
+player's `kiln play` runtime, whose cfg a headless run would overwrite) with the
 map pipeline's published maps mounted, and runs offscreen (SDL's offscreen
 video driver: no window reaches the desktop). A step list drives it after the
 map loads:

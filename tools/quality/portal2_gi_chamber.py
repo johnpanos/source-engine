@@ -646,8 +646,9 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, default=ROOT / "quality-results/portal2-maps" / NAME)
     parser.add_argument("--toolchain", type=Path, default=TOOLCHAIN)
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2",
-                        help="staged Portal 2 runtime the content comes from")
+    parser.add_argument("--runtime", type=Path,
+                        help="Portal 2 runtime the content comes from (default: the portal2 "
+                             "profile's packaged runtime)")
     parser.add_argument("--sdk", type=Path, default=STEAM_ROOT / "sdk_content/maps",
                         help="the Portal 2 SDK's maps directory (holds instances/)")
     parser.add_argument("--quality", choices=("fast", "full"), default="full",
@@ -673,6 +674,9 @@ def main():
         (out / (NAME + ".vmf")).write_text(build_vmf(args.sdk))
         print("wrote " + str(out / (NAME + ".vmf")))
         return 0
+    if args.runtime is None:
+        import vmf_map_build
+        args.runtime = vmf_map_build.sepipe_loader.packaged_runtime("portal2")
     build(out, args.toolchain.resolve(), args.runtime.resolve(), args.sdk, args.quality,
           args.relight_quality, args.device, args.force_from, not args.no_publish)
     return 0

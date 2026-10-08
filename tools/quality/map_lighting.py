@@ -21,7 +21,7 @@ lighting lumps into a BSP2, gates that the map's gameplay lumps are carried
 byte for byte (`gameplay_identity.py`), and publishes it for ./kiln play portal.
 
     python3 tools/quality/map_lighting.py --bsp maps/room.bsp --map room \\
-        [--scene room.usda] [--quality source2] [--runtime run/runtime-p2] \\
+        [--scene room.usda] [--quality source2] [--runtime out/portal2-linux-native-vulkan/dev/runtime] \\
         [--medium '{"scattering_per_m": 0.06, "absorption_per_m": 0.01, "anisotropy": 0.3}']
 
 `--medium` (the manifest's `medium`, participating_medium.py) is an explicit,
@@ -107,7 +107,8 @@ def light(bsp, name, out, toolchain, scene=None, quality=None, game=None, runtim
     without one the scene is derived from the BSP. `game` is the directory the
     BSP was compiled against (vbsp/vrad `-game`), searched for materials
     first; `runtime` is the staged game runtime the materials come from
-    (default the toolchain's; run/runtime-p2 for Portal 2). `device`
+    (default the toolchain's; the portal2 profile's packaged runtime for
+    Portal 2). `device`
     overrides every bake's Cycles device. `medium` (participating_medium.py)
     is a participating medium the lightmap bake's light paths cross, recorded
     in the bake receipt; None bakes without one. Returns the gameplay identity;

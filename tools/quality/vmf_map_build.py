@@ -17,7 +17,7 @@ Steps, each recorded in <out>/build.json:
   3. package <out>/content/maps/<name>.bsp; --publish copies it to the playable
      map store (./kiln play portal <name>); --install-game-dir copies it into a staged game
      directory's maps/ instead (a product the store is not mounted in, such as
-     the F-Stop runtime's run/runtime-fstop/fstop);
+     the fstop profile's packaged runtime's fstop/);
   3a. --lighting PROFILE hands the compiled BSP to the one lighting back end
      (map_lighting.py): Cycles lightmap layers, probe volume, radiosity and
      SDF from the BSP's faces, materials and lights, packed into a BSP2 whose

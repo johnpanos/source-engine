@@ -20,8 +20,8 @@ quality/workloads/portal2-portals-v1 (run by tools/quality/portal2_scenarios.py)
 The fixtures aim the gun at points the scenario names, so the room's sizes
 are part of their contract: change them together.
 
-    python3 tools/quality/portal2_portal_map.py --runtime run/runtime-p2 \\
-        --install-game-dir run/runtime-p2/portal2
+    python3 tools/quality/portal2_portal_map.py \\
+        --install-game-dir out/portal2-linux-native-vulkan/dev/runtime/portal2
 """
 
 import argparse
@@ -33,6 +33,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import vmf_map_build  # noqa: E402
+sepipe_loader = vmf_map_build.sepipe_loader
 from gyro_lab_map import Vmf, vec  # noqa: E402  (the VMF writer)
 
 ROOT = HERE.parents[1]
@@ -104,8 +105,9 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", type=Path, default=ROOT / "quality-results/portal2-maps/" / NAME)
     parser.add_argument("--toolchain", type=Path, default=TOOLCHAIN)
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2",
-                        help="staged Portal 2 runtime the materials come from")
+    parser.add_argument("--runtime", type=Path,
+                        help="Portal 2 runtime the materials come from (default: the portal2 "
+                             "profile's packaged runtime)")
     parser.add_argument("--install-game-dir", type=Path,
                         help="copy the map into this game directory's maps/ (e.g. <runtime>/portal2)")
     parser.add_argument("--vmf-only", action="store_true", help="write the VMF and stop")
@@ -117,7 +119,8 @@ def main():
         print("wrote " + str(out / (NAME + ".vmf")))
         return 0
     tools = Path(json.loads(args.toolchain.read_text())["compile_tools"])
-    build(out, tools, args.runtime.resolve(), args.install_game_dir)
+    runtime = args.runtime or sepipe_loader.packaged_runtime("portal2")
+    build(out, tools, runtime.resolve(), args.install_game_dir)
     return 0
 
 

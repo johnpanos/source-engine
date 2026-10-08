@@ -42,7 +42,7 @@ logging the entity outputs listed in WALKTHROUGH_OUTPUTS.
 Like tools/quality/fstop_mechanics_map.py, it compiles with the pinned legacy
 vbsp/vvis/vrad of the PBRT map toolchain against the staged Portal runtime
 (tools/quality/vmf_map_build.py) and installs into the F-Stop runtime's game
-directory (run/runtime-fstop/fstop/maps). Before compiling it checks that every
+directory (the fstop profile's packaged runtime, fstop/maps). Before compiling it checks that every
 model the map names resolves in the Portal runtime or in Valve's F-Stop-era
 content staged next to the game directory (fstop_valve, fstop_valve_tempcontent).
 """
@@ -62,7 +62,6 @@ from source_content import ContentResolver  # noqa: E402
 
 ROOT = HERE.parents[1]
 TOOLCHAIN = ROOT / "build/toolchains/pbrt-map-toolchain.json"
-GAME_DIR = ROOT / "run/runtime-fstop/fstop"
 NAME = "fstop_puzzle_01"
 
 # Portal test chamber materials (testchmb_a_02/08) from the Portal runtime.
@@ -603,8 +602,9 @@ def main():
     parser.add_argument("--toolchain", type=Path, default=TOOLCHAIN)
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime",
                         help="staged Portal runtime the map's materials come from")
-    parser.add_argument("--game-dir", type=Path, default=GAME_DIR,
-                        help="staged F-Stop game directory the map is installed into")
+    parser.add_argument("--game-dir", type=Path,
+                        help="F-Stop game directory the map is installed into (default: the "
+                             "fstop profile's packaged runtime's fstop/)")
     parser.add_argument("--quality", choices=("fast", "full"), default="full")
     parser.add_argument("--vmf-only", action="store_true", help="write the VMF and stop")
     parser.add_argument("--no-install", action="store_true",
@@ -622,6 +622,9 @@ def main():
                                                    args.write_walkthrough))
         return 0
 
+    if args.game_dir is None:
+        import fstop_mechanics_map
+        args.game_dir = fstop_mechanics_map.runtime() / "fstop"
     out = args.out.resolve()
     (out / "compile").mkdir(parents=True, exist_ok=True)
     text = vmf_text()

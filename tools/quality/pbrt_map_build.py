@@ -27,7 +27,8 @@ one of three combinations:
                  scene is derived from it (`legacy-scene`), with `legacy_game`, the
                  compile's game directory searched for materials first, and
                  `legacy_runtime`, the staged game runtime the materials come from
-                 (run/runtime-p2 for a Portal 2 map) in place of the toolchain's
+                 (for a Portal 2 map the portal2 profile's packaged runtime,
+                 out/portal2-linux-native-vulkan/dev/runtime) in place of the toolchain's
     bsp + scene  a compiled BSP lit with an authored scene in the map's space
 
 An optional `medium` (participating_medium.py: scattering_per_m,
