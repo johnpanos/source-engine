@@ -234,7 +234,14 @@ the same image as the native Dawn lane (`portal-webgpu-core`). Commits
   void (a wasm indirect-call trap); kiln cancels runs on SIGINT/SIGTERM and
   the POSIX spawner's Terminate stops the whole process group.
 
-Open: W5's input (keyboard and mouse into the canvas, pointer lock) is not
-yet exercised by a scripted test; audio in a page without a user gesture;
+- **Input (W5).** The page takes scripted DOM input from the harness
+  (`SOURCE_WEB_PAGE_INPUT="<at s>:<key code>:<for s>,..."`, through
+  `serve.py`); the engine's console reaches the page (spew to stderr in the
+  browser, as on the 3DS). Holding S from 35 s moves the player from
+  `setpos 608 32 64` to `622.9 16.0` (`getpos` polled by an alias loop),
+  and Escape opens the pause menu over the live scene. The player spawns
+  about 26 s after the page opens; keys sent before that do nothing.
+
+Open: mouse look and pointer lock are not scripted yet; audio in a page without a user gesture;
 load time (map in 14 s, about 2,400 lazily read files) and frame time; the
 Node lane and W1/W4/W6.

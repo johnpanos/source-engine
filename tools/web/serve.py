@@ -135,8 +135,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # The page reads its arguments from the query; the harness flag
             # makes it post its console, captures and exit status here.
             self.send_response(302)
+            # SOURCE_WEB_PAGE_INPUT: the page's scripted input (site/engine.js
+            # `input`), for the harnesses' input checks.
+            script = os.environ.get("SOURCE_WEB_PAGE_INPUT", "")
             self.send_header("Location", "/?harness=1&args=" +
-                             urllib.parse.quote(" ".join(self.server.engine_args)))
+                             urllib.parse.quote(" ".join(self.server.engine_args)) +
+                             ("&input=" + urllib.parse.quote(script) if script else ""))
             self.headers_common(0, "text/plain")
             return
         if self.path.split("?", 1)[0] == "/content/manifest.json":

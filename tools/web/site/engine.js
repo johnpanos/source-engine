@@ -50,6 +50,32 @@ setInterval(() => flush(false), 250);
 // page is alive, whether the browser counts it visible (a hidden page's
 // timers, and so the engine's yields, are throttled) and how far the
 // engine's own frames have got.
+// input=<from s>:<key code>:<for s>,... (harness): real DOM key events at
+// those page times, dispatched where a user's keys go (the focused canvas,
+// bubbling to the window), to check that input reaches the game.
+for (const step of (query.get('input') || '').split(',').filter(Boolean)) {
+	const [from, code, length] = step.split(':');
+	const key = code.startsWith('Key') ? code.slice(3).toLowerCase() : code;
+	const send = (type) => {
+		const event = new KeyboardEvent(type, { code, key, bubbles: true, cancelable: true });
+		canvas.dispatchEvent(event);
+		say('page: input ' + type + ' ' + code);
+	};
+	setTimeout(() => {
+		// As a user's click would: the page and the canvas take focus first
+		// (SDL activates its window on the window's focus event).
+		canvas.focus();
+		window.dispatchEvent(new FocusEvent('focus'));
+		canvas.dispatchEvent(new FocusEvent('focus'));
+		const r = canvas.getBoundingClientRect();
+		const at = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2,
+		             clientY: r.top + r.height / 2, button: 0 };
+		for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'])
+			canvas.dispatchEvent(type.startsWith('pointer') ? new PointerEvent(type, at) : new MouseEvent(type, at));
+		send('keydown');
+	}, Number(from) * 1000);
+	setTimeout(() => send('keyup'), (Number(from) + Number(length)) * 1000);
+}
 let beats = 0;
 if (harness)
 	setInterval(() => say('page: alive ' + (++beats * 5) + ' s, ' + document.visibilityState +
