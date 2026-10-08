@@ -23,9 +23,10 @@ scenario ran and passed (no scenario is skipped).
     python3 tools/quality/fstop_mechanics_check.py dispenser    by name
     python3 tools/quality/fstop_mechanics_check.py --list
 
-The runtime is private (run/runtime-fstop-check, seeded from run/runtime) and
+The runtime is private (run/runtime-fstop-check, packaged by kiln from the
+fstop profile) and
 the launcher runs with -multirun and an absolute -game path, so it never
-touches a ./play_fstop session. Waits work only on the command line after
+touches a `kiln play fstop` session. Waits work only on the command line after
 +map, so the command line waits once for the map to load and execs the cfg.
 """
 
@@ -34,7 +35,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -42,11 +42,11 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import launch_sandbox  # noqa: E402
-import stage_fstop_runtime  # noqa: E402
+sys.path.insert(0, str(HERE.parent / "kiln"))
+import sepipe_loader  # noqa: E402
 
 ROOT = HERE.parents[1]
 MAP = "fstop_mechanics"
-DEFAULT_CONTENT = Path.home() / "Downloads/portal2-steam2-research/852_0"
 
 
 class Scenario:
@@ -251,14 +251,14 @@ def moved(axis, at_least, first=0, last=-1, why=""):
 
 # ---- running --------------------------------------------------------------------------------
 
-def stage(runtime, content, build, bsp):
-    stage_fstop_runtime.stage(runtime, ROOT / "run/runtime", content, build)
+def stage(runtime, flavor, bsp):
+    sepipe_loader.package_into("fstop", runtime, flavor)
     maps = runtime / "fstop/maps"
     maps.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(bsp, maps / (MAP + ".bsp"))
 
 
-def run(scenario, runtime, out, sandbox):
+def run(scenario, runtime, out, sandbox, flavor="dev"):
     game = runtime / "fstop"
     cfg = game / "cfg"
     cfg.mkdir(parents=True, exist_ok=True)
@@ -276,16 +276,17 @@ def run(scenario, runtime, out, sandbox):
                LD_LIBRARY_PATH=str(runtime / "bin") + ":" + os.environ.get("LD_LIBRARY_PATH", ""))
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("DISPLAY", None)
-    command = ["./hl2_launcher", "-game", str(game), "-windowed", "-w", "1024", "-h", "640",
+    arguments = ["-game", str(game), "-windowed", "-w", "1024", "-h", "640",
                "-renderer", "native-vulkan", "-physics", "vphysics_box3d", "-multirun",
                "-novid", "-insecure", "-condebug", "-dev", "+developer", "2", "+sv_cheats", "1",
                "+volume", "0", "+mat_vsync", "0", "+map", MAP] + command_line
-    try:
-        result = subprocess.run(command, cwd=runtime, env=env, capture_output=True, text=True,
-                                timeout=scenario.timeout)
-        code = result.returncode
-    except subprocess.TimeoutExpired:
+    code, timed_out, _, error = sepipe_loader.run_test(
+        "fstop", flavor, runtime, arguments, out / (scenario.name + ".stdout"),
+        scenario.timeout, environment=env)
+    if timed_out:
         code = "timeout"
+    elif error:
+        code = "%s (%s)" % (code, error)
     # One log: -condebug's console.log (engine.log repeats it with timestamps).
     source = log_path if log_path.exists() else runtime / "engine.log"
     log = source.read_text(errors="replace") if source.exists() else ""
@@ -314,10 +315,9 @@ def main(argv=None):
     parser.add_argument("names", nargs="*", help="scenario names (default: all)")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-fstop-check")
-    parser.add_argument("--content-root", type=Path, default=DEFAULT_CONTENT)
-    parser.add_argument("--build", type=Path, default=ROOT / "build-fstop")
-    parser.add_argument("--bsp", type=Path,
-                        default=ROOT / "run/runtime-fstop/fstop/maps" / (MAP + ".bsp"))
+    parser.add_argument("--flavor", default="dev", help="the fstop profile's build flavor")
+    parser.add_argument("--bsp", type=Path, help="the map (default: fstop_mechanics_map.py's "
+                        "install in the fstop profile's packaged runtime)")
     parser.add_argument("--out", type=Path, default=ROOT / "quality-results/fstop-mechanics-check")
     parser.add_argument("--keep", action="store_true", help="keep the private runtime")
     args = parser.parse_args(argv)
@@ -335,12 +335,13 @@ def main(argv=None):
     # Refused before staging: the runtime is written, then deleted, so it must
     # never be a player runtime (./play_fstop's run/runtime-fstop).
     sandbox = launch_sandbox.Sandbox(args.out.resolve() / "sandbox", write_paths=[runtime])
-    stage(runtime, args.content_root, args.build, args.bsp)
+    bsp = args.bsp or sepipe_loader.packaged_runtime("fstop", args.flavor) / "fstop/maps" / (MAP + ".bsp")
+    stage(runtime, args.flavor, bsp)
     report, failed = {}, 0
     try:
         sandbox.check_write_paths([runtime])
         for scenario in chosen:
-            results = run(scenario, runtime, args.out, sandbox)
+            results = run(scenario, runtime, args.out.resolve(), sandbox, args.flavor)
             ok = all(r[0] for r in results)
             failed += not ok
             report[scenario.name] = {"pass": ok, "checks": [{"pass": r[0], "detail": r[1]}
