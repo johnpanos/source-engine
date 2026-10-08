@@ -219,7 +219,6 @@
       "materialsystem/stdshaders/aftershock_helper.cpp",
       "materialsystem/stdshaders/aftershock_helper.h",
       "materialsystem/stdshaders/bik_dx90.cpp",
-      "materialsystem/stdshaders/black.cpp",
       "materialsystem/stdshaders/builtin_shader_provider.cpp",
       "materialsystem/stdshaders/cable_dx9.cpp",
       "materialsystem/stdshaders/cloak.cpp",
@@ -245,6 +244,7 @@
       "materialsystem/stdshaders/eyes_dx9.cpp",
       "materialsystem/stdshaders/filmdust_dx8_dx9.cpp",
       "materialsystem/stdshaders/filmgrain_dx8_dx9.cpp",
+      "materialsystem/stdshaders/fixed_state_shaders.cpp",
       "materialsystem/stdshaders/flesh_interior_blended_pass_helper.cpp",
       "materialsystem/stdshaders/flesh_interior_blended_pass_helper.h",
       "materialsystem/stdshaders/floatcombine.cpp",
@@ -259,7 +259,6 @@
       "materialsystem/stdshaders/lightmappedreflective.cpp",
       "materialsystem/stdshaders/modulate_dx9.cpp",
       "materialsystem/stdshaders/motion_blur_dx9.cpp",
-      "materialsystem/stdshaders/occlusion_dx9.cpp",
       "materialsystem/stdshaders/paintblob_dx9.cpp",
       "materialsystem/stdshaders/paintblob_helper.cpp",
       "materialsystem/stdshaders/paintblob_helper.h",
@@ -309,9 +308,7 @@
       "materialsystem/stdshaders/worldtwotextureblend.cpp",
       "materialsystem/stdshaders/worldvertextransition.cpp",
       "materialsystem/stdshaders/worldvertextransition_dx8_helper.cpp",
-      "materialsystem/stdshaders/worldvertextransition_dx8_helper.h",
-      "materialsystem/stdshaders/writestencil_dx9.cpp",
-      "materialsystem/stdshaders/writez_dx9.cpp"
+      "materialsystem/stdshaders/worldvertextransition_dx8_helper.h"
     ],
     "switches": [
       "-defaultgamedir",
