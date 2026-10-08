@@ -48,8 +48,10 @@ COHORTS = {
     "T3-process-environment": [r"/proc/self/cmdline", r"\bGetCommandLine[AW]?\s*\(", r"TracerPid",
                                r"\bIsDebuggerPresent\s*\(", r"\bgetenv\s*\(", r"\benviron\b",
                                r"\bP_TRACED\b"],
+    # Native debug sinks. stdio to stdout or stderr is the portable C library and
+    # stays compile-time, like std::chrono (reviewed 2026-10-08).
     "T4-debug-output": [r"\bOutputDebugString[AW]?\s*\(", r"\b__android_log_(write|print|vprint)\s*\(",
-                        r"\bfprintf\s*\(\s*stderr", r"\bfputs\s*\([^;]*stderr", r"\bwrite\s*\(\s*(2|STDERR_FILENO)\b"],
+                        r"\bos_log\w*\s*\(", r"\bwrite\s*\(\s*(2|STDERR_FILENO)\b"],
     "T5-crash-reporting": [r"\bsigaction\s*\(", r"(?<![\w.])signal\s*\(", r"\bSetUnhandledExceptionFilter\s*\(",
                            r"\bMiniDumpWriteDump\s*\(", r"\bbacktrace\s*\(", r"\b_Unwind_Backtrace\s*\("],
     "T6-memory-paths": [r"\bmmap\s*\(", r"\bmunmap\s*\(", r"\bmprotect\s*\(", r"\bVirtualAlloc\s*\(",

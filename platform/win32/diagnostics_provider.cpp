@@ -74,14 +74,17 @@ private:
 	std::mutex m_mutex;
 };
 
+// The debugger channel takes each message as one record, byte for byte, and
+// has no severity: it is dropped (platform.diagnostics.v1, severity-lossy
+// record sinks). Tier 0's Plat_DebugString output stays identical (R103).
 class CDebuggerOutput final : public IDebugOutput
 {
 public:
-	void Write( DiagnosticSeverity severity, const char *message ) override
+	void Write( DiagnosticSeverity, const char *message ) override
 	{
 		if ( message != nullptr )
 		{
-			OutputDebugStringW( win32::ToWide( Frame( severity, message ).c_str() ).c_str() );
+			OutputDebugStringA( message );
 		}
 	}
 };

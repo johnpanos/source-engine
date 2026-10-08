@@ -115,7 +115,8 @@ public:
 // message, framed as "[info] ", "[warn] " or "[error] ", the message, "\n".
 [[nodiscard]] std::unique_ptr<IDebugOutput> CreateWin32HandleDebugOutput( void *file );
 
-// OutputDebugStringW, one call per framed message (for an attached debugger).
+// OutputDebugStringA, one call per message, unframed: the debugger channel is a
+// record sink without severity, which it drops (for an attached debugger).
 [[nodiscard]] std::unique_ptr<IDebugOutput> CreateWin32DebuggerOutput();
 
 // GetFileAttributesW: follows reparse points the way CreateFileW does; reads

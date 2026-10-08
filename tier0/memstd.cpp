@@ -138,15 +138,15 @@ public:
 		// Can't use Msg here because it isn't necessarily initialized yet.
 		if ( s_bPageHeapEnabled )
 		{
-			OutputDebugStringA("PageHeap is on. Memory use will be larger than normal.\n" );
+			Plat_DebugString( "PageHeap is on. Memory use will be larger than normal.\n" );
 		}
 		else
 		{
-			OutputDebugStringA("PageHeap is off. Memory use will be normal.\n" );
+			Plat_DebugString( "PageHeap is off. Memory use will be normal.\n" );
 		}
 		if( bZeroMemory )
 		{
-			OutputDebugStringA( "  HEAP_ZERO_MEMORY is specified.\n" );
+			Plat_DebugString( "  HEAP_ZERO_MEMORY is specified.\n" );
 		}
 	}
 
@@ -413,7 +413,7 @@ static bool IsPageHeapEnabled( bool& bETWHeapEnabled )
 				size_t len = strlen( pFilePart );
 				if ( len > 0 && pFilePart[ len - 1 ] == ' ' )
 				{
-					OutputDebugStringA( "Trailing space on executable name! This will cause Application Verifier and ETW Heap tracing to fail!\n" );
+					Plat_DebugString( "Trailing space on executable name! This will cause Application Verifier and ETW Heap tracing to fail!\n" );
 					DebuggerBreakIfDebugging();
 				}
 

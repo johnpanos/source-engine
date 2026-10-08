@@ -446,7 +446,9 @@ static SpewRetval_t _SpewMessage( SpewType_t spewType, const char *pGroupName, i
 	};
 
 #ifdef ANDROID
-	__android_log_print( ANDROID_LOG_INFO, "SRCENG", "%s", pTempBuffer );
+	// Logcat through Tier 0's debug sink (R103): info priority, tag SRCENG.
+	if ( platform::IDebugOutput *output = tier0_facade::DebugOutput() )
+		output->Write( platform::DiagnosticSeverity::kInfo, pTempBuffer );
 #endif
 	g_DbgLogger.Write( pTempBuffer );
 

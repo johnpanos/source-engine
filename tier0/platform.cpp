@@ -265,7 +265,8 @@ bool Plat_IsInDebugSession()
 void Plat_DebugString( const char * psz )
 {
 #if defined( _WIN32 )
-	::OutputDebugStringA( psz );
+	if ( platform::IDebugOutput *output = tier0_facade::DebugOutput() )
+		output->Write( platform::DiagnosticSeverity::kInfo, psz ); // the debugger channel (R103)
 #endif
 }
 

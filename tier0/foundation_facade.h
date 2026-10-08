@@ -13,6 +13,7 @@
 #define TIER0_FOUNDATION_FACADE_H
 
 #include "platform/contracts/clock.h"
+#include "platform/contracts/diagnostics.h"
 #include "platform/contracts/process_environment.h"
 #include "platform/contracts/thread.h"
 #include "platform/contracts/wall_clock.h"
@@ -35,6 +36,10 @@ double SecondsSinceStart();
 
 // The monotonic clock's reading in nanoseconds (Plat_MonotonicNanoseconds).
 std::uint64_t MonotonicNanoseconds();
+
+// The native debug sink, where there is one: logcat (tag SRCENG) on Android,
+// the debugger channel on Windows; null elsewhere, where spew goes to stdio.
+platform::IDebugOutput *DebugOutput();
 
 // The process's wall clock (civil time, deadlines for CLOCK_REALTIME waits).
 const platform::IWallClock &WallClock();

@@ -34,6 +34,11 @@ owned by the composition root; consumers only annotate and request reports.
   a severity tag (`[info] `, `[warn] `, `[error] `) and a line terminator; a
   reader that removes the framing recovers message and severity exactly
   (amended 2026-10-08, R26).
+- A record sink whose channel has no severity (the Windows debugger channel)
+  delivers each message as one unframed record and drops the severity; it says
+  so where it is declared (amended 2026-10-08, R103, so Tier 0's
+  `Plat_DebugString` output stays byte-identical). Logcat carries severity as
+  its priority.
 - Annotations set, replace, remove (removing an absent key is `kOk`) and read
   back by the paths convention. A refused set changes nothing.
 - `WriteReport` captures the process without terminating it and returns a

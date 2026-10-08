@@ -99,6 +99,18 @@ bool HasEnvironmentVariable( const char *name )
 	return ProcessEnvironment().VariableLength( name ) >= 0;
 }
 
+platform::IDebugOutput *DebugOutput()
+{
+#if defined( _WIN32 )
+	static platform::IDebugOutput *output = &Leak( platform::CreateWin32DebuggerOutput() );
+#elif defined( ANDROID ) || defined( __ANDROID__ )
+	static platform::IDebugOutput *output = &Leak( platform::CreateAndroidLogDebugOutput( "SRCENG" ) );
+#else
+	static platform::IDebugOutput *output = nullptr;
+#endif
+	return output;
+}
+
 double SecondsSinceStart()
 {
 	const TimeBase &base = Base();
