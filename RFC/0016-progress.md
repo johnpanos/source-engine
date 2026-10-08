@@ -13394,3 +13394,78 @@ Open, and failures found on the way:
   PBR compat mapping), not this work.
 - Ratchets: stdshaders 1,561 → 751 files, 167,303 → 105,648 lines.
 - Census after each: 19 views, 0 legacy draws, nothing dropped.
+
+### Later the same day: material draws without stdshader passes, the M2/M3 slices and the core shader API cut-over
+
+User direction: "yes migrate and delete these" (stdshaders, shaderapivulkan,
+shaderapiempty, shaderapipica). Owner: this session (r91), with
+source-engine-14 for `materialsystem/shaderapipica`.
+
+Commits and what each removed or added:
+
+- M1 `049a44996`: mesh draws reach the core without running stdshader
+  passes (also fixes `e32f58361`'s lost meshes; the census now requires a
+  nonzero core mesh count).
+- M2 step 1 `0d8045c8b`: stdshaders' dynamic draw code; `mat_dump_material_state`
+  and `legacy_stream_census.py --dump-materials` are the oracle for every
+  later stdshaders slice (structural fields per material, per view).
+- M2 step 2 `18f489973`: shader-combo selection and the 504 combo headers.
+- M2 step 3 `4139312cd`: the remaining dynamic branches, the helpers only
+  they called, the HLSL-only headers and the register maps.
+- M3 step 1 `d128ffc38`: the stream record's per-draw half and the unread
+  GPU copies of each map's WMSH, LMAP, PRBV, SDFV and RPRB; restores the
+  decal/shadow depth bias `e32f58361` dropped; the core's missing scissor is
+  reported through `NoteUnimplemented`.
+- M3 step 2 `a1c246389`: the emit conversion, its reuse cache and suites,
+  and `-vkemitparallel` from the profiles.
+- M3 step 3 `684f3efc1`: the Vulkan occlusion queries (every wrapped draw
+  is a core slot that ends the query as failed, so results are computed on
+  the CPU, unchanged).
+- M3 steps 4 to 7 (`767333b0c`, `225518244`, `abdbdf770`, `d2857bffa`): the
+  unread scene colour capture, the pipeline keys file, write-only state,
+  dead snapshot tables and fixed-function state, uncalled helpers.
+- `caa4cf02b`: device clause D44, region clears (`kClearRegions`) on
+  Vulkan, GL/ES, D3D12 and null, with the bad adapter `kClearsWholeTarget`;
+  fixes the D3D12 lane's MinGW build (D40/D42 formats).
+- Core shader API cut-over parts, agreed with source-engine-14:
+  (b) `51340848c`/`274ae5081` render-target copies in frame order
+  (`core_copies.cpp`); (e) `cd4306785` mesh slots take the snapshot's raster
+  state, stencil and poly-offset bias (`DecorateCoreDraw`,
+  `DecorateCoreTarget`). Not verified in pixels: on native Dawn the core
+  still refuses the core shader API's draws.
+
+Ratchets: stdshaders 657 → 133 files, 91,155 → 19,461 lines; shaderapivulkan
+34 → 30 files, 23,496 → 21,271 lines.
+
+Evidence: after each slice, census on 19 views (0 legacy draws, core meshes
+in every view), material dumps structurally identical to the pre-M2
+baseline, screenshots within animation noise of the previous run;
+`builtin_shader_conformance` 316/0, `shader-table --check`,
+`native_vulkan_bringup_conformance` 57/0 (13 world-mesh checks left with the
+API); D44: `render.device.v2` null 743, sensitivity 22, Vulkan 1,444, GL
+1,342, GLES 1,209, WebGPU 798. `p1-testchmb-a-00` has a blank-capture
+intermittent ("engine capture lacks scene detail", about 1 run in 3); its
+passing runs match the baseline.
+
+Decisions (agent, under the user's "choose the recommended long-term
+option" instruction):
+
+- shaderapipica stays: it is the device-neutral core shader API
+  (source-engine-14, RFC 0029), the browser client's only renderer, and the
+  route by which the desktop client leaves shaderapivulkan.
+- shaderapiempty stays outside R91: R12 requires the dedicated server to
+  link no render code, and shaderapiempty is the material system's no-render
+  stand-in there, not a renderer. Deleting it needs a dedicated server
+  without the material system, a separate engine change.
+- stdshaders' remaining load-time role (parameter definitions, InitParams,
+  texture loading, shadow state that sets translucency and vertex format)
+  is deleted only through one parameter-only provider judged by the
+  material dumps; mod shader compatibility rules out deleting shaders that
+  the Portal games do not use.
+
+Open: cut-over parts (c) depth-to-alpha (a core pass program plus
+`depthAlphaHandle` through `DecorateCoreDraw`), (d) portal screen-fill
+queries, (f) HDR, gamma and capture presentation (source-engine-14's
+presenter); then the desktop client moves to the core shader API and
+shaderapivulkan's replay of copies, clears and core sections, presentation
+and texture management can go.
