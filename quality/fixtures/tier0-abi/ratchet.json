@@ -2,15 +2,7 @@
  "counts": {
   "T1-time": {},
   "T2-threads": {},
-  "T3-process-environment": {
-   "public/tier0/vcrmode.h": 1,
-   "tier0/assert_dialog.cpp": 2,
-   "tier0/dbg.cpp": 1,
-   "tier0/platform.cpp": 4,
-   "tier0/platform_posix.cpp": 5,
-   "tier0/vcrmode.cpp": 5,
-   "tier0/vcrmode_posix.cpp": 2
-  },
+  "T3-process-environment": {},
   "T4-debug-output": {
    "public/tier0/bootstrap_module_load_telemetry.h": 1,
    "tier0/assert_dialog.cpp": 2,
@@ -42,7 +34,7 @@
  "totals": {
   "T1-time": 0,
   "T2-threads": 0,
-  "T3-process-environment": 20,
+  "T3-process-environment": 0,
   "T4-debug-output": 16,
   "T5-crash-reporting": 8,
   "T6-memory-paths": 19

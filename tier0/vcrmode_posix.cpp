@@ -570,7 +570,9 @@ const char * BuildCmdLine( int argc, char **argv, bool fAddSteam )
 	return linuxCmdline;
 }
 
-char *GetCommandLine()
+// The line BuildCmdLine assembled from the launcher's argv. Not an OS call:
+// Tier 0's own state, file-local since R103.
+static char *Tier0_BuiltCommandLine()
 {
 	return linuxCmdline;
 }
@@ -591,7 +593,7 @@ static char* VCR_Hook_GetCommandLine()
 	}
 	else
 	{
-		ret = GetCommandLine();
+		ret = Tier0_BuiltCommandLine();
 
 		if(g_VCRMode == VCR_Record)
 		{

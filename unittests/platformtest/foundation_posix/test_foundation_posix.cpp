@@ -339,6 +339,15 @@ void ProcessEnvironmentSuites( int argc, char **argv )
 	fixture.caseVariantName = "source_test_var";
 	Tally( "posix.process-environment",
 	    platformtest::RunProcessEnvironmentConformance( *env, fixture ) );
+
+	// The arguments as the OS reports them, for code never handed argv (R103).
+	auto system = platform::CreateSystemProcessEnvironment();
+#if defined( __linux__ ) || defined( __APPLE__ )
+	Tally( "posix.process-environment[system]",
+	    platformtest::RunProcessEnvironmentConformance( *system, fixture ) );
+#else
+	NATIVE_CHECK( system->ArgumentCount() == 0 );
+#endif
 	NATIVE_CHECK( env->ProcessId() == static_cast<std::uint64_t>( getpid() ) );
 	NATIVE_CHECK( env->GetDebuggerState() == platform::DebuggerState::kNotAttached );
 

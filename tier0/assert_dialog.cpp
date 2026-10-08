@@ -20,6 +20,7 @@
 #include <dlfcn.h>
 #include "tier0/native_module_load_telemetry.h"
 #endif
+#include "foundation_facade.h"
 
 #if defined( USE_SDL )
 
@@ -106,7 +107,7 @@ static bool IsDebugBreakEnabled()
 {
 	static bool bResult = ( _tcsstr( Plat_GetCommandLine(), _T("-debugbreak") )    != NULL ) || \
 	                      ( _tcsstr( Plat_GetCommandLine(), _T("-raiseonassert") ) != NULL ) || \
-	                      getenv( "RAISE_ON_ASSERT" );
+	                      tier0_facade::HasEnvironmentVariable( "RAISE_ON_ASSERT" );
 	return bResult;
 }
 
@@ -437,7 +438,7 @@ DBG_INTERFACE bool DoNewAssertDialog( const tchar *pFilename, int line, const tc
 		#define COLOR_END		"\033[0m"
 		fprintf(stderr, COLOR_YELLOW "ASSERT:" COLOR_END " " COLOR_RED "%s" COLOR_GREEN ":%i:" COLOR_END " " COLOR_RED "%s" COLOR_END "\n",
 		        pFilename, line, pExpression);
-		if ( getenv( "POSIX_ASSERT_BACKTRACE" ) )
+		if ( tier0_facade::HasEnvironmentVariable( "POSIX_ASSERT_BACKTRACE" ) )
 		{
 #if PLATFORM_GLIBC
 			SpewBacktrace();

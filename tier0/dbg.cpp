@@ -44,6 +44,8 @@
 #define PvAlloc malloc
 #endif
 
+#include "foundation_facade.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -227,7 +229,7 @@ DBG_INTERFACE SpewRetval_t DefaultSpewFunc( SpewType_t type, const tchar *pMsg )
 	{
 #ifndef WIN32
 		// Non-win32
-		bool bRaiseOnAssert = getenv( "RAISE_ON_ASSERT" ) || !!CommandLine()->FindParm( "-raiseonassert" );
+		bool bRaiseOnAssert = tier0_facade::HasEnvironmentVariable( "RAISE_ON_ASSERT" ) || !!CommandLine()->FindParm( "-raiseonassert" );
 #elif defined( _DEBUG )
 		// Win32 debug
 		bool bRaiseOnAssert = true;

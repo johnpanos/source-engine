@@ -17,8 +17,13 @@
 #include <unistd.h>
 
 #if defined( __APPLE__ )
+#include <crt_externs.h>
 #include <sys/sysctl.h>
 #include <sys/types.h>
+#elif defined( __FreeBSD__ )
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#include <sys/user.h>
 #endif
 
 extern char **environ;
@@ -123,6 +128,15 @@ public:
 		}
 		return ( info.kp_proc.p_flag & P_TRACED ) != 0 ? DebuggerState::kAttached
 		                                               : DebuggerState::kNotAttached;
+#elif defined( __FreeBSD__ )
+		int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid() };
+		kinfo_proc info{};
+		size_t size = sizeof( info );
+		if ( sysctl( mib, 4, &info, &size, nullptr, 0 ) != 0 )
+		{
+			return DebuggerState::kUnknown;
+		}
+		return ( info.ki_flag & P_TRACED ) != 0 ? DebuggerState::kAttached : DebuggerState::kNotAttached;
 #else
 		return DebuggerState::kUnknown;
 #endif
@@ -153,7 +167,58 @@ private:
 	std::uint64_t m_pid = 0;
 };
 
+// argv as the OS reports it to the process.
+std::vector<std::string> SystemArguments()
+{
+	std::vector<std::string> arguments;
+#if defined( __APPLE__ )
+	const int argc = *_NSGetArgc();
+	char **argv = *_NSGetArgv();
+	for ( int i = 0; argv != nullptr && i < argc; ++i )
+	{
+		arguments.emplace_back( argv[i] != nullptr ? argv[i] : "" );
+	}
+#elif defined( __linux__ )
+	FILE *f = std::fopen( "/proc/self/cmdline", "rb" );
+	if ( f == nullptr )
+	{
+		return arguments;
+	}
+	std::string all;
+	char chunk[4096];
+	std::size_t n;
+	while ( ( n = std::fread( chunk, 1, sizeof( chunk ), f ) ) > 0 )
+	{
+		all.append( chunk, n );
+	}
+	std::fclose( f );
+	std::size_t start = 0;
+	while ( start < all.size() )
+	{
+		const std::size_t end = all.find( '\0', start );
+		arguments.push_back( all.substr( start, end == std::string::npos ? std::string::npos : end - start ) );
+		if ( end == std::string::npos )
+		{
+			break;
+		}
+		start = end + 1;
+	}
+#endif
+	return arguments;
+}
+
 } // namespace
+
+std::unique_ptr<IProcessEnvironment> CreateSystemProcessEnvironment()
+{
+	const std::vector<std::string> arguments = SystemArguments();
+	std::vector<const char *> argv;
+	for ( const std::string &a : arguments )
+	{
+		argv.push_back( a.c_str() );
+	}
+	return std::make_unique<CPosixProcessEnvironment>( static_cast<int>( argv.size() ), argv.data() );
+}
 
 std::unique_ptr<IProcessEnvironment> CreatePosixProcessEnvironment(
     int argc, const char *const *argv )

@@ -437,7 +437,7 @@ static int VCR_Start( char const *pFilename, bool bRecord, IVCRHelpers *pHelpers
 	g_OldVCRMode = VCR_Invalid;
 	if ( bRecord )
 	{
-		char *pCommandLine = GetCommandLine();
+		char *pCommandLine = (char *)tier0_facade::ProcessEnvironment().RawCommandLineA();
 		if ( !strstr( pCommandLine, "-nosound" ) )
 			Error( "VCR record: must use -nosound." );
 
@@ -500,7 +500,7 @@ static void VCR_End()
 	{
 		// It's going to get screwy now, especially if we have threads, so just exit.
 		#ifdef _DEBUG
-			if ( IsDebuggerPresent() )
+			if ( tier0_facade::ProcessEnvironment().GetDebuggerState() == platform::DebuggerState::kAttached )
 				DebuggerBreak();
 		#endif
 
@@ -976,11 +976,11 @@ static char* VCR_Hook_GetCommandLine()
 	// This function is special in that it can be called before VCR mode is initialized.
 	// In this special case, just return the command line.
 	if ( !g_pVCRThreads )
-		return GetCommandLine();
+		return (char *)tier0_facade::ProcessEnvironment().RawCommandLineA();
 
 	// Preamble.
 	if ( !IsVCRModeEnabledForThisThread() )
-		return GetCommandLine();
+		return (char *)tier0_facade::ProcessEnvironment().RawCommandLineA();
 
 	VCR_THREADSAFE;
 	VCR_Event(VCREvent_CmdLine);
@@ -996,7 +996,7 @@ static char* VCR_Hook_GetCommandLine()
 	}
 	else
 	{
-		ret = GetCommandLine();
+		ret = (char *)tier0_facade::ProcessEnvironment().RawCommandLineA();
 
 		if(g_VCRMode == VCR_Record)
 		{

@@ -58,6 +58,16 @@ def main():
             env = dict(os.environ, LD_LIBRARY_PATH=tier0_dir)
             parts.append(("mod-fixture", run([host, lib, os.path.join(FIXTURE, args.platform,
                                                                       "libmod_fixture.so")], env)))
+        oracle = os.path.join(scratch, "cmdline_oracle")
+        build = subprocess.run(["g++", "-std=c++20", "-I", os.path.join(ROOT, "public"), "-I", ROOT,
+                                os.path.join(FIXTURE, "cmdline_oracle.cpp"),
+                                os.path.join(ROOT, "platform/posix/dynamic_library_provider.cpp"),
+                                "-ldl", "-o", oracle], capture_output=True, text=True)
+        if build.returncode != 0:
+            parts.append(("cmdline-oracle", (1, 1, build.stderr)))
+        else:
+            env = dict(os.environ, LD_LIBRARY_PATH=tier0_dir)
+            parts.append(("cmdline-oracle", run([oracle, lib], env)))
     parts.append(("ratchet", run([sys.executable, os.path.join(ROOT, "tools/quality/tier0_ratchet.py"), "check"])))
     parts.append(("ratchet.selftest", run([sys.executable, os.path.join(ROOT, "tools/quality/tier0_ratchet.py"),
                                            "selftest"])))

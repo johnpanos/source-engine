@@ -58,12 +58,21 @@ COHORTS = {
 }
 
 
+def strip_only_comments(text):
+    text = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), text, flags=re.S)
+    return re.sub(r"//[^\n]*", "", text)
+
+
 def strip_comments(text):
     """Comments and string literals removed (a call named in a message is not a
     call), line structure kept."""
-    text = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), text, flags=re.S)
-    text = re.sub(r"//[^\n]*", "", text)
-    return re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', text)
+    return re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', strip_only_comments(text))
+
+
+# Patterns that are themselves literals (a /proc path, the status field name)
+# match the text with only comments removed.
+def literal_pattern(pattern):
+    return "/proc/" in pattern or "TracerPid" in pattern
 
 
 def scan(root=ROOT):
@@ -75,10 +84,11 @@ def scan(root=ROOT):
                 continue
             path = os.path.join(base, name)
             with open(path, encoding="latin-1") as handle:
-                text = strip_comments(handle.read())
+                raw = handle.read()
+            code, literal = strip_comments(raw), strip_only_comments(raw)
             relative = "%s/%s" % (directory, name)
             for cohort, patterns in COHORTS.items():
-                n = sum(len(re.findall(p, text)) for p in patterns)
+                n = sum(len(re.findall(p, literal if literal_pattern(p) else code)) for p in patterns)
                 if n:
                     counts[cohort][relative] = n
     return counts

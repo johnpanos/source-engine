@@ -13,6 +13,7 @@
 #define TIER0_FOUNDATION_FACADE_H
 
 #include "platform/contracts/clock.h"
+#include "platform/contracts/process_environment.h"
 #include "platform/contracts/thread.h"
 #include "platform/contracts/wall_clock.h"
 
@@ -40,6 +41,18 @@ const platform::IWallClock &WallClock();
 
 // The process's thread provider (sleep, names, priorities, ids), with the
 // backend extension the legacy exports need for native identity.
+// The process environment: arguments as the OS reports them, a snapshot of the
+// environment taken on first use, and the live debugger state.
+#if defined( _WIN32 )
+const platform::IWin32ProcessEnvironment &ProcessEnvironment();
+#else
+const platform::IProcessEnvironment &ProcessEnvironment();
+#endif
+
+// True when the variable is set (to any value, empty included), as getenv's
+// non-null result was.
+bool HasEnvironmentVariable( const char *name );
+
 #if defined( _WIN32 )
 platform::IWin32Threads &Threads();
 #else

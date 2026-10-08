@@ -230,77 +230,13 @@ PLATFORM_INTERFACE void Plat_SetAllocErrorFn( Plat_AllocErrorFn fn )
 
 #endif // !NO_HOOK_MALLOC
 
-#if defined( OSX ) || defined(PLATFORM_BSD)
-
-// From the Apple tech note: http://developer.apple.com/library/mac/#qa/qa1361/_index.html
+// The live debugger state from Tier 0's process environment (R103): TracerPid
+// on Linux and Android, P_TRACED on Apple and FreeBSD, unknown (false) on the
+// 3DS, whose debugger attaches through the emulator's GDB stub.
 bool Plat_IsInDebugSession()
 {
-	static int s_IsInDebugSession;
-	int                 junk;
-	struct kinfo_proc   info;
-	size_t              size;
-	int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()};
-#ifndef PLATFORM_BSD
-	info.kp_proc.p_flag = 0;
-#endif
-
-	size = sizeof(info);
-	junk = sysctl(mib, sizeof(mib) / sizeof(*mib), &info, &size, NULL, 0);
-
-	// We're being debugged if the P_TRACED flag is set.
-#ifdef PLATFORM_BSD
-	s_IsInDebugSession = info.ki_flag & P_TRACED;
-#else
-	s_IsInDebugSession = info.kp_proc.p_flag & P_TRACED;
-#endif
-
-	return !!s_IsInDebugSession;
+	return tier0_facade::ProcessEnvironment().GetDebuggerState() == platform::DebuggerState::kAttached;
 }
-
-#elif defined( PLATFORM_3DS )
-
-// No /proc to ask (each open was a slow SD card probe); a debugger attaches
-// through the emulator's GDB stub, which the game cannot see.
-bool Plat_IsInDebugSession()
-{
-	return false;
-}
-
-#elif defined( LINUX )
-
-bool Plat_IsInDebugSession()
-{
-	// For linux: http://stackoverflow.com/questions/3596781/detect-if-gdb-is-running
-	// Don't use "if (ptrace(PTRACE_TRACEME, 0, NULL, 0) == -1)" as it means debuggers can't attach.
-	// 	Other solutions they mention involve forking. Ugh.
-	//
-	// Good solution from Pierre-Loup: Check TracerPid in /proc/self/status.
-	// from "man proc"
-	//     TracerPid: PID of process tracing this process (0 if not being traced).
-	int tracerpid = -1;
-
-	int fd = open( "/proc/self/status", O_RDONLY, S_IRUSR );
-	if( fd >= 0 )
-	{
-		char buf[ 1024 ];
-		static const char s_TracerPid[] = "TracerPid:";
-
-		int len = read( fd, buf, sizeof( buf ) - 1 );
-		if ( len > 0 )
-		{
-			buf[ len ] = 0;
-
-			const char *str = strstr( buf, s_TracerPid );
-			tracerpid = str ? atoi( str + sizeof( s_TracerPid ) ) : -1;
-		}
-
-		close( fd );
-	}
-
-	return ( tracerpid > 0 );
-}
-
-#endif // defined( LINUX )
 
 void Plat_DebugString( const char * psz )
 {
@@ -317,32 +253,26 @@ PLATFORM_INTERFACE void Plat_SetCommandLine( const char *cmdLine )
 PLATFORM_INTERFACE const tchar *Plat_GetCommandLine()
 {
 #ifdef LINUX
+	// The arguments as the OS reports them (Tier 0's process environment,
+	// R103), each followed by a space: the legacy read of /proc/self/cmdline
+	// turned every NUL, the last included, into one.
 	if( !g_CmdLine[ 0 ] )
 	{
-		FILE *fp = fopen( "/proc/self/cmdline", "rb" );
-
-		if( fp )
+		const platform::IProcessEnvironment &environment = tier0_facade::ProcessEnvironment();
+		size_t nLength = 0;
+		for ( int i = 0; i < environment.ArgumentCount(); ++i )
 		{
-			size_t nCharRead = 0;
-
-			// -1 to leave room for the '\0'
-			nCharRead = fread( g_CmdLine, sizeof( g_CmdLine[0] ), ARRAYSIZE( g_CmdLine ) - 1, fp );
-			if ( feof( fp ) && !ferror( fp ) ) // Should have read the whole command line without error
-			{
-				Assert ( nCharRead < ARRAYSIZE( g_CmdLine ) );
-
-				for( uint i = 0; i < nCharRead; i++ )
-				{
-					if( g_CmdLine[ i ] == '\0' )
-						g_CmdLine[ i ] = ' ';
-				}
-				
-				g_CmdLine[ nCharRead ] = '\0';
-
-			}
-			fclose( fp );
+			char szArgument[ sizeof( g_CmdLine ) ];
+			if ( environment.GetArgument( i, szArgument, sizeof( szArgument ) ) < 0 )
+				szArgument[ 0 ] = 0;
+			const size_t nArgument = strlen( szArgument );
+			if ( nLength + nArgument + 1 >= sizeof( g_CmdLine ) )
+				break;
+			memcpy( g_CmdLine + nLength, szArgument, nArgument );
+			nLength += nArgument;
+			g_CmdLine[ nLength++ ] = ' ';
 		}
-
+		g_CmdLine[ nLength ] = '\0';
 		Assert( g_CmdLine[ 0 ] );
 	}
 #endif // LINUX

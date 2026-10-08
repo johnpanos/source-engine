@@ -29,7 +29,7 @@ int CopyOut( const std::string *s, char *buffer, int bufferSize )
 	return static_cast<int>( s->size() );
 }
 
-class CWin32ProcessEnvironment final : public IProcessEnvironment
+class CWin32ProcessEnvironment final : public IWin32ProcessEnvironment
 {
 public:
 	CWin32ProcessEnvironment()
@@ -100,6 +100,9 @@ public:
 		return IsDebuggerPresent() ? DebuggerState::kAttached : DebuggerState::kNotAttached;
 	}
 
+	const wchar_t *RawCommandLineW() const override { return GetCommandLineW(); }
+	const char *RawCommandLineA() const override { return GetCommandLineA(); }
+
 private:
 	const std::string *Argument( int index ) const
 	{
@@ -123,7 +126,7 @@ private:
 
 } // namespace
 
-std::unique_ptr<IProcessEnvironment> CreateWin32ProcessEnvironment()
+std::unique_ptr<IWin32ProcessEnvironment> CreateWin32ProcessEnvironment()
 {
 	return std::make_unique<CWin32ProcessEnvironment>();
 }

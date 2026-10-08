@@ -87,6 +87,12 @@ public:
 [[nodiscard]] std::unique_ptr<IProcessEnvironment> CreatePosixProcessEnvironment(
     int argc, const char *const *argv );
 
+// The arguments as the OS reports them to the process itself, for code that is
+// never handed argv (a legacy facade such as Tier 0): /proc/self/cmdline on
+// Linux and Android, _NSGetArgv on Apple, none elsewhere (ArgumentCount() 0).
+// The environment is snapshotted as by CreatePosixProcessEnvironment.
+[[nodiscard]] std::unique_ptr<IProcessEnvironment> CreateSystemProcessEnvironment();
+
 // Locations a root supplies when the OS cannot report them itself (an app
 // container gives its data, cache and library directories through SDL or JNI).
 // A null entry is unavailable; every value is normalized on creation and a

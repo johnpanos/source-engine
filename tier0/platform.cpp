@@ -254,7 +254,7 @@ bool vtune( bool resume )
 bool Plat_IsInDebugSession()
 {
 #if defined( _WIN32 )
-	return (IsDebuggerPresent() != 0);
+	return tier0_facade::ProcessEnvironment().GetDebuggerState() == platform::DebuggerState::kAttached;
 #elif defined( LINUX )
 	#error This code is implemented in platform_posix.cpp
 #else
@@ -273,9 +273,9 @@ void Plat_DebugString( const char * psz )
 const tchar *Plat_GetCommandLine()
 {
 #ifdef TCHAR_IS_WCHAR
-	return GetCommandLineW();
+	return tier0_facade::ProcessEnvironment().RawCommandLineW();
 #else
-	return GetCommandLine();
+	return tier0_facade::ProcessEnvironment().RawCommandLineA();
 #endif
 }
 
@@ -313,7 +313,7 @@ bool GetMemoryInformation( MemoryInformation *pOutMemoryInfo )
 
 const char *Plat_GetCommandLineA()
 {
-	return GetCommandLineA();
+	return tier0_facade::ProcessEnvironment().RawCommandLineA();
 }
 
 //--------------------------------------------------------------------------------------------------

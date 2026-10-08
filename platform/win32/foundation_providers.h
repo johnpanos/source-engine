@@ -94,7 +94,17 @@ public:
 // environment block, converted to UTF-8. Names compare case-sensitively, as the
 // contract requires on every platform; drive pseudo-variables ("=C:") are not
 // variables and are skipped.
-[[nodiscard]] std::unique_ptr<IProcessEnvironment> CreateWin32ProcessEnvironment();
+// Backend-only extension: the raw command line exactly as the OS holds it
+// (quoting included), for a legacy facade whose exports return it (Tier 0's
+// Plat_GetCommandLine; R103). The pointers live as long as the process.
+class IWin32ProcessEnvironment : public IProcessEnvironment
+{
+public:
+	virtual const wchar_t *RawCommandLineW() const = 0; // GetCommandLineW
+	virtual const char *RawCommandLineA() const = 0;	   // GetCommandLineA (the ANSI code page)
+};
+
+[[nodiscard]] std::unique_ptr<IWin32ProcessEnvironment> CreateWin32ProcessEnvironment();
 
 // The executable from GetModuleFileNameW, user data from the Local AppData
 // known folder, temp from GetTempPathW, native libraries beside the

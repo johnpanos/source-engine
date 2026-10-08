@@ -26,7 +26,6 @@
 
 #ifdef POSIX
 DBG_INTERFACE const char *BuildCmdLine( int argc, char **argv, bool fAddSteam = true );
-tchar *GetCommandLine();
 #endif
 
 

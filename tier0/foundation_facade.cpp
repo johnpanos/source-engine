@@ -78,6 +78,27 @@ std::uint64_t MonotonicNanoseconds()
 	return MonotonicClock().ElapsedNanoseconds( platform::MonotonicTimestamp(), MonotonicClock().Now() );
 }
 
+#if defined( _WIN32 )
+const platform::IWin32ProcessEnvironment &ProcessEnvironment()
+{
+	static const platform::IWin32ProcessEnvironment &environment =
+		Leak( platform::CreateWin32ProcessEnvironment() );
+	return environment;
+}
+#else
+const platform::IProcessEnvironment &ProcessEnvironment()
+{
+	static const platform::IProcessEnvironment &environment =
+		Leak( platform::CreateSystemProcessEnvironment() );
+	return environment;
+}
+#endif
+
+bool HasEnvironmentVariable( const char *name )
+{
+	return ProcessEnvironment().VariableLength( name ) >= 0;
+}
+
 double SecondsSinceStart()
 {
 	const TimeBase &base = Base();

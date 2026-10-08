@@ -1174,6 +1174,15 @@
   "_ZNK7CThread11GetPriorityEv": {
    "kind": "T"
   },
+  "_ZNKSt8_Rb_treeISsSt4pairIKSsSsESt10_Select1stIS2_ESt4lessISsESaIS2_EE4findERS1_": {
+   "kind": "W"
+  },
+  "_ZNSt8_Rb_treeISsSt4pairIKSsSsESt10_Select1stIS2_ESt4lessISsESaIS2_EE24_M_get_insert_unique_posERS1_": {
+   "kind": "W"
+  },
+  "_ZNSt8_Rb_treeISsSt4pairIKSsSsESt10_Select1stIS2_ESt4lessISsESaIS2_EE29_M_get_insert_hint_unique_posESt23_Rb_tree_const_iteratorIS2_ERS1_": {
+   "kind": "W"
+  },
   "_ZNV16CThreadFastMutex4LockEjj": {
    "kind": "T"
   },

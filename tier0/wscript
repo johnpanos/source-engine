@@ -85,7 +85,7 @@ def build(bld):
 	defines = [ 'GIT_COMMIT_HASH="%s"' % bld.env.GIT_VERSION ] if bld.env.GIT_VERSION else []
 
 	if bld.env.DEST_OS == 'win32':
-		libs = ['ADVAPI32', 'WS2_32', 'platform_foundation_win32']
+		libs = ['ADVAPI32', 'WS2_32', 'SHELL32', 'OLE32', 'WINMM', 'platform_foundation_win32']
 	else:
 		libs = ['DL', 'M', 'LOG', 'platform_foundation_legacyabi']
 	if bld.env.SDL3:
