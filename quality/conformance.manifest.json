@@ -15436,6 +15436,10 @@
       "profile": "linux-headless-core",
       "description": "render.composition and render.legacy-frontend (RFC 0016 A.7) through the launcher's C entry points: RenderCore_Create composes or fails naming the unknown device or feature; the frontend's provider keeps the backend identity and forwards creation; RenderStageMarkers001 marks stages of engine frames; a frame runs legacy-stream then present. P6 (RFC 0016 K5): -render-core-passes selects the frontend's core-pass probe and refuses an unknown one by name; with a probe the frontend queues one slot on the backend at each view's opaque stage, tagged with the stage and view depth, and none without one. P9 (R96): Studio bytes and a host palette pass through the public composition API with arbitrary model names and multiple body groups; inactive unsupported materials do not reject a supported body, blanks are accepted, and active unsupported materials or failed imports refuse before slot publication. P10 (R96): selected LODs and replacement descriptors govern both static and posed eligibility; blank LODs are valid, and missing/unsupported replacements or out-of-range selections refuse before slot publication.",
       "result_protocol": "checks-v1",
+      "link_flags": [
+        "-lz",
+        "-lzstd"
+      ],
       "sources": [
         "render/graph/scene_color.cpp",
         "render/material/refract_family.cpp",
@@ -15479,6 +15483,8 @@
         "render/pass/volumetric/volumetric.cpp",
         "texturecontainer/vtf/container.cpp",
         "texturecontainer/vtf_reader.cpp",
+        "texturecontainer/vtf_decompress.cpp",
+        "mapcontainer/reflection_probes.cpp",
         "render/composition/core_temporal.cpp",
         "render/pass/temporal/temporal.cpp",
         "render/pass/temporal/input_copy.cpp",
@@ -15545,6 +15551,10 @@
       "profile": "linux-headless-core",
       "description": "RFC 0016 K10 'Capability negotiation' (render/composition/negotiation.cpp, FeatureRequirements::fallback): an independent oracle judges negotiations (a feature is composed as itself when the device has its requirements, else as its fallback only when the product profile declares feature=fallback, and every substitution is reported by name; no fallback fails kMissingCapability and an undeclared one kUndeclaredFallback, each naming it), and two seeded bad compositions fail it (an undeclared fallback taken, a silent substitution). RenderCore_Create on the null device with compute masked (-render-masked-capabilities) composes CPU skinning under skinning=skinning-cpu and names it in RenderCoreResult, fails RENDER_CORE_UNDECLARED_FALLBACK without the declaration, and refuses an unknown capability name.",
       "result_protocol": "checks-v1",
+      "link_flags": [
+        "-lz",
+        "-lzstd"
+      ],
       "sources": [
         "render/shaderlib/shaderlib.cpp",
         "render/shaderlib/core_artifacts.cpp",
@@ -15586,6 +15596,7 @@
         "render/pass/volumetric/volumetric.cpp",
         "texturecontainer/vtf/container.cpp",
         "texturecontainer/vtf_reader.cpp",
+        "texturecontainer/vtf_decompress.cpp",
         "render/composition/core_temporal.cpp",
         "render/pass/temporal/temporal.cpp",
         "render/pass/temporal/input_copy.cpp",

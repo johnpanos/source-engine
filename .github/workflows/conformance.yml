@@ -61,7 +61,7 @@ jobs:
     - name: Install the suites' host dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y g++ cmake ninja-build libglib2.0-dev libbz2-dev zlib1g-dev
+        sudo apt-get install -y g++ cmake ninja-build libglib2.0-dev libbz2-dev zlib1g-dev libzstd-dev libvulkan-dev
         python3 -m pip install -r tools/quality/requirements-ci.txt
     # RFC 0016 K4: the render suites include the generated SPIR-V headers.
     - name: Build the pinned shader tools
