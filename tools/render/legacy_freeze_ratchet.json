@@ -200,7 +200,6 @@
       "materialsystem/shaderapivulkan/shaders/world_pbr_probe.glsl": 77
     },
     "stdshader_files": [
-      "materialsystem/stdshaders/AccumBuff4Sample.cpp",
       "materialsystem/stdshaders/BaseVSShader.cpp",
       "materialsystem/stdshaders/BaseVSShader.h",
       "materialsystem/stdshaders/BufferClearObeyStencil_dx9.cpp",
