@@ -385,8 +385,6 @@ public:
 	{
 		FailUnsubmittedQueries();
 		++m_streamEpoch;
-		m_dynQueued.clear();
-		m_dynIndices.clear();
 		m_dynDrawRecords.clear();
 		m_queuedOcclusionQuery = -1;
 		m_corePassTerms.clear();
@@ -394,55 +392,10 @@ public:
 		m_queueCustomEffects = false;
 		m_queueLegacyHud = false;
 		m_frameLabels.clear();
-		m_dynSkinConstants.clear();
 		m_dynFramePresented = false;
 		m_sceneCaptureCurrent = false;
 		m_sceneCapturesQueued = 0;
 	}
-	// Select which material-shader pipeline the queued geometry uses this frame
-	// (0 = vertex-color passthrough, 1 = "greenify", 2 = "constant color"). This
-	// is how a bound shader (BeginPass) reaches the draw.
-	enum
-	{
-		kDynShaderPassthrough = 0,
-		kDynShaderGreenify = 1,
-		kDynShaderConstColor = 2,
-		kDynShaderTextured = 3,
-		// PortalRefract (portal_refract_vs20 / portal_refract_ps2x), all three
-		// stages; see shaders/portal_refract.{vert,frag}.
-		kDynShaderPortalRefract = 4,
-		// VertexLitGeneric's $phong path (skin_vs20 / skin_ps20b); see
-		// shaders/skin.{vert,frag}.
-		kDynShaderSkin = 5,
-		// RFC 0007 synthetic direct-light BRDF, tested against the headless model.
-		kDynShaderPbrDirect = 6,
-		kDynShaderPbrWorld = 7,
-		// SolidEnergy (solidenergy_vs20 / solidenergy_ps20b): Portal 2's
-		// fizzlers, bridges and beams, on the skin pipeline's layout (its
-		// constants arrive through SetDynamicSkinConstants); see
-		// shaders/solidenergy.{vert,frag}.
-		kDynShaderSolidEnergy = 8,
-		// Transmissive PBRMetalRough WMSH batches (glass); shaders/world_pbr_glass.frag.
-		kDynShaderPbrGlass = 10,
-		// PBRMetalRough on dynamic meshes (models and props), on the skin
-		// pipeline's layout and vertex stage; shaders/model_pbr.frag.
-		kDynShaderPbrModel = 11,
-		// LightmappedGeneric and WorldVertexTransition (lightmappedgeneric_vs20 /
-		// lightmappedgeneric_ps20b): bumped lightmaps, the second base texture,
-		// detail and masked cubemaps; shaders/lightmapped.{vert,frag}. Its
-		// constants arrive through SetDynamicSkinConstants.
-		kDynShaderLightmapped = 12,
-		// The bloom and color-correction passes (Downsample_nohdr, BlurFilterX/Y,
-		// Engine_Post) on the skin pipeline's layout; shaders/screenspace_post.*.
-		// Its constants arrive through SetDynamicSkinConstants, `combos` holding
-		// the pass (kPost*).
-		kDynShaderPost = 13,
-		// Portal 2's paint blobs (paintblob_vs20 / paintblob_ps20b): the
-		// blobulator's isosurface, on the skin pipeline's layout and vertex
-		// stage (its constants arrive through SetDynamicSkinConstants); see
-		// shaders/paintblob.frag.
-		kDynShaderPaintBlob = 14
-	};
 	// paintblob.frag's combo flags (SkinConstants::combos, c27.x of
 	// paintblob_helper.cpp); the draw clears kPaintBlobEnvMap when the bound
 	// environment map is not a cube.
@@ -1866,7 +1819,6 @@ private:
 	int m_dynSamplerHandles[kMaxSamplers] = {
 	    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 	// The skin constants of this frame's skin draws (DynDraw::skin indexes them).
-	std::vector<SkinConstants> m_dynSkinConstants;
 	// A persistently mapped host-visible buffer the frame's stream is copied
 	// into. Each frame slot has its own: a slot's fence has signalled when its
 	// frame begins, so its buffers are free to rewrite or regrow, while the
@@ -1878,10 +1830,7 @@ private:
 		void *mapped = nullptr;
 		VkDeviceSize capacity = 0;
 	};
-	StreamBuffer m_dynVertexStreams[kMaxFramesInFlight];
-	StreamBuffer m_dynIndexStreams[kMaxFramesInFlight];
 	// The frame's distinct DrawFog records (vertex binding 1, per instance).
-	StreamBuffer m_dynFogStreams[kMaxFramesInFlight];
 	StreamBuffer m_worldVertexBuffer;
 	StreamBuffer m_worldIndexBuffer;
 	uint32_t m_worldVertexCount = 0;
@@ -1932,9 +1881,7 @@ private:
 	void DestroyStreamBuffer( StreamBuffer &stream );
 	void ReleaseStreamBufferAfter( uint64_t value, StreamBuffer &stream );
 	// kDynVertexFloats per vertex (QueueDynamicTriangles documents the record).
-	std::vector<float, DefaultInitAllocator<float>> m_dynQueued;
 	// Index lists of indexed draws, each relative to its draw's first vertex.
-	std::vector<uint32_t, DefaultInitAllocator<uint32_t>> m_dynIndices;
 	uint64_t m_streamEpoch = 1;
 	// Each IMesh::Draw becomes one record capturing the state current at that
 	// draw (transform, shader, constant color), so the many objects the engine
@@ -2018,7 +1965,6 @@ private:
 		int samplerHandles[kMaxSamplers] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 		    -1, -1 }; // samplers 1..15 ([0] unused)
 		PortalConstants portal;
-		int skin = -1; // index into m_dynSkinConstants
 		DrawFog fog;
 		int texturedMode = kTexturedModeDefault; // the textured pipeline's alphaParams.y
 	};

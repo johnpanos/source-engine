@@ -2920,8 +2920,6 @@ CVulkanContext::DynDraw &CVulkanContext::AppendRecord( int kind )
 		ClearDynamicQueue();
 	// A render target drawn into for the first time allocates its deferred
 	// storage now, before the draw records against it.
-	if ( kind == kRecordDraw && IsStoragePending( m_dynTarget ) )
-		EnsureRenderTargetStorage( m_dynTarget );
 	DynDraw d;
 	d.kind = kind;
 	d.target = m_dynTarget;
@@ -3178,28 +3176,8 @@ std::vector<CVulkanContext::StreamRecordInfo> CVulkanContext::DescribeStreamReco
 		info.vertexCount = d.indexCount > 0 ? d.indexCount : d.vertexCount;
 		std::memcpy( info.modulation, d.modulation, sizeof( info.modulation ) );
 		std::memcpy( info.viewport, d.viewport, sizeof( info.viewport ) );
-		const size_t base = static_cast<size_t>( d.firstVertex ) * kDynVertexFloats;
 		std::memcpy( info.texXform0, d.texXform0, sizeof( info.texXform0 ) );
 		std::memcpy( info.texXform1, d.texXform1, sizeof( info.texXform1 ) );
-		if ( d.kind == kRecordDraw && base + 6 <= m_dynQueued.size() )
-		{
-			info.firstColor[0] = m_dynQueued[base + 3];
-			info.firstColor[1] = m_dynQueued[base + 4];
-			info.firstColor[2] = m_dynQueued[base + 5];
-			info.uvMin[0] = info.uvMin[1] = 1e30f;
-			info.uvMax[0] = info.uvMax[1] = -1e30f;
-			for ( uint32_t v = 0; v < d.vertexCount; ++v )
-			{
-				const size_t at = base + static_cast<size_t>( v ) * kDynVertexFloats + 6;
-				if ( at + 1 >= m_dynQueued.size() )
-					break;
-				for ( int k = 0; k < 2; ++k )
-				{
-					info.uvMin[k] = std::min( info.uvMin[k], m_dynQueued[at + k] );
-					info.uvMax[k] = std::max( info.uvMax[k], m_dynQueued[at + k] );
-				}
-			}
-		}
 		out.push_back( info );
 	}
 	return out;
@@ -3331,25 +3309,6 @@ void CVulkanContext::ReplayFrameLabels( size_t *cursor, size_t throughRecord )
 	}
 }
 
-// D3D9 (SRGBWRITEENABLE) encodes an sRGB-writing draw in hardware and blends it
-// in linear space; such a draw is drawn through the target's sRGB view (the
-// hardware decodes, blends and encodes, rounding as D3D9 does). Everything else,
-// color clears above all, uses the UNORM view, which stores what it is given.
-static bool SrgbCapableShader( int shaderIndex )
-{
-	return shaderIndex == CVulkanContext::kDynShaderTextured ||
-	       shaderIndex == CVulkanContext::kDynShaderPbrDirect ||
-	       shaderIndex == CVulkanContext::kDynShaderPbrWorld ||
-	       shaderIndex == CVulkanContext::kDynShaderPbrGlass ||
-	       shaderIndex == CVulkanContext::kDynShaderPortalRefract ||
-	       shaderIndex == CVulkanContext::kDynShaderSkin ||
-	       shaderIndex == CVulkanContext::kDynShaderSolidEnergy ||
-	       shaderIndex == CVulkanContext::kDynShaderPbrModel ||
-	       shaderIndex == CVulkanContext::kDynShaderLightmapped ||
-	       shaderIndex == CVulkanContext::kDynShaderPost ||
-	       shaderIndex == CVulkanContext::kDynShaderPaintBlob;
-}
-
 int CVulkanContext::RecordBackBufferDepthReads( const DynDraw &r )
 {
 	// Only reads keep a plane: a write nothing later reads is dead, since the
@@ -3382,8 +3341,10 @@ int CVulkanContext::RecordBackBufferDepthReads( const DynDraw &r )
 
 bool CVulkanContext::RecordWantsSrgb( const DynDraw &r ) const
 {
-	return m_srgbAttachments && r.kind == kRecordDraw && SrgbCapableShader( r.shaderIndex ) &&
-	       ( r.colorFlags & kColorSrgbWrite );
+	// No record the stream keeps draws through the sRGB view: draws are the
+	// core's, and clears store what they are given.
+	(void)r;
+	return false;
 }
 
 // Records whose result is the same through either view: queries, clears of
@@ -3399,7 +3360,7 @@ bool CVulkanContext::RecordViewAgnostic( const DynDraw &r ) const
 		return false;
 	if ( r.kind == kRecordClear )
 		return !r.clearColor;
-	return r.kind == kRecordDraw && !r.raster.colorWrite && SrgbCapableShader( r.shaderIndex );
+	return false;
 }
 
 // Whether the frame's clearing pass opens through the back buffer's sRGB view:
@@ -3918,15 +3879,10 @@ void CVulkanContext::DestroyDynamicMesh()
 	}
 	for ( int slot = 0; slot < kMaxFramesInFlight; ++slot )
 	{
-		DestroyStreamBuffer( m_dynVertexStreams[slot] );
-		DestroyStreamBuffer( m_dynIndexStreams[slot] );
-		DestroyStreamBuffer( m_dynFogStreams[slot] );
 		DestroyStreamBuffer( m_uploadStreams[slot] );
 	}
 	m_pendingUploads.clear();
 	m_pendingUploadData.clear();
-	m_dynQueued.clear();
-	m_dynIndices.clear();
 	++m_streamEpoch;
 }
 
@@ -6891,7 +6847,7 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		        m_prevFrameEndUs ? m_frameBeginUs - m_prevFrameEndUs : 0 ),
 		    static_cast<unsigned long long>( endUs - m_frameBeginUs ), m_dynDrawRecords.size(),
 		    m_statsLegacyStreamDraws, m_statsLegacyProgramDraws,
-		    m_dynQueued.size() * sizeof( float ), m_dynIndices.size() * sizeof( uint32_t ),
+		    size_t( 0 ), size_t( 0 ), // the stream holds no draws (R91)
 		    static_cast<unsigned long long>( m_frameCost.uploadBytes ), m_swapExtent.width,
 		    m_swapExtent.height );
 		std::fprintf( m_frameStatsFile, ",\"opaque_batch\":[%llu,%llu,%llu]",

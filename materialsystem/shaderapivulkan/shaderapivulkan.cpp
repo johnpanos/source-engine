@@ -743,10 +743,6 @@ static int g_boundEnvmapHandle = -1;
 static int g_boundRefractNormalHandle = -1;
 static int g_boundRefractCubeHandle = -1;
 static int g_boundNormalMaskHandle = -1;
-static int g_boundPbrNormalHandle = -1;
-static int g_boundPbrMraoHandle = -1;
-static int g_boundPbrEnvmapHandle = -1;   // sampler 3: PBRMetalRough's $envmap
-static int g_boundPbrEmissionHandle = -1; // sampler 2: PBRMetalRough's $emissiontexture
 static bool g_BindingLightmap = false;
 static uint64_t g_DrawsTextured = 0;   // bound a handle whose pixels were uploaded
 static uint64_t g_DrawsUnuploaded = 0; // bound a handle that was never filled
@@ -1005,37 +1001,6 @@ static unsigned char g_ClearColor[4] = { 0, 0, 0, 255 };
 // them; PortalRefract reads c4.
 static float g_psConstants[32][4];
 
-// What the current pass's shader is, beyond the pipeline it selects: the
-// PortalRefract STAGE combo (-1 for other shaders).
-static int g_CurrentPortalStage = -1;
-// The skin_ps20b static combos of the pass as skin.frag's flags, -1 when the
-// pass is not VertexLitGeneric's $phong path.
-static int g_CurrentSkinCombos = -1;
-// Whether the pass is SolidEnergy's (solidenergy_ps20b), which reads its combos
-// from its own constants c10/c11 (solidenergy_dx9_helper.cpp).
-static bool g_CurrentSolidEnergy = false;
-// Whether the pass is the paint blobs' (paintblob_ps20b), which reads its combos
-// from its own constant c27 (paintblob_helper.cpp) and draws through skin.vert
-// with skin_vs20's vertex conversion.
-static bool g_CurrentPaintBlob = false;
-// Whether the pass is PBRMetalRough's (pbr_metalrough_world_ps). WMSH batches
-// select the world pipelines in EmitToNativeQueue; every other mesh draws
-// through shaders/model_pbr.frag with skin_vs20's vertex conversion.
-static bool g_CurrentPbrModel = false;
-// LightmappedGeneric's lightmappedgeneric_ps20b static combos as lightmapped.frag's
-// flags (CVulkanContext::kLightmapped*), -1 when the pass is not drawn by that
-// pipeline; with its DETAIL_BLEND_MODE and lightmappedgeneric_vs20's static combos
-// (1 VERTEXCOLOR, 2 VERTEXALPHATEXBLENDFACTOR).
-static int g_CurrentLightmappedCombos = -1;
-static int g_CurrentLightmappedDetailMode = 0;
-static int g_CurrentLightmappedVsCombos = 0;
-// The bloom or color-correction pass (CVulkanContext::kPost*), 0 for none, and
-// its pixel shader's static combo index.
-static int g_CurrentPostMode = 0;
-static int g_CurrentPostStatic = 0;
-// Whether the pass is the Shadow shader's projected render-to-texture shadow
-// (shadow_ps2x), drawn by the textured pipeline's shadow stage.
-static bool g_CurrentShadowProjection = false;
 // Route passes to the legacy shader ports (R32-LEGACY-SHADERS) and apply the
 // D3D9 state they read (math constants, depth feathering, the ambient cube
 // luminance, PolyMode, the passes only the ports draw). On by default (user
@@ -1093,9 +1058,6 @@ static float g_AmbientCube[6][4] = {};
 // SetLightingOrigin: the model's origin, from which the pixel-lit shaders place
 // directional lights (CommitPixelShaderLighting).
 static float g_LightingOrigin[3] = {};
-// The vertex shader's dynamic combo index (SetVertexShaderIndex), which selects
-// vertexlit_and_unlit_generic_vs20's DYNAMIC_LIGHT and STATIC_LIGHT.
-static int g_VertexShaderDynamicIndex = 0;
 // Parallel to g_snapshotShaders: SpriteCard's vertex expansion (spritecard_vs20,
 // or splinecard_vs20 with kSpriteCardSpline) and spritecard_ps2x's static
 // combos, -1 for other shaders. EmitToNativeQueue expands the corners.
@@ -1114,15 +1076,11 @@ enum
 };
 static std::vector<int> g_snapshotSpriteCard;
 static int g_CurrentSpriteCard = -1;
-// The pixel shader's dynamic combo index (SetPixelShaderIndex), as D3D9's shader
-// manager keeps it. -1 is the default state's "no index".
-static int g_PixelShaderDynamicIndex = 0;
 // Fixed-function dynamic state D3D9 keeps in m_DynamicState: the constant color
 // (D3DRS_TEXTUREFACTOR, a D3DCOLOR set by Color*), the shade mode and the
 // ambient light (D3DRS_AMBIENT). No DX9 shader reads them; they are held so the
 // interface reports what was set.
 static unsigned int g_ConstantColor = 0xFFFFFFFF;
-static ShaderShadeMode_t g_ShadeMode = SHADER_SMOOTH;
 static unsigned int g_AmbientLightColor = 0;
 // Fog, as CShaderAPIDx8 keeps it: the scene's mode and color (SceneFogMode,
 // SceneFogColor3ub), the mode in effect for the current pass (FogMode, which
@@ -4079,7 +4037,6 @@ static void ReportDroppedMaterials()
 		    static_cast<unsigned long long>( entry.second ), entry.first.c_str() );
 }
 static CEmptyMesh *g_pRenderMesh = nullptr;
-static void CommitPassPixelConstants();
 
 // common_vs_fxc.h SkinPosition with skinning on: always three bones, indices in
 // the vertex's first three index bytes, weights w0, w1 and 1 - w0 - w1, each
@@ -4255,10 +4212,7 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 	if ( g_pBoundMaterial )
 		g_pBoundMaterial->DrawMesh( VERTEX_COMPRESSION_NONE );
 	else
-	{
-		CommitPassPixelConstants();
 		EmitToNativeQueue();
-	}
 	g_pRenderMesh = nullptr;
 }
 
@@ -4968,10 +4922,7 @@ void CEmptyMesh::Draw( CPrimList *pPrims, int nPrims )
 	if ( g_pBoundMaterial )
 		g_pBoundMaterial->DrawMesh( VERTEX_COMPRESSION_NONE );
 	else
-	{
-		CommitPassPixelConstants();
 		EmitDrawRanges();
-	}
 	g_pRenderMesh = nullptr;
 	m_pDrawPrims = nullptr;
 	m_nDrawPrims = 0;
@@ -6843,7 +6794,6 @@ void CShaderAPIVulkan::Color4ubv( unsigned char const *rgba )
 // native pipelines interpolate them (RenderPass reports such draws).
 void CShaderAPIVulkan::ShadeMode( ShaderShadeMode_t mode )
 {
-	g_ShadeMode = mode;
 }
 
 // Binds a particular material to render with
@@ -7186,10 +7136,6 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	g_boundRefractNormalHandle = -1;
 	g_boundRefractCubeHandle = -1;
 	g_boundNormalMaskHandle = -1;
-	g_boundPbrNormalHandle = -1;
-	g_boundPbrMraoHandle = -1;
-	g_boundPbrEnvmapHandle = -1;
-	g_boundPbrEmissionHandle = -1;
 	for ( int sampler = 1; sampler < 16; ++sampler )
 		g_boundSamplerHandles[sampler] = -1;
 	// Apply the $alphatest reference this snapshot recorded (< 0 = disabled).
@@ -7216,142 +7162,6 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	ApplyFogMode( g_CurrentShadowFogMode,
 	    ( g_CurrentColorFlags & render_vulkan::CVulkanContext::kColorSrgbWrite ) != 0,
 	    g_CurrentDisableFogGammaCorrection );
-}
-
-// Renders a single pass of a material. The material's shader has, by now, run
-// BeginPass (selecting the native pipeline + blend + alpha) and set its dynamic
-// constants and textures. Emit the current mesh's geometry with that state.
-// Material shaders whose output the native textured pipeline reproduces: the
-// base texture at the mesh UVs times cModulationColor, composited with the
-// material's blend and depth state. Their lightmap, detail and env-map terms are
-// the tracked gaps. Every other shader samples or writes what this pipeline
-// cannot express -- screen-space post-processing (Engine_Post, MotionBlur, the
-// bloom downsample and blur), depth-only passes (WriteZ), refraction and portal
-// surfaces addressed by screen position -- so drawing it as a base texture would
-// paint the wrong image, often over the whole frame. Its draws are declined by
-// name instead (census, dropped-material report and draw-state fixture).
-// The pass's pixel-shader constants the native pipeline takes as draw state,
-// once the shader's dynamic state has written them (just before emitting).
-// The pass's pixel fog as its shader computes it (CVulkanContext::DrawFog): the
-// fog color from c29, the type from the combo the pass selected or its c12.x,
-// the parameters and eye z from the registers the shader declares, and the row
-// that takes this draw's vertex positions to world z (skinned positions are
-// already in world space).
-static void CommitPassFog()
-{
-	render_vulkan::CVulkanContext::DrawFog fog;
-	if ( g_CurrentPixelFog.mode != kPixelFogNone )
-	{
-		const float fogType = g_CurrentPixelFog.mode == kPixelFogConstantType
-		                          ? g_psConstants[12][0]
-		                          : ( g_Fog.sceneMode == MATERIAL_FOG_LINEAR_BELOW_FOG_Z ? 1.0f : 0.0f );
-		memcpy( fog.color, g_psConstants[kPsRegLinearFogColor], 3 * sizeof( float ) );
-		fog.color[3] = fogType;
-		memcpy( fog.params, g_psConstants[g_CurrentPixelFog.paramsRegister], sizeof( fog.params ) );
-		fog.misc[0] = g_psConstants[g_CurrentPixelFog.eyeRegister][2];
-		fog.misc[1] = g_CurrentPixelFog.mode == kPixelFogDecal ? 1.0f : 0.0f;
-		// LightmappedGeneric's and the skin family's positions arrive in world
-		// space, like skinned ones.
-		if ( g_NumBoneWeights <= 0 && g_CurrentLightmappedCombos < 0 && g_CurrentSkinCombos < 0 )
-		{
-			const float *model = ModelMatrix();
-			fog.worldZ[0] = model[2];
-			fog.worldZ[1] = model[6];
-			fog.worldZ[2] = model[10];
-			fog.worldZ[3] = model[14];
-		}
-	}
-}
-
-static void CommitPassPixelConstants()
-{
-	CommitPassFog();
-	// vertexlit_and_unlit_generic's alpha = lerp( alpha, alpha * i.color.a,
-	// g_fVertexAlpha ), where g_fVertexAlpha is c12.w ($vertexalpha, 0 or 1).
-	int colorFlags = g_CurrentColorFlags;
-	if ( ( colorFlags & render_vulkan::CVulkanContext::kFragmentModulateVertexAlpha ) &&
-	     g_psConstants[12][3] < 0.5f )
-		colorFlags &= ~render_vulkan::CVulkanContext::kFragmentModulateVertexAlpha;
-	// spritecard_ps2x's DEPTHBLEND reads the frame copy the material binds at
-	// sampler 2 (TEXTURE_FRAME_BUFFER_FULL_DEPTH), whose alpha holds depth.
-	const bool spriteDepthBlend = g_CurrentSpriteCard >= 0 &&
-	                              ( g_CurrentSpriteCard & kSpriteCardDepthBlend ) &&
-	                              g_boundEnvmapHandle >= 0;
-	if ( spriteDepthBlend )
-		colorFlags |= render_vulkan::CVulkanContext::kFragmentSpriteDepthBlend;
-	const bool sky = ( colorFlags & render_vulkan::CVulkanContext::kFragmentSky ) != 0;
-	// spritecard_ps2x's MOD2X (DST_COLOR:SRC_COLOR blend) on the SpriteCard stage.
-	if ( g_CurrentSpriteCard >= 0 && ( g_CurrentSpriteCard & kSpriteCardMod2x ) )
-		colorFlags |= render_vulkan::CVulkanContext::kFragmentSpriteMod2x;
-	if ( sky )
-	{
-		// Sky_DX9's sky_ps2x.fxc reads $color from pixel constant c0.
-		return;
-	}
-	if ( g_CurrentSpriteCard >= 0 )
-	{
-		// spritecard_ps2x.fxc: the frame's RGB times fOverbrightFactor (c0.y),
-		// then times the vertex color. The other combos are reported.
-		const float overbright = g_psConstants[0][1];
-		// DEPTHBLEND's c2.x (the dest-alpha depth range over $depthblendscale)
-		// rides in the modulation's alpha, which the SpriteCard stage never reads.
-		const float modulation[4] = { overbright, overbright, overbright,
-			spriteDepthBlend ? g_psConstants[2][0] : 1.0f };
-		if ( ( g_CurrentSpriteCard & kSpriteCardAnimBlend ) &&
-		     ( g_CurrentSpriteCard & kSpriteCardSpline ) )
-			NoteUnimplemented( "SpriteCard: ANIMBLEND on a spline card (drawn with one frame)" );
-		if ( g_CurrentSpriteCard & kSpriteCardAddBaseTexture2 )
-			NoteUnimplemented( "SpriteCard: ADDBASETEXTURE2" );
-		if ( g_CurrentSpriteCard & kSpriteCardExtractGreenAlpha )
-			NoteUnimplemented( "SpriteCard: EXTRACTGREENALPHA" );
-		if ( g_CurrentSpriteCard & kSpriteCardMaxLumFrameBlend )
-			NoteUnimplemented( "SpriteCard: MAXLUMFRAMEBLEND" );
-		if ( g_CurrentSpriteCard & kSpriteCardDualSequence )
-			NoteUnimplemented( "SpriteCard: DUALSEQUENCE" );
-		if ( g_CurrentSpriteCard & kSpriteCardColorRamp )
-			NoteUnimplemented( "SpriteCard: COLORRAMP" );
-		if ( ( g_CurrentSpriteCard & kSpriteCardDepthBlend ) && !spriteDepthBlend )
-			NoteUnimplemented( "SpriteCard: DEPTHBLEND without a depth texture at sampler 2" );
-		return;
-	}
-	if ( g_CurrentSpriteCombos >= 0 )
-	{
-		// sprite_ps2x.fxc: sample *= g_Color (c0) with CONSTANTCOLOR, and its RGB
-		// *= g_HDRColorScale (c1.x) with HDRTYPE and the dynamic HDRENABLED.
-		float modulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-		if ( g_CurrentSpriteCombos & 1 )
-			memcpy( modulation, g_psConstants[0], sizeof( modulation ) );
-		if ( ( g_CurrentSpriteCombos >> 1 ) != 0 && ( g_PixelShaderDynamicIndex & 1 ) )
-		{
-			for ( int k = 0; k < 3; ++k )
-				modulation[k] *= g_psConstants[1][0];
-		}
-		return;
-	}
-	if ( colorFlags & render_vulkan::CVulkanContext::kFragmentMonitor )
-	{
-		// MonitorScreen's c1 contrast is a scalar material parameter. The
-		// saturation and tint in c2/c3 travel with the converted vertices.
-		return;
-	}
-	// Its albedo and alpha are scaled by g_DiffuseModulation (c1): $color and
-	// $alpha, and ColorModulate / AlphaModulate (screen fades), linear, written by
-	// every pass's dynamic state (SetModulationPixelShaderDynamicState_LinearColorSpace).
-	if ( !g_CurrentModulationInPixelC1 )
-		return;
-	if ( colorFlags & render_vulkan::CVulkanContext::kFragmentSelfIllum )
-	{
-		// SELFILLUM's blend target is g_SelfIllumTint (c4.rgb) times albedo; the
-		// pipeline takes it as c1 * c4 (demo_dyn_tex.frag). c3.w = 1 reads the
-		// mask from $selfillummask (sampler 11) instead of the base alpha.
-		if ( g_psConstants[3][3] != 0.0f )
-			NoteUnimplemented(
-			    "vertexlit_and_unlit_generic: $selfillummask (drawn with base alpha)" );
-		const float modulation[4] = { g_psConstants[1][0] * g_psConstants[4][0],
-		    g_psConstants[1][1] * g_psConstants[4][1], g_psConstants[1][2] * g_psConstants[4][2],
-		    g_psConstants[1][3] };
-		return;
-	}
 }
 
 void CShaderAPIVulkan::RenderPass( int nPass, int nPassCount )
@@ -8217,12 +8027,10 @@ void CShaderAPIVulkan::CopyRenderTargetToTextureEx(
 // Sets the vertex and pixel shaders
 void CShaderAPIVulkan::SetVertexShaderIndex( int vshIndex )
 {
-	g_VertexShaderDynamicIndex = vshIndex;
 }
 
 void CShaderAPIVulkan::SetPixelShaderIndex( int pshIndex )
 {
-	g_PixelShaderDynamicIndex = pshIndex;
 }
 
 // Sets the constant registers for vertex and pixel shaders
@@ -8379,16 +8187,12 @@ void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t te
 	if ( stage == SHADER_SAMPLER2 )
 	{
 		g_boundEnvmapHandle = native;
-		g_boundPbrEmissionHandle = native;
 	}
 	if ( stage == SHADER_SAMPLER1 )
-		g_boundPbrNormalHandle = native;
 	if ( stage == SHADER_SAMPLER10 )
-		g_boundPbrMraoHandle = native;
 	if ( stage == SHADER_SAMPLER3 )
 	{
 		g_boundRefractNormalHandle = native;
-		g_boundPbrEnvmapHandle = native;
 	}
 	if ( stage == SHADER_SAMPLER4 )
 	{
@@ -9380,7 +9184,6 @@ void CShaderAPIVulkan::ResetRenderState( bool bFullReset )
 	g_ConstantColor = 0xFFFFFFFF;
 	g_AmbientLightColor = 0;
 	g_DesiredCullMode = MATERIAL_CULLMODE_CCW;
-	g_ShadeMode = SHADER_SMOOTH;
 	m_bHWMorphingEnabled = false;
 	g_NumBoneWeights = 0;
 	if ( bFullReset )
