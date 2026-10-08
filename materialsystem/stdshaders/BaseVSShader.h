@@ -26,7 +26,6 @@
 #define BEGIN_VS_SHADER_FLAGS(_name, _help, _flags)	__BEGIN_SHADER_INTERNAL( CBaseVSShader, _name, _help, _flags )
 #define BEGIN_VS_SHADER(_name,_help)	__BEGIN_SHADER_INTERNAL( CBaseVSShader, _name, _help, 0 )
 
-
 // useful parameter initialization macro
 #define INIT_FLOAT_PARM( parm, value )					\
 		if ( !params[(parm)]->IsDefined() )				\
@@ -59,7 +58,6 @@
 			\
 		}
 
-
 //-----------------------------------------------------------------------------
 // Base class for shaders, contains helper methods.
 //-----------------------------------------------------------------------------
@@ -67,77 +65,7 @@ class CBaseVSShader : public CBaseShader
 {
 public:
 
-
-
-	// Pixel and vertex shader constants....
-	void SetPixelShaderConstant( int pixelReg, int constantVar );
-
-	// Pixel and vertex shader constants....
-	void SetPixelShaderConstantGammaToLinear( int pixelReg, int constantVar );
-
-	// This version will put constantVar into x,y,z, and constantVar2 into the w
-	void SetPixelShaderConstant( int pixelReg, int constantVar, int constantVar2 );
-	void SetPixelShaderConstantGammaToLinear( int pixelReg, int constantVar, int constantVar2 );
-
-	void SetPixelShaderConstantGammaToLinear( int var, float const* pVec, int numConst = 1, bool bForce = false );
-
-	void SetVertexShaderConstant( int vertexReg, int constantVar );
-
-	// set rgb components of constant from a color parm and give an explicit w value
-	void SetPixelShaderConstant_W( int pixelReg, int constantVar, float fWValue );
-
-
-
- 	void SetVertexShaderTextureTransform( int vertexReg, int transformVar );
-	void SetVertexShaderTextureScaledTransform( int vertexReg, 
-											int transformVar, int scaleVar );
-
-
-
-
-
-
-
-	// Sets up ambient light cube...
-	void SetAmbientCubeDynamicStateVertexShader( );
-	float GetAmbientLightCubeLuminance( );
-
-	// Helpers for dealing with envmaptint
-	void SetEnvMapTintPixelShaderDynamicState( int pixelReg, int tintVar, int alphaVar, bool bConvertFromGammaToLinear = false );
-	
-
-
-
-
 #ifndef GAME_SHADER_DLL
-	//
-	// Standard shader passes!
-	//
-
-
-
-
-
-	const char *UnlitGeneric_ComputeVertexShaderName( bool bMask,
-													  bool bEnvmap,
-													  bool bBaseTexture,
-													  bool bBaseAlphaEnvmapMask,
-													  bool bDetail,
-													  bool bVertexColor,
-													  bool bEnvmapCameraSpace,
-													  bool bEnvmapSphere );
-
-
-	
-	// Sets up hw morphing state for the vertex shader
-
-	// Computes the shader index for vertex lit materials
-	int ComputeVertexLitShaderIndex( bool bVertexLitGeneric, bool hasBump, bool hasEnvmap, bool hasVertexColor, bool bHasNormal ) const;
-
-
-#if SUPPORT_DX8
-#endif
-
 	struct DrawFlashlight_dx90_Vars_t
 	{
 		DrawFlashlight_dx90_Vars_t() 
@@ -198,7 +126,6 @@ private:
 		int envMapFrameVar, int envmapMaskVar, int envmapMaskFrameVar,
 		int envmapMaskScaleVar, int envmapTintVar );
 
-
 };
 
 FORCEINLINE void SetFlashLightColorFromState( FlashlightState_t const &state, IShaderDynamicAPI *pShaderAPI, int nPSRegister=28, bool bFlashlightNoLambert=false )
@@ -254,7 +181,6 @@ FORCEINLINE float ShadowFilterFromState( FlashlightState_t const &state )
 	return state.m_flShadowFilterSize / 1024.0f;
 }
 
-
 // convenient material variable access functions for helpers to use.
 FORCEINLINE bool IsTextureSet( int nVar, IMaterialVar **params )
 {
@@ -292,13 +218,11 @@ FORCEINLINE void InitIntParam( int nIndex, IMaterialVar **params, int nValue )
 	}
 }
 
-
 class ConVar;
 
 #ifdef _DEBUG
 extern ConVar mat_envmaptintoverride;
 extern ConVar mat_envmaptintscale;
 #endif
-
 
 #endif // BASEVSSHADER_H
