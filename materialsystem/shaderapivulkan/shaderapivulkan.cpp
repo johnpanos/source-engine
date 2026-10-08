@@ -1355,6 +1355,9 @@ public:
 	// selected. Called from CShaderAPIVulkan::RenderPass, i.e. AFTER the material's
 	// shader has run BeginPass and set its constants/textures.
 	void EmitToNativeQueue();
+	// RFC 0016 K9 (R91 migration M1): the draw goes to the core without the
+	// bound material's stdshader passes; `ranges` draws the CPrimList ranges.
+	void EmitDirectOrVerify( bool ranges = false );
 	bool EmitToCoreQueue();
 	// EmitToNativeQueue for each range of the draw in progress: the one range
 	// of Draw( first, count ), or every list of Draw( CPrimList * ), as
@@ -1954,11 +1957,11 @@ public:
 		BackBufferDimensions( width, height );
 	}
 	// The material system's color correction (its lookups, bound as
-	// TEXTURE_COLOR_CORRECTION_VOLUME_*), as CShaderAPIBase reports it. Without
-	// the post-processing pipeline Engine_Post is declined, so it reports none.
+	// TEXTURE_COLOR_CORRECTION_VOLUME_*), as CShaderAPIBase reports it, when the
+	// device holds volume textures.
 	virtual void GetCurrentColorCorrection( ShaderColorCorrectionInfo_t *pInfo )
 	{
-		if ( g_VulkanContext.PostPipelineSupported() )
+		if ( g_VulkanContext.VolumeTexturesSupported() )
 		{
 			ShaderUtil()->GetCurrentColorCorrection( pInfo );
 			return;
@@ -2620,7 +2623,7 @@ public:
 	// pipeline that samples them exists.
 	virtual int MaxTextureDepth() const
 	{
-		return g_VulkanContext.PostPipelineSupported()
+		return g_VulkanContext.VolumeTexturesSupported()
 		           ? static_cast<int>( g_VulkanContext.MaxVolumeTextureDimension() )
 		           : 0;
 	}
@@ -4209,10 +4212,7 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 	// RenderPass -> EmitToNativeQueue to draw this geometry with that state. When no
 	// material is bound, emit directly with the default (vertex-color) shader.
 	g_pRenderMesh = this;
-	if ( g_pBoundMaterial )
-		g_pBoundMaterial->DrawMesh( VERTEX_COMPRESSION_NONE );
-	else
-		EmitToNativeQueue();
+	EmitDirectOrVerify();
 	g_pRenderMesh = nullptr;
 }
 
@@ -4443,6 +4443,65 @@ CapturedMaterial &CaptureMaterialVariables( IMaterialInternal *material )
 }
 
 } // namespace
+
+// RFC 0016 K9 (R91 migration M1): the shadow oracle of the direct handoff.
+// With -vkcoreshadowverify each mesh draw also runs the old path (the bound
+// material's stdshader passes) with the queue replaced by this probe, and the
+// handoffs both paths would queue are compared by hash.
+static std::vector<std::uint64_t> *g_CoreDrawProbe = nullptr;
+
+static void HashBytes( std::uint64_t &h, const void *data, std::size_t bytes )
+{
+	const unsigned char *p = static_cast<const unsigned char *>( data );
+	for ( std::size_t i = 0; i < bytes; ++i )
+	{
+		h ^= p[i];
+		h *= 1099511628211ull;
+	}
+}
+
+static void HashText( std::uint64_t &h, const char *text )
+{
+	if ( text )
+		HashBytes( h, text, strlen( text ) );
+	HashBytes( h, "\0", 1 );
+}
+
+static std::uint64_t HashCoreDraw( const render::legacy::CoreMeshDraw &draw )
+{
+	std::uint64_t h = 1469598103934665603ull;
+	HashBytes( h, &draw.kind, sizeof( draw.kind ) );
+	HashText( h, draw.name );
+	HashText( h, draw.shader );
+	for ( std::uint32_t i = 0; i < draw.variableCount; ++i )
+	{
+		HashText( h, draw.variables[i].key );
+		HashText( h, draw.variables[i].value );
+		HashBytes( h, &draw.variables[i].textureHandle, sizeof( int ) );
+	}
+	if ( draw.vertices )
+		HashBytes( h, draw.vertices, draw.vertexCount * sizeof( *draw.vertices ) );
+	if ( draw.indices )
+		HashBytes( h, draw.indices, draw.indexCount * sizeof( *draw.indices ) );
+	if ( draw.cards )
+		HashBytes( h, draw.cards, draw.cardCount * sizeof( *draw.cards ) );
+	if ( draw.bonePalette )
+		HashBytes( h, draw.bonePalette, draw.boneCount * 12 * sizeof( float ) );
+	HashBytes( h, draw.modelToWorld, sizeof( draw.modelToWorld ) );
+	HashBytes( h, draw.toClip, sizeof( draw.toClip ) );
+	HashBytes( h, draw.worldToView, sizeof( draw.worldToView ) );
+	HashBytes( h, draw.viewToClip, sizeof( draw.viewToClip ) );
+	HashBytes( h, &draw.viewport, sizeof( draw.viewport ) );
+	HashBytes( h, &draw.lightmapPage, sizeof( draw.lightmapPage ) );
+	HashBytes( h, &draw.depthAlphaHandle, sizeof( draw.depthAlphaHandle ) );
+	HashBytes( h, &draw.depthAlphaRange, sizeof( draw.depthAlphaRange ) );
+	HashBytes( h, &draw.mesh, sizeof( draw.mesh ) );
+	HashBytes( h, &draw.modelLighting, sizeof( draw.modelLighting ) );
+	HashBytes( h, draw.ambientCube, sizeof( draw.ambientCube ) );
+	HashBytes( h, draw.lights, draw.lightCount * sizeof( draw.lights[0] ) );
+	HashBytes( h, &draw.cardCount, sizeof( draw.cardCount ) );
+	return h;
+}
 
 bool CEmptyMesh::EmitToCoreQueue()
 {
@@ -4802,6 +4861,13 @@ bool CEmptyMesh::EmitToCoreQueue()
 		}
 	}
 	CaptureCoreMatrices( draw );
+	// The shadow oracle's old-path run (-vkcoreshadowverify): record the
+	// handoff, queue nothing.
+	if ( g_CoreDrawProbe )
+	{
+		g_CoreDrawProbe->push_back( HashCoreDraw( draw ) );
+		return true;
+	}
 	const std::uint32_t tag = g_VulkanContext.QueueCoreMesh( draw );
 	if ( !tag )
 		return false;
@@ -4828,6 +4894,77 @@ void CEmptyMesh::EmitToNativeQueue()
 		return;
 	DropDraw( "rendercore-only: legacy shader draw rejected before conversion" );
 	NoteDroppedMaterial();
+}
+
+// The state the stdshader passes left for the handoff, set directly: the
+// lightmap page (sampler 1, bumped or flat as the material's properties ask)
+// and, for $depthblend, the frame's depth copy at the sampler the card or
+// UnlitGeneric shader binds it (SpriteCard 2, UnlitGeneric 10).
+static void PrepareDirectCoreState()
+{
+	g_boundLightmapHandle = -1;
+	for ( int sampler = 1; sampler < 16; ++sampler )
+		g_boundSamplerHandles[sampler] = -1;
+	g_CurrentEnabledSamplers = 0;
+	if ( !g_pBoundMaterial )
+		return;
+	if ( g_pBoundMaterial->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_LIGHTMAP ) )
+		g_ShaderAPIEmpty.BindStandardTexture( SHADER_SAMPLER1,
+		    g_pBoundMaterial->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_BUMPED_LIGHTMAPS )
+		        ? TEXTURE_LIGHTMAP_BUMPED
+		        : TEXTURE_LIGHTMAP );
+	bool found = false;
+	IMaterialVar *depthBlend = g_pBoundMaterial->FindVar( "$depthblend", &found, false );
+	if ( found && depthBlend->GetIntValue() != 0 )
+	{
+		const Sampler_t sampler =
+		    CoreMeshKindFor( g_pBoundMaterial ) == render::legacy::CoreMeshKind::kParticle
+		        ? SHADER_SAMPLER2
+		        : SHADER_SAMPLER10;
+		g_ShaderAPIEmpty.BindStandardTexture( sampler, TEXTURE_FRAME_BUFFER_FULL_DEPTH );
+		g_CurrentEnabledSamplers |= 1u << sampler;
+	}
+}
+
+static void NoteShadowResult( const IMaterialInternal *material,
+    const std::vector<std::uint64_t> &oldHashes, const std::vector<std::uint64_t> &newHashes )
+{
+	static unsigned long long draws = 0, mismatched = 0;
+	++draws;
+	if ( oldHashes != newHashes )
+	{
+		if ( ++mismatched <= 40 )
+			fprintf( stderr, "COREVERIFY mismatch %s [%s] old %d new %d\n",
+			    material ? material->GetName() : "(none)",
+			    material ? material->GetShaderName() : "", int( oldHashes.size() ),
+			    int( newHashes.size() ) );
+	}
+	if ( draws % 2000 == 0 )
+		fprintf( stderr, "COREVERIFY draws %llu mismatched %llu\n", draws, mismatched );
+}
+
+void CEmptyMesh::EmitDirectOrVerify( bool ranges )
+{
+	static const bool verify = CommandLine()->FindParm( "-vkcoreshadowverify" ) != 0;
+	if ( verify && g_pBoundMaterial )
+	{
+		std::vector<std::uint64_t> oldHashes, newHashes;
+		g_CoreDrawProbe = &oldHashes;
+		g_pBoundMaterial->DrawMesh( VERTEX_COMPRESSION_NONE );
+		g_CoreDrawProbe = &newHashes;
+		PrepareDirectCoreState();
+		if ( ranges )
+			EmitDrawRanges();
+		else
+			EmitToNativeQueue();
+		g_CoreDrawProbe = nullptr;
+		NoteShadowResult( g_pBoundMaterial, oldHashes, newHashes );
+	}
+	PrepareDirectCoreState();
+	if ( ranges )
+		EmitDrawRanges();
+	else
+		EmitToNativeQueue();
 }
 
 std::string CEmptyMesh::LegacyCaptureGeometry() const
@@ -4919,10 +5056,7 @@ void CEmptyMesh::Draw( CPrimList *pPrims, int nPrims )
 	m_pDrawPrims = pPrims;
 	m_nDrawPrims = nPrims;
 	g_pRenderMesh = this;
-	if ( g_pBoundMaterial )
-		g_pBoundMaterial->DrawMesh( VERTEX_COMPRESSION_NONE );
-	else
-		EmitDrawRanges();
+	EmitDirectOrVerify( true );
 	g_pRenderMesh = nullptr;
 	m_pDrawPrims = nullptr;
 	m_nDrawPrims = 0;

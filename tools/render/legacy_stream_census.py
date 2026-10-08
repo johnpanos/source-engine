@@ -22,7 +22,9 @@ Each view boots through tools/quality/portal_boot.py on its kiln profile
     python3 tools/render/legacy_stream_census.py summarize <dir>
 
 `run` writes <dir>/census.json (schema legacy-stream-census/v1) and exits 1
-when any view drew from the stream or a boot failed; `summarize` prints it.
+when any view drew from the stream, its core received no mesh draws
+(r_core_world_stats), a boot failed, or with --verify-handoff the handoff
+shadow oracle (-vkcoreshadowverify) found a mismatch; `summarize` prints it.
 """
 import argparse
 import collections
@@ -88,6 +90,10 @@ ALL_FRAMES = {"p1-frame-pacing"}
 
 DRAW = re.compile(r"\[vulkan\]\s+frame draw tgt=(-?\d+) blend=(\d+)\s+verts=\d+ material=(\S+)")
 DROPPED = re.compile(r"dropped material draws=(\d+)\s+(\S+) \[(\w+)\]")
+# r_core_world_stats' dynamic line: the mesh draws the core received and refused.
+CORE_DYNAMIC = re.compile(r"r_core_world_stats: dynamic draws (\d+) refused (\d+)")
+# The handoff shadow oracle's summary (-vkcoreshadowverify).
+SHADOW = re.compile(r"COREVERIFY draws (\d+) mismatched (\d+)")
 
 
 def boot(args, name, out):
@@ -107,7 +113,9 @@ def boot(args, name, out):
                     "r_indirect_producer baked"):
         cmd += ["--startup-command", setting]
     # "=" keeps commands such as -attack from reading as options.
-    for command in ["wait 120"] + commands + ["wait %d" % SETTLED]:
+    if args.verify_handoff:
+        cmd.append("--engine-arg=-vkcoreshadowverify")
+    for command in ["wait 120"] + commands + ["wait %d" % SETTLED, "r_core_world_stats"]:
         cmd.append("--console-command=" + command)
     with open(out / (name + ".log"), "w") as log:
         status = subprocess.run(cmd, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT).returncode
@@ -130,14 +138,31 @@ def boot(args, name, out):
     for count, material, shader in DROPPED.findall(text):
         dropped[material] = [shader, max(int(count), dropped.get(material, [shader, 0])[1])]
     record["dropped"] = dropped
-    record["zero"] = status == 0 and bool(settled) and max(settled) == 0
+    # The meshes the engine drew (models, particles, sprites, UI) reach the
+    # core: a view with none lost them (e32f58361's DynamicMeshReady regression
+    # left this count at 0 while the stream counts stayed 0 too).
+    engine_log = out / name / "runtime" / "engine.log"
+    log_text = engine_log.read_text(errors="replace") if engine_log.is_file() else text
+    dynamic = CORE_DYNAMIC.findall(log_text) or CORE_DYNAMIC.findall(text)
+    record["core_dynamic_draws"] = int(dynamic[-1][0]) if dynamic else None
+    record["core_dynamic_refused"] = int(dynamic[-1][1]) if dynamic else None
+    shadow = SHADOW.findall(text)
+    record["handoff_shadow"] = ({"draws": int(shadow[-1][0]), "mismatched": int(shadow[-1][1])}
+                                if shadow else None)
+    record["zero"] = (status == 0 and bool(settled) and max(settled) == 0 and
+                      bool(record["core_dynamic_draws"]) and
+                      (not args.verify_handoff or
+                       (record["handoff_shadow"] or {}).get("mismatched", 1) == 0))
     return record
 
 
 def line(record):
     draws = record["legacy_stream_draws"]
-    return "%-16s %-22s boot=%d legacy/frame %s..%s captured %s dropped %s" % (
+    shadow = record.get("handoff_shadow")
+    return "%-16s %-22s boot=%d legacy/frame %s..%s core meshes %s%s captured %s dropped %s" % (
         record["view"], record["map"], record["boot_exit"], draws["min"], draws["max"],
+        record.get("core_dynamic_draws"),
+        " shadow %d/%d" % (shadow["mismatched"], shadow["draws"]) if shadow else "",
         ", ".join("%s x%d" % kv for kv in list(record["captured_legacy_draws"].items())[:6]) or "-",
         ", ".join(sorted(record["dropped"])) or "-")
 
@@ -168,6 +193,8 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     r = sub.add_parser("run")
     r.add_argument("--out", type=Path, required=True)
+    r.add_argument("--verify-handoff", action="store_true",
+                   help="run the handoff shadow oracle (-vkcoreshadowverify) in every view")
     r.add_argument("--view", action="append", choices=sorted(VIEWS))
     r.add_argument("--timeout", type=int, default=400)
     s = sub.add_parser("summarize")

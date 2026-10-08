@@ -214,7 +214,6 @@ public:
 	uint64_t CompletedFrameSerial() const { return m_completedSerial; }
 	// Whether PBRMetalRough models can sample the volume per pixel (their
 	// probe-volume variants were built).
-	bool ProbeVolumeSamplingSupported() const { return m_pbrModelFrag[3] != VK_NULL_HANDLE; }
 	static constexpr uint32_t kPbrDescriptorSets = 3;
 	// RFC 0011 G2: the frame's unbaked lights (dynamic and entity lights from
 	// the engine's light set, render/light_set.h) that WMSH PBR adds as direct
@@ -357,7 +356,7 @@ public:
 	// and draws them, then the queue is cleared. This is how IMesh::Draw reaches
 	// the GPU through the backend (roadmap R32 mesh slice).
 	bool InitDynamicMesh( std::string *outError );
-	bool DynamicMeshReady() const { return m_dynPipeline != VK_NULL_HANDLE; }
+	bool DynamicMeshReady() const { return m_dynamicResourcesReady; }
 	// Append triangle-list vertices as interleaved [x,y,z, r,g,b, u,v] floats,
 	// plus [u,v] lightmap coordinates per vertex when the draw has them (zeros
 	// otherwise). They are stored as one kDynVertexFloats-wide record: position
@@ -440,12 +439,10 @@ public:
 		kPostBlur = 2,
 		kPostEnginePost = 3
 	};
-	// False without the skin layout or a volume texture fallback; the post
-	// passes are then declined.
-	bool PostPipelineSupported() const
-	{
-		return m_postVert != VK_NULL_HANDLE && m_whiteVolumeHandle >= 0;
-	}
+	// Volume textures (the material system's colour-correction lookups and the
+	// white volume) are available once the dynamic resources hold the white
+	// volume, as they were before the post pipeline was deleted (e32f58361).
+	bool VolumeTexturesSupported() const { return m_whiteVolumeHandle >= 0; }
 	// The textured pipeline's alternative pixel stages (alphaParams.y), per draw:
 	// 0 the material shader the flags describe, 2 shadow_ps2x's projected
 	// render-to-texture shadow, 3 spritecard_ps2x (its second animation frame,
@@ -1558,11 +1555,7 @@ private:
 	int m_capturedHeight = 0;
 
 	// Dynamic geometry path (material-system mesh draws).
-	VkPipelineLayout m_dynPipelineLayout = VK_NULL_HANDLE;
-	bool m_dynamicResourcesReady = false;           // InitDynamicMesh ran
-	VkPipeline m_dynPipeline = VK_NULL_HANDLE;      // vertex-color passthrough
-	VkPipeline m_dynPipelineGreen = VK_NULL_HANDLE; // "greenify" material shader
-	VkPipeline m_dynPipelineConst = VK_NULL_HANDLE; // "constant color" material shader
+	bool m_dynamicResourcesReady = false; // InitDynamicMesh ran
 	float m_dynDepthBiasConstant = 0.0f;
 	float m_dynDepthBiasSlope = 0.0f;
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
@@ -1585,7 +1578,6 @@ private:
 		kWorldPbrRuntimeIndirect = 2,
 		kWorldPbrDeltaVolume = 4,
 	};
-	VkShaderModule m_worldVert = VK_NULL_HANDLE;
 	// Scene capture (vulkan_scene_capture.cpp): managed textures the size of the
 	// back buffer. Color is the swapchain format with its sRGB view and a full
 	// mip chain; depth is the depth format, sampled through a depth-only view.
@@ -1635,11 +1627,8 @@ private:
 
 	// PortalRefract pipelines, one per raster state, built on first use.
 	std::map<uint64_t, VkPipeline> m_portalPipelines;
-	VkPipelineLayout m_portalPipelineLayout = VK_NULL_HANDLE;
-	VkShaderModule m_postVert = VK_NULL_HANDLE;
 	int m_whiteVolumeHandle = -1;
 	uint32_t m_maxImageDimension3D = 0;
-	VkShaderModule m_pbrModelFrag[6] = {};
 	struct SkinUniformBuffer
 	{
 		VkBuffer buffer = VK_NULL_HANDLE;
@@ -1693,7 +1682,6 @@ private:
 		VkPipelineDynamicStateCreateInfo dyn;
 	};
 	TexturedPipelineTemplate m_texTemplate = {};
-	VkPipelineLayout m_dynTexPipelineLayout = VK_NULL_HANDLE;
 	VkImage m_dynTexImage = VK_NULL_HANDLE;
 	VulkanMemory m_dynTexMemory = VK_NULL_HANDLE;
 	VkImageView m_dynTexView = VK_NULL_HANDLE;

@@ -3766,32 +3766,12 @@ void CVulkanContext::RecordDepthToAlpha( VkCommandBuffer cmd, int srcTarget, con
 void CVulkanContext::DestroyDynamicMesh()
 {
 	m_dynamicResourcesReady = false;
-	if ( m_dynPipeline != VK_NULL_HANDLE )
-	{
-		vkDestroyPipeline( m_device, m_dynPipeline, nullptr );
-		m_dynPipeline = VK_NULL_HANDLE;
-	}
-	if ( m_dynPipelineGreen != VK_NULL_HANDLE )
-	{
-		vkDestroyPipeline( m_device, m_dynPipelineGreen, nullptr );
-		m_dynPipelineGreen = VK_NULL_HANDLE;
-	}
-	if ( m_dynPipelineConst != VK_NULL_HANDLE )
-	{
-		vkDestroyPipeline( m_device, m_dynPipelineConst, nullptr );
-		m_dynPipelineConst = VK_NULL_HANDLE;
-	}
 	for ( const auto &entry : m_dynTexPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_dynTexPipelines.clear();
 	for ( const auto &entry : m_worldTexPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_worldTexPipelines.clear();
-	if ( m_worldVert != VK_NULL_HANDLE )
-	{
-		vkDestroyShaderModule( m_device, m_worldVert, nullptr );
-		m_worldVert = VK_NULL_HANDLE;
-	}
 	for ( const auto &entry : m_portalPipelines )
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_portalPipelines.clear();
@@ -3802,21 +3782,11 @@ void CVulkanContext::DestroyDynamicMesh()
 			vkDestroyShaderModule( m_device, *module, nullptr );
 		*module = VK_NULL_HANDLE;
 	}
-	if ( m_portalPipelineLayout != VK_NULL_HANDLE )
-	{
-		vkDestroyPipelineLayout( m_device, m_portalPipelineLayout, nullptr );
-		m_portalPipelineLayout = VK_NULL_HANDLE;
-	}
 	for ( VkPipelineShaderStageCreateInfo &stage : m_texTemplate.stages )
 	{
 		if ( stage.module != VK_NULL_HANDLE )
 			vkDestroyShaderModule( m_device, stage.module, nullptr );
 		stage.module = VK_NULL_HANDLE;
-	}
-	if ( m_dynTexPipelineLayout != VK_NULL_HANDLE )
-	{
-		vkDestroyPipelineLayout( m_device, m_dynTexPipelineLayout, nullptr );
-		m_dynTexPipelineLayout = VK_NULL_HANDLE;
 	}
 	if ( m_dynTexDescPool != VK_NULL_HANDLE )
 	{
@@ -3872,11 +3842,6 @@ void CVulkanContext::DestroyDynamicMesh()
 	m_compute.Shutdown();
 	m_freeTextureHandles.clear();
 	m_liveTextureSets = 0;
-	if ( m_dynPipelineLayout != VK_NULL_HANDLE )
-	{
-		vkDestroyPipelineLayout( m_device, m_dynPipelineLayout, nullptr );
-		m_dynPipelineLayout = VK_NULL_HANDLE;
-	}
 	for ( int slot = 0; slot < kMaxFramesInFlight; ++slot )
 	{
 		DestroyStreamBuffer( m_uploadStreams[slot] );
@@ -5155,7 +5120,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 	m_lastFrameSceneDepthCaptures = 0;
 	m_lastFrameDepthToAlpha = 0;
 	m_lastFrameDepthToAlphaSkipped = 0;
-	if ( m_queryPool != VK_NULL_HANDLE && m_dynPipeline != VK_NULL_HANDLE )
+	if ( m_queryPool != VK_NULL_HANDLE && m_dynamicResourcesReady )
 	{
 		for ( const DynDraw &d : m_dynDrawRecords )
 		{
