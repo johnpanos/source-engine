@@ -26,6 +26,8 @@ static ConVar r_bloomtintr( "r_bloomtintr", "0.3" );
 static ConVar r_bloomtintg( "r_bloomtintg", "0.59" );
 static ConVar r_bloomtintb( "r_bloomtintb", "0.11" );
 static ConVar r_bloomtintexponent( "r_bloomtintexponent", "2.2" );
+// Read by name by the native backend's and the render core's motion blur.
+ConVar mat_motion_blur_percent_of_screen_max( "mat_motion_blur_percent_of_screen_max", "4.0" );
 
 namespace
 {
@@ -41,6 +43,9 @@ enum class Op
 	Blending,       // EnableBlending( true ); BlendFunc( a, b )
 	Culling,        // EnableCulling( a )
 	SrgbWrite,      // EnableSRGBWrite( a )
+	SrgbRead,       // EnableSRGBRead( Sampler_t( a ), b )
+	HdrSrgb,        // EnableSRGBWrite( true ) when HDR is on
+	DepthFunc,      // DepthFunc( ShaderDepthFunc_t( a ) )
 	AmdOcclusion,   // EnableSRGBWrite( true ) under gl_amd_occlusion_workaround
 	OsxSrgb,        // EnableSRGBRead( SAMPLER0, x ); EnableSRGBWrite( x ), x = OSX sRGB RTs
 	CompressedPos,  // VertexShaderVertexFormat( POSITION | COMPRESSED, 1, NULL, 0 )
@@ -66,17 +71,26 @@ struct Param
 };
 
 // A texture to load at init: a base parameter, or (extra) the row's own.
+enum class LoadAs
+{
+	Texture,
+	CubeMap,
+	OsxSrgbTexture, // TEXTUREFLAGS_SRGB where OSX render targets are sRGB
+};
+
 // An unused slot keeps index -1 (never 0: that is $FLAGS).
 struct Load
 {
 	bool extra = false;
 	int index = -1;
 	bool ifDefined = false;
+	int textureFlags = 0;
+	LoadAs as = LoadAs::Texture;
 };
 
-constexpr int kMaxParams = 9;
-constexpr int kMaxLoads = 2;
-constexpr int kMaxSteps = 8;
+constexpr int kMaxParams = 12;
+constexpr int kMaxLoads = 3;
+constexpr int kMaxSteps = 10;
 
 struct FixedStateRow
 {
@@ -89,6 +103,7 @@ struct FixedStateRow
 	int intDefaultValue;           // ...when the material leaves it undefined
 	Load loads[kMaxLoads];         // index -1 ends the list
 	Step steps[kMaxSteps];         // Op::End ends the list
+	int initFlags = 0;             // MATERIAL_VAR_* set at init
 };
 
 #define NO_PARAMS {}
@@ -98,6 +113,7 @@ struct FixedStateRow
 #define I SHADER_PARAM_TYPE_INTEGER
 #define V4 SHADER_PARAM_TYPE_VEC4
 #define S SHADER_PARAM_TYPE_STRING
+#define M SHADER_PARAM_TYPE_MATERIAL
 
 const FixedStateRow kRows[] = {
 	{ "WriteZ", "WriteZ_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
@@ -158,6 +174,46 @@ const FixedStateRow kRows[] = {
 	    -1, 0, { { true, 0, true } },
 	    { { Op::DepthWrites, 0, 0 }, { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::Pos1, 0, 0 },
 	        { Op::SrgbWrite, 1, 0 } } },
+	{ "Sample4x4_Blend", nullptr, 0, 0,
+	    { { "$BASETEXTURE", T, "", "" },
+	        { "$PIXSHADER", S, "sample4x4_ps20", "Name of the pixel shader to use" } },
+	    -1, 0, { { true, 0, false } }, // its own $BASETEXTURE, as Sample4x4's
+	    { { Op::DepthWrites, 0, 0 }, { Op::AlphaWrites, 1, 0 }, { Op::Texture, SHADER_SAMPLER0, 0 },
+	        { Op::Pos1, 0, 0 },
+	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA } } },
+	{ "floatcombine_autoexpose", nullptr, 0, 0,
+	    { { "$BLOOMTEXTURE", T, "", "" }, { "$SHARPNESS", F, "1", "" }, { "$WOODCUT", F, "0", "" },
+	        { "$VIGNETTE_MIN_BRIGHT", F, "1", "" }, { "$VIGNETTE_POWER", F, "4", "" },
+	        { "$EDGE_SOFTNESS", F, "0", "" }, { "$BLOOMAMOUNT", F, "1.0", "" },
+	        { "$BLOOMEXPONENT", F, "2.0", "" }, { "$ALPHASHARPENFACTOR", F, "0.0", "" },
+	        { "$EXPOSURE_TEXTURE", T, "", "" }, { "$AUTOEXPOSE_MIN", F, ".5", "" },
+	        { "$AUTOEXPOSE_MAX", F, "2", "" } },
+	    -1, 0, { { false, BASETEXTURE, true }, { true, 0, true }, { true, 9, true } },
+	    { { Op::DepthWrites, 0, 0 }, { Op::Texture, SHADER_SAMPLER0, 0 },
+	        { Op::Texture, SHADER_SAMPLER1, 0 }, { Op::Texture, SHADER_SAMPLER2, 0 },
+	        { Op::Pos1, 0, 0 }, { Op::SrgbWrite, 1, 0 } } },
+	{ "MotionBlur", "MotionBlur_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "MotionBlur_dx9", nullptr, SHADER_NOT_EDITABLE, 0,
+	    { { "$MOTIONBLURINTERNAL", V4, "[0 0 0 0]", "Internal motion blur value set by proxy" } },
+	    -1, 0, { { false, BASETEXTURE, true, 0, LoadAs::OsxSrgbTexture } },
+	    { { Op::Pos1, 0, 0 }, { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::OsxSrgb, 0, 0 },
+	        { Op::DepthWrites, 0, 0 }, { Op::AlphaWrites, 0, 0 } } },
+	{ "WindowImposter", "WindowImposter_DX90", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "WindowImposter_DX90", nullptr, 0, 0,
+	    { { "$ENVMAP", T, "shadertest/shadertest_env", "envmap" } },
+	    -1, 0, { { true, 0, false, 0, LoadAs::CubeMap } },
+	    { { Op::HdrSrgb, 0, 0 }, { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::Pos1, 0, 0 },
+	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA },
+	        { Op::DepthWrites, 0, 0 }, { Op::FogToFogColor, 0, 0 } } },
+	{ "ShadowBuild", "ShadowBuild_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "ShadowBuild_DX9", nullptr, SHADER_NOT_EDITABLE, MATERIAL_VAR2_SUPPORTS_HW_SKINNING,
+	    { { "$TRANSLUCENT_MATERIAL", M, "", "Points to a material to grab translucency from" } },
+	    -1, 0, { { false, BASETEXTURE, true, TEXTUREFLAGS_SRGB } },
+	    { { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ONE }, { Op::DepthWrites, 0, 0 },
+	        { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::SrgbRead, SHADER_SAMPLER0, 1 },
+	        { Op::SrgbWrite, 1, 0 }, { Op::AlphaWrites, 1, 0 }, { Op::DepthWrites, 0, 0 },
+	        { Op::DepthFunc, SHADER_DEPTHFUNC_ALWAYS, 0 }, { Op::CompressedPos, 0, 0 } },
+	    MATERIAL_VAR_NO_DEBUG_OVERRIDE },
 	{ "EyeGlint", "EyeGlint_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
 	{ "EyeGlint_dx9", nullptr, 0, 0, NO_PARAMS, -1, 0, NO_LOADS,
 	    { { Op::DepthWrites, 0, 0 }, { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ONE },
@@ -171,6 +227,7 @@ const FixedStateRow kRows[] = {
 #undef I
 #undef V4
 #undef S
+#undef M
 
 class CFixedStateShader : public CBaseVSShader
 {
@@ -216,6 +273,8 @@ public:
 protected:
 	void OnInitShaderParams( IMaterialVar **params, const char *pMaterialName ) override
 	{
+		if ( m_Row.initFlags )
+			SET_FLAGS( MaterialVarFlags_t( m_Row.initFlags ) );
 		if ( m_Row.initFlags2 )
 			SET_FLAGS2( MaterialVarFlags2_t( m_Row.initFlags2 ) );
 		if ( m_Row.intDefault >= 0 )
@@ -233,8 +292,21 @@ protected:
 			if ( load.index < 0 )
 				break;
 			const int param = load.extra ? Extra( load.index ) : load.index;
-			if ( !load.ifDefined || params[param]->IsDefined() )
-				LoadTexture( param );
+			if ( load.ifDefined && !params[param]->IsDefined() )
+				continue;
+			switch ( load.as )
+			{
+			case LoadAs::Texture:
+				LoadTexture( param, load.textureFlags );
+				break;
+			case LoadAs::CubeMap:
+				LoadCubeMap( param, load.textureFlags );
+				break;
+			case LoadAs::OsxSrgbTexture:
+				LoadTexture( param, IsOSX() && g_pHardwareConfig->CanDoSRGBReadFromRTs()
+				                        ? TEXTUREFLAGS_SRGB : 0 );
+				break;
+			}
 		}
 	}
 	void OnDrawElements( IMaterialVar **params, IShaderShadow *pShaderShadow,
@@ -290,6 +362,16 @@ private:
 			break;
 		case Op::SrgbWrite:
 			pShaderShadow->EnableSRGBWrite( step.a != 0 );
+			break;
+		case Op::SrgbRead:
+			pShaderShadow->EnableSRGBRead( Sampler_t( step.a ), step.b != 0 );
+			break;
+		case Op::HdrSrgb:
+			if ( g_pHardwareConfig->GetHDRType() != HDR_TYPE_NONE )
+				pShaderShadow->EnableSRGBWrite( true );
+			break;
+		case Op::DepthFunc:
+			pShaderShadow->DepthFunc( ShaderDepthFunc_t( step.a ) );
 			break;
 		case Op::AmdOcclusion:
 			if ( g_pHardwareConfig->PlatformRequiresNonNullPixelShaders() &&
