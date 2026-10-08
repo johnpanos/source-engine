@@ -1051,6 +1051,36 @@ void PackagerUnitChecks( const Workbench &bench, platform::IToolProcessProvider 
 	    "package.undeclared-mount-set-refused" );
 	request.mountSets = { "extra" };
 	Check( session.Run( request ).HasValue(), "package.declared-mount-set-accepted" );
+
+	// linux-dir: a mount set's entries leave the runtime when a later package
+	// runs without the set.
+	{
+		const fs::path store = bench.root / "set-store";
+		fs::create_directories( store / "pack" );
+		fixture::WriteBytes( store / "pack" / "a.txt", "a" );
+		auto parsed = foundation::json::Parse(
+		    R"({"package": {"steps": [{"op": "link", "path": "game/extra", "from": "store",
+		      "source": "pack", "mount_set": "extra"}]}})" );
+		product::ResolvedProfile profile;
+		profile.name = "set-fixture";
+		profile.document = parsed.Value();
+		auto packager = product::CreateLinuxDirPackager();
+		product::PackageRequest package;
+		package.profile = &profile;
+		package.output = bench.root / "set-runtime";
+		package.locations = { { "store", store } };
+		package.sourceRoot = bench.source;
+		package.mountSets = { "extra" };
+		auto with = packager->Package( package );
+		const bool linked = fs::is_symlink( package.output / "game/extra" );
+		package.mountSets = {};
+		auto without = packager->Package( package );
+		Check( with && without && linked && !fs::exists( package.output / "game/extra" ) &&
+		           !fs::exists( package.output / "game" ) &&
+		           !fs::is_symlink( package.output / "game/extra" ) &&
+		           without.Value().entries.empty(),
+		    "package.linux-dir-unselected-mount-set-entries-removed" );
+	}
 }
 } // namespace
 

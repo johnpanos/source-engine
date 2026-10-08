@@ -68,3 +68,38 @@ class Run:
         self._thread.join(timeout)
         if self._thread.is_alive():
             raise LoadError("the run did not stop within %d s of cancellation" % timeout)
+
+
+_SESSIONS = {}
+
+
+def session():
+    """One sepipe session over this checkout, shared within the process."""
+    if "session" not in _SESSIONS:
+        _SESSIONS["session"] = load().Session(str(ROOT))
+    return _SESSIONS["session"]
+
+
+def packaged_runtime(profile, flavor="dev"):
+    """The profile's packaged runtime (`kiln package <profile>`): built and
+    packaged as needed, then its directory. Tools that read game content
+    from a staged runtime use this instead of run/runtime*."""
+    try:
+        session().build(profile, flavor=flavor, up_to="package")
+        return Path(session().plan(profile, flavor=flavor)["runtime"])
+    except LoadError:
+        raise
+    except Exception as error:  # sepipe.KilnError
+        raise LoadError("kiln package %s --flavor %s: %s" % (profile, flavor, error)) from error
+
+
+def add_arguments(parser, profile):
+    """The --profile/--flavor pair a portal_boot caller takes in place of
+    the legacy --runtime/--build."""
+    parser.add_argument("--profile", default=profile, help="kiln profile (default %s)" % profile)
+    parser.add_argument("--flavor", default="dev", help="the profile's build flavor")
+
+
+def boot_arguments(args):
+    """portal_boot.py's arguments for a caller's --profile/--flavor."""
+    return ["--profile", args.profile, "--flavor", args.flavor]

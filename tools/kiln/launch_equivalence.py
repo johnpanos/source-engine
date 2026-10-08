@@ -190,7 +190,7 @@ def align_published_maps():
             local.symlink_to(MAIN_RUN / name, target_is_directory=True)
 
 
-def old_launch(mode, argv, profile, kind, extra_env, flavor="dev"):
+def old_launch(mode, argv, profile, kind, extra_env, flavor="dev", mounts=()):
     capture = SCRATCH / ("capture-%s.bin" % mode)
     capture.unlink(missing_ok=True)
     runtime = SCRATCH / ("runtime-" + kind)
@@ -223,9 +223,15 @@ def old_launch(mode, argv, profile, kind, extra_env, flavor="dev"):
     elif kind == "p2":
         flavor_lock = ".lock-waf-kilneq-%s-%s" % (profile, flavor)
         aliases = lock_aliases(build, flavor_lock)
-        env.update({"P2_BUILD_DIR": str(build), "P2_RUNTIME": str(runtime) + "-" + profile,
+        # One reference runtime per mount selection: stage_portal2_runtime.py
+        # never removes Workshop packs a run without --workshop no longer
+        # mounts (a recorded defect kiln does not carry over: its packager
+        # removes an unselected mount set's entries).
+        runtime = Path(str(runtime) + "-" + profile + "".join("-" + m for m in mounts))
+        if not mounts:
+            shutil.rmtree(runtime / "workshop", ignore_errors=True)
+        env.update({"P2_BUILD_DIR": str(build), "P2_RUNTIME": str(runtime),
                     "P2_WAFLOCK": flavor_lock, "P2_AV1_MEDIA": str(MAIN_RUN / "media-av1")})
-        runtime = Path(str(runtime) + "-" + profile)
     elif kind == "retail":
         pass  # ./play_p2 --retail execs Steam's portal2.sh before building anything
     elif kind == "fstop":
@@ -440,7 +446,8 @@ def check(selected, keep):
             kiln("build", kiln_args[0], "--flavor", flavor)
             built.add((profile, flavor))
         try:
-            capture, runtime, base = old_launch(mode, argv, profile, kind, extra_env, flavor)
+            mounts = [kiln_args[i + 1] for i, arg in enumerate(kiln_args[:-1]) if arg == "--mounts"]
+            capture, runtime, base = old_launch(mode, argv, profile, kind, extra_env, flavor, mounts)
         except RuntimeError as error:
             record.check(False, mode + ": the old launcher reaches the game exec", str(error)[-600:])
             continue

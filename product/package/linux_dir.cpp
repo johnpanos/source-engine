@@ -84,6 +84,9 @@ struct Owned
 {
 	std::map<std::string, std::string> entries;
 	std::map<std::string, std::string> roles;
+	// Entries a mount set's steps added: path -> set. When a package runs
+	// without the set, they are removed, so the runtime matches the request.
+	std::map<std::string, std::string> sets;
 };
 
 class Builder
@@ -102,13 +105,16 @@ public:
 			if ( m_Request.cancel && m_Request.cancel->IsCancelled() )
 				return foundation::MakeUnexpected( Fail( std::string( kCancelled ), "" ) );
 			const std::string *op = step.FindString( "op" );
-			if ( const std::string *set = step.FindString( "mount_set" ) )
+			const std::string *set = step.FindString( "mount_set" );
+			if ( set && std::find( m_Request.mountSets.begin(), m_Request.mountSets.end(), *set ) ==
+			                m_Request.mountSets.end() )
 			{
-				// A mount set's step runs only when the set is selected.
-				if ( std::find( m_Request.mountSets.begin(), m_Request.mountSets.end(), *set ) ==
-				     m_Request.mountSets.end() )
-					continue;
+				// A mount set's step runs only when the set is selected; what
+				// it placed on an earlier run goes.
+				RemoveSet( *set );
+				continue;
 			}
+			m_CurrentSet = set ? *set : std::string();
 			if ( !op )
 				return foundation::MakeUnexpected(
 				    Fail( "invalid-step", "a package step names its op" ) );
@@ -163,6 +169,45 @@ private:
 		return it == m_Request.locations.end() ? fs::path() : it->second;
 	}
 
+	// Every placed entry is owned through here: its hash or link, its role,
+	// and the mount set of the step placing it (none for an unconditional
+	// step, which also clears an earlier set's claim).
+	void Own( const std::string &relative, std::string value, std::string role )
+	{
+		m_Owned.entries[relative] = std::move( value );
+		m_Owned.roles[relative] = std::move( role );
+		if ( m_CurrentSet.empty() )
+			m_Owned.sets.erase( relative );
+		else
+			m_Owned.sets[relative] = m_CurrentSet;
+	}
+
+	void RemoveSet( const std::string &set )
+	{
+		std::error_code ec;
+		for ( auto it = m_Owned.sets.begin(); it != m_Owned.sets.end(); )
+		{
+			if ( it->second != set )
+			{
+				++it;
+				continue;
+			}
+			fs::remove( m_Runtime / it->first, ec );
+			// Directories the set's entries emptied go too (never the runtime).
+			for ( fs::path parent = ( m_Runtime / it->first ).parent_path();
+			    parent != m_Runtime && parent.string().size() > m_Runtime.string().size();
+			    parent = parent.parent_path() )
+			{
+				if ( !fs::is_directory( parent, ec ) || fs::is_symlink( parent, ec ) ||
+				     !fs::is_empty( parent, ec ) || !fs::remove( parent, ec ) )
+					break;
+			}
+			m_Owned.entries.erase( it->first );
+			m_Owned.roles.erase( it->first );
+			it = m_Owned.sets.erase( it );
+		}
+	}
+
 	void LoadRecord()
 	{
 		auto parsed = foundation::json::Parse( ReadBytes( m_Runtime / kRecordName ) );
@@ -178,6 +223,8 @@ private:
 						m_Owned.entries[member.first] = *hash;
 					if ( const std::string *role = member.second.FindString( "role" ) )
 						m_Owned.roles[member.first] = *role;
+					if ( const std::string *set = member.second.FindString( "mount_set" ) )
+						m_Owned.sets[member.first] = *set;
 				}
 			}
 		}
@@ -195,6 +242,9 @@ private:
 			auto role = m_Owned.roles.find( entry.first );
 			item.Set(
 			    "role", Value::String( role == m_Owned.roles.end() ? "content" : role->second ) );
+			auto set = m_Owned.sets.find( entry.first );
+			if ( set != m_Owned.sets.end() )
+				item.Set( "mount_set", Value::String( set->second ) );
 			entries.Set( entry.first, std::move( item ) );
 		}
 		return WriteAtomic( m_Runtime / kRecordName, record.WritePretty() + "\n" );
@@ -236,8 +286,7 @@ private:
 		fs::rename( staging, target, ec );
 		if ( ec )
 			return foundation::MakeUnexpected( Fail( "io", "cannot place " + target.string() ) );
-		m_Owned.entries[relative] = "file:" + HashHex( ReadBytes( target ) );
-		m_Owned.roles[relative] = role;
+		Own( relative, "file:" + HashHex( ReadBytes( target ) ), role );
 		return {};
 	}
 
@@ -249,8 +298,7 @@ private:
 		fs::create_directories( link.parent_path(), ec );
 		if ( fs::is_symlink( link, ec ) && fs::read_symlink( link, ec ) == target )
 		{
-			m_Owned.entries[relative] = "link:" + target.string();
-			m_Owned.roles[relative] = role;
+			Own( relative, "link:" + target.string(), role );
 			return {};
 		}
 		const fs::path staging = link.string() + ".kiln-staging";
@@ -265,8 +313,7 @@ private:
 		fs::rename( staging, link, ec );
 		if ( ec )
 			return foundation::MakeUnexpected( Fail( "io", "cannot place " + link.string() ) );
-		m_Owned.entries[relative] = "link:" + target.string();
-		m_Owned.roles[relative] = role;
+		Own( relative, "link:" + target.string(), role );
 		return {};
 	}
 
@@ -629,8 +676,7 @@ private:
 		auto written = WriteAtomic( path, staged );
 		if ( !written )
 			return written;
-		m_Owned.entries[*file] = "file:" + HashHex( staged );
-		m_Owned.roles[*file] = "config";
+		Own( *file, "file:" + HashHex( staged ), "config" );
 		return {};
 	}
 
@@ -676,8 +722,7 @@ private:
 		auto written = WriteAtomic( m_Runtime / *path, bytes );
 		if ( !written )
 			return written;
-		m_Owned.entries[*path] = "file:" + HashHex( bytes );
-		m_Owned.roles[*path] = "content";
+		Own( *path, "file:" + HashHex( bytes ), "content" );
 		return {};
 	}
 
@@ -1098,14 +1143,29 @@ private:
 					auto written = WriteAtomic( target / outPath, outData );
 					if ( !written )
 						return written;
-					m_Owned.entries[*into + "/" + id + "/" + outPath] =
-					    "file:" + HashHex( outData );
-					m_Owned.roles[*into + "/" + id + "/" + outPath] = "content";
+					Own(
+					    *into + "/" + id + "/" + outPath, "file:" + HashHex( outData ), "content" );
 				}
 				fs::create_directories( target, ec );
-				auto written = WriteAtomic( stampFile, stamp.WritePretty( 1 ) + "\n" );
+				const std::string stampText = stamp.WritePretty( 1 ) + "\n";
+				auto written = WriteAtomic( stampFile, stampText );
 				if ( !written )
 					return written;
+				Own( prefix + ".workshop-source.json", "file:" + HashHex( stampText ), "config" );
+			}
+			else
+			{
+				// Unchanged: its entries stay, re-owned by this step.
+				const std::string prefix = *into + "/" + id + "/";
+				for ( const auto &entry : std::map<std::string, std::string>( m_Owned.entries ) )
+				{
+					if ( entry.first.rfind( prefix, 0 ) == 0 )
+					{
+						auto role = m_Owned.roles.find( entry.first );
+						Own( entry.first, entry.second,
+						    role == m_Owned.roles.end() ? std::string( "content" ) : role->second );
+					}
+				}
 			}
 			Value record = Value::Object();
 			record.Set( "id", Value::String( id ) );
@@ -1140,14 +1200,14 @@ private:
 		auto written = WriteAtomic( base / "mounts.json", text );
 		if ( !written )
 			return written;
-		m_Owned.entries[*into + "/mounts.json"] = "file:" + HashHex( text );
-		m_Owned.roles[*into + "/mounts.json"] = "config";
+		Own( *into + "/mounts.json", "file:" + HashHex( text ), "config" );
 		return {};
 	}
 
 	const PackageRequest &m_Request;
 	fs::path m_Runtime;
 	Owned m_Owned;
+	std::string m_CurrentSet; // the running step's mount set, if any
 };
 
 class LinuxDirPackager final : public IPackager

@@ -25,6 +25,9 @@ from hammer_ui_test import vtf_rgba8888
 import vmf_map_build
 from conformance_result import Checks
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 ROOT = Path(__file__).resolve().parents[2]
 NAME = "core_fizzler_light"
 
@@ -100,10 +103,9 @@ def generate(out, runtime, door=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2")
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2")
+    sepipe_loader.add_arguments(parser, "portal2")
     args = parser.parse_args()
-    out, runtime = args.out.resolve(), args.runtime.resolve()
+    out, runtime = args.out.resolve(), sepipe_loader.packaged_runtime(args.profile, args.flavor)
     out.mkdir(parents=True, exist_ok=True)
     source, content, overlay = generate(out, runtime)
     tools = Path(json.loads(vmf_map_build.TOOLCHAIN.read_text())["compile_tools"])
@@ -127,8 +129,8 @@ def main():
                 "cl_fizzler_core_emission 1", "wait 20", "screenshot",
                 "ent_fire field Disable", "wait 90", "screenshot",
                 "ent_fire field Enable", "wait 180"]
-    command = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"), "--runtime", str(runtime),
-               "--build", str(args.build.resolve()), "--game", "portal2", "--map", NAME,
+    command = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
+               *sepipe_loader.boot_arguments(args), "--map", NAME,
                "--content-root", str(content), "--renderer", "native-vulkan", "--require-vulkan",
                "--require-sdl3", "--headless", "--width", "640", "--height", "480",
                "--out", str(out / "capture"), "--capture-wait", "900", "--timeout", "120",

@@ -629,3 +629,36 @@ Evidence:
   path and the legacy path give the same command and the same outcome with
   the same binaries. The rendering failure stays with the device facade
   work.
+
+### L1d (fifth slice): mount sets leave the runtime; the first `portal_boot` callers
+
+- **Fixed: unselected mount sets now leave the runtime.** A `linux-dir`
+  package run without a mount set used to skip that set's steps and keep
+  what they had placed. After the equivalence check's
+  `--mounts p2ce-workshop` mode, the tree's Portal 2 runtime kept 46 Workshop
+  entries.
+  - Every placed entry is now owned through one `Own()` with the running
+    step's mount set, persisted in the record as `mount_set`.
+  - Skipping a set's step removes its entries and the directories they
+    emptied.
+  - `extract-packs` re-owns unchanged packs and owns each pack's stamp.
+  - Result: 2,852 entries with the set and 2,803 without, with nothing left
+    over.
+- **Oracle.** `package.linux-dir-unselected-mount-set-entries-removed` is the
+  first kilntest check that runs the `linux-dir` packager itself. A seeded
+  `RemoveSet` defect fails it. kilntest is 140/0 on gcc and clang.
+- **Equivalence check.** It had passed only because the old
+  `stage_portal2_runtime.py` keeps the same leftovers: without `--workshop`
+  it drops the search paths but leaves the packs on disk. The Portal 2
+  reference runtimes are now one per mount selection, and that old defect is
+  recorded rather than carried over. The Portal 2 modes pass 16/0.
+- **Callers.** `sepipe_loader` gains `session()`, `packaged_runtime(profile,
+  flavor)` (a profile's package used as a content source),
+  `add_arguments()` and `boot_arguments()`.
+  - `fizzler_light.py` and `fizzler_door_light.py` take `--profile`/`--flavor`
+    and boot through `portal_boot.py --profile`. Their capture fails only on
+    the approved, unrelated grey boot frame.
+  - Their map compile still reads the map pipeline's
+    `build/toolchains/pbrt-map-toolchain.json` (Blender, OpenUSD, KTX, xatlas
+    and the compile tools). Moving that pipeline is later RFC 0027 work, not
+    L1.
