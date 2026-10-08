@@ -66,10 +66,10 @@ the private compositor, and --scale sets the display scale: GDK_SCALE for X11
 (integers), the compositor's monitor scale for Wayland (fractional, through
 the private session's keyfile settings, never the user's).
 
-  hammer_ui_test.py --cli build-r03-tools/hammer/cli/hammer_cli --out quality-results/hammer-ui
+  hammer_ui_test.py --cli out/tools-linux/dev/build/hammer/cli/hammer_cli --out quality-results/hammer-ui
 
 The shell is built from the current source into the output directory
-(hammer/gtk/build.sh) unless --gtk names a binary. Needs mutter, the AT-SPI
+(`kiln build hammer`, its install's hammer_gtk) unless --gtk names a binary. Needs mutter, the AT-SPI
 bus and registry daemons, python3-gobject with Atspi, and the compile
 toolchain vmf_map_build.py uses.
 
@@ -93,6 +93,9 @@ sys.path.insert(0, str(HERE))
 from conformance_result import Checks  # noqa: E402
 import launch_sandbox  # noqa: E402
 import private_session  # noqa: E402
+
+sys.path.insert(0, str(HERE.parent / "kiln"))
+import sepipe_loader  # noqa: E402
 
 ROOT = HERE.parents[1]
 SCREEN = (1280, 800)
@@ -408,8 +411,10 @@ class Driver:
         return None
 
     def named(self, name, role=None):
-        # Older AT-SPI releases call a button's role "push button".
-        roles = {role, "push button"} if role == "button" else {role}
+        # Older AT-SPI releases call a button's role "push button"; GTK reports
+        # a grouped check button (a radio choice) as a "radio button".
+        aliases = {"button": {"push button"}, "check box": {"radio button"}}
+        roles = {role} | aliases.get(role, set())
         node = self.find(lambda n, r: n == name and (role is None or r in roles))
         if node is None:
             raise RuntimeError("no %s named %r" % (role or "widget", name))
@@ -1594,13 +1599,16 @@ def main():
     checks = Checks()
     out = args.out.resolve()
     if args.gtk is None:
+        # `kiln build hammer` (RFC 0027): the editor from the hammer profile's install.
         out.mkdir(parents=True, exist_ok=True)
-        args.gtk = out / "hammer_gtk"
-        built = subprocess.run([str(ROOT / "hammer/gtk/build.sh"), str(args.gtk)],
-                               capture_output=True, text=True)
-        (out / "build-gtk.log").write_text(built.stdout + built.stderr)
-        checks.equal(built.returncode, 0, "shell.built")
-        if built.returncode:
+        try:
+            args.gtk = sepipe_loader.installed("hammer") / "hammer_gtk"
+            built = True
+        except sepipe_loader.LoadError as error:
+            (out / "build-gtk.log").write_text(str(error) + "\n")
+            built = False
+        checks.check(built and args.gtk.is_file(), "shell.built", str(args.gtk))
+        if not built:
             return checks.report()
     summary = {"schema": "hammer-ui/v1", "cases": {}}
     default = [c for c in CASES if args.backend == "x11" or c not in X11_ONLY_CASES]

@@ -25,7 +25,7 @@ def build(bld):
 		defines   = [],
 		use       = [ 'hammer_mcp', 'hammer_formats', 'hammer_app', 'hammer_ports', 'hammer_scene',
 		              'hammer_platform', 'platform_posix', 'vmf', 'kvtext', 'mapgeometry' ],
-		install_path = None,
+		install_path = bld.env.BINDIR,
 		subsystem = 'CONSOLE',
 		idx       = bld.get_taskgen_count()
 	)

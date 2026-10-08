@@ -150,7 +150,7 @@
       "requires": [
         "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "executable:mutter",
         "executable:dbus-run-session",
         "path:/usr/libexec/at-spi-bus-launcher",
@@ -199,7 +199,7 @@
       "requires": [
         "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "executable:mutter",
         "executable:dbus-run-session",
         "path:/usr/libexec/at-spi-bus-launcher",
@@ -247,7 +247,7 @@
       "requires": [
         "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "executable:mutter",
         "executable:dbus-run-session",
         "path:/usr/libexec/at-spi-bus-launcher",
@@ -294,7 +294,7 @@
       "requires": [
         "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "executable:mutter",
         "executable:dbus-run-session",
         "path:/usr/libexec/at-spi-bus-launcher",
@@ -476,7 +476,7 @@
       "requires": [
         "path:out/tools-linux/dev/build/hammer/cli/hammer_cli",
         "path:build/toolchains/pbrt-map-toolchain.json",
-        "path:run/runtime"
+        "path:out/host-linux-x86_64/product/kiln/kiln"
       ],
       "sources": [
         "tools/quality/hammer_mcp_check.py",

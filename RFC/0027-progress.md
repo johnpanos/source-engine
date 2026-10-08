@@ -682,3 +682,50 @@ Evidence:
 - **Pre-existing failures, files not touched.** Three
   `test_reflection_probe_set` placement tests, and four lighting back-end
   plan tests (the `light-masks` operation).
+
+### L1d (seventh slice): the remaining `portal_boot` callers and `corpus.hammer.ui` on the kiln tree
+
+- **Callers on kiln profiles.** Booting through `portal_boot.py --profile`:
+  host-frame baseline, legacy-ports and release views, spark scene, pedestal
+  carousel, sign light, video frame cache, world-light route, game/lab
+  matrix, dlight lab, the Portal 2 scenario family (scenarios, material
+  shots, physics, storybeats, map views, audio), sign panel, monitors, mover
+  shadow, view oracle, culling capture, core-world smoke, the render tools
+  (skin corpus, layer dump, debug views, proxy corpus, map swipe, TSan
+  triage, `rdc.py`), `vmf_map_build --boot`, the Hammer loop, intro4 strict
+  game and particle census.
+- **Shared owners in `sepipe_loader`:** `run_test` (a harness's test command
+  through kiln, with timeout, early stop and process watch),
+  `packaged_runtime`, `installed`, `game_of`, `add_arguments` and
+  `boot_arguments`. `portal_boot`, `portal2_scenarios` and `core_world_smoke`
+  dropped their own `Popen` loops.
+- **New profile.** `portal-tsan-linux` (clang 22.1.8, `sanitize=thread`). The
+  TSan tree is now profile data. Profile parity passes 30/0.
+- **Hammer.** `hammer_gtk` and `hammer_cli` install into the `hammer`
+  profile's install. `hammer_ui_test.py` takes the editor from
+  `kiln build hammer` instead of `hammer/gtk/build.sh`. The Hammer rows use
+  the kiln tools tree's `hammer_cli` and require kiln instead of
+  `run/runtime`.
+- **Driver fix.** The UI driver accepts "radio button" where it asks for a
+  check box, because GTK reports a grouped check button that way. This is
+  why the replace-textures cases failed before the change, whatever built
+  the editor.
+- **Evidence through kiln.**
+  - `corpus.hammer.ui` 59/0 on the kiln-built editor, through the runner.
+  - Hammer loop 14/0.
+  - `sp_a1_intro5` scenario 9/9.
+  - Pedestal carousel 14/0.
+  - Core-world smoke 2/0 (self-test 21/0).
+  - Host-frame captures equal the fixture (395 frames, 8,312 calls) in both
+    modes.
+  - View oracle: 16 identical failures on the kiln and legacy paths with the
+    same binaries.
+  - Sign panel: the same 10 failures as HEAD's tool on the legacy path.
+- **Pre-existing, not from L1.**
+  - The view-oracle `decals/rendershadow` drift against the frozen captures.
+  - Ten sign-panel checks.
+  - Three reflection-probe placement tests.
+  - Four lighting back-end plan tests (`light-masks`).
+  - One frame-floor test.
+- **Not run in this slice.** The Wayland and scaled `corpus.hammer.ui` rows,
+  and `corpus.hammer.mcp`.
