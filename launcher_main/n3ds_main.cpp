@@ -32,11 +32,13 @@
 
 // libctru reads these when it sizes the heaps at startup.
 extern "C" u32 __ctru_linear_heap_size;
-// GPU-visible memory: textures, the meshes the legacy path draws (resident on
-// demand), the transient rings and the render core's buffers (model geometry
-// submitted in 1.5 MB steps). sp_a1_intro4 with the core world keeps ~12 MB of
-// 22 free, while the main heap is the tighter side: 18 MB (2026-10-07).
-u32 __ctru_linear_heap_size = 18u * 1024u * 1024u;
+// GPU-visible memory: textures, the model meshes' one copy (written in place
+// and read there by legacy draws and the render core, CoreMeshStreams), the
+// world meshes the legacy path draws (resident on demand), the transient
+// rings and the render core's buffers. With the model meshes here (they left
+// the main heap, about 10 MB in sp_a1_intro4), the intro4 demo keeps ~7.5 MB
+// of 26 free and the main heap ~14 MB of its 89 (2026-10-07).
+u32 __ctru_linear_heap_size = 26u * 1024u * 1024u;
 // The main thread's stack, which libctru's startup (stack_adjust.s) moves to
 // the heap: Source's frames (map loading, the material system) need far more
 // than the kernel's default stack.

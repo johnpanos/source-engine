@@ -122,6 +122,7 @@ def profile(argv):
     parser.add_argument("--frames", type=int, default=3, help="counter lines (120 frames each) to profile")
     parser.add_argument("--us", type=float, default=500, help="sampling interval in emulated microseconds")
     parser.add_argument("--cmds", default="")
+    parser.add_argument("--launch", default="", help="extra game arguments (an A/B switch)")
     options = parser.parse_args(argv)
     args = ["run", "--map", options.map, "--headless", "--speed", "0", "--wait", "300",
             "--frames", str(options.frames), "--guest-profile", str(options.us), "--timeout", "1200"]
@@ -132,6 +133,8 @@ def profile(argv):
         args += ["--demo", options.demo]
     if options.cmds:
         args += ["--cmds", options.cmds]
+    if options.launch:
+        args += ["--launch=" + options.launch]
     command = [sys.executable, str(Path(__file__).resolve())]
     if os.environ.get("N3DS_PRIVATE_DISPLAY") != "1":
         command.append("--private")

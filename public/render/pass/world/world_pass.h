@@ -609,6 +609,18 @@ struct WorldView
 		// The draw's indices as 16 bits (CoreMeshDraw::indices16), in place
 		// of `indices` (empty then): uploaded and bound as they are.
 		std::vector<std::uint16_t> indices16;
+		// In place of `vertices` (empty then): vertexCount vertices in the
+		// frontend's buffers (legacy::CoreMeshStreams, RFC 0026), read in
+		// place by the reduced model's mesh streams variant; skinned (with a
+		// bonePalette) when weights and slots are given. The frontend keeps
+		// them alive until the recording that reads this draw is submitted.
+		struct Streams
+		{
+			device::BufferId record, normals, weights, slots;
+			std::uint64_t recordOffset = 0, normalOffset = 0, weightOffset = 0, slotOffset = 0;
+			std::uint32_t vertexCount = 0;
+		};
+		std::optional<Streams> streams;
 		// SpriteCard's card records (render.sprite-card.v1), one per corner,
 		// in place of vertices: the pass expands them with the claimed
 		// material's card terms when the view queues, into world-space
@@ -864,6 +876,9 @@ public:
 	// A dynamic draw the frontend's handoff refused before queueing: counted
 	// and named in Stats() as QueueView's own refusals are.
 	void NoteRefusal( std::string reason );
+	// Whether dynamic draws may name their vertices as Streams: the pass's
+	// program reads them (the reduced model, once its resolver exists).
+	bool ReadsMeshStreams() const;
 	// Render sequence: largest compatible opaque prefix (at least one for
 	// nonempty input). The caller supplies only slots with identical target
 	// state and no intervening observable commands. A later world cohort is

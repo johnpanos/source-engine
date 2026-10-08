@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <charconv>
@@ -630,6 +631,9 @@ SurfaceFootprintBounds MeasureFootprintBounds( const WorldSurface &surface,
 struct WorldPass::State
 {
 	IRenderDevice2 *device = nullptr;              // the device the resources live on
+	// ReadsMeshStreams: set once the world resolver exists (render sequence),
+	// read by the frontend's handoff on any thread.
+	std::atomic<bool> meshStreams{ false };
 	std::span<const std::uint32_t> fragmentModule; // SetSurfaceFragmentModule
 	// The last screen output written on this sequence. Another camera or output
 	// invalidates reuse even when a format's own prepass textures still exist.
@@ -1309,6 +1313,11 @@ bool WorldPass::DrawsPosedModel( std::uint32_t meshId, std::uint32_t skin,
 			return false;
 	}
 	return hasSurface || ( surfaceSelection && surfaceSelection->empty() );
+}
+
+bool WorldPass::ReadsMeshStreams() const
+{
+	return m_State->meshStreams.load( std::memory_order_relaxed );
 }
 
 void WorldPass::NoteRefusal( std::string reason )
@@ -2344,6 +2353,7 @@ void WorldPass::RecordBatch(
 			return;
 		}
 		r.resolver = std::move( resolver ).Value();
+		s.meshStreams.store( r.resolver->Program().Reduced(), std::memory_order_relaxed );
 		prewarmResolver( *r.resolver, "world" );
 		// The resolver's points draw with the scene terms the stage supports,
 		// and none without one, as the model resolver's do: a plain map's
@@ -5639,11 +5649,19 @@ void WorldPass::RecordBatch(
 		const State::MappedMaterial &mapped = queuedDynamic->mapped[dynamicIndex]->material;
 		const std::size_t drawIndexCount =
 		    draw.indices16.empty() ? draw.indices.size() : draw.indices16.size();
+		// Vertices in the frontend's buffers (Streams) or in the draw.
+		const std::size_t drawVertexCount =
+		    draw.streams ? draw.streams->vertexCount : draw.vertices.size();
 		const auto outOfRange = [&]( std::uint32_t index )
 		{
-			return index >= draw.vertices.size();
+			return index >= drawVertexCount;
 		};
-		if ( !mapped || draw.vertices.empty() || drawIndexCount == 0 || drawIndexCount % 3 != 0 ||
+		const bool streamsValid = !draw.streams ||
+		                          ( draw.vertices.empty() && draw.streams->record.IsValid() &&
+		                              draw.streams->normals.IsValid() && !draw.bonePalette.empty() &&
+		                              draw.streams->weights.IsValid() == draw.streams->slots.IsValid() );
+		if ( !mapped || drawVertexCount == 0 || !streamsValid || drawIndexCount == 0 ||
+		     drawIndexCount % 3 != 0 ||
 		     std::any_of( draw.indices.begin(), draw.indices.end(), outOfRange ) ||
 		     std::any_of( draw.indices16.begin(), draw.indices16.end(), outOfRange ) )
 		{
@@ -5713,6 +5731,26 @@ void WorldPass::RecordBatch(
 			}
 			pipeline = variant.Value();
 		}
+		// Vertices in the frontend's buffers: the program's variant reading
+		// them, skinned when weights and slots are given (else one bone, the
+		// model matrix).
+		if ( draw.streams )
+		{
+			auto variant = lit && !draw.staticVertexLight
+			                   ? m->resolver->MeshStreamsPipeline(
+			                         m->program, draw.streams->weights.IsValid() )
+			                   : foundation::Expected<PipelineId, std::string>(
+			                         foundation::MakeUnexpected( std::string(
+			                             "mesh streams need model lighting and no baked light" ) ) );
+			if ( !variant )
+			{
+				note( "material " + draw.material.name + ": its mesh streams variant: " +
+				      variant.Error() );
+				complete = false;
+				continue;
+			}
+			pipeline = variant.Value();
+		}
 		dynamicDraws.push_back( { m, BufferId{}, BufferId{}, std::uint32_t( drawIndexCount ),
 		    draw.lightmapPage, &draw, lit, pipeline, vertexOffset, indexOffset } );
 		batchVertexCount += draw.vertices.size();
@@ -5753,11 +5791,14 @@ void WorldPass::RecordBatch(
 			vertexBytes = batchVertices;
 			indexBytes = std::as_bytes( std::span( batchIndices ) );
 		}
+		// Draws whose vertices are all the frontend's (Streams) upload
+		// indices alone.
 		BufferDesc desc;
 		desc.size = vertexBytes.size() * sizeof( WorldVertex );
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
 		desc.debugName = "core dynamic vertices";
-		auto vertices = device.CreateBuffer( desc );
+		auto vertices = vertexBytes.empty() ? DeviceResult<BufferId>( BufferId{} )
+		                                    : device.CreateBuffer( desc );
 		desc.size = indexBytes.size();
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
 		desc.debugName = "core dynamic indices";
@@ -5767,7 +5808,7 @@ void WorldPass::RecordBatch(
 			const DeviceError error = !vertices ? vertices.Error() : indices.Error();
 			for ( auto *buffer : { &vertices, &indices } )
 			{
-				if ( *buffer )
+				if ( *buffer && buffer->Value().IsValid() )
 					(void)device.Release( buffer->Value(), CompletionToken() );
 			}
 			note( "dynamic geometry buffers were refused (" +
@@ -5782,6 +5823,8 @@ void WorldPass::RecordBatch(
 			    { std::tuple{ vertices.Value(), std::as_bytes( vertexBytes ), ResourceUsage::kVertex },
 			        std::tuple{ indices.Value(), indexBytes, ResourceUsage::kIndex } } )
 			{
+				if ( !buffer.IsValid() )
+					continue;
 				encoder.TransitionBuffer(
 				    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
 				encoder.WriteBuffer( buffer, 0, bytes );
@@ -6163,9 +6206,22 @@ void WorldPass::RecordBatch(
 		std::copy_n( draw.source->modelToWorld, 16, dynamicConstants.world );
 		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &dynamicConstants, 1 ) )
 		                                 .first( m.program.request.drawConstantBytes ) );
-		encoder.SetVertexBuffer( 0, draw.vertices, draw.vertexOffset );
-		if ( recordingTemporal )
-			encoder.SetVertexBuffer( 1, draw.vertices, draw.vertexOffset );
+		if ( const auto &streams = draw.source->streams )
+		{
+			encoder.SetVertexBuffer( 0, streams->record, streams->recordOffset );
+			encoder.SetVertexBuffer( 1, streams->normals, streams->normalOffset );
+			if ( streams->weights.IsValid() )
+			{
+				encoder.SetVertexBuffer( 2, streams->weights, streams->weightOffset );
+				encoder.SetVertexBuffer( 3, streams->slots, streams->slotOffset );
+			}
+		}
+		else
+		{
+			encoder.SetVertexBuffer( 0, draw.vertices, draw.vertexOffset );
+			if ( recordingTemporal )
+				encoder.SetVertexBuffer( 1, draw.vertices, draw.vertexOffset );
+		}
 		encoder.SetIndexBuffer( draw.indices, draw.indexOffset, draw.indexFormat );
 		encoder.DrawIndexed( draw.count, 1, 0, 0, 0 );
 		++drawnDynamic;

@@ -527,7 +527,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 
 namespace
 {
-constexpr const char *kVariantKeyTag = "surface-v3"; // v3: SurfaceVariant::skinned
+constexpr const char *kVariantKeyTag = "surface-v4"; // v4: SurfaceVariant::meshStreams
 } // namespace
 
 std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
@@ -536,7 +536,7 @@ std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
 	char line[512];
 	std::snprintf( line, sizeof( line ),
 	    "%s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
-	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u",
+	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u",
 	    kVariantKeyTag, unsigned( m_ColorFormat ), unsigned( m_DepthFormat ), m_SampleCount,
 	    unsigned( v.blend ), unsigned( v.alphaWrite ), v.terms, v.detailMode, unsigned( v.layout ),
 	    unsigned( v.ignoreDepth ), unsigned( d.stencil.enabled ), unsigned( d.stencil.compare ),
@@ -550,7 +550,7 @@ std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
 	    unsigned( v.alphaToCoverage ), unsigned( v.decalModulate ), unsigned( v.cable ),
 	    unsigned( v.shadowDepth ), unsigned( v.instanced ), unsigned( v.staticVertexLight ),
 	    unsigned( v.blendTexture2 ), unsigned( v.energy ), unsigned( v.wireframe ),
-	    unsigned( v.skinned ) );
+	    unsigned( v.skinned ), unsigned( v.meshStreams ) );
 	return line;
 }
 
@@ -560,14 +560,15 @@ std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
 	for ( const std::string &key : keys )
 	{
 		char tag[16] = {};
-		unsigned f[40] = {};
+		unsigned f[41] = {};
 		if ( std::sscanf( key.c_str(),
 		         "%15s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
-		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u",
+		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u",
 		         tag, &f[0], &f[1], &f[2], &f[3], &f[4], &f[5], &f[6], &f[7], &f[8], &f[9], &f[10],
 		         &f[11], &f[12], &f[13], &f[14], &f[15], &f[16], &f[17], &f[18], &f[19], &f[20],
 		         &f[21], &f[22], &f[23], &f[24], &f[25], &f[26], &f[27], &f[28], &f[29], &f[30],
-		         &f[31], &f[32], &f[33], &f[34], &f[35], &f[36], &f[37], &f[38], &f[39] ) != 41 ||
+		         &f[31], &f[32], &f[33], &f[34], &f[35], &f[36], &f[37], &f[38], &f[39],
+		         &f[40] ) != 42 ||
 		     std::strcmp( tag, kVariantKeyTag ) != 0 )
 			continue;
 		if ( f[0] != unsigned( m_ColorFormat ) || f[1] != unsigned( m_DepthFormat ) ||
@@ -612,6 +613,7 @@ std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
 		v.energy = f[37] != 0;
 		v.wireframe = f[38] != 0;
 		v.skinned = f[39] != 0;
+		v.meshStreams = std::uint8_t( f[40] );
 		if ( Pipeline( v ) )
 			++created;
 	}
@@ -697,6 +699,26 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::SkinnedPipeline(
 	SurfaceVariant variant = found->second;
 	variant.skinned = true;
 	if ( ReduceSurface( variant ).vertex != ReducedVertex::kWorldLitSkinned )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	return Pipeline( variant );
+}
+
+foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::MeshStreamsPipeline(
+    PipelineId shipped, bool skinned )
+{
+	const auto found = m_Shipped.find( shipped.value );
+	if ( found == m_Shipped.end() )
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	if ( !m_Reduced )
+	{
+		m_PipelineFailure = "mesh streams are the reduced model's (CoreMeshStreams)";
+		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
+	}
+	SurfaceVariant variant = found->second;
+	variant.skinned = skinned;
+	variant.meshStreams = skinned ? 2 : 1;
+	const ReducedVertex vertex = ReduceSurface( variant ).vertex;
+	if ( vertex != ReducedVertex::kStreamsSkinned && vertex != ReducedVertex::kStreamsRigid )
 		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
 	return Pipeline( variant );
 }

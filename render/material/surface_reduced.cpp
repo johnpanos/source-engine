@@ -24,6 +24,8 @@ extern "C" const unsigned char surface_lit_shbin[];
 extern "C" const unsigned surface_lit_shbin_size;
 extern "C" const unsigned char surface_lit_skinned_shbin[];
 extern "C" const unsigned surface_lit_skinned_shbin_size;
+extern "C" const unsigned char surface_lit_rigid_shbin[];
+extern "C" const unsigned surface_lit_rigid_shbin_size;
 #endif
 
 namespace render::material
@@ -169,7 +171,9 @@ ReducedPoint ReduceSurface( const SurfaceVariant &variant )
 	const bool model = variant.layout == SurfaceVertexLayout::kModel || worldLit;
 	const bool selfIllum = ( variant.terms & kSurfaceSelfIllum ) != 0 &&
 	                       ( variant.terms & kSurfaceSelfIllumMask ) == 0 && !unlit;
-	point.vertex = worldLit && variant.skinned ? ReducedVertex::kWorldLitSkinned
+	point.vertex = worldLit && variant.meshStreams == 2 ? ReducedVertex::kStreamsSkinned
+	               : worldLit && variant.meshStreams == 1 ? ReducedVertex::kStreamsRigid
+	               : worldLit && variant.skinned ? ReducedVertex::kWorldLitSkinned
 	               : worldLit                  ? ReducedVertex::kWorldLit
 	               : model                     ? ReducedVertex::kModel
 	               : variant.staticVertexLight ? ReducedVertex::kStaticLight
@@ -251,9 +255,13 @@ std::vector<std::byte> ReducedVertexArtifact( ReducedVertex vertex )
 		program.uniforms = { { std::uint8_t( BindGroupRole::kDraw ), 2, 8, 27 } };
 		break;
 	case ReducedVertex::kWorldLitSkinned:
+	case ReducedVertex::kStreamsSkinned:
+	case ReducedVertex::kStreamsRigid:
 		// ModelLighting, then the palette (skin.pica: c35-c91).
-		code = surface_lit_skinned_shbin;
-		size = surface_lit_skinned_shbin_size;
+		code = vertex == ReducedVertex::kStreamsRigid ? surface_lit_rigid_shbin
+		                                               : surface_lit_skinned_shbin;
+		size = vertex == ReducedVertex::kStreamsRigid ? surface_lit_rigid_shbin_size
+		                                               : surface_lit_skinned_shbin_size;
 		program.uniforms = { { std::uint8_t( BindGroupRole::kDraw ), 2, 8,
 		    std::uint8_t( 27 + kMaxReducedBones * 3 ) } };
 		break;
@@ -334,6 +342,18 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ReducedPipeline(
 	const VertexAttribute skinnedAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
 	    { 1, VertexFormat::kFloat3, 32, 0 }, { 3, VertexFormat::kFloat2, 12, 0 },
 	    { 4, VertexFormat::kFloat2, 20, 0 }, { 5, VertexFormat::kFloat3, 44, 0 } };
+	// CoreMeshStreams (core_passes.h): the record (position at 0, uv at 16,
+	// stride 24), then normals (12), weights (8) and palette slots (4), each
+	// its own buffer. The PICA reads unorm8x4 as integers, so the slots'
+	// stored slot x 3 reaches the program as the offset skin.pica wants.
+	const VertexAttribute streamAttributes[] = { { 0, VertexFormat::kFloat3, 0, 0 },
+	    { 3, VertexFormat::kFloat2, 16, 0 }, { 1, VertexFormat::kFloat3, 0, 1 },
+	    { 4, VertexFormat::kFloat2, 0, 2 }, { 5, VertexFormat::kUnorm8x4, 0, 3 } };
+	const VertexBufferLayout streamBuffers[] = { { 24, false }, { 12, false }, { 8, false },
+	    { 4, false } };
+	const bool streams = point.vertex == ReducedVertex::kStreamsSkinned ||
+	                     point.vertex == ReducedVertex::kStreamsRigid;
+	const std::size_t streamCount = point.vertex == ReducedVertex::kStreamsSkinned ? 5 : 3;
 	const VertexBufferLayout buffers[] = { { SurfaceVertexStride( variant.layout ), false } };
 	const BindGroupLayoutId layouts[] = {
 	    m_FrameLayout, m_ViewLayout, m_MaterialLayout, m_DrawLayout };
@@ -342,13 +362,16 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ReducedPipeline(
 	desc.stages = stages;
 	desc.layouts = layouts;
 	desc.drawConstantBytes = drawConstantBytes;
-	desc.vertex = { point.vertex == ReducedVertex::kWorldLitSkinned
+	desc.vertex = { streams ? std::span<const VertexAttribute>( streamAttributes, streamCount )
+	                : point.vertex == ReducedVertex::kWorldLitSkinned
 	                    ? std::span<const VertexAttribute>( skinnedAttributes )
 	                : point.vertex == ReducedVertex::kWorldLit
 	                    ? std::span<const VertexAttribute>( litAttributes )
 	                : model ? std::span<const VertexAttribute>( modelAttributes )
 	                        : std::span<const VertexAttribute>( flatAttributes ),
-	    buffers };
+	    streams ? std::span<const VertexBufferLayout>(
+	                  streamBuffers, point.vertex == ReducedVertex::kStreamsSkinned ? 4 : 2 )
+	            : std::span<const VertexBufferLayout>( buffers ) };
 	desc.topology = PrimitiveTopology::kTriangleList;
 	desc.raster.cull = variant.drawState.cull;
 	const bool depth = m_DepthFormat != Format::kUnknown && !variant.ignoreDepth;

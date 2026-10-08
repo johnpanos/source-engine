@@ -52,7 +52,8 @@ constexpr std::uint32_t kDrawConstantBytes = 5 * 16;
 // buffer copied from it when a draw first reads it or after a write. A mesh
 // the render core draws instead is never resident (RFC 0026 P3: the legacy
 // world meshes and the core's world geometry no longer share linear memory).
-// A transient ring's allocation is the device buffer itself.
+// A transient ring's allocation is the device buffer itself, as is an
+// in-place mesh's (AllocLinear's inPlace).
 struct Allocation
 {
 	BufferId buffer;
@@ -60,6 +61,7 @@ struct Allocation
 	std::size_t bytes = 0;
 	Memory kind = Memory::kVertices;
 	bool transient = false;
+	bool inPlace = false; // the device buffer is the mesh's one copy
 	bool dirty = true; // the CPU bytes changed since the last copy
 	std::uint32_t usedInRecording = 0; // the recording that last read it
 };
@@ -714,13 +716,27 @@ void *AllocTransient( Memory kind, std::size_t bytes, std::size_t align )
 	return ring.data + at;
 }
 
-void *AllocLinear( Memory kind, std::size_t bytes )
+void *AllocLinear( Memory kind, std::size_t bytes, bool inPlace )
 {
 	if ( !g_state.initialized || bytes == 0 )
 		return nullptr;
 	Allocation allocation;
 	allocation.kind = kind;
 	allocation.bytes = bytes;
+	if ( inPlace )
+	{
+		allocation.resident = CreateLinear( kind, bytes, allocation.buffer );
+		if ( allocation.resident )
+		{
+			allocation.inPlace = true;
+			allocation.dirty = false;
+			g_state.allocations.emplace(
+			    reinterpret_cast<std::uintptr_t>( allocation.resident ), allocation );
+			g_state.meshBytes += bytes;
+			g_state.residentBytes += bytes;
+			return allocation.resident;
+		}
+	}
 	auto *data = static_cast<std::byte *>( std::malloc( bytes ) );
 	if ( !data )
 		return nullptr;
@@ -734,7 +750,7 @@ namespace
 // The device copy of a mesh's bytes, made or refreshed before a draw reads it.
 bool MakeResident( std::uintptr_t cpu, Allocation &allocation )
 {
-	if ( allocation.transient )
+	if ( allocation.transient || allocation.inPlace )
 		return true;
 	if ( !allocation.resident )
 	{
@@ -770,7 +786,8 @@ void FreeLinear( void *ptr )
 		g_state.residentBytes -= found->second.bytes;
 	}
 	g_state.meshBytes -= found->second.bytes;
-	std::free( ptr );
+	if ( !found->second.inPlace )
+		std::free( ptr );
 	g_state.allocations.erase( found );
 	if ( !g_state.encoder )
 	{
@@ -780,10 +797,28 @@ void FreeLinear( void *ptr )
 	}
 }
 
-void PrepareWrite( const void * )
+void PrepareWrite( const void *ptr )
 {
-	// A mesh's bytes are CPU memory now: a write never races the GPU, which
-	// reads the device copy MakeResident refreshes.
+	// Copied memory never races the GPU, which reads the device copy
+	// MakeResident refreshes; in-place memory a recorded draw reads is
+	// submitted first.
+	std::size_t offset = 0;
+	const Allocation *allocation = ptr ? Find( ptr, &offset ) : nullptr;
+	if ( allocation && allocation->inPlace && g_state.encoder &&
+	     allocation->usedInRecording == g_state.recording )
+		SubmitRecording( false );
+}
+
+bool DeviceBufferOf( const void *ptr, BufferId &buffer, std::uint64_t &offset )
+{
+	std::size_t at = 0;
+	Allocation *allocation = ptr ? Find( ptr, &at ) : nullptr;
+	if ( !allocation || !allocation->inPlace )
+		return false;
+	allocation->usedInRecording = g_state.recording;
+	buffer = allocation->buffer;
+	offset = at;
+	return true;
 }
 
 void FlushLinear( const void *ptr, std::size_t bytes )
@@ -792,7 +827,7 @@ void FlushLinear( const void *ptr, std::size_t bytes )
 	Allocation *allocation = Find( ptr, &offset );
 	if ( !allocation )
 		return;
-	if ( allocation->transient )
+	if ( allocation->transient || allocation->inPlace )
 		pc::FlushUploadBuffer( Device(), allocation->buffer, offset, bytes );
 	else
 		allocation->dirty = true;

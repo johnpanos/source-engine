@@ -642,3 +642,39 @@ See the [progress section](#progress).
   19.7 % -> 7.9 %, and the flush waits fell from about 13 % to 0.3 %.
   Remaining top costs: `memcpy` in `StageUpload` 14.5 %, `EmitToCore`
   15.9 %, string hash maps (`memcmp`, `_Hash_bytes`) about 9 %.
+- 2026-10-07: model draws read their vertices in place (user direction:
+  "have rendercore own it", applied to other backends where it makes sense).
+  - Contract: `legacy::CoreMeshStreams` (core_passes.h) names a model draw's
+    vertices in buffers of the core's device: the legacy 24-byte record,
+    normals and, skinned, weights and palette slots (unorm8x4, slot x 3).
+    `ICorePassRecorder::AcceptsMeshStreams` is true when the world pass's
+    program reads them (`WorldPass::ReadsMeshStreams`, the reduced model);
+    no portable code names the backend. The world pass binds the buffers
+    as they are (`DynamicDraw::Streams`) and uploads indices alone; the
+    surface program's `SurfaceVariant::meshStreams` selects
+    `ReducedVertex::kStreamsSkinned` (the skinned program) or
+    `kStreamsRigid` (new `surface_lit_rigid`, its body shared through
+    `lit_bones_main.pica`). Variant keys are `surface-v4`.
+  - Frontend: model-format static meshes (normals, no lightmap
+    coordinates) keep one copy, an in-place buffer of the device the CPU
+    writes (`pica::AllocLinear`'s inPlace), which legacy draws bind too
+    (no resident copy) and the core reads (`DeviceBufferOf`); normals and
+    weights moved there, and `SkinSlots` builds the slots once per content
+    revision. Writes go through `PrepareWrite` (a recorded draw reading the
+    memory is submitted first); read-only locks no longer count as writes.
+    `-pica_no_mesh_streams` restores the built vertices (the A/B switch).
+  - Memory: about 10 MB moved from the main heap to linear memory (the
+    linear heap is 26 MB, 7.5 MB free in the intro4 demo; the main heap
+    ~14 MB free of 89).
+  - Effect (intro4 demo, same binary A/B): the profiled stretch took 22 %
+    less emulated time (10,398 against 13,400 samples at 500 us);
+    `EmitToCore` 12.3 % -> 4.2 % of core 0, `memcpy` 13.7 % -> 9.6 %.
+    Matched camera: every pixel away from the physics cube equals the A/B
+    reference (the debris props drawn by the rigid streams path among
+    them); the cube's resting place and an error-material decal at its
+    impact point follow frame timing.
+  - Other backends: the contract, the world pass and the core composition
+    are backend-neutral; the desktop programs refuse `meshStreams` by name
+    (`MeshStreamsPipeline`, reduced programs only), and no desktop frontend
+    writes in-place buffers yet (render.device.v2 has no persistent CPU
+    mapping; the PICA provider's `MapUploadBuffer` is that bridge here).

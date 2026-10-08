@@ -47,11 +47,16 @@ enum class ReducedVertex : std::uint8_t
 	kModel,       // model layout: per-vertex model lighting
 	kWorldLit,    // world layout in world space (a model draw handed over as
 	              // world geometry): per-vertex model lighting, no transform
-	kWorldLitSkinned // kWorldLit skinned on the GPU: SurfaceWorldVertex's
+	kWorldLitSkinned, // kWorldLit skinned on the GPU: SurfaceWorldVertex's
 	                 // position and normal in bone space, lightmapUv the first
 	                 // two bone weights (the third is 1 - both), tangentS the
 	                 // three bones' palette offsets (bone slot x 3); the draw
 	                 // group's palette follows its ModelLighting
+	kStreamsSkinned, // kWorldLitSkinned reading CoreMeshStreams: the record's
+	                 // position and uv, the normals, weights and palette slots
+	                 // each from its own buffer
+	kStreamsRigid    // the record and normals (CoreMeshStreams) transformed by
+	                 // the palette's one bone, the model matrix
 };
 
 // The skinned palette's limits (kMaxReducedBones, kReducedBoneFloats) are

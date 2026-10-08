@@ -1164,6 +1164,17 @@ foundation::Expected<device::PipelineId, std::string> ProgramResolver::SkinnedPi
 	return pipeline.Value();
 }
 
+foundation::Expected<device::PipelineId, std::string> ProgramResolver::MeshStreamsPipeline(
+    const ResolvedProgram &program, bool skinned )
+{
+	auto pipeline =
+	    m_State->lightmapped->Program().MeshStreamsPipeline( program.request.pipeline, skinned );
+	if ( !pipeline )
+		return foundation::MakeUnexpected( "the mesh streams variant of " + program.name +
+		                                   " was refused (the reduced model's lit world point only)" );
+	return pipeline.Value();
+}
+
 foundation::Expected<device::PipelineId, std::string> ProgramResolver::StaticVertexLightPipeline(
     const ResolvedProgram &program )
 {

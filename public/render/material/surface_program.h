@@ -676,6 +676,12 @@ struct SurfaceVariant
 	// and its vertices in bone space (surface_reduced.h). Reduced programs
 	// only; others refuse it.
 	bool skinned = false;
+	// The reduced model's lit point reading a model draw's vertices where the
+	// frontend keeps them (CoreMeshStreams, RFC 0026) instead of
+	// SurfaceWorldVertex: 1 rigid (record and normals; the palette is the
+	// model matrix), 2 skinned (also weights and palette slots). Reduced
+	// programs only; others refuse it.
+	std::uint8_t meshStreams = 0;
 	// WorldVertexTransition on the lightmapped point (specialization constant
 	// 10): $basetexture2 at the emission binding (at the base coordinates),
 	// $bumpmap2 at the MRAO binding and $blendmodulatetexture at the env map
@@ -801,6 +807,10 @@ public:
 	// with a lit world point only, else kInvalidRequest (PipelineFailure says why).
 	foundation::Expected<device::PipelineId, SurfaceStatus> SkinnedPipeline(
 	    device::PipelineId shipped );
+	// `shipped`'s variant reading CoreMeshStreams (SurfaceVariant::meshStreams),
+	// skinned or rigid: as SkinnedPipeline, reduced lit world points only.
+	foundation::Expected<device::PipelineId, SurfaceStatus> MeshStreamsPipeline(
+	    device::PipelineId shipped, bool skinned );
 	foundation::Expected<device::PipelineId, SurfaceStatus> InstancedPipeline(
 	    device::PipelineId pipeline );
 	// Pipeline prewarming (a driver compile in a frame is a visible hitch): a

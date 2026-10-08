@@ -2634,7 +2634,7 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		return 0;
 	const bool cards = draw.kind == legacy::CoreMeshKind::kParticle && draw.cards;
 	if ( !draw.name || !draw.shader || !( draw.indices || draw.indices16 ) || !draw.indexCount ||
-	     ( cards ? !draw.cardCount : !draw.vertices || !draw.vertexCount ) ||
+	     ( cards ? !draw.cardCount : ( !draw.vertices && !draw.streams ) || !draw.vertexCount ) ||
 	     ( draw.variableCount && !draw.variables ) )
 		return 0;
 	// A static prop's baked vertex lighting reaches the core in its
@@ -2721,6 +2721,16 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	}
 	// The frontend's own arrays are taken when offered (CoreMeshDraw::take*):
 	// a copy per model draw was the 3DS frame's largest memcpy caller.
+	// Vertices the frontend keeps in place (CoreMeshStreams): named, never copied.
+	else if ( draw.streams )
+	{
+		if ( !AcceptsMeshStreams() )
+			return 0;
+		const legacy::CoreMeshStreams &in = *draw.streams;
+		geometry.streams = pass::world::WorldView::DynamicDraw::Streams{ in.record, in.normals,
+		    in.weights, in.slots, in.recordOffset, in.normalOffset, in.weightOffset,
+		    in.slotOffset, draw.vertexCount };
+	}
 	else if ( draw.takeVertices && draw.takeVertices->data() == draw.vertices &&
 	          draw.takeVertices->size() == draw.vertexCount )
 		geometry.vertices = std::move( *draw.takeVertices );

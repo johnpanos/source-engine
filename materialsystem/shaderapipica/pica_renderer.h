@@ -24,6 +24,7 @@
 #define PICA_RENDERER_H
 
 #include "pica_texture.h"
+#include "render/device/resources.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -183,12 +184,21 @@ void SetViewport( int x, int y, int width, int height );
 
 // Transient memory for one draw of this frame.
 void *AllocTransient( Memory kind, std::size_t bytes, std::size_t align = 16 );
-// GPU-visible memory a mesh keeps (a device buffer written in place).
-void *AllocLinear( Memory kind, std::size_t bytes );
+// Memory a mesh keeps. inPlace: its one copy is a buffer of the device the
+// CPU writes in place, which legacy draws bind and the render core reads
+// where it is (DeviceBufferOf, CoreMeshStreams); else CPU memory copied to
+// the device when a legacy draw first reads it (and never, when the core
+// draws the mesh from its own data). In-place memory falls back to the
+// copied kind when the device has none left.
+void *AllocLinear( Memory kind, std::size_t bytes, bool inPlace = false );
 void FreeLinear( void *ptr );
 // Before rewriting memory a recorded draw may read: submits the frame so far.
 void PrepareWrite( const void *ptr );
 void FlushLinear( const void *ptr, std::size_t bytes );
+// The device buffer and byte offset of in-place memory (AllocLinear), for a
+// draw the current recording makes: the memory then counts as read by it
+// (PrepareWrite submits before rewriting it). False for other memory.
+bool DeviceBufferOf( const void *ptr, render::device::BufferId &buffer, std::uint64_t &offset );
 
 // clipFromObject is the D3D row-vector matrix model * view * projection.
 // vertices and indices are in memory from AllocLinear or AllocTransient.

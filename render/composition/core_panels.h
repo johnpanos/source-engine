@@ -76,6 +76,7 @@ public:
 
 	std::uint32_t SlotStages() const override { return m_World.SlotStages(); }
 	bool AcceptsMeshes() const override { return m_World.AcceptsMeshes(); }
+	bool AcceptsMeshStreams() const override { return m_World.AcceptsMeshStreams(); }
 	std::uint32_t QueueMesh( const legacy::CoreMeshDraw &draw ) override
 	{
 		return m_World.QueueMesh( draw );

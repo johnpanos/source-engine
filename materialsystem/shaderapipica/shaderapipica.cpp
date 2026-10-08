@@ -215,6 +215,24 @@ private:
 	// PICA record holds none, and the core's model lighting reads them.
 	float *m_pNormals = nullptr;
 	int m_nNormalCapacity = 0;
+	// The GPU-skinning palette slots of a skinned mesh's vertices (unorm8x4,
+	// each a slot x 3; CoreMeshStreams' slots), with the bone each slot
+	// holds: built from the bone weights once per content revision, in the
+	// mesh's memory, when its bones fit the palette (m_nSkinBones > 0).
+	unsigned char *m_pSkinSlots = nullptr;
+	unsigned m_nSkinSlotsRevision = ~0u;
+	int m_nSkinBones = 0;
+	unsigned char m_SkinBones[render::material::kMaxReducedBones] = {};
+	bool SkinSlots();
+	// Before the vertex streams are rewritten: a new content revision, and a
+	// recorded draw reading the in-place memory is submitted first.
+	void PrepareVertexWrite()
+	{
+		++m_nContentRevision;
+		pica::PrepareWrite( m_pVertices );
+		pica::PrepareWrite( m_pNormals );
+		pica::PrepareWrite( m_pBoneWeights );
+	}
 	// Texture coordinate 0 of a format with more than two components (sprite
 	// cards, particles): the builder writes every component, so they go here,
 	// 4 per vertex, and the record takes the first two at Unlock/ModifyEnd.
@@ -326,8 +344,6 @@ int g_StackTop[kStackCount];
 int g_CurrentStack = kStackModel;
 float g_Bones[kMaxBones][12];
 int g_MaxBone = -1;
-float g_Modulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-int g_TextureSizeCap = 128;
 
 // EmitToCore's triangles for a static mesh (RFC 0026): they depend only on
 // the mesh's contents, so they are built once per content revision and drawn
@@ -375,6 +391,8 @@ bool CoreCacheRoom( std::size_t bytes )
 	}
 	return false;
 }
+float g_Modulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+int g_TextureSizeCap = 128;
 // Per-present counters of the draw path (printed with the frame stats).
 struct DrawPathCounters
 {
@@ -2270,10 +2288,11 @@ CEmptyMesh::~CEmptyMesh()
 {
 	FreeStorage( m_pVertices );
 	FreeStorage( m_pIndices );
-	delete[] m_pBoneWeights;
+	FreeStorage( m_pBoneWeights );
 	delete[] m_pBoneIndices;
 	delete[] m_pWideTexCoords;
-	delete[] m_pNormals;
+	FreeStorage( m_pNormals );
+	FreeStorage( m_pSkinSlots );
 }
 
 bool CEmptyMesh::EnsureWideTexCoords()
@@ -2304,6 +2323,9 @@ void CEmptyMesh::CommitWideTexCoords( int first, int count )
 
 bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t& desc )
 {
+	// A lock that grants indices writes them (Modify's own empty lock does not).
+	if ( nMaxIndexCount > 0 )
+		++m_nContentRevision;
 	const int first = bAppend ? m_nIndices : 0;
 	if ( !bAppend )
 		m_nIndices = 0;
@@ -2334,7 +2356,6 @@ void CEmptyMesh::Unlock( int nWrittenIndexCount, IndexDesc_t& desc )
 		nWrittenIndexCount = m_nLockedIndices;
 	if ( nWrittenIndexCount > m_nIndexCapacity - m_nLockFirstIndex )
 		nWrittenIndexCount = m_nIndexCapacity - m_nLockFirstIndex;
-	++m_nContentRevision;
 	m_nLockedIndices = 0;
 	if ( nWrittenIndexCount > 0 && m_pIndices )
 	{
@@ -2347,6 +2368,8 @@ void CEmptyMesh::Unlock( int nWrittenIndexCount, IndexDesc_t& desc )
 
 void CEmptyMesh::ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, IndexDesc_t& desc )
 {
+	if ( !bReadOnly )
+		++m_nContentRevision;
 	if ( !EnsureIndices( nFirstIndex + nIndexCount ) )
 	{
 		Lock( 0, false, desc );
@@ -2377,7 +2400,6 @@ void CEmptyMesh::ValidateData( int nIndexCount, const IndexDesc_t &desc )
 {
 }
 
-	++m_nContentRevision;
 bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 {
 	// Components the record does not hold (normals, tangents, extra
@@ -2391,8 +2413,9 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	if ( nVertexCount <= 0 || !EnsureVertices( first + nVertexCount, !bAppend ) )
 		nVertexCount = 0;
 	m_nLockedVertices = nVertexCount;
-	if ( m_pVertices )
-		pica::PrepareWrite( m_pVertices );
+	// A lock that grants vertices writes them (Modify's own empty lock does not).
+	if ( nVertexCount > 0 )
+		PrepareVertexWrite();
 
 	desc.m_pPosition = s_Scratch;
 	desc.m_pNormal = s_Scratch;
@@ -2410,7 +2433,6 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	desc.m_NumBoneWeights = skinned ? 2 : 0;
 	desc.m_VertexSize_Position = 0;
 	desc.m_VertexSize_BoneWeight = 0;
-	++m_nContentRevision;
 	desc.m_VertexSize_BoneMatrixIndex = 0;
 	desc.m_VertexSize_Normal = 0;
 	desc.m_VertexSize_Color = 0;
@@ -2518,6 +2540,8 @@ void CEmptyMesh::UnlockMesh( int numVerts, int numIndices, MeshDesc_t& desc )
 void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, int firstIndex, int numIndices, MeshDesc_t& desc )
 {
 	// Point at the existing data in place (no defaults written).
+	if ( !bReadOnly )
+		PrepareVertexWrite();
 	const int savedVertices = m_nVertices, savedIndices = m_nIndices;
 	Lock( 0, false, *static_cast<VertexDesc_t*>( &desc ) );
 	m_nVertices = savedVertices;
@@ -2616,7 +2640,12 @@ void CEmptyMesh::Draw(CPrimList *pPrims, int nPrims)
 
 void *CEmptyMesh::AllocStorage( pica::Memory kind, size_t bytes )
 {
-	return m_bIsDynamic ? malloc( bytes ) : pica::AllocLinear( kind, bytes );
+	// A model's mesh (normals, no lightmap coordinates) keeps its one copy in
+	// device memory, which the render core reads in place (EmitToCore's
+	// CoreMeshStreams); world meshes, which the core draws from its own
+	// data, stay CPU memory.
+	const bool inPlace = ( m_Format & VERTEX_NORMAL ) && TexCoordSize( 1, m_Format ) == 0;
+	return m_bIsDynamic ? malloc( bytes ) : pica::AllocLinear( kind, bytes, inPlace );
 }
 
 void CEmptyMesh::FreeStorage( void *storage )
@@ -2649,26 +2678,37 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 	m_nVertexCapacity = capacity;
 	if ( NumBoneWeights( m_Format ) > 0 )
 	{
-		float *weights = new float[capacity * 2];
+		// The weights with the vertices (the core reads them in place); the
+		// bone indices stay CPU memory (the palette slots replace them).
+		float *weights = static_cast<float *>(
+			AllocStorage( pica::Memory::kVertices, capacity * 2 * sizeof( float ) ) );
+		if ( !weights )
+			return false;
 		unsigned char *indices = new unsigned char[capacity * 4];
 		if ( m_pBoneWeights )
 		{
 			memcpy( weights, m_pBoneWeights, m_nBoneCapacity * 2 * sizeof( float ) );
 			memcpy( indices, m_pBoneIndices, m_nBoneCapacity * 4 );
 		}
-		delete[] m_pBoneWeights;
+		FreeStorage( m_pBoneWeights );
 		delete[] m_pBoneIndices;
+		FreeStorage( m_pSkinSlots );
+		m_pSkinSlots = NULL;
+		m_nSkinSlotsRevision = ~0u;
 		m_pBoneWeights = weights;
 		m_pBoneIndices = indices;
 		m_nBoneCapacity = capacity;
 	}
 	if ( m_Format & VERTEX_NORMAL )
 	{
-		float *normals = new float[capacity * 3];
+		float *normals = static_cast<float *>(
+			AllocStorage( pica::Memory::kVertices, capacity * 3 * sizeof( float ) ) );
+		if ( !normals )
+			return false;
 		memset( normals, 0, capacity * 3 * sizeof( float ) );
 		if ( m_pNormals )
 			memcpy( normals, m_pNormals, m_nNormalCapacity * 3 * sizeof( float ) );
-		delete[] m_pNormals;
+		FreeStorage( m_pNormals );
 		m_pNormals = normals;
 		m_nNormalCapacity = capacity;
 	}
@@ -2865,6 +2905,59 @@ const MaterialVariables &VariablesFor( IMaterialInternal *material )
 
 } // namespace
 
+// The palette slots of this mesh's skinned vertices (m_pSkinSlots): each
+// bone a vertex weighs, in first-use order, gets a slot of the GPU-skinning
+// palette (at most kMaxReducedBones); a bone without weight or out of range
+// reads slot 0 with its (zero or rounding) weight, as EmitToCore's built
+// vertices do. Built once per content revision; false when the bones do not
+// fit the palette or there is no memory.
+bool CEmptyMesh::SkinSlots()
+{
+	if ( m_nSkinSlotsRevision == m_nContentRevision )
+		return m_nSkinBones > 0;
+	m_nSkinSlotsRevision = m_nContentRevision;
+	m_nSkinBones = 0;
+	if ( !m_pBoneWeights || !m_pBoneIndices || m_nVertices <= 0 || m_nVertices > m_nBoneCapacity )
+		return false;
+	if ( !m_pSkinSlots )
+		m_pSkinSlots = static_cast<unsigned char *>(
+			AllocStorage( pica::Memory::kVertices, size_t( m_nBoneCapacity ) * 4 ) );
+	if ( !m_pSkinSlots )
+		return false;
+	pica::PrepareWrite( m_pSkinSlots );
+	constexpr int kPalette = int( render::material::kMaxReducedBones );
+	signed char slotOf[kMaxBones];
+	memset( slotOf, -1, sizeof( slotOf ) );
+	int count = 0;
+	for ( int i = 0; i < m_nVertices; ++i )
+	{
+		const float *w = m_pBoneWeights + i * 2;
+		const unsigned char *b = m_pBoneIndices + i * 4;
+		const float weights[3] = { w[0], w[1], 1.0f - w[0] - w[1] };
+		unsigned char *out = m_pSkinSlots + i * 4;
+		for ( int k = 0; k < 3; ++k )
+		{
+			int slot = 0;
+			if ( weights[k] > 0.0f && b[k] < kMaxBones )
+			{
+				if ( slotOf[b[k]] < 0 )
+				{
+					if ( count == kPalette )
+						return false;
+					slotOf[b[k]] = (signed char)count;
+					m_SkinBones[count++] = b[k];
+				}
+				slot = slotOf[b[k]];
+			}
+			out[k] = (unsigned char)( slot * 3 );
+		}
+		out[3] = 0;
+	}
+	pica::FlushLinear( m_pSkinSlots, size_t( m_nVertices ) * 4 );
+	m_nSkinBones = count;
+	return count > 0;
+}
+
 bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 {
 	static unsigned s_reasons = 0;
@@ -2901,6 +2994,11 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 			printf( "pica: core model draw of %d vertices, %d indices (%s)\n", src.m_nVertices,
 				indexCount, g_pBoundMaterial->GetName() );
 	}
+	// A static mesh keeps the triangles this builds per range (CoreCache).
+	const bool cacheable = !m_bIsDynamic && !src.m_bIsDynamic;
+	if ( cacheable && !m_pCoreCache )
+		m_pCoreCache = std::make_unique<CoreCache>();
+
 	// Triangles, counterclockwise for the core (legacy meshes face clockwise).
 	// 16-bit: the mesh is at most 65535 vertices (checked above), and the
 	// PICA200 reads 16-bit indices as they are (CoreMeshDraw::indices16).
@@ -2930,11 +3028,6 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 			break;
 		}
 	}
-	// A static mesh keeps the triangles this builds per range (CoreCache).
-	const bool cacheable = !m_bIsDynamic && !src.m_bIsDynamic;
-	if ( cacheable && !m_pCoreCache )
-		m_pCoreCache = std::make_unique<CoreCache>();
-
 	if ( !drawTriangles )
 	{
 		const bool indexed = m_nIndices > 0 && indexCount > 0;
@@ -3001,7 +3094,32 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	int paletteCount = 0;
 	signed char slotOf[kMaxBones];
 	bool gpu = !s_CpuSkinning;
-	if ( gpu && skinned )
+	// The vertices where the mesh keeps them (CoreMeshStreams): nothing is
+	// built or copied per draw when the core reads streams and every stream
+	// is in the mesh's in-place memory (AllocStorage); a skinned mesh adds its
+	// weights and palette slots (SkinSlots), its palette the slots' bones.
+	static_assert( sizeof( pica::Vertex ) == 24 && offsetof( pica::Vertex, color ) == 12 &&
+		offsetof( pica::Vertex, uv ) == 16, "the record CoreMeshStreams names" );
+	render::legacy::CoreMeshStreams streams;
+	// -pica_no_mesh_streams: build every draw's vertices (the A/B reference).
+	static const bool s_NoMeshStreams = CommandLine()->FindParm( "-pica_no_mesh_streams" ) != 0;
+	bool inPlace = gpu && cacheable && !s_NoMeshStreams && g_CorePassRecorder->AcceptsMeshStreams() &&
+		pica::DeviceBufferOf( src.m_pVertices, streams.record, streams.recordOffset ) &&
+		pica::DeviceBufferOf( src.m_pNormals, streams.normals, streams.normalOffset );
+	if ( inPlace && skinned )
+	{
+		CEmptyMesh &source = const_cast<CEmptyMesh &>( src );
+		inPlace = source.SkinSlots() &&
+			pica::DeviceBufferOf( src.m_pBoneWeights, streams.weights, streams.weightOffset ) &&
+			pica::DeviceBufferOf( src.m_pSkinSlots, streams.slots, streams.slotOffset );
+		if ( inPlace )
+		{
+			paletteCount = src.m_nSkinBones;
+			for ( int slot = 0; slot < paletteCount; ++slot )
+				memcpy( palette + slot * 12, g_Bones[src.m_SkinBones[slot]], 12 * sizeof( float ) );
+		}
+	}
+	if ( gpu && skinned && !inPlace )
 	{
 		memset( slotOf, -1, sizeof( slotOf ) );
 		for ( int i = 0; i < src.m_nVertices && gpu; ++i )
@@ -3019,13 +3137,12 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 					break;
 				}
 				slotOf[b[k]] = (signed char)paletteCount;
-	const std::vector<render::material::SurfaceWorldVertex> *drawVertices = &vertices;
 				memcpy( palette + paletteCount * 12, g_Bones[b[k]], 12 * sizeof( float ) );
 				++paletteCount;
 			}
 		}
 	}
-	else if ( gpu )
+	else if ( gpu && !skinned )
 	{
 		// The model matrix (row vectors, D3D) as one bone's three rows.
 		for ( int r = 0; r < 3; ++r )
@@ -3037,7 +3154,9 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		}
 		paletteCount = 1;
 	}
-	if ( gpu && paletteCount > 0 )
+	if ( inPlace )
+		;
+	else if ( gpu && paletteCount > 0 )
 	{
 		vertices.reserve( src.m_nVertices );
 		for ( int i = 0; i < src.m_nVertices; ++i )
@@ -3132,8 +3251,16 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		draw.bonePalette = palette;
 		draw.boneCount = std::uint32_t( paletteCount );
 	}
-	draw.vertices = drawVertices->data();
-	draw.vertexCount = std::uint32_t( drawVertices->size() );
+	if ( inPlace )
+	{
+		draw.streams = &streams;
+		draw.vertexCount = std::uint32_t( src.m_nVertices );
+	}
+	else
+	{
+		draw.vertices = vertices.data();
+		draw.vertexCount = std::uint32_t( vertices.size() );
+	}
 	draw.indices16 = drawTriangles->data();
 	draw.indexCount = std::uint32_t( drawTriangles->size() );
 	draw.mesh = true;
@@ -3190,10 +3317,10 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	}
 	draw.viewport = { float( vx ), float( vy ), float( vw ), float( vh ), 0.0f, 1.0f };
 	// The core takes the arrays (no copy); their sizes are counted first.
-	// A cached array is lent (the core copies it); a built one is taken.
-	const std::size_t geometryBytes = drawVertices->size() * sizeof( render::material::SurfaceWorldVertex ) +
+	// Cached triangles are lent (the core copies them); built ones are taken.
+	const std::size_t geometryBytes = vertices.size() * sizeof( render::material::SurfaceWorldVertex ) +
 		drawTriangles->size() * sizeof( std::uint16_t );
-	if ( drawVertices == &vertices )
+	if ( !inPlace )
 		draw.takeVertices = &vertices;
 	if ( drawTriangles == &triangles )
 		draw.takeIndices16 = &triangles;

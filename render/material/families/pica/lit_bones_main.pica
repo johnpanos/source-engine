@@ -1,0 +1,45 @@
+; The body of the reduced model's bone-transformed lit vertex programs
+; (surface_lit_skinned.v.pica, surface_lit_rigid.v.pica): linked after
+; their header and before model_lighting.pica and a `skin` procedure
+; (skin.pica: three bones from the palette; skin_rigid.pica: the palette's
+; first bone), so c0-c3 are world-to-clip, c4-c7 the object-to-world slot
+; (unused), c8-c34 ModelLighting and c35-c91 the palette. Out as
+; surface_lit.v.pica.
+
+.fvec toClip[4]
+.fvec world[4]
+
+.constf k(1.0, 0.5, 0.0, 0.0001)
+
+.out outpos position
+.out outclr color
+.out outtc0 texcoord0
+
+.alias inuv v3
+
+.proc main
+	call skin
+
+	dp4 r1.x, toClip[0], r0
+	dp4 r1.y, toClip[1], r0
+	dp4 r1.z, toClip[2], r0
+	dp4 r1.w, toClip[3], r0
+	mov r1.z, -r1.zzzz
+	mov outpos, r1
+
+	mov r2, k.xxxx
+	mov r2.x, inuv.xxxx
+	add r2.y, k.xxxx, -inuv.yyyy
+	mov outtc0, r2
+
+	; r3: world position; r4: world normal, normalized
+	mov r3, r0
+	dp3 r6.x, r4, r4
+	max r6.x, k.wwww, r6.xxxx
+	rsq r6.x, r6.xxxx
+	mul r4, r4, r6.xxxx
+
+	call light
+	mov outclr, r7
+	end
+.end

@@ -191,6 +191,10 @@ public:
 	// draw skinned by the GPU from its bone palette (the reduced model only).
 	foundation::Expected<device::PipelineId, std::string> SkinnedPipeline(
 	    const ResolvedProgram &program );
+	// Its variant reading a model draw's vertices where the frontend keeps
+	// them (SurfaceVariant::meshStreams), skinned or rigid (reduced only).
+	foundation::Expected<device::PipelineId, std::string> MeshStreamsPipeline(
+	    const ResolvedProgram &program, bool skinned );
 	// The one surface program every point is drawn through (its layouts for
 	// the view group, SurfaceProgram::ViewGroup).
 	SurfaceProgram &Program() const;
