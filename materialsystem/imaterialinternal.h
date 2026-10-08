@@ -20,6 +20,7 @@
 #include "materialsystem/imaterial.h"
 #include "shaderapi/ishaderapi.h"
 #include "filesystem.h"
+#include "vmt_definition.h"
 
 
 //-----------------------------------------------------------------------------
@@ -150,7 +151,7 @@ public:
 	virtual void ReloadFromWhitelistIfMarked() = 0;
 };
 
-extern void InsertKeyValues( KeyValues& dst, KeyValues& src, bool bCheckForExistence, bool bRecursive = false );
+// InsertKeyValues: vmt_definition.h (one declaration, one default argument).
 extern void WriteKeyValuesToFile( const char *pFileName, KeyValues& keyValues );
 extern void ExpandPatchFile( KeyValues& keyValues, KeyValues &patchKeyValues );
 // patchKeyValues accumulates keys applied by VMT patch files (this is necessary to make $fallbackmaterial

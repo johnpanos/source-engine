@@ -217,6 +217,14 @@ FIREFOX_PREFS = {
     "browser.aboutwelcome.enabled": False,
     "datareporting.policy.dataSubmissionEnabled": False,
     "toolkit.telemetry.reportingpolicy.firstRun": False,
+    # No xdg-desktop-portal: kiln's private session blocks the document
+    # portal, and Firefox would retry the others in a tight loop.
+    "widget.use-xdg-desktop-portal.settings": 0,
+    "widget.use-xdg-desktop-portal.file-picker": 0,
+    "widget.use-xdg-desktop-portal.mime-handler": 0,
+    "widget.use-xdg-desktop-portal.location": 0,
+    "widget.use-xdg-desktop-portal.open-uri": 0,
+    "widget.use-xdg-desktop-portal.native-messaging": 0,
     # The page's console (WebGPU validation messages among it) in the
     # browser's output, which kiln logs.
     "devtools.console.stdout.content": True,

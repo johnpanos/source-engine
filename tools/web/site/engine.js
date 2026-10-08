@@ -53,8 +53,29 @@ setInterval(() => flush(false), 250);
 // input=<from s>:<key code>:<for s>,... (harness): real DOM key events at
 // those page times, dispatched where a user's keys go (the focused canvas,
 // bubbling to the window), to check that input reaches the game.
+// A step `<from s>:mouse:<for s>:<dx>` moves the mouse dx pixels to the
+// right per 1/60 s over that time, as pointer events (relative motion, as
+// under pointer lock, and the matching absolute position).
 for (const step of (query.get('input') || '').split(',').filter(Boolean)) {
-	const [from, code, length] = step.split(':');
+	const [from, code, length, amount] = step.split(':');
+	if (code === 'mouse') {
+		setTimeout(() => {
+			const r = canvas.getBoundingClientRect();
+			let x = r.left + r.width / 2;
+			const y = r.top + r.height / 2;
+			const dx = Number(amount);
+			const timer = setInterval(() => {
+				x += dx;
+				// SDL3 reads pointer events (a mouse pointerType).
+				canvas.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: x,
+				    clientY: y, movementX: dx, movementY: 0, pointerType: 'mouse', pointerId: 1,
+				    isPrimary: true }));
+			}, 1000 / 60);
+			setTimeout(() => clearInterval(timer), Number(length) * 1000);
+			say('page: input mouse ' + dx + ' px per tick for ' + length + ' s');
+		}, Number(from) * 1000);
+		continue;
+	}
 	const key = code.startsWith('Key') ? code.slice(3).toLowerCase() : code;
 	const send = (type) => {
 		const event = new KeyboardEvent(type, { code, key, bubbles: true, cancelable: true });
@@ -76,6 +97,15 @@ for (const step of (query.get('input') || '').split(',').filter(Boolean)) {
 	}, Number(from) * 1000);
 	setTimeout(() => send('keyup'), (Number(from) + Number(length)) * 1000);
 }
+// Harness: which real (trusted) input the page receives, and pointer lock.
+if (harness) {
+	let moves = 0;
+	for (const type of ['pointerdown', 'keydown', 'keyup'])
+		window.addEventListener(type, (e) => { if (e.isTrusted) say('page: trusted ' + type + ' ' + (e.code || e.button)); }, true);
+	window.addEventListener('pointermove', (e) => { if (e.isTrusted && ++moves % 60 == 1) say('page: trusted pointermove #' + moves + ' dx ' + e.movementX); }, true);
+	document.addEventListener('pointerlockchange', () => say('page: pointer lock ' + (document.pointerLockElement ? 'on' : 'off')));
+	document.addEventListener('pointerlockerror', () => say('page: pointer lock refused'));
+}
 let beats = 0;
 if (harness)
 	setInterval(() => say('page: alive ' + (++beats * 5) + ' s, ' + document.visibilityState +
@@ -87,7 +117,18 @@ function finish(code) {
 	status.textContent = 'Exited (' + code + ')';
 }
 addEventListener('error', (e) => { say('[error] ' + e.message); finish(135); });
-addEventListener('unhandledrejection', (e) => { say('[rejection] ' + (e.reason && e.reason.stack || e.reason)); finish(135); });
+addEventListener('unhandledrejection', (e) => {
+	// A browser API's refusal (a DOMException: pointer lock asked for twice,
+	// fullscreen without a gesture) is the page's business, not the engine's
+	// failure; anything else (a trap, an abort) ends the run.
+	if (e.reason instanceof DOMException) {
+		say('page: ' + e.reason.name + ': ' + e.reason.message);
+		e.preventDefault();
+		return;
+	}
+	say('[rejection] ' + (e.reason && e.reason.stack || e.reason));
+	finish(135);
+});
 
 // A byte range of a content file, synchronously: the browser allows a
 // synchronous request on this thread only as text, so the bytes come as

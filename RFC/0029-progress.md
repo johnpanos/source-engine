@@ -242,6 +242,21 @@ the same image as the native Dawn lane (`portal-webgpu-core`). Commits
   and Escape opens the pause menu over the live scene. The player spawns
   about 26 s after the page opens; keys sent before that do nothing.
 
-Open: mouse look and pointer lock are not scripted yet; audio in a page without a user gesture;
+- **Real input (W5).** `tools/web/compositor_input.py` plays input through
+  mutter's RemoteDesktop API on kiln's private session bus, so the browser
+  sees trusted events: a click grants pointer lock, relative motion turns
+  the view (yaw 120.0 to 72.9), W walks the player along it (608, 32 to
+  752, 171), the mouse turns back (104.6) and S walks back (734.6, -43.0),
+  all from the default `kiln run portal-wasm32-webgpu`. (The session drops
+  the first key press, so a throwaway Shift goes first.)
+- **Audio is off in the browser by default** (`-nosound`; `--set sound` turns
+  it on): once the page's AudioContext runs (Firefox after the first click,
+  Chrome at once) the page deadlocks in SDL's Emscripten audio callback
+  (`scriptProcessorNode.onaudioprocess`), which re-enters wasm while the
+  engine's stack is suspended (JSPI). Pushing the mix from the engine's
+  frame instead of SDL's callback did not change it; the wait is inside
+  SDL's port and is open.
+
+Open: audio (above); audio in a page without a user gesture;
 load time (map in 14 s, about 2,400 lazily read files) and frame time; the
 Node lane and W1/W4/W6.
