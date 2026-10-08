@@ -290,6 +290,68 @@ void VirtualMemorySuites()
 	              platform::MemoryResult::kOutOfMemory );
 	NATIVE_CHECK( RunMode( L"--fault-readonly" ) == EXCEPTION_ACCESS_VIOLATION );
 	NATIVE_CHECK( RunMode( L"--fault-reserved" ) == EXCEPTION_ACCESS_VIOLATION );
+
+	// The process instance Tier 0's small-block heap uses (R103): the shared
+	// suite, a fixed-address reservation, and more reservations than the first
+	// table holds.
+	platform::IWin32VirtualMemory &process = platform::Win32ProcessVirtualMemory();
+	NATIVE_CHECK( &process == &platform::Win32ProcessVirtualMemory() );
+	Tally( "win32.virtual-memory.process", platformtest::RunVirtualMemoryConformance( process ) );
+	platform::MemoryRegion probe;
+	NATIVE_CHECK( process.Reserve( 1 << 20, probe ) == platform::MemoryResult::kOk );
+	void *const freed = probe.base;
+	NATIVE_CHECK( process.Release( probe ) == platform::MemoryResult::kOk );
+	platform::MemoryRegion fixed;
+	char *const inside = static_cast<char *>( freed ) + 100; // rounded down to the granularity
+	NATIVE_CHECK( process.ReserveAt( inside, 4096, fixed ) == platform::MemoryResult::kOk );
+	NATIVE_CHECK( fixed.base == freed );
+	platform::MemoryRegion taken;
+	NATIVE_CHECK( process.ReserveAt( fixed.base, 4096, taken ) == platform::MemoryResult::kOutOfMemory );
+	NATIVE_CHECK( process.ReserveAt( nullptr, 4096, taken ) == platform::MemoryResult::kInvalidArgument );
+	NATIVE_CHECK( process.Commit( fixed.base, 4096, platform::PageAccess::kReadWrite ) ==
+	              platform::MemoryResult::kOk );
+	static_cast<volatile char *>( fixed.base )[0] = 7;
+	NATIVE_CHECK( process.Release( fixed ) == platform::MemoryResult::kOk );
+	std::vector<platform::MemoryRegion> many( 600 );
+	bool reserved = true;
+	for ( auto &region : many )
+	{
+		reserved = reserved && process.Reserve( 4096, region ) == platform::MemoryResult::kOk;
+	}
+	NATIVE_CHECK( reserved );
+	bool committed = true;
+	for ( auto &region : many )
+	{
+		committed = committed && process.Commit( region.base, 4096, platform::PageAccess::kReadWrite ) ==
+		                             platform::MemoryResult::kOk;
+	}
+	NATIVE_CHECK( committed );
+	bool released = true;
+	for ( std::size_t i = many.size(); i-- > 0; )
+	{
+		released = released && process.Release( many[i] ) == platform::MemoryResult::kOk;
+	}
+	NATIVE_CHECK( released );
+
+	// Module file names (Tier 0's module paths).
+	wchar_t wide[MAX_PATH] = {};
+	char narrow[MAX_PATH] = {};
+	GetModuleFileNameW( nullptr, wide, MAX_PATH );
+	GetModuleFileNameA( nullptr, narrow, MAX_PATH );
+	wchar_t gotWide[MAX_PATH] = {};
+	char gotNarrow[MAX_PATH] = {};
+	NATIVE_CHECK( platform::Win32ModuleFileNameW( nullptr, gotWide, MAX_PATH ) == wcslen( wide ) );
+	NATIVE_CHECK( wcscmp( gotWide, wide ) == 0 );
+	NATIVE_CHECK( platform::Win32ModuleFileNameA( nullptr, gotNarrow, MAX_PATH ) == strlen( narrow ) );
+	NATIVE_CHECK( strcmp( gotNarrow, narrow ) == 0 );
+	char tiny[4] = { 'x', 'x', 'x', 'x' };
+	NATIVE_CHECK( platform::Win32ModuleFileNameA( nullptr, tiny, sizeof( tiny ) ) == sizeof( tiny ) );
+	NATIVE_CHECK( tiny[3] == 0 ); // truncated, terminated
+	NATIVE_CHECK( platform::Win32ModuleFileNameA( nullptr, tiny, 0 ) == 0 );
+	static int inThisModule;
+	NATIVE_CHECK( platform::Win32ModuleOfAddress( &inThisModule ) == GetModuleHandleW( nullptr ) );
+	NATIVE_CHECK( platform::Win32ModuleOfAddress( nullptr ) == nullptr );
+	NATIVE_CHECK( platform::Win32ModuleOfAddress( many.data() ) == nullptr ); // heap, not an image
 }
 
 void ProcessEnvironmentSuites()
