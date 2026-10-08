@@ -5,9 +5,21 @@
   "portal": {
    "materials": 6000,
    "families": {
-    "legacy": 738,
+    "blob-shadow": 2,
+    "cable": 14,
+    "decal-modulate": 56,
+    "depth": 4,
+    "eye-refract": 6,
+    "eyes": 30,
+    "legacy": 176,
     "lightmapped": 2253,
-    "unlit": 1384,
+    "modulate": 19,
+    "portal-mask": 5,
+    "portal-view": 7,
+    "refract": 39,
+    "shadow-build": 1,
+    "teeth": 18,
+    "unlit": 1745,
     "vertexlit": 1547,
     "water": 46
    },
@@ -49,20 +61,32 @@
     "materials/tools/toolsskyfog.vmt: unknown-shader (SkyFog)",
     "materials/vgui/screens/vgui_overlay.vmt: malformed (material line 12: expected a name or key before '{')"
    ],
-   "digest": "6724b23768f8624df8045b962f6fe2357f79df32aa0f17312e99c5e242a1f203"
+   "digest": "98b7222a6566e7b2a5c88cced195ff5f1c9f716107a91c7e06cdd2327d2b916b"
   },
   "portal2": {
    "materials": 3738,
    "families": {
-    "legacy": 482,
+    "blob-shadow": 2,
+    "cable": 5,
+    "decal-modulate": 101,
+    "depth": 4,
+    "energy": 14,
+    "eye-refract": 4,
+    "legacy": 99,
     "lightmapped": 829,
-    "unlit": 1144,
+    "modulate": 8,
+    "portal-mask": 7,
+    "portal-overlay": 3,
+    "portal-view": 7,
+    "refract": 37,
+    "shadow-build": 1,
+    "unlit": 1338,
     "vertexlit": 1211,
     "water": 59
    },
    "unsupported": {
     "missing-include": 1,
-    "unknown-shader": 12
+    "unknown-shader": 8
    },
    "unsupported_materials": [
     "materials/debug/debugluxels.vmt: unknown-shader (DebugLuxels)",
@@ -73,13 +97,9 @@
     "materials/engine/lightshaft.vmt: unknown-shader (LightShafts)",
     "materials/engine/setz.vmt: unknown-shader (SetZ)",
     "materials/engine/simpleworldmodel.vmt: unknown-shader (worldimposter)",
-    "materials/models/npcs/glados/glados_temp.vmt: unknown-shader (black)",
-    "materials/models/props_foliage/urban_trees_branches02_dry.vmt: missing-include (materials/models/props_foliage/tree_include_dryleaves.vmt)",
-    "materials/models/props_hub/glados_chamber_dest01.vmt: unknown-shader (black)",
-    "materials/tools/toolsblack_cheap.vmt: unknown-shader (black)",
-    "materials/tools/toolsblack_noportal_skybox.vmt: unknown-shader (Black)"
+    "materials/models/props_foliage/urban_trees_branches02_dry.vmt: missing-include (materials/models/props_foliage/tree_include_dryleaves.vmt)"
    ],
-   "digest": "1ec1786dba9ebc347a6a3f8772d02804eb3e9b60d89b86c885e7e232771b4037"
+   "digest": "a342e0fa477d592a49bffd27079a0d59c6bc1a50f18f1821cd8a61ded6210ab8"
   }
  }
 }
