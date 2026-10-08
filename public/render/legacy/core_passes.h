@@ -289,6 +289,11 @@ struct CoreMeshDraw
 	// exactly the array its pointer names. Left in an unspecified state.
 	std::vector<material::SurfaceWorldVertex> *takeVertices = nullptr;
 	std::vector<std::uint32_t> *takeIndices = nullptr;
+	// 16-bit indices in place of `indices` (null then): indexCount of them,
+	// each below 65536. A device that reads 16-bit indices takes them as they
+	// are (the PICA200 has no 32-bit indices); takeIndices16 as takeIndices.
+	const std::uint16_t *indices16 = nullptr;
+	std::vector<std::uint16_t> *takeIndices16 = nullptr;
 	const material::SurfaceWorldVertex *vertices = nullptr;
 	std::uint32_t vertexCount = 0;
 	const std::uint32_t *indices = nullptr;

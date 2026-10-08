@@ -606,6 +606,9 @@ struct WorldView
 		// Bones for a GPU-skinned draw (CoreMeshDraw::bonePalette), 12 floats
 		// each; the vertices are then in bone space. Empty: world space.
 		std::vector<float> bonePalette;
+		// The draw's indices as 16 bits (CoreMeshDraw::indices16), in place
+		// of `indices` (empty then): uploaded and bound as they are.
+		std::vector<std::uint16_t> indices16;
 		// SpriteCard's card records (render.sprite-card.v1), one per corner,
 		// in place of vertices: the pass expands them with the claimed
 		// material's card terms when the view queues, into world-space

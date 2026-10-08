@@ -2827,10 +2827,13 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 				indexCount, g_pBoundMaterial->GetName() );
 	}
 	// Triangles, counterclockwise for the core (legacy meshes face clockwise).
-	std::vector<std::uint32_t> triangles;
+	// 16-bit: the mesh is at most 65535 vertices (checked above), and the
+	// PICA200 reads 16-bit indices as they are (CoreMeshDraw::indices16).
+	std::vector<std::uint16_t> triangles;
 	const bool indexed = m_nIndices > 0 && indexCount > 0;
 	const int count = indexed ? ( firstIndex + indexCount <= m_nIndices ? indexCount : 0 ) : src.m_nVertices;
 	auto element = [&]( int i ) { return indexed ? int( m_pIndices[firstIndex + i] ) : i; };
+	triangles.reserve( size_t( count > 0 ? count : 0 ) * 3 );
 	bool valid = count > 0;
 	auto triangle = [&]( int a, int b, int c )
 	{
@@ -2841,9 +2844,9 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		}
 		if ( a != b && b != c && a != c )
 		{
-			triangles.push_back( std::uint32_t( a ) );
-			triangles.push_back( std::uint32_t( c ) );
-			triangles.push_back( std::uint32_t( b ) );
+			triangles.push_back( std::uint16_t( a ) );
+			triangles.push_back( std::uint16_t( c ) );
+			triangles.push_back( std::uint16_t( b ) );
 		}
 	};
 	if ( m_Type == MATERIAL_TRIANGLES )
@@ -3013,7 +3016,7 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	}
 	draw.vertices = vertices.data();
 	draw.vertexCount = std::uint32_t( vertices.size() );
-	draw.indices = triangles.data();
+	draw.indices16 = triangles.data();
 	draw.indexCount = std::uint32_t( triangles.size() );
 	draw.mesh = true;
 	draw.modelLighting = true;
@@ -3070,9 +3073,9 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	draw.viewport = { float( vx ), float( vy ), float( vw ), float( vh ), 0.0f, 1.0f };
 	// The core takes the arrays (no copy); their sizes are counted first.
 	const std::size_t geometryBytes = vertices.size() * sizeof( render::material::SurfaceWorldVertex ) +
-		triangles.size() * sizeof( std::uint32_t );
+		triangles.size() * sizeof( std::uint16_t );
 	draw.takeVertices = &vertices;
-	draw.takeIndices = &triangles;
+	draw.takeIndices16 = &triangles;
 	const std::uint32_t tag = g_CorePassRecorder->QueueMesh( draw );
 	if ( !tag )
 		return skip( 4, "QueueMesh refused it" );

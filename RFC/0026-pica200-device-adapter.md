@@ -597,3 +597,15 @@ See the [progress section](#progress).
     capture differ in 0 of 96,000 pixels by more than 4.
   - Cumulative on the intro4 demo since the first guest profile: frame 181
     window 421 -> 190 ms, frame 331 window 401 -> 245 ms (about 1.6-2.2x).
+- 2026-10-07: 16-bit indices for model draws (user direction: "let's do
+  16bit"). `CoreMeshDraw::indices16`/`takeIndices16` and
+  `WorldView::DynamicDraw::indices16`: `EmitToCore` builds 16-bit
+  triangles (its meshes are at most 65535 vertices), the core takes them, and
+  a lone dynamic draw uploads and binds them as `kUint16`, so the PICA
+  replay no longer allocates, narrows and flushes a 16-bit copy per draw. A
+  multi-draw batch widens into its 32-bit gather; other producers keep
+  32-bit `indices`. Matched camera unchanged (0 of 96,000 pixels > 4).
+  Guest time over the profiled demo stretch fell about 11 % (92,612 against
+  104,053 samples at 500 us); windows 151 -> 127, 330 -> 276, 186 -> 166 ms,
+  with two windows slower through single-frame spikes (up to 1.5 s) not yet
+  explained.

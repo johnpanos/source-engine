@@ -5618,6 +5618,7 @@ void WorldPass::RecordBatch(
 		// The draw's slices of the batch's buffers, in bytes.
 		std::uint64_t vertexOffset = 0;
 		std::uint64_t indexOffset = 0;
+		IndexFormat indexFormat = IndexFormat::kUint32; // 16-bit: a lone draw's own
 	};
 	std::vector<DynamicDraw> dynamicDraws;
 	// Every dynamic draw's geometry in one vertex and one index buffer for the
@@ -5636,13 +5637,15 @@ void WorldPass::RecordBatch(
 		// The mapping and key decided when the view queued.
 		const std::string &key = queuedDynamic->keys[dynamicIndex];
 		const State::MappedMaterial &mapped = queuedDynamic->mapped[dynamicIndex]->material;
-		if ( !mapped || draw.vertices.empty() || draw.indices.empty() ||
-		     draw.indices.size() % 3 != 0 ||
-		     std::any_of( draw.indices.begin(), draw.indices.end(),
-		         [&]( std::uint32_t index )
-		         {
-			         return index >= draw.vertices.size();
-		         } ) )
+		const std::size_t drawIndexCount =
+		    draw.indices16.empty() ? draw.indices.size() : draw.indices16.size();
+		const auto outOfRange = [&]( std::uint32_t index )
+		{
+			return index >= draw.vertices.size();
+		};
+		if ( !mapped || draw.vertices.empty() || drawIndexCount == 0 || drawIndexCount % 3 != 0 ||
+		     std::any_of( draw.indices.begin(), draw.indices.end(), outOfRange ) ||
+		     std::any_of( draw.indices16.begin(), draw.indices16.end(), outOfRange ) )
 		{
 			note( "dynamic material " + draw.material.name + ": " +
 			      ( mapped ? "invalid triangle geometry" : mapped.Error() ) );
@@ -5710,21 +5713,29 @@ void WorldPass::RecordBatch(
 			}
 			pipeline = variant.Value();
 		}
-		dynamicDraws.push_back( { m, BufferId{}, BufferId{}, std::uint32_t( draw.indices.size() ),
+		dynamicDraws.push_back( { m, BufferId{}, BufferId{}, std::uint32_t( drawIndexCount ),
 		    draw.lightmapPage, &draw, lit, pipeline, vertexOffset, indexOffset } );
 		batchVertexCount += draw.vertices.size();
-		batchIndexCount += draw.indices.size();
+		batchIndexCount += drawIndexCount;
 	}
 	if ( !dynamicDraws.empty() )
 	{
 		// One draw (the common case: a slot per draw) writes from its own
-		// geometry; several are gathered once.
+		// geometry, 16-bit indices as they are; several are gathered once,
+		// with 32-bit indices.
 		std::span<const WorldVertex> vertexBytes;
-		std::span<const std::uint32_t> indexBytes;
+		std::span<const std::byte> indexBytes;
 		if ( dynamicDraws.size() == 1 )
 		{
-			vertexBytes = dynamicDraws.front().source->vertices;
-			indexBytes = dynamicDraws.front().source->indices;
+			const WorldView::DynamicDraw &only = *dynamicDraws.front().source;
+			vertexBytes = only.vertices;
+			if ( only.indices16.empty() )
+				indexBytes = std::as_bytes( std::span( only.indices ) );
+			else
+			{
+				indexBytes = std::as_bytes( std::span( only.indices16 ) );
+				dynamicDraws.front().indexFormat = IndexFormat::kUint16;
+			}
 		}
 		else
 		{
@@ -5736,16 +5747,18 @@ void WorldPass::RecordBatch(
 				    batchVertices.end(), draw.source->vertices.begin(), draw.source->vertices.end() );
 				batchIndices.insert(
 				    batchIndices.end(), draw.source->indices.begin(), draw.source->indices.end() );
+				batchIndices.insert( batchIndices.end(), draw.source->indices16.begin(),
+				    draw.source->indices16.end() );
 			}
 			vertexBytes = batchVertices;
-			indexBytes = batchIndices;
+			indexBytes = std::as_bytes( std::span( batchIndices ) );
 		}
 		BufferDesc desc;
 		desc.size = vertexBytes.size() * sizeof( WorldVertex );
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
 		desc.debugName = "core dynamic vertices";
 		auto vertices = device.CreateBuffer( desc );
-		desc.size = indexBytes.size() * sizeof( std::uint32_t );
+		desc.size = indexBytes.size();
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
 		desc.debugName = "core dynamic indices";
 		auto indices = device.CreateBuffer( desc );
@@ -5767,7 +5780,7 @@ void WorldPass::RecordBatch(
 		{
 			for ( const auto &[buffer, bytes, usage] :
 			    { std::tuple{ vertices.Value(), std::as_bytes( vertexBytes ), ResourceUsage::kVertex },
-			        std::tuple{ indices.Value(), std::as_bytes( indexBytes ), ResourceUsage::kIndex } } )
+			        std::tuple{ indices.Value(), indexBytes, ResourceUsage::kIndex } } )
 			{
 				encoder.TransitionBuffer(
 				    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
@@ -6153,7 +6166,7 @@ void WorldPass::RecordBatch(
 		encoder.SetVertexBuffer( 0, draw.vertices, draw.vertexOffset );
 		if ( recordingTemporal )
 			encoder.SetVertexBuffer( 1, draw.vertices, draw.vertexOffset );
-		encoder.SetIndexBuffer( draw.indices, draw.indexOffset, IndexFormat::kUint32 );
+		encoder.SetIndexBuffer( draw.indices, draw.indexOffset, draw.indexFormat );
 		encoder.DrawIndexed( draw.count, 1, 0, 0, 0 );
 		++drawnDynamic;
 	}

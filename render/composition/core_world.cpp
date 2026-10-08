@@ -2633,7 +2633,7 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	if ( !AcceptsMeshes() && draw.kind == legacy::CoreMeshKind::kSurface )
 		return 0;
 	const bool cards = draw.kind == legacy::CoreMeshKind::kParticle && draw.cards;
-	if ( !draw.name || !draw.shader || !draw.indices || !draw.indexCount ||
+	if ( !draw.name || !draw.shader || !( draw.indices || draw.indices16 ) || !draw.indexCount ||
 	     ( cards ? !draw.cardCount : !draw.vertices || !draw.vertexCount ) ||
 	     ( draw.variableCount && !draw.variables ) )
 		return 0;
@@ -2723,8 +2723,16 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		geometry.vertices = std::move( *draw.takeVertices );
 	else
 		geometry.vertices.assign( draw.vertices, draw.vertices + draw.vertexCount );
-	if ( draw.takeIndices && draw.takeIndices->data() == draw.indices &&
-	     draw.takeIndices->size() == draw.indexCount )
+	if ( draw.indices16 )
+	{
+		if ( draw.takeIndices16 && draw.takeIndices16->data() == draw.indices16 &&
+		     draw.takeIndices16->size() == draw.indexCount )
+			geometry.indices16 = std::move( *draw.takeIndices16 );
+		else
+			geometry.indices16.assign( draw.indices16, draw.indices16 + draw.indexCount );
+	}
+	else if ( draw.takeIndices && draw.takeIndices->data() == draw.indices &&
+	          draw.takeIndices->size() == draw.indexCount )
 		geometry.indices = std::move( *draw.takeIndices );
 	else
 		geometry.indices.assign( draw.indices, draw.indices + draw.indexCount );
