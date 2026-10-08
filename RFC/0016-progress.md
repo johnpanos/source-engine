@@ -13562,3 +13562,30 @@ host's, or `render_lab`'s). The slice:
    compositor (X11 and Wayland), a `portal` boot on the core shader API in a
    private mutter session with a frame matched against the headless capture,
    resize-stress, and validation silent.
+
+**Desktop presenter (part f) delivered (`98d67d9ce`, `3b8ad036a`, `221082b30`).**
+The core shader API's frames show in the engine's window on the core's own
+Vulkan device. `render.pass.output`'s encoded copy draws the RGBA8 frame
+into the presentation's back buffer (`render.output.encoded-copy`, 12/0,
+with a seeded red/blue swap); `render_vulkan::ICorePresenter` (the SDL3–Vulkan
+bridge) makes a presentable `render.backend.v1` device before the window
+exists and lends its port to the core (`RenderCoreConfig::borrowedDevice`),
+opens the bridge's presentation of the engine's window, and releases it on
+`SDL_EVENT_WINDOW_DESTROYED`. In kiln's private display session the boot
+passes and the presented frame equals the core shader API's capture within
+0.24 levels mean (a red/blue swap differs by 12); headless boots are
+unchanged. Vsync follows `mat_vsync`; FIFO under headless mutter stalls
+acquires, as for the native backend.
+
+**Parity gap that blocks deleting shaderapivulkan (measured 2026-10-08).**
+testchmb_a_01's spawn view at 1024x768, native backend against the core
+shader API on Vulkan: mean absolute difference 47/44/43 levels. The core
+shader API's frame is much brighter and loses the scene's blue cast, the
+observation window's glass and its stripes are missing, and the crosshair
+is a solid square (VGUI glyph sampling). Every legacy mesh draw is still
+refused by the core on this path (`core meshes 0 refused 89`), so the frame
+is the core's world alone. Until these close (exposure and tone on this
+path, transmission surfaces, VGUI text, and the refused mesh cohorts), the
+desktop client stays on shaderapivulkan; the engine screenshot on this path
+also reads nothing useful (pica's frame readback is unimplemented), so
+`-pica_capture` and `-core_present_capture` are the evidence.
