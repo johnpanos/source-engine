@@ -23,6 +23,9 @@ import bc_codec  # noqa: E402  (reflection_probe_set puts tools/texture on the p
 
 ROOM = ((0.0, 0.0, 0.0), (6.0, 4.0, 3.0))
 
+# Radiance cubes are encoded by the pinned ktx; CI has none.
+NO_KTX = bc_codec.default_tool() is None
+
 
 def unit(v):
     v = np.asarray(v, dtype=np.float64)
@@ -192,6 +195,7 @@ def two_probe_layout(scene=None):
     return probes, chains
 
 
+@unittest.skipIf(NO_KTX, "the pinned ktx tool is not built (build/toolchains)")
 class RprbFormatTest(unittest.TestCase):
     def test_round_trip(self):
         probes, chains = two_probe_layout()
@@ -270,6 +274,7 @@ class RprbFormatTest(unittest.TestCase):
             rps.build(probes, chains)
 
 
+@unittest.skipIf(NO_KTX, "the pinned ktx tool is not built (build/toolchains)")
 class BlendTest(unittest.TestCase):
     def layout(self):
         probes, chains = two_probe_layout()
@@ -526,6 +531,7 @@ class RelightOracleTest(unittest.TestCase):
         np.testing.assert_array_equal(zero, baked)
 
 
+@unittest.skipIf(NO_KTX, "the pinned ktx tool is not built (build/toolchains)")
 class RelightFormatTest(unittest.TestCase):
     def test_v2_round_trip_and_its_corpus(self):
         probes, chains = rps.fixture_layout()
@@ -549,6 +555,7 @@ class RelightFormatTest(unittest.TestCase):
         self.assertEqual(int(rps.gpu_buffer(layout)[5]), 0)
 
 
+@unittest.skipIf(NO_KTX, "the pinned ktx tool is not built (build/toolchains)")
 class CapacityTest(unittest.TestCase):
     def test_priority_is_serialized_as_rank_and_global_remains_last(self):
         probes = [{"influence_min": np.zeros(3), "influence_max": np.ones(3) * size,
@@ -577,6 +584,7 @@ class CapacityTest(unittest.TestCase):
                 self.assertEqual(table[63, 3, 3], 63)  # relight layer
 
 
+@unittest.skipIf(NO_KTX, "the pinned ktx tool is not built (build/toolchains)")
 class VersionTest(unittest.TestCase):
     def test_only_v8_is_read(self):
         data = bytearray(rps.capacity_fixture())
@@ -594,6 +602,7 @@ class VersionTest(unittest.TestCase):
         self.assertEqual(layout["candidates"]["masks"].shape, (rps.CANDIDATE_CELLS, 1))
 
 
+@unittest.skipIf(NO_KTX, "the pinned ktx tool is not built (build/toolchains)")
 class RegridTest(unittest.TestCase):
     """A probe whose fitted box reaches past the world (a depth fit that saw
     the void) stretched the 16^3 candidate grid over the whole map."""
