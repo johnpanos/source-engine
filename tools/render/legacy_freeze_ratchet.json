@@ -203,7 +203,6 @@
       "materialsystem/stdshaders/BaseVSShader.cpp",
       "materialsystem/stdshaders/BaseVSShader.h",
       "materialsystem/stdshaders/DecalBaseTimesLightmapAlphaBlendSelfIllum_dx9.cpp",
-      "materialsystem/stdshaders/DecalModulate_dx9.cpp",
       "materialsystem/stdshaders/Engine_Post_dx9.cpp",
       "materialsystem/stdshaders/MonitorScreen_dx9.cpp",
       "materialsystem/stdshaders/builtin_shader_provider.cpp",
