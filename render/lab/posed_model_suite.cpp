@@ -417,6 +417,16 @@ std::optional<std::string> RunChecks(
 	    "posed-model.disabled-cloak-factor-is-inert" );
 	results.That( activeCloak && !material::ClaimForMesh( activeCloak.Value(), true ),
 	    "posed-model.enabled-cloak-still-requires-its-point" );
+	const auto unlitInactiveCloak = material::MapVariables( "UnlitTwoTexture",
+	    { { "$refractamount", "0" }, { "$cloakpassenabled", "0" }, { "$t2offset", "0.3" },
+	        { "$t2scale", "0.4" }, { "$t2rot", "27.5" } },
+	    {} );
+	const auto unlitActiveCloak = material::MapVariables(
+	    "UnlitTwoTexture", { { "$refractamount", "0" }, { "$cloakpassenabled", "1" } }, {} );
+	results.That( unlitInactiveCloak && material::ClaimForDrawing( unlitInactiveCloak.Value() ),
+	    "posed-model.unlit-two-texture-disabled-cloak-is-inert" );
+	results.That( unlitActiveCloak && !material::ClaimForDrawing( unlitActiveCloak.Value() ),
+	    "posed-model.unlit-two-texture-enabled-cloak-is-refused" );
 	const auto emissiveProbe = material::MapVariables( "UnlitGeneric",
 	    { { "$basetexture", "models/props_map_editor/black_white_unlit" },
 	        { "$envmap", "env_cubemap" } },

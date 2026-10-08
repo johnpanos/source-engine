@@ -13109,3 +13109,17 @@ portal's far view reads dark against legacy: to be compared next.
 - Open on the same views: render-to-texture shadows (`engine/shadowbuild`,
   `decals/rendershadow`; RFC 0016 keeps blob shadows), the rendermode-5
   laser sprite (refused: `$refractamount`), and `$distancealpha` sparks.
+- **Laser sprites** (Portal 2's `sprites/purplelaser1`, UnlitTwoTexture
+  `$model 1`, drawn through `spritemodel.cpp`'s per-render-mode copies) were
+  refused and so dropped. The resolver now treats UnlitTwoTexture's cloak
+  pass like VertexLitGeneric's: dormant while `$cloakpassenabled` is off
+  (`unlittwotexture_dx9.cpp` reads `$refractamount` only in that pass).
+  `$t2offset`, `$t2scale` and `$t2rot` are recorded as TextureTransform proxy
+  scratch: the proxy writes `$texture2transform`.
+  - `render.lab.posed-model`: two new checks (inactive cloak and scratch keys
+    claimed, an active cloak refused).
+  - The suite's existing `cable-refuses-missing-required-normal-texture`
+    failure is pre-existing and unrelated: that material has no cloak or
+    scratch keys.
+  - `fizzler-close`: the laser beam is drawn by the core and leaves the
+    dropped list.

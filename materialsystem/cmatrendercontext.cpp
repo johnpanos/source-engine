@@ -324,6 +324,8 @@ void CMatRenderContextBase::InitializeFrom( CMatRenderContextBase *pInitialState
 
 void CMatRenderContextBase::Bind( IMaterial *iMaterial, void *proxyData )
 {
+	MaterialSystem_FlushBufferedPrimitivesOwner();
+
 	IMaterialInternal *material = static_cast<IMaterialInternal *>( iMaterial );
 
 	if ( !material )
@@ -2223,6 +2225,7 @@ void CMatRenderContext::CopyRenderTargetToTextureEx( ITexture *pTexture, int nRe
 		return;
 	}
 
+	MaterialSystem_FlushBufferedPrimitivesOwner();
 	GetMaterialSystem()->Flush( false );
 	ITextureInternal *pTextureInternal = (ITextureInternal *)pTexture;
 

@@ -912,6 +912,25 @@ void CMatSystemSurface::RecordScreenPrimitive()
 	m_ScreenUiCommands.push_back( { first, count, material } );
 }
 
+void CMatSystemSurface::CScreenUiBuffer::FlushBufferedPrimitives()
+{
+	if ( !m_Surface.m_bFlushingScreenUi )
+		m_Surface.FlushScreenUi();
+}
+
+void CMatSystemSurface::SetScreenUiBuffered( bool bBuffered )
+{
+	if ( bBuffered == m_bScreenUiBuffered )
+		return;
+	static IMaterialSystemBufferedPrimitives *s_pBuffered =
+	    static_cast<IMaterialSystemBufferedPrimitives *>( g_pMaterialSystem->QueryInterface(
+	        MATERIALSYSTEM_BUFFERED_PRIMITIVES_INTERFACE_VERSION ) );
+	if ( !s_pBuffered )
+		return;
+	s_pBuffered->SetBufferedPrimitivesOwner( bBuffered ? &m_ScreenUiBuffer : NULL );
+	m_bScreenUiBuffered = bBuffered;
+}
+
 void CMatSystemSurface::FlushScreenUi()
 {
 	if ( m_ScreenUiCommands.empty() )
@@ -920,6 +939,9 @@ void CMatSystemSurface::FlushScreenUi()
 		m_ScreenUiPoints.clear();
 		return;
 	}
+	// What the segment draws through the material system below is not
+	// buffered again.
+	m_bFlushingScreenUi = true;
 	ui_draw_list::ListView list = {};
 	list.scale = m_flScreenUiScale;
 	list.offset[0] = m_flScreenUiOffset[0];
@@ -953,6 +975,7 @@ void CMatSystemSurface::FlushScreenUi()
 	m_ScreenUiCommands.clear();
 	m_ScreenUiMaterials.clear();
 	m_ScreenUiMaterialKeys.clear();
+	m_bFlushingScreenUi = false;
 }
 
 void CMatSystemSurface::DrawPointsThroughMaterial( IMaterial *pMaterial,
@@ -1033,6 +1056,7 @@ void CMatSystemSurface::StartDrawingIn3DSpace( const VMatrix &screenToWorld, int
 	// A panel in the world is not the screen list's.
 	FlushScreenUi();
 	meshBuilder.Record( false );
+	SetScreenUiBuffered( false );
 	g_bInDrawing = true;
 	m_iBoundTexture = -1; 
 
@@ -1175,6 +1199,7 @@ void CMatSystemSurface::StartDrawing( void )
 		m_nScreenUiViewport[3] = height;
 		m_pScreenUiMaterial = NULL;
 		meshBuilder.Record( true );
+		SetScreenUiBuffered( true );
 	}
 }
 
@@ -1191,6 +1216,7 @@ void CMatSystemSurface::FinishDrawing( void )
 	// The screen list's last segment, drawn before the projection goes.
 	FlushScreenUi();
 	meshBuilder.Record( false );
+	SetScreenUiBuffered( false );
 
 	// Restore the matrices
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );

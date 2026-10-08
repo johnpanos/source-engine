@@ -31,6 +31,7 @@
 #include "tier1/convar.h"
 #include "vgui/IScreenUiRecorder.h"
 #include "vgui/IWorldPanelRecorder.h"
+#include "materialsystem/imaterialsystembufferedprimitives.h"
 
 #include <string>
 #include <cstring>
@@ -643,6 +644,23 @@ private:
 	std::vector<IMaterial *> m_ScreenUiMaterials;
 	std::vector<unsigned> m_ScreenUiMaterialKeys;
 	ScreenUiStats m_ScreenUiStats = {};
+	// The open segment is buffered ahead of the render context: a panel that
+	// draws through the render context between surface calls (a 3D paint of
+	// its own, a movie) has the segment flushed first, as D3D9 flushed its
+	// buffered mesh, so the frame keeps paint order.
+	class CScreenUiBuffer final : public IMaterialBufferedPrimitivesOwner
+	{
+	public:
+		explicit CScreenUiBuffer( CMatSystemSurface &surface ) : m_Surface( surface ) {}
+		void FlushBufferedPrimitives() override;
+
+	private:
+		CMatSystemSurface &m_Surface;
+	};
+	void SetScreenUiBuffered( bool bBuffered );
+	CScreenUiBuffer m_ScreenUiBuffer{ *this };
+	bool m_bScreenUiBuffered = false;
+	bool m_bFlushingScreenUi = false;
 
 public:
 	// RFC 0010 in-world panels (vgui/IWorldPanelRecorder.h): paints a panel

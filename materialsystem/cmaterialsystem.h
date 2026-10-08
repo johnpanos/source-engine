@@ -15,6 +15,7 @@
 #include "materialsystem_global.h"
 #include "materialsystem/imaterialsystem.h"
 #include "materialsystem/imaterialsystemwindowresize.h"
+#include "materialsystem/imaterialsystembufferedprimitives.h"
 #include "materialsystem/ishaderapi.h"
 #include "imaterialinternal.h"
 #include "imaterialsysteminternal.h"
@@ -59,10 +60,10 @@ extern CThreadFastMutex g_MatSysMutex;
 // The material system implementation
 //-----------------------------------------------------------------------------
 
-
-class CMaterialSystem : public CTier2AppSystem< IMaterialSystemInternal >,
-	public IShaderUtil,
-	public IMaterialSystemWindowResize
+class CMaterialSystem : public CTier2AppSystem<IMaterialSystemInternal>,
+                        public IShaderUtil,
+                        public IMaterialSystemWindowResize,
+                        public IMaterialSystemBufferedPrimitives
 {
 	typedef CTier2AppSystem< IMaterialSystemInternal > BaseClass;
 public:
@@ -104,6 +105,7 @@ public:
 	bool BindBuiltinShaderProvider( const BuiltinShaderProvider &provider );
 	bool RequestWindowResize( const MaterialWindowResizeRequest_t &request ) override;
 	MaterialWindowResizeStatus_t GetWindowResizeStatus() const override;
+	void SetBufferedPrimitivesOwner( IMaterialBufferedPrimitivesOwner *pOwner ) override;
 
 private:
 	// Used to dynamically load and unload the shader api

@@ -48,6 +48,10 @@ class CMatCallQueue;
 //-----------------------------------------------------------------------------
 //
 //-----------------------------------------------------------------------------
+// Main thread: flushes what the buffered-primitives owner holds before the render
+// context draws or copies (materialsystem/imaterialsystembufferedprimitives.h).
+void MaterialSystem_FlushBufferedPrimitivesOwner();
+
 class CMatRenderContextBase : public CRefCounted1<IMatRenderContextInternal>
 {
 public:

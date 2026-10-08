@@ -225,12 +225,18 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 	            "$fleshEffectCenterRadius3", "$fleshEffectCenterRadius4", "$fleshsubsurfacetint",
 	            "$fleshborderwidth", "$fleshbordersoftness", "$fleshbordertint",
 	            "$fleshglobalopacity", "$fleshglossbrightness", "$fleshscrollspeed" } } };
+	// UnlitTwoTexture declares the same cloak pass (unlittwotexture_dx9.cpp,
+	// SetupVarsCloakBlendedPass), read only with $cloakpassenabled set: the
+	// sprite copies Portal 2's lasers draw hold $refractamount 0 inertly.
 	const auto dormant = [&]( std::string_view key )
 	{
-		if ( material.family != "vertexlit" )
+		const bool unlit = material.family == "unlit";
+		if ( material.family != "vertexlit" && !unlit )
 			return false;
 		for ( const DormantPass &pass : kVertexLitPasses )
 		{
+			if ( unlit && &pass != &kVertexLitPasses[0] )
+				break;
 			if ( enabled( pass.enable ) )
 				continue;
 			for ( const char *control : pass.controls )

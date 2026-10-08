@@ -1303,6 +1303,7 @@ void CMatQueuedRenderContext::DrawScreenSpaceRectangle(
 	void *pClientRenderable,
 	int nXDice, int nYDice )							// Amount to tessellate the quad
 {
+	MaterialSystem_FlushBufferedPrimitivesOwner();
 	IMaterial *pRealTimeVersionMaterial = ((IMaterialInternal *)pMaterial)->GetRealTimeVersion();
 	pRealTimeVersionMaterial->CallBindProxy( pClientRenderable );
 	m_queue.QueueCall( m_pHardwareContext, &IMatRenderContext::DrawScreenSpaceRectangle, pMaterial, destx, desty, width, height, src_texture_x0, src_texture_y0, src_texture_x1, src_texture_y1,	src_texture_width, src_texture_height, pClientRenderable, nXDice, nYDice );
@@ -1321,6 +1322,7 @@ void CMatQueuedRenderContext::LoadBoneMatrix( int i, const matrix3x4_t &m )
 //-----------------------------------------------------------------------------
 void CMatQueuedRenderContext::CopyRenderTargetToTextureEx( ITexture *pTexture, int i, Rect_t *pSrc, Rect_t *pDst )
 {
+	MaterialSystem_FlushBufferedPrimitivesOwner();
 	m_queue.QueueCall( m_pHardwareContext, &IMatRenderContext::CopyRenderTargetToTextureEx, pTexture, i, CUtlEnvelope<Rect_t>(pSrc), CUtlEnvelope<Rect_t>(pDst) );
 }
 

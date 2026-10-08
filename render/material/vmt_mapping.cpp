@@ -650,6 +650,12 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$modblend", "Modulate declares no such parameter: proxy or VGUI screen input", "modulate" },
     { "$texoffset", "Modulate declares no such parameter: proxy or VGUI screen input", "modulate" },
     { "$texscale", "Modulate declares no such parameter: proxy or VGUI screen input", "modulate" },
+    { "$t2offset", "UnlitTwoTexture declares no such parameter: TextureTransform proxy scratch "
+        "(Portal 2's laser sprites; the proxy writes $texture2transform)", "unlit" },
+    { "$t2scale", "UnlitTwoTexture declares no such parameter: TextureTransform proxy scratch "
+        "(Portal 2's laser sprites; the proxy writes $texture2transform)", "unlit" },
+    { "$t2rot", "UnlitTwoTexture declares no such parameter: TextureTransform proxy scratch "
+        "(Portal 2's laser sprites; the proxy writes $texture2transform)", "unlit" },
     { "$intensitynoise", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "
         "TextureScroll, Sine, Multiply inputs and results) or unused", "energy" },
     { "$totalintensity", "SolidEnergy declares no such parameter: proxy scratch (TextureTransform, "

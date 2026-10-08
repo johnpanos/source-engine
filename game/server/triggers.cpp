@@ -1255,8 +1255,20 @@ public:
 LINK_ENTITY_TO_CLASS( trigger_transition, CTriggerVolume );
 
 // Define space that travels across a level transition
+#ifdef PORTAL2
+const char *ChangeLevel_GetLandmarkName( void );
+#endif
+
 void CTriggerVolume::Spawn( void )
 {
+#ifdef PORTAL2
+	// Portal 2 maps leave trigger_transition unnamed: its landmarks all share
+	// one name (point_changelevel.cpp), so an unnamed volume screens that
+	// transition. Without it everything in the landmark's PVS (the exit
+	// airlock's doors) is carried over the next map's copies.
+	if ( GetEntityName() == NULL_STRING )
+		SetName( AllocPooledString( ChangeLevel_GetLandmarkName() ) );
+#endif
 	SetSolid( SOLID_BSP );
 	AddSolidFlags( FSOLID_NOT_SOLID );
 	SetMoveType( MOVETYPE_NONE );

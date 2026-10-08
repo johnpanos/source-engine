@@ -947,6 +947,11 @@ void *CMaterialSystem::QueryInterface( const char *pInterfaceName )
 	{
 		return static_cast<IMaterialSystemWindowResize *>( this );
 	}
+	if ( pInterfaceName &&
+	     !Q_strcmp( pInterfaceName, MATERIALSYSTEM_BUFFERED_PRIMITIVES_INTERFACE_VERSION ) )
+	{
+		return static_cast<IMaterialSystemBufferedPrimitives *>( this );
+	}
 
 	// Returns various interfaces supported by the shader API dll
 	void *pInterface = QueryShaderAPI( pInterfaceName );
@@ -955,6 +960,29 @@ void *CMaterialSystem::QueryInterface( const char *pInterfaceName )
 
 	CreateInterfaceFn factory = Sys_GetFactoryThis();	// This silly construction is necessary
 	return factory( pInterfaceName, NULL );				// to prevent the LTCG compiler from crashing.
+}
+
+static IMaterialBufferedPrimitivesOwner *s_pBufferedPrimitivesOwner = NULL;
+static bool s_bFlushingBufferedPrimitivesOwner = false;
+
+void CMaterialSystem::SetBufferedPrimitivesOwner( IMaterialBufferedPrimitivesOwner *pOwner )
+{
+	Assert( ThreadInMainThread() );
+	s_pBufferedPrimitivesOwner = pOwner;
+}
+
+// The render context's draws and copies run here first on the main thread
+// (queued mode's hardware context replays them on the render thread, after
+// the owner's flush was queued ahead of them). Not reentrant: what the owner
+// draws while it flushes goes straight through.
+void MaterialSystem_FlushBufferedPrimitivesOwner()
+{
+	if ( !s_pBufferedPrimitivesOwner || s_bFlushingBufferedPrimitivesOwner ||
+	     !ThreadInMainThread() )
+		return;
+	s_bFlushingBufferedPrimitivesOwner = true;
+	s_pBufferedPrimitivesOwner->FlushBufferedPrimitives();
+	s_bFlushingBufferedPrimitivesOwner = false;
 }
 
 bool CMaterialSystem::RequestWindowResize( const MaterialWindowResizeRequest_t &request )
