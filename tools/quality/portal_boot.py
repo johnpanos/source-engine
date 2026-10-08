@@ -731,38 +731,28 @@ def run_kiln(args, exact_arguments, stage, environment, timeout, output):
     the harness owns its test command (exact arguments) and sandbox
     variables; kiln owns the program, display session and run provider.
     Watches the game's mapped files as run_product does."""
-    overrides = {key: value for key, value in environment.items() if os.environ.get(key) != value}
-    overrides.update({key: None for key in os.environ if key not in environment})
-    pids = []
     wrapper = []
     if exact_arguments[0] != "./hl2_launcher":
         index = exact_arguments.index("./hl2_launcher")
         wrapper, exact_arguments = exact_arguments[:index], exact_arguments[index:]
-    run = sepipe_loader.Run(args.sepipe, args.session, "run", args.profile, flavor=args.flavor,
-                            runtime=str(stage), exact_arguments=exact_arguments[1:], wrapper=wrapper,
-                            environment=overrides, log=str(output),
-                            display="none" if args.headless else "user",
-                            started=lambda name, pid: pids.append(pid))
     loaded = set()
-    started = time.monotonic()
-    timed_out = False
-    while run.poll() is None:
-        for pid in pids:
-            try:
-                for line in Path("/proc/%d/maps" % pid).read_text().splitlines():
-                    fields = line.split(None, 5)
-                    if len(fields) == 6 and fields[5].startswith("/"):
-                        loaded.add(fields[5])
-            except OSError:
-                pass
-        if time.monotonic() - started > timeout:
-            timed_out = True
-            run.stop()
-            break
-        time.sleep(0.1)
-    if run.error:
-        Path(output).open("a").write("\nkiln: %s\n" % run.error)
-    return run.returncode, timed_out, sorted(loaded), time.monotonic() - started
+
+    def watch(pid):
+        try:
+            for line in Path("/proc/%d/maps" % pid).read_text().splitlines():
+                fields = line.split(None, 5)
+                if len(fields) == 6 and fields[5].startswith("/"):
+                    loaded.add(fields[5])
+        except OSError:
+            pass
+    code, timed_out, seconds, error = sepipe_loader.run_test(
+        args.profile, args.flavor, stage, exact_arguments[1:], output, timeout,
+        environment=environment, wrapper=wrapper, display="none" if args.headless else "user",
+        watch=watch)
+    if error:
+        with Path(output).open("a") as stream:
+            stream.write("\nkiln: %s\n" % error)
+    return code, timed_out, sorted(loaded), seconds
 
 
 def login_session_displays():

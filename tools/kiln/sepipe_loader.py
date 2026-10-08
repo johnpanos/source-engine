@@ -117,3 +117,45 @@ def installed(profile, flavor="dev"):
         if artifact.get("name") == "engine-install":
             return Path(artifact["path"])
     raise LoadError("kiln build %s produced no engine-install artifact" % profile)
+
+
+def environment_overrides(environment, base=None):
+    """The changes from `base` (this process's environment) to a harness's
+    `environment`, as kiln run options (a removed variable maps to None)."""
+    import os
+    base = os.environ if base is None else base
+    overrides = {key: value for key, value in environment.items() if base.get(key) != value}
+    overrides.update({key: None for key in base if key not in environment})
+    return overrides
+
+
+def run_test(profile, flavor, runtime, arguments, log, timeout, environment=None, wrapper=(),
+             display="none", stop_when=None, watch=None, poll_seconds=0.1):
+    """A harness's test command through kiln.api: the profile's program from
+    the private `runtime`, `arguments` in place of its launch template, the
+    harness's `environment` (a full environment; its changes are applied),
+    a diagnostic `wrapper` and a display session. Polls until the run ends,
+    `timeout` seconds pass (the run is cancelled), or `stop_when()` holds
+    (the run gets two more seconds). `watch(pid)` is called while it runs for
+    each started process. Returns (returncode, timed_out, seconds, error)."""
+    import time
+    pids = []
+    run = Run(load(), session(), "run", profile, flavor=flavor, runtime=str(runtime),
+              exact_arguments=list(arguments), wrapper=list(wrapper), display=display,
+              environment=environment_overrides(environment) if environment is not None else {},
+              log=str(log), started=lambda name, pid: pids.append(pid))
+    started = time.monotonic()
+    deadline = started + timeout
+    timed_out = False
+    while run.poll() is None:
+        if watch:
+            for pid in list(pids):
+                watch(pid)
+        if stop_when is not None and stop_when():
+            deadline = min(deadline, time.monotonic() + 2.0)
+        if time.monotonic() > deadline:
+            timed_out = True
+            run.stop()
+            break
+        time.sleep(poll_seconds)
+    return run.returncode, timed_out, time.monotonic() - started, run.error

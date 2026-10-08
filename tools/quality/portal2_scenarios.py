@@ -446,8 +446,6 @@ def run_game(scenario, runtime, output, start_frames, width, height, tool_direct
     sandbox = launch_sandbox.Sandbox(Path(output).resolve() / "sandbox", write_paths=[runtime])
     environment = sandbox.environment(os.environ)
     environment["PATH"] = str(tool_directory) + os.pathsep + environment.get("PATH", "")
-    overrides = {key: value for key, value in environment.items() if os.environ.get(key) != value}
-    overrides.update({key: None for key in os.environ if key not in environment})
     arguments = ["-game", "portal2", "-multirun", "-novid", "-insecure", "-windowed",
                  "-w", str(width), "-h", str(height), "-condebug", "+volume", "0", *extra_args,
                  "+map", scenario["map"], "+wait", str(start_frames),
@@ -459,28 +457,18 @@ def run_game(scenario, runtime, output, start_frames, width, height, tool_direct
                    "-ex", "bt", "--args"]
     output.mkdir(parents=True, exist_ok=True)
     profile, flavor = client
-    started = time.monotonic()
-    timed_out = False
-    run = sepipe_loader.Run(sepipe_loader.load(), sepipe_loader.session(), "run", profile,
-                            flavor=flavor, runtime=str(runtime), exact_arguments=arguments,
-                            wrapper=prefix, environment=overrides, display="none",
-                            log=str(output / "stdout.log"))
     # The driver quits the game after QA_DONE. A driver that failed to load
     # never will, so stop waiting for it as soon as the log says so.
-    deadline = started + scenario["timeout_seconds"]
-    while run.poll() is None and time.monotonic() < deadline:
-        time.sleep(0.5)
-        if console.is_file() and DRIVER_LOAD_FAILURE in console.read_text(errors="replace"):
-            deadline = min(deadline, time.monotonic() + 2.0)
-    if run.poll() is None:
-        timed_out = True
-        run.stop()
-    seconds = time.monotonic() - started
+    returncode, timed_out, seconds, error = sepipe_loader.run_test(
+        profile, flavor, runtime, arguments, output / "stdout.log", scenario["timeout_seconds"],
+        environment=environment, wrapper=prefix,
+        stop_when=lambda: console.is_file() and
+        DRIVER_LOAD_FAILURE in console.read_text(errors="replace"), poll_seconds=0.5)
     log = console.read_text(errors="replace") if console.is_file() else ""
     (output / "console.log").write_text(log)
-    result = evaluate(scenario, log, run.returncode, timed_out)
-    if run.error:
-        result.setdefault("failures", []).append("kiln: " + run.error)
+    result = evaluate(scenario, log, returncode, timed_out)
+    if error:
+        result.setdefault("failures", []).append("kiln: " + error)
     result["seconds"] = round(seconds, 1)
     result["command"] = {"profile": profile, "flavor": flavor, "wrapper": prefix,
                          "arguments": arguments}
