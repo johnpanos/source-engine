@@ -67,11 +67,7 @@ class CBaseVSShader : public CBaseShader
 {
 public:
 
-	// Loads bump lightmap coordinates into the pixel shader
-	void LoadBumpLightmapCoordinateAxes_PixelShader( int pixelReg );
 
-	// Loads bump lightmap coordinates into the vertex shader
-	void LoadBumpLightmapCoordinateAxes_VertexShader( int vertexReg );
 
 	// Pixel and vertex shader constants....
 	void SetPixelShaderConstant( int pixelReg, int constantVar );
@@ -83,8 +79,6 @@ public:
 	void SetPixelShaderConstant( int pixelReg, int constantVar, int constantVar2 );
 	void SetPixelShaderConstantGammaToLinear( int pixelReg, int constantVar, int constantVar2 );
 
-	// Helpers for setting constants that need to be converted to linear space (from gamma space).
-	void SetVertexShaderConstantGammaToLinear( int var, float const* pVec, int numConst = 1, bool bForce = false );
 	void SetPixelShaderConstantGammaToLinear( int var, float const* pVec, int numConst = 1, bool bForce = false );
 
 	void SetVertexShaderConstant( int vertexReg, int constantVar );
@@ -92,30 +86,18 @@ public:
 	// set rgb components of constant from a color parm and give an explicit w value
 	void SetPixelShaderConstant_W( int pixelReg, int constantVar, float fWValue );
 
-	// GR - fix for const/lerp issues
-	void SetPixelShaderConstantFudge( int pixelReg, int constantVar );
 
-	// Sets light direction for pixel shaders.
-	void SetPixelShaderLightColors( int pixelReg );
 
-	// Sets vertex shader texture transforms
-	void SetVertexShaderTextureTranslation( int vertexReg, int translationVar );
 	void SetVertexShaderTextureScale( int vertexReg, int scaleVar );
  	void SetVertexShaderTextureTransform( int vertexReg, int transformVar );
 	void SetVertexShaderTextureScaledTransform( int vertexReg, 
 											int transformVar, int scaleVar );
 
-	// Set pixel shader texture transforms
-	void SetPixelShaderTextureTranslation( int pixelReg, int translationVar );
-	void SetPixelShaderTextureScale( int pixelReg, int scaleVar );
  	void SetPixelShaderTextureTransform( int pixelReg, int transformVar );
-	void SetPixelShaderTextureScaledTransform( int pixelReg, 
-											int transformVar, int scaleVar );
 
 	// Moves a matrix into vertex shader constants 
 	void SetVertexShaderMatrix2x4( int vertexReg, int matrixVar );
 	void SetVertexShaderMatrix3x4( int vertexReg, int matrixVar );
-	void SetVertexShaderMatrix4x4( int vertexReg, int matrixVar );
 
 	// Loads the view matrix into vertex shader constants
 	void LoadViewMatrixIntoVertexShaderConstant( int vertexReg );
@@ -145,9 +127,6 @@ public:
 	void SetModulationPixelShaderDynamicState_LinearColorSpace( int modulationVar );
 	void SetModulationPixelShaderDynamicState_LinearColorSpace_LinearScale( int modulationVar, float flScale );
 
-	// Sets a color + alpha into shader constants
-	void SetColorVertexShaderConstant( int nVertexReg, int colorVar, int alphaVar );
-	void SetColorPixelShaderConstant( int nPixelReg, int colorVar, int alphaVar );
 
 
 #ifndef GAME_SHADER_DLL
@@ -155,49 +134,9 @@ public:
 	// Standard shader passes!
 	//
 
-	void InitParamsUnlitGeneric_DX8( 
-		int baseTextureVar,
-		int detailScaleVar,
-		int envmapOptionalVar,
-		int envmapVar,
-		int envmapTintVar, 
-		int envmapMaskScaleVar,
-		int nDetailBlendMode );
 
-	void InitUnlitGeneric_DX8( 
-		int baseTextureVar,
-		int detailVar,
-		int envmapVar,
-		int envmapMaskVar );
 
-	// Dx8 Unlit Generic pass
-	void VertexShaderUnlitGenericPass( int baseTextureVar, int frameVar, 
-									   int baseTextureTransformVar, 
-									   int detailVar, int detailTransform, bool bDetailTransformIsScale, 
-									   int envmapVar, int envMapFrameVar, int envmapMaskVar,
-									   int envmapMaskFrameVar, int envmapMaskScaleVar, int envmapTintVar,
-									   int alphaTestReferenceVar,
-									   int nDetailBlendModeVar,
-									   int nOutlineVar,
-									   int nOutlineColorVar,
-									   int nOutlineStartVar,
-									   int nOutlineEndVar,
-									   int nSeparateDetailUVsVar
-									   );
 
-	// Helpers for drawing world bump mapped stuff.
-	void DrawModelBumpedSpecularLighting( int bumpMapVar, int bumpMapFrameVar,
-											   int envMapVar, int envMapVarFrame,
-											   int envMapTintVar, int alphaVar,
-											   int envMapContrastVar, int envMapSaturationVar,
-											   int bumpTransformVar,
-											   bool bBlendSpecular, bool bNoWriteZ = false );
-	void DrawWorldBumpedSpecularLighting( int bumpmapVar, int envmapVar,
-											   int bumpFrameVar, int envmapFrameVar,
-											   int envmapTintVar, int alphaVar,
-											   int envmapContrastVar, int envmapSaturationVar,
-											   int bumpTransformVar, int fresnelReflectionVar,
-											   bool bBlend, bool bNoWriteZ = false );
 
 	const char *UnlitGeneric_ComputeVertexShaderName( bool bMask,
 													  bool bEnvmap,
@@ -208,47 +147,7 @@ public:
 													  bool bEnvmapCameraSpace,
 													  bool bEnvmapSphere );
 
-	const char *UnlitGeneric_ComputePixelShaderName( bool bMask,
-													 bool bEnvmap,
-													 bool bBaseTexture,
-													 bool bBaseAlphaEnvmapMask,
-													 bool bDetail,
-													 bool bMultiplyDetail,
-													 bool bMaskBaseByDetailAlpha );
 
-	void DrawWorldBaseTexture( int baseTextureVar, int baseTextureTransformVar, int frameVar, int colorVar, int alphaVar );
-	void DrawWorldBumpedDiffuseLighting( int bumpmapVar, int bumpFrameVar,
-		int bumpTransformVar, bool bMultiply, bool bSSBump  );
-	void DrawWorldBumpedSpecularLighting( int envmapMaskVar, int envmapMaskFrame,
-		int bumpmapVar, int envmapVar,
-		int bumpFrameVar, int envmapFrameVar,
-		int envmapTintVar, int alphaVar,
-		int envmapContrastVar, int envmapSaturationVar,
-		int bumpTransformVar,  int fresnelReflectionVar,
-		bool bBlend );
-	void DrawBaseTextureBlend( int baseTextureVar, int baseTextureTransformVar, 
-		int baseTextureFrameVar,
-		int baseTexture2Var, int baseTextureTransform2Var, 
-		int baseTextureFrame2Var, int colorVar, int alphaVar );
-	void DrawWorldBumpedDiffuseLighting_Base_ps14( int bumpmapVar, int bumpFrameVar,
-		int bumpTransformVar, int baseTextureVar, int baseTextureTransformVar, int frameVar );
-	void DrawWorldBumpedDiffuseLighting_Blend_ps14( int bumpmapVar, int bumpFrameVar, int bumpTransformVar, 
-		int baseTextureVar, int baseTextureTransformVar, int baseTextureFrameVar, 
-		int baseTexture2Var, int baseTextureTransform2Var, int baseTextureFrame2Var);
-	void DrawWorldBumpedUsingVertexShader( int baseTextureVar, int baseTextureTransformVar,
-										   int bumpmapVar, int bumpFrameVar, 
-										   int bumpTransformVar,
-										   int envmapMaskVar, int envmapMaskFrame,
-										   int envmapVar, 
-										   int envmapFrameVar,
-										   int envmapTintVar, int colorVar, int alphaVar,
-										   int envmapContrastVar, int envmapSaturationVar, int frameVar, int fresnelReflectionVar,
-										   bool doBaseTexture2,
-										   int baseTexture2Var,
-										   int baseTextureTransform2Var,
-										   int baseTextureFrame2Var,
-										   bool bSSBump
-		);
 	
 	// Sets up hw morphing state for the vertex shader
 	void SetHWMorphVertexShaderState( int nDimConst, int nSubrectConst, VertexTextureSampler_t morphSampler );
@@ -260,11 +159,6 @@ public:
 	void SetFlashlightVertexShaderConstants( bool bBump, int bumpTransformVar, bool bDetail, int detailScaleVar, bool bSetTextureTransforms );
 
 #if SUPPORT_DX8
-	void DrawFlashlight_dx80( IMaterialVar** params, IShaderDynamicAPI *pShaderAPI, IShaderShadow* pShaderShadow, 
-		bool bBump, int bumpmapVar, int bumpmapFrame, int bumpTransform, int flashlightTextureVar, 
-		int flashlightTextureFrameVar, bool bLightmappedGeneric, bool bWorldVertexTransition, 
-		int nWorldVertexTransitionPassID, int baseTexture2Var, int baseTexture2FrameVar,
-		bool bTeeth=false, int nTeethForwardVar=0, int nTeethIllumFactorVar=0 );
 #endif
 
 	struct DrawFlashlight_dx90_Vars_t
@@ -327,8 +221,6 @@ private:
 		int envMapFrameVar, int envmapMaskVar, int envmapMaskFrameVar,
 		int envmapMaskScaleVar, int envmapTintVar );
 
-	// Converts a color + alpha into a vector4
-	void ColorVarsToVector( int colorVar, int alphaVar, Vector4D &color );
 
 };
 
