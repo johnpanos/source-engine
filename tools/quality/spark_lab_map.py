@@ -19,7 +19,7 @@ The fall, wall and pcf scenes fire at the start of each 8 s cycle; the budget
 row fires 5 s in, once the other sparks have died.
 
     python3 tools/quality/spark_lab_map.py          build and publish
-    ./play spark_lab                                play it
+    ./kiln play portal spark_lab                                play it
     python3 tools/quality/spark_light_scene.py run  the in-engine fixtures
 
 The map compiles with the pinned legacy vbsp/vvis/vrad of the PBRT map

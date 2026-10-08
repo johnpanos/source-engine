@@ -5,8 +5,8 @@ Each map stages, in game, scenes that RFC 0026's program judges Box3D against
 IVP with: the same scene runs on either provider, chosen at launch, so a user
 can watch the difference and a headless run can count it.
 
-    ./play phys_tunnel                 Box3D (the ./play default)
-    PHYSICS=vphysics ./play phys_tunnel   IVP, the fallback provider
+    ./kiln play portal phys_tunnel                 Box3D (the ./kiln play portal default)
+    ./kiln play portal phys_tunnel --set ivp   IVP, the fallback provider
 
 Every scene starts once at map load and restarts from the button in front of
 it (use key). Walking up to a scene shows what it tests and what to look for.
@@ -236,7 +236,7 @@ def build_tunnel():
         "phys_tunnel: fast cubes at the 2000 in/s speed limit against thin barriers.",
         "A cube on the striped floor went THROUGH its barrier (console: physlab tunnel).",
         "RFC 0013 bench, IVP/Box3D: A 0/0, B 3/0, C 24/56 of 64. Box3D bullets (RFC 0026 B1) fix C.",
-        "Compare: ./play phys_tunnel (Box3D)   PHYSICS=vphysics ./play phys_tunnel (IVP)",
+        "Compare: ./kiln play portal phys_tunnel (Box3D)   ./kiln play portal phys_tunnel --set ivp (IVP)",
     ])
     relays = []
     for lane, y, half, kind, thick, note in TUNNEL_LANES:
@@ -311,7 +311,7 @@ def build_stack():
         "phys_stack: solver stability and settling.",
         "Pyramid (55 cubes) and tower (16): a cube that falls prints 'physlab stack ... fell'.",
         "RFC 0013 bench, 20-wide pyramid: IVP collapsed 38 cubes, Box3D 0. Bin: 64 Portal cubes.",
-        "Compare: ./play phys_stack (Box3D)   PHYSICS=vphysics ./play phys_stack (IVP)",
+        "Compare: ./kiln play portal phys_stack (Box3D)   ./kiln play portal phys_stack --set ivp (IVP)",
     ])
     step = 2 * STACK_CUBE + STACK_GAP
     relays = []
@@ -504,7 +504,7 @@ def build_impacts():
         "phys_impacts: impact events and explosions.",
         "Drops: Portal cubes from 32 to 512 units. Each landing should sound once per real bounce.",
         "Ring: drums and crates around an explosion. The blast should push them evenly outward.",
-        "Compare: ./play phys_impacts (Box3D)   PHYSICS=vphysics ./play phys_impacts (IVP)",
+        "Compare: ./kiln play portal phys_impacts (Box3D)   ./kiln play portal phys_impacts --set ivp (IVP)",
     ])
     relays = []
     for i, height in enumerate(DROP_HEIGHTS):

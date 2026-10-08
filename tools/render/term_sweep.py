@@ -13,7 +13,7 @@ the surface program (RFC 0014 D1), so the driver compiles that variant on
 first use and the term's code is gone from it; the sweep then reads the
 per-pass GPU timers (cl_render_debug_gpu_timers) and takes a screenshot.
 
-`run` boots ./play_p2 on the map (headless mutter, the launch sandbox, as
+`run` boots the portal2-fsr profile on the map through kiln (headless mutter, the launch sandbox, as
 tools/quality/demo_frames.py does), stands at the player's spawn, pauses
 the game, hides the HUD and view model, and for each view (the spawn at
 four headings) and each setting (the baseline first and last, then every

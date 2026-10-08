@@ -9,7 +9,7 @@ code), with its entities' DATADESC keyfields and inputs set up so each one
 does what its code does. Every shop front is a mall entrance: glass display
 windows (Portal's chamber glass) either side of a Portal 2 test chamber door
 (retail Portal 2's portal_door_combined, staged by
-tools/quality/stage_fstop_runtime.py), which a player trigger opens
+kiln package fstop), which a player trigger opens
 (OnStartTouch) and closes once nobody is in it (OnEndTouchAll). Invisible
 sliding leaves (func_door) carry the door's collision. Shops with something
 that shoots or hunts the player (the hover turret, the androids, the

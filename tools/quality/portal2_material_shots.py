@@ -78,7 +78,7 @@ ROOT = Path(conformance.repo_root())
 WORKLOAD = ROOT / "quality/workloads/portal2-materials-v1"
 DEFAULT_STEAM_ROOT = Path.home() / ".local/share/Steam/steamapps/common/Portal 2"
 WIDTH, HEIGHT = 1024, 768
-# ./play_p2's MAT_ARGS: retail Portal 2 always applies the maps' color
+# the portal2 profile's mat_args: retail Portal 2 always applies the maps' color
 # correction; this engine leaves it to the saved video config, which is off in
 # a runtime staged from a retail install.
 PLAY_P2_ENGINE_ARGS = ["+mat_colorcorrection", "1"]

@@ -26,7 +26,7 @@ from the toolchain's game runtime, or any v20/v21 `--bsp`) goes to
     difference fails the run.
 
 The map is published as `<map>_relit` (not over the shipped map), so
-`./play testchmb_a_00_relit` runs it; its level changes lead to the shipped
+`./kiln play portal testchmb_a_00_relit` runs it; its level changes lead to the shipped
 maps. `--boot` also boots it headless on native Vulkan. Build steps are
 cached in `<out>/steps.json` like any pipeline map; `--from STEP` forces one.
 """

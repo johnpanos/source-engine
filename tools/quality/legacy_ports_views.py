@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Compare the testchmb_a_01 view set with the legacy shader ports on and off.
 
-R32-LEGACY-SHADERS' default-on gate asks that the map ./play boots look the
+R32-LEGACY-SHADERS' default-on gate asks that the map ./kiln play portal boots look the
 same with the ports as without them, except where a reviewed port improvement
 is expected. This boots the installed Portal product (through portal_boot,
-which owns staging) three times at run.conf's settings: the ports on (the
+which owns staging) three times at the portal profile's launch settings: the ports on (the
 default), off (-novklegacyports), and on again. Each run captures the same
 views: eight yaws and two upward views from the spawn point, then the pause
 menu.
@@ -43,7 +43,7 @@ MAP = "testchmb_a_01"
 VIEWS = tuple(("yaw%03d" % yaw, 0, yaw) for yaw in range(0, 360, 45)) + (
     ("up000", -50, 0), ("up180", -50, 180))
 PAUSE = "pause_menu"
-# run.conf's settings for ./play (MAT_ARGS, JOB_ARGS, EXTRA_ARGS, PHYSICS*).
+# the portal profile's launch settings (its mat_args, job_args, queue and physics variables).
 # Console variables go in portal_boot's startup cfg, which keeps the command
 # line under the engine's 512 characters (argument lengths summed, the program
 # path included). The cfg runs after portal_boot's own +mat_queue_mode 0, so

@@ -333,7 +333,7 @@ def main(argv=None):
     args.out.mkdir(parents=True, exist_ok=True)
     runtime = args.runtime.resolve()
     # Refused before staging: the runtime is written, then deleted, so it must
-    # never be a player runtime (./play_fstop's run/runtime-fstop).
+    # never be a player runtime (kiln play fstop's runtime).
     sandbox = launch_sandbox.Sandbox(args.out.resolve() / "sandbox", write_paths=[runtime])
     bsp = args.bsp or sepipe_loader.packaged_runtime("fstop", args.flavor) / "fstop/maps" / (MAP + ".bsp")
     stage(runtime, args.flavor, bsp)

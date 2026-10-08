@@ -464,7 +464,7 @@ def capture_scenario(scenario, workload, args, out):
     startup = common.get("startup_commands", []) + scenario.get("startup_commands", [])
     physics = scenario.get("physics", common["physics"])
     if scenario.get("settings") == "legacy-ports":
-        # The legacy-ports view set's own settings (run.conf's), from its one
+        # The legacy-ports view set's own settings (the portal profile's), from its one
         # authority; the workload's determinism settings stay.
         width, height = legacy_ports_views.WIDTH, legacy_ports_views.HEIGHT
         engine_args = common.get("engine_args", []) + list(legacy_ports_views.ENGINE_ARGS)

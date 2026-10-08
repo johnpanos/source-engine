@@ -12,7 +12,7 @@ wall facing into A, portal B on B's west wall facing into B, both centered at
 y 256, z 72. Room A has a dim baked light; room B a dim one in a far corner,
 so its floor near the portal is dark. The map compiles with the pinned
 legacy vbsp/vvis/vrad (tools/quality/vmf_map_build.py) and publishes to the
-playable map store (./play portal_dlight_lab).
+playable map store (./kiln play portal portal_dlight_lab).
 
 The check boots the installed product headless on the map with a test light
 (`r_portal_dlight_test`, a cheat) 72 units in front of portal A, radius 400.
@@ -39,7 +39,7 @@ of each view's central 32x32 pixels: `direct` brightens in every lit state;
                           (`out`) must fail.
 
     check --game portal2  the same views in Portal 2 (a Portal 2 build and a
-                          runtime staged by stage_portal2_runtime.py): its
+                          runtime packaged by kiln (portal2)): its
                           client publishes the open portals from
                           C_Portal_Base2D. Portal 2's portals glow
                           (r_portal_use_dlights), which would light the
@@ -280,7 +280,7 @@ def main(argv=None):
     b.add_argument("--out", default=str(ROOT / "quality-results" / NAME))
     b.add_argument("--toolchain", default=str(MAIN / "build/toolchains/pbrt-map-toolchain.json"))
     b.add_argument("--runtime", default=str(MAIN / "run/runtime"))
-    b.add_argument("--store", default=str(MAIN / "run/maps"), help="the playable map store (./play)")
+    b.add_argument("--store", default=str(MAIN / "run/maps"), help="the playable map store (./kiln play portal)")
     c = sub.add_parser("check")
     sepipe_loader.add_arguments(c, "portal")
     c.add_argument("--content-root", default=str(ROOT / "quality-results" / NAME / "content"),

@@ -21,12 +21,12 @@ from), required compile tools and `bsp2tool pack-world-lit`.
 The native Vulkan client needs the pinned KTX reader (a PIC static archive the
 ktx-reader step builds under dependencies/, outside every Waf output tree) to
 upload a map's LMAP lightmap. Enable it in a client
-tree, for example the one ./play boots, with
+tree, for example the one ./kiln play portal boots, with
 
     python3 tools/quality/pbrt_map_toolchain.py configure-client --profile portal
 
 which adds `--ktx-source-root/--ktx-build-root` to the tree's stored Waf
-options; the next ./play (or waf build) rebuilds the affected modules.
+options; the next ./kiln build portal (or kiln play) rebuilds the affected modules.
 """
 
 import argparse

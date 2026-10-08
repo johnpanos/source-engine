@@ -15,7 +15,7 @@ Steps, each recorded in <out>/build.json:
      --quality full for release lighting). A leak is a failure: vbsp's log
      reports it and writes a pointfile;
   3. package <out>/content/maps/<name>.bsp; --publish copies it to the playable
-     map store (./play <name>); --install-game-dir copies it into a staged game
+     map store (./kiln play portal <name>); --install-game-dir copies it into a staged game
      directory's maps/ instead (a product the store is not mounted in, such as
      the F-Stop runtime's run/runtime-fstop/fstop);
   3a. --lighting PROFILE hands the compiled BSP to the one lighting back end
@@ -276,7 +276,7 @@ def light(record, out, profile, runtime, toolchain=None, device=None, publish=Tr
     """Hand a passed compile to the lighting back end (`map_lighting.light`):
     Cycles bakes the map's world, probe volume, radiosity and SDF from the
     compiled BSP's faces, materials and lights (export profile `profile`),
-    and the lit BSP2 is published as the map (./play <map>). Returns the
+    and the lit BSP2 is published as the map (./kiln play portal <map>). Returns the
     gameplay identity, recorded in the build record as `lighting`."""
     import map_lighting
     bsp = Path(record["content_root"]) / "maps" / (record["map"] + ".bsp")

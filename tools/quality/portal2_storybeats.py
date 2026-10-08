@@ -20,7 +20,7 @@ walker places each entity's brushes at its current origin. They are derived
 at run time: nothing from the map is stored in the repository.
 
 A scenario may run on a published derivative of a shipped map (the map
-pipeline's run/maps, mounted as ./play_p2 mounts it): "map" names the
+pipeline's run/maps, mounted as ./kiln play portal2 mounts it): "map" names the
 published map this build plays, "retail_map" the shipped map retail plays
 and whose BSP gives the collision. A relit map keeps every gameplay lump
 byte-identical, so both sides play the same chamber.

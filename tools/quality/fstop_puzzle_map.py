@@ -32,7 +32,7 @@ can be photographed from above and placed again, so the chamber cannot be
 softlocked.
 
     python3 tools/quality/fstop_puzzle_map.py          build and install
-    ./play_fstop +map fstop_puzzle_01
+    ./kiln play fstop fstop_puzzle_01
 
 The solution is also written out as console input (--write-walkthrough
 <game>/cfg), for a headless run in a private staged runtime:

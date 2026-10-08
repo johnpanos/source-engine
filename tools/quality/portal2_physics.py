@@ -23,7 +23,7 @@ Commands:
   record   run retail (--runs N) and write the reference file
            (quality/workloads/portal2-physics-v1/retail-reference.json).
   run      run one target (retail or ours) and write evidence.
-  check    run this build (--physics box3d|ivp, default box3d, as ./play_p2)
+  check    run this build (--physics box3d|ivp, default box3d, as ./kiln play portal2)
            and judge it against the reference; prints one checks-v1 record.
            --seed-fault injects a known defect as a negative control.
            --target retail judges retail itself: the reference is current.
@@ -61,7 +61,7 @@ REFERENCE_SCHEMA = "portal2-physics-reference/v1"
 EVIDENCE_SCHEMA = "portal2-physics-evidence/v1"
 METRIC_LINE = re.compile(r"^QA_METRIC (\S+) (-?[0-9.]+(?:e[-+]?[0-9]+)?|nan|-?inf)\s*$")
 COMPILE_FAILURE = "FAILED to compile and execute script file named scripts/vscripts/qa/"
-# ./play_p2's physics selection: Box3D with RFC 0013 shape inertia (its
+# the portal2 profile's physics selection: Box3D with RFC 0013 shape inertia (its
 # PHYSICS and PHYSICS_ARGS defaults). IVP is PHYSICS=vphysics.
 PHYSICS_ARGS = {
     "box3d": ["-physics", "vphysics_box3d", "-physics_shape_inertia"],
@@ -462,7 +462,7 @@ def main(argv=None):
                         help="retail symlink mirror (default: <out>/retail-mirror)")
     parser.add_argument("--target", choices=("ours", "retail"), default="ours")
     parser.add_argument("--physics", choices=sorted(PHYSICS_ARGS), default="box3d",
-                        help="VPhysics provider for this build (default box3d, as ./play_p2)")
+                        help="VPhysics provider for this build (default box3d, as ./kiln play portal2)")
     parser.add_argument("--seed-fault", choices=sorted(SEED_FAULTS),
                         help="negative control: inject a known defect")
     parser.add_argument("--scenario", action="append", default=[])

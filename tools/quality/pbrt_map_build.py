@@ -122,7 +122,7 @@ so a failed rebuild never leaves a step without its last good outputs.
 A failing pixel gate stops the build unless `--keep-going` is given; then the
 map is still finished, build.json reports `gate-failed` and the exit is nonzero.
 A finished map is published to run/maps/<map> (`playable_maps.py`), so
-`./play <map>` loads it; `--no-publish` skips that.
+`./kiln play portal <map>` loads it; `--no-publish` skips that.
 """
 
 import argparse
@@ -1691,7 +1691,7 @@ class Pipeline:
             playable_maps.publish(summary, sidecars={
                 MEDIUM_SIDECAR: json.dumps(baked_medium, indent=2, sort_keys=True) + "\n"}
                 if baked_medium else None)
-            print("published to %s; play it with ./play %s" %
+            print("published to %s; play it with ./kiln play portal %s" %
                   (playable_maps.STORE / self.map, self.map))
         if self.failed_gates:
             print("gate findings (reported, not fatal): " + ", ".join(self.failed_gates))
@@ -1715,7 +1715,7 @@ def main():
                         help="finish the map when a pixel gate fails; build.json records "
                              "status gate-failed and the exit status stays nonzero")
     parser.add_argument("--no-publish", action="store_true",
-                        help="do not publish the finished map to run/maps for ./play")
+                        help="do not publish the finished map to run/maps for ./kiln play portal")
     parser.add_argument("--check-toolchain", action="store_true")
     args = parser.parse_args()
     profile, _ = pbrt_map_toolchain.load_profiles()

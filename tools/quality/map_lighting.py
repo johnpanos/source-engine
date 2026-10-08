@@ -18,7 +18,7 @@ no scene it derives one from the BSP's faces, materials and lights
 (`light_baker.py`: lightmap layers, directional page, reflection probes,
 probe volume, radiosity transfer and SDF volume), packs the world mesh and the
 lighting lumps into a BSP2, gates that the map's gameplay lumps are carried
-byte for byte (`gameplay_identity.py`), and publishes it for ./play.
+byte for byte (`gameplay_identity.py`), and publishes it for ./kiln play portal.
 
     python3 tools/quality/map_lighting.py --bsp maps/room.bsp --map room \\
         [--scene room.usda] [--quality source2] [--runtime run/runtime-p2] \\
@@ -112,7 +112,7 @@ def light(bsp, name, out, toolchain, scene=None, quality=None, game=None, runtim
     is a participating medium the lightmap bake's light paths cross, recorded
     in the bake receipt; None bakes without one. Returns the gameplay identity;
     raises SystemExit when a step or the identity gate fails (the input BSP is
-    never written). A published build is playable with ./play (./play_p2)."""
+    never written). A published build is playable with ./kiln play portal <map> (or portal2)."""
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     extra = dict(extra or {})
@@ -145,7 +145,7 @@ def light(bsp, name, out, toolchain, scene=None, quality=None, game=None, runtim
         failure = error
     identity = json.loads(pipeline.paths["identity"].read_text())
     if publish and not failure:
-        print("published; play it with ./play " + name)
+        print("published; play it with ./kiln play portal " + name)
     if failure:
         raise failure
     return identity

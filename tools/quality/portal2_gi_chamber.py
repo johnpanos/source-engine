@@ -34,7 +34,7 @@ Light, in three kinds:
 
     python3 tools/quality/portal2_gi_chamber.py                # build, relight, publish
     python3 tools/quality/portal2_gi_chamber.py --vmf-only     # just write the VMF
-    ./play_p2 +map sp_gi_chamber_01
+    ./kiln play portal2 sp_gi_chamber_01
 
 Coordinates are Source units: x east, y north, z up; the lower floor is z 0.
 """
@@ -587,8 +587,8 @@ def build(out, toolchain_path, runtime, sdk, quality, relight_quality, device=No
           force_from=None, publish=True):
     """The generator front end: write the VMF, compile it (vmf_map_build.py)
     and hand the BSP to the lighting back end (map_lighting.py) with the scene
-    derived from the BSP. A published build is mounted by ./play_p2
-    (stage_portal2_runtime.py --mount-published)."""
+    derived from the BSP. A published build is mounted by ./kiln play portal2
+    (its kiln package's published-maps mount)."""
     import vmf_map_build
 
     out.mkdir(parents=True, exist_ok=True)
