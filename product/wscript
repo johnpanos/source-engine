@@ -3,7 +3,7 @@
 
 # RFC 0027 product pipeline libraries: profiles (schema v2), the extension
 # contracts and the first providers (the Linux toolchains, the Waf engine
-# stage). Host-tool code: built for the tools and tests products only.
+# stage, the 3DS cross toolchain). Host-tool code: built for the tools and tests products only.
 
 def options(opt):
 	return
@@ -17,6 +17,7 @@ def build(bld):
 		('product_profile', 'profile/profile.cpp', 'product.profile', ['foundation_json']),
 		('product_contracts', 'contracts/contracts.cpp', 'product.contracts', ['product_profile', 'foundation_json']),
 		('product_toolchain_linux', 'toolchain/linux.cpp', 'product.toolchain.linux', ['product_contracts']),
+		('product_toolchain_n3ds', 'toolchain/n3ds.cpp', 'product.toolchain.n3ds', ['product_contracts']),
 		('product_stage_waf', 'stage/waf_engine.cpp', 'product.stage.waf', ['product_contracts'])):
 		bld.stlib(env=strict, source=[source], target=target, name=target,
 			arch_module=module, features='cxx', includes=['../public'], use=use,

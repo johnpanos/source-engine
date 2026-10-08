@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Where the 3DS build's heap goes: a census of a guest heap dump.
 
-  heap_census.py <dump> [--base 0x08000000] [--elf build-3ds/launcher_main/hl2_launcher]
+  heap_census.py <dump> [--base 0x08000000] [--elf out/portal2-3ds/dev/launcher_main/hl2_launcher]
 
 The dump is the newlib heap written by the Azahar harness (`dump` or
 `dump_on_stop`, see tools/n3ds/azahar_harness.py --heap-dump). newlib's
@@ -20,7 +20,11 @@ import bisect
 import collections
 import struct
 import subprocess
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import n3ds_tree  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 NM = ROOT / "dependencies/3ds/devkitpro/devkitARM/bin/arm-none-eabi-nm"
@@ -80,7 +84,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("dump", type=Path)
     parser.add_argument("--base", type=lambda v: int(v, 0), default=0x08000000)
-    parser.add_argument("--elf", type=Path, default=ROOT / "build-3ds/launcher_main/hl2_launcher")
+    parser.add_argument("--elf", type=Path, default=n3ds_tree.ELF)
     parser.add_argument("--top", type=int, default=25)
     parser.add_argument("--start", type=lambda v: int(v, 0), default=None,
                         help="offset of the first chunk (default: newlib's __malloc_sbrk_base, "

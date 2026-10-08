@@ -9,6 +9,7 @@
 #include "jobsystem/graph_executor.h"
 #include "product/stage_waf.h"
 #include "product/toolchain_linux.h"
+#include "product/toolchain_n3ds.h"
 
 #include "../../../platform/posix/tool_process_provider.h"
 
@@ -67,6 +68,8 @@ foundation::Expected<product::ProviderCatalog, Error> ComposeDefaultCatalog(
 	if ( auto error = AddTo( catalog, product::CreateLinuxGccToolchain( processes ) ) )
 		return foundation::MakeUnexpected( *error );
 	if ( auto error = AddTo( catalog, product::CreateLinuxClangToolchain( processes ) ) )
+		return foundation::MakeUnexpected( *error );
+	if ( auto error = AddTo( catalog, product::CreateN3dsToolchain( processes ) ) )
 		return foundation::MakeUnexpected( *error );
 	if ( auto error = AddTo( catalog, product::CreateWafEngineStage() ) )
 		return foundation::MakeUnexpected( *error );

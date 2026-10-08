@@ -235,3 +235,44 @@ python3 tools/quality/conformance.py check --suite kiln.l0 --suite kiln.profiles
     --suite kiln.profiles.parity.sensitivity --suite kiln.rebuild.portal2 --suite hammer.adapters.mcp
 python3 -m unittest discover -s tools/archlint/tests
 ```
+
+## The 3DS client on kiln (2026-10-07)
+
+User goal: "hook your build system into kiln" (the RFC 0026 3DS client,
+built until now by an untracked `build-3ds.sh`).
+
+- `product.toolchain.n3ds` (`public/product/toolchain_n3ds.h`,
+  `product/toolchain/n3ds.cpp`): the `n3ds-devkitarm` ITargetToolchain,
+  composed by `kiln.composition`. It extracts devkitPro once from the
+  container image the profile pins by digest
+  (`dependencies.container_image`; a tag alone is refused as
+  `missing-pin`), verifies `toolchain.version` against
+  `arm-none-eabi-g++`, cross-builds each pinned archive of
+  `dependencies.archives` (sha256-checked, CMake with devkitPro's 3DS
+  toolchain file, DESTDIR staging and one rename) under
+  `dependencies/n3ds-devkitarm/<name>-<key>`, the key covering the archive,
+  its options and the toolchain identity, and returns `--n3ds` plus the
+  pkg-config environment. Until kiln.core runs recipe builders these
+  archives are the toolchain's sysroot (agent decision).
+- `waf-engine` now puts the toolchain's `wafOptions` (the cross target)
+  first in the configure arguments and its digest; host toolchains return
+  none, so desktop trees are unchanged.
+- `quality/product_profiles/portal2-3ds.json` (`portal2-3ds`,
+  `portal2@3ds`): the facts `build-3ds.sh` hard-coded, as data.
+- `platform_posix` (loader and process providers) is not declared for the
+  3DS, which has neither; it was the only target failing a full
+  `waf install` of the 3DS tree.
+- The harness reads the tree from one owner, `tools/n3ds/n3ds_tree.py`
+  (`out/portal2-3ds/<flavor>`); `n3ds.py build` runs
+  `./kiln build portal2-3ds`; `package_cia.sh` takes the ELF as its
+  argument.
+
+Evidence: `./kiln doctor portal2-3ds` all present; the first
+`./kiln build portal2-3ds` extracted devkitARM, cross-built SDL3 3.4.16,
+configured and built the tree; the second build was a complete no-op
+(`waf-engine: up to date`); the kiln-built ELF, packaged as the CXI, boots
+`sp_a1_intro4` headless on Azahar (verdict ok, 0 refused draws, 0 corrupted
+textures); `kiln_gate.py parity` 0 failures. Open: an `IPackager` for the
+3DSX/CXI/CIA forms and a transport for Azahar and the console (L1's
+contracts), and the harness's other tools still read the old
+`dependencies/3ds/devkitpro` copy.

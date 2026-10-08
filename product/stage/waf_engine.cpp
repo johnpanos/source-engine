@@ -208,6 +208,10 @@ public:
 		if ( !arguments )
 			return foundation::MakeUnexpected(
 			    ProviderError{ "invalid-request", arguments.Error().Describe() } );
+		// A cross toolchain's own options (the target selection) come first.
+		if ( inputs.Toolchain() )
+			arguments.Value().insert( arguments.Value().begin(),
+			    inputs.Toolchain()->wafOptions.begin(), inputs.Toolchain()->wafOptions.end() );
 
 		const fs::path source = inputs.SourceRoot();
 		const fs::path tree = inputs.TreeRoot();

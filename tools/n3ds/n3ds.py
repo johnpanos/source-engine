@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One entry point for the 3DS build, the Azahar harness and their reports.
 
-  n3ds.py build                         ./build-3ds.sh (errors only)
+  n3ds.py build                         ./kiln build portal2-3ds (errors only)
   n3ds.py run [--map M] [probe args]    fresh boot, judged after the map loads
                                         (tools/n3ds/probe.py); prints the
                                         console after its marker, counters,
@@ -46,6 +46,7 @@ if len(sys.argv) > 2 and sys.argv[1] == "--ns":
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import azahar_harness as harness  # noqa: E402
+import n3ds_tree  # noqa: E402
 
 ROOT = harness.ROOT
 CONSOLE = harness.GAME / "console.log"
@@ -114,9 +115,12 @@ def main():
         return 0
     command, argv = sys.argv[1], sys.argv[2:]
     if command == "build":
-        result = subprocess.run(["./build-3ds.sh"], cwd=ROOT, capture_output=True, text=True)
+        result = subprocess.run(["./kiln", "build", n3ds_tree.PROFILE, "--flavor", n3ds_tree.FLAVOR],
+                                cwd=ROOT, capture_output=True, text=True)
         log_path = ROOT / "build-3ds.build.log"
-        errors = [l for l in log_path.read_text(errors="replace").splitlines() if "error" in l.lower()]
+        log_path.write_text(result.stdout + result.stderr)
+        errors = [l for l in log_path.read_text(errors="replace").splitlines()
+                  if "error" in l.lower() or l.startswith("kiln:")]
         print("\n".join(errors[:20]) if result.returncode else "build ok")
         return result.returncode
     if command == "ns":

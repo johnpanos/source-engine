@@ -147,6 +147,7 @@
     "product_profile": {"dialect": "cxx20", "rfc": "0027"},
     "product_contracts": {"dialect": "cxx20", "rfc": "0027"},
     "product_toolchain_linux": {"dialect": "cxx20", "rfc": "0027"},
+    "product_toolchain_n3ds": {"dialect": "cxx20", "rfc": "0027"},
     "product_stage_waf": {"dialect": "cxx20", "rfc": "0027"},
     "kiln_core": {"dialect": "cxx20", "rfc": "0027"},
     "kiln_composition": {"dialect": "cxx20", "rfc": "0027"},

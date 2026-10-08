@@ -3,7 +3,7 @@
 
   run_azahar.py [--content DIR] [--map NAME] [--args "..."] [--wait SECONDS]
 
-1. 3dsxtool turns build-3ds/launcher_main/hl2_launcher (ELF) into
+1. 3dsxtool turns the kiln tree's hl2_launcher ELF (n3ds_tree.py) into
    build-3ds/Portal2.3dsx with an SMDH title.
 2. The game directory on Azahar's emulated SD card, sdmc:/source-engine, gets
    the content tree (tools/n3ds/stage_3ds_content.py's output: portal2/,
@@ -28,13 +28,14 @@ ROOT = Path(__file__).resolve().parents[2]
 DKP = ROOT / "dependencies/3ds/devkitpro"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import azahar_ns  # noqa: E402
+import n3ds_tree  # noqa: E402
 
 SDMC = azahar_ns.SDMC
 GAME = azahar_ns.GAME
 
 
 def package(build):
-    elf = build / "launcher_main/hl2_launcher"
+    elf = n3ds_tree.ELF
     smdh = build / "Portal2.smdh"
     out = build / "Portal2.3dsx"
     subprocess.run([str(DKP / "tools/bin/smdhtool"), "--create", "Portal 2",

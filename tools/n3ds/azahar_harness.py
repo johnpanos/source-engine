@@ -39,7 +39,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import azahar_ns  # noqa: E402
 
 SOCKET = azahar_ns.SOCKET
-ELF = ROOT / "build-3ds/launcher_main/hl2_launcher"
+import n3ds_tree  # noqa: E402
+ELF = n3ds_tree.ELF
 ADDR2LINE = ROOT / "dependencies/3ds/devkitpro/devkitARM/bin/arm-none-eabi-addr2line"
 GAME = azahar_ns.GAME
 TEXT_START, TEXT_END = 0x00100000, 0x04000000
@@ -224,7 +225,7 @@ def arm_heap_dump(session, path):
 
 def package():
     """The CXI (exheader: New 3DS 178 MB mode); see tools/n3ds/package_cia.sh."""
-    subprocess.run([str(ROOT / "tools/n3ds/package_cia.sh")], check=True, stdout=subprocess.DEVNULL)
+    subprocess.run([str(ROOT / "tools/n3ds/package_cia.sh"), str(ELF)], check=True, stdout=subprocess.DEVNULL)
     return ROOT / "build-3ds/Portal2.cxi"
 
 
