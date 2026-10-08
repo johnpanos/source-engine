@@ -650,14 +650,8 @@
         "paths": [
           "materialsystem/shaderapivulkan/vulkan_device.h",
           "materialsystem/shaderapivulkan/vulkan_device.cpp",
-          "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
           "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
           "materialsystem/shaderapivulkan/vulkan_descriptor_groups.h",
-          "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
-          "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
-          "materialsystem/shaderapivulkan/vulkan_legacy_programs.h",
-          "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
-          "materialsystem/shaderapivulkan/legacy_spv.h",
           "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
           "materialsystem/shaderapivulkan/vulkan_surface_host.h",
           "materialsystem/shaderapivulkan/vulkan_present_mode.h",
@@ -2532,8 +2526,6 @@
             "indirect_sdf_native_conformance",
             "legacy_render_provider_conformance",
             "material_binding_conformance",
-            "material_equivalence_vulkan_conformance",
-            "material_facing_vulkan_conformance",
             "material_pixel_conformance",
             "queued_mesh_contract_vulkan_conformance"
           ]

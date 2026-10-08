@@ -77,12 +77,12 @@ void CheckIndex()
 #undef CHECK_ARRAY
 	Check( arrays == sizeof( g_materialSpvIndex ) / sizeof( g_materialSpvIndex[0] ),
 	    "the index lists every embedded array once" );
-	Check( std::strcmp(
-	           EmbeddedShaderName( SpirvHash( g_modelPbrFragSpv, sizeof( g_modelPbrFragSpv ) ) ),
-	           "model_pbr.frag" ) == 0,
-	    "g_modelPbrFragSpv is named by its source" );
-	std::vector<uint32_t> changed(
-	    g_modelPbrFragSpv, g_modelPbrFragSpv + sizeof( g_modelPbrFragSpv ) / sizeof( uint32_t ) );
+	Check( std::strcmp( EmbeddedShaderName(
+	                        SpirvHash( g_presentGammaFragSpv, sizeof( g_presentGammaFragSpv ) ) ),
+	           "present_gamma.frag" ) == 0,
+	    "g_presentGammaFragSpv is named by its source" );
+	std::vector<uint32_t> changed( g_presentGammaFragSpv,
+	    g_presentGammaFragSpv + sizeof( g_presentGammaFragSpv ) / sizeof( uint32_t ) );
 	changed.back() ^= 1u;
 	Check( EmbeddedShaderName( SpirvHash( changed.data(), changed.size() * 4 ) ) == nullptr,
 	    "control: one changed bit leaves code unnamed" );
@@ -115,38 +115,40 @@ std::vector<uint32_t> ModuleImporting( const char *set )
 
 void CheckLibrary()
 {
-	const uint64_t pbr = SpirvHash( g_modelPbrFragSpv, sizeof( g_modelPbrFragSpv ) );
-	const uint64_t world = SpirvHash( g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) );
+	const uint64_t pbr = SpirvHash( g_presentGammaFragSpv, sizeof( g_presentGammaFragSpv ) );
+	const uint64_t world = SpirvHash( g_depthToAlphaFragSpv, sizeof( g_depthToAlphaFragSpv ) );
 	std::string reason;
 
 	VulkanShaderLibrary empty;
-	const ShaderModuleCode plain = empty.Resolve( g_modelPbrFragSpv, sizeof( g_modelPbrFragSpv ) );
-	Check( plain.code == g_modelPbrFragSpv && plain.sizeBytes == sizeof( g_modelPbrFragSpv ) &&
-	           !plain.debugVariant && plain.name &&
-	           std::strcmp( plain.name, "model_pbr.frag" ) == 0,
+	const ShaderModuleCode plain =
+	    empty.Resolve( g_presentGammaFragSpv, sizeof( g_presentGammaFragSpv ) );
+	Check( plain.code == g_presentGammaFragSpv &&
+	           plain.sizeBytes == sizeof( g_presentGammaFragSpv ) && !plain.debugVariant &&
+	           plain.name && std::strcmp( plain.name, "present_gamma.frag" ) == 0,
 	    "without variants the embedded code resolves to itself, named" );
 
 	VulkanShaderLibrary library;
 	// The variant here is the world shader's code: Resolve must return what
 	// was loaded for the hash, not the embedded words.
-	Check( library.AddDebugVariant(
-	           pbr, Copy( g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) ), false, &reason ),
+	Check( library.AddDebugVariant( pbr,
+	           Copy( g_depthToAlphaFragSpv, sizeof( g_depthToAlphaFragSpv ) ), false, &reason ),
 	    "a well-formed variant for a known hash is taken" );
 	const ShaderModuleCode resolved =
-	    library.Resolve( g_modelPbrFragSpv, sizeof( g_modelPbrFragSpv ) );
-	Check( resolved.debugVariant && resolved.sizeBytes == sizeof( g_worldPbrFragSpv ) &&
-	           std::memcmp( resolved.code, g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) ) == 0,
+	    library.Resolve( g_presentGammaFragSpv, sizeof( g_presentGammaFragSpv ) );
+	Check( resolved.debugVariant && resolved.sizeBytes == sizeof( g_depthToAlphaFragSpv ) &&
+	           std::memcmp(
+	               resolved.code, g_depthToAlphaFragSpv, sizeof( g_depthToAlphaFragSpv ) ) == 0,
 	    "Resolve returns the loaded variant for the embedded code's hash" );
-	Check( resolved.name && std::strcmp( resolved.name, "model_pbr.frag" ) == 0,
+	Check( resolved.name && std::strcmp( resolved.name, "present_gamma.frag" ) == 0,
 	    "the variant keeps the embedded shader's name" );
-	Check( !library.Resolve( g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) ).debugVariant,
+	Check( !library.Resolve( g_depthToAlphaFragSpv, sizeof( g_depthToAlphaFragSpv ) ).debugVariant,
 	    "other embedded code is not substituted" );
 
 	Check( !library.AddDebugVariant( 0x0123456789abcdefull,
-	           Copy( g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) ), false, &reason ) &&
+	           Copy( g_depthToAlphaFragSpv, sizeof( g_depthToAlphaFragSpv ) ), false, &reason ) &&
 	           reason.find( "no embedded shader" ) != std::string::npos,
 	    "a variant for an unknown (stale) hash is rejected" );
-	std::vector<uint32_t> notSpirv = Copy( g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) );
+	std::vector<uint32_t> notSpirv = Copy( g_depthToAlphaFragSpv, sizeof( g_depthToAlphaFragSpv ) );
 	notSpirv[0] = 0xdeadbeefu;
 	Check( !library.AddDebugVariant( world, notSpirv, false, &reason ) && reason == "not SPIR-V",
 	    "a variant without the SPIR-V magic is rejected" );
@@ -180,17 +182,17 @@ void CheckLibrary()
 	};
 	char hex[32];
 	std::snprintf( hex, sizeof( hex ), "%016llx", static_cast<unsigned long long>( pbr ) );
-	write( std::string( "g_modelPbrFragSpv." ) + hex + ".spv", g_worldPbrFragSpv,
-	    sizeof( g_worldPbrFragSpv ) );
-	write( "g_stale.00000000000000aa.spv", g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) );
+	write( std::string( "g_presentGammaFragSpv." ) + hex + ".spv", g_depthToAlphaFragSpv,
+	    sizeof( g_depthToAlphaFragSpv ) );
+	write( "g_stale.00000000000000aa.spv", g_depthToAlphaFragSpv, sizeof( g_depthToAlphaFragSpv ) );
 	std::snprintf( hex, sizeof( hex ), "%016llx", static_cast<unsigned long long>( world ) );
-	write( std::string( "g_partial." ) + hex + ".spv", g_worldPbrFragSpv, 10 );
-	const uint64_t skin = SpirvHash( g_skinFragSpv, sizeof( g_skinFragSpv ) );
+	write( std::string( "g_partial." ) + hex + ".spv", g_depthToAlphaFragSpv, 10 );
+	const uint64_t skin = SpirvHash( g_depthToAlphaMsFragSpv, sizeof( g_depthToAlphaMsFragSpv ) );
 	std::snprintf( hex, sizeof( hex ), "%016llx", static_cast<unsigned long long>( skin ) );
-	write( std::string( "g_skinFragSpv." ) + hex + ".spv", nonSemantic.data(),
+	write( std::string( "g_depthToAlphaMsFragSpv." ) + hex + ".spv", nonSemantic.data(),
 	    nonSemantic.size() * 4 );
 	write( "manifest.json", "{}", 2 );
-	write( "g_upper.00000000000000AA.spv", g_worldPbrFragSpv, sizeof( g_worldPbrFragSpv ) );
+	write( "g_upper.00000000000000AA.spv", g_depthToAlphaFragSpv, sizeof( g_depthToAlphaFragSpv ) );
 	VulkanShaderLibrary scanned;
 	const VulkanShaderLibrary::LoadReport report =
 	    scanned.LoadDebugDirectory( dir.string().c_str(), false );
@@ -203,7 +205,7 @@ void CheckLibrary()
 		           ( line.find( "whole number of words" ) != std::string::npos ) +
 		           ( line.find( "non_semantic" ) != std::string::npos );
 	Check( reasons == 3, "each rejection names its reason" );
-	Check( scanned.Resolve( g_modelPbrFragSpv, sizeof( g_modelPbrFragSpv ) ).debugVariant,
+	Check( scanned.Resolve( g_presentGammaFragSpv, sizeof( g_presentGammaFragSpv ) ).debugVariant,
 	    "the scanned variant substitutes its embedded code" );
 	Check( scanned.LoadDebugDirectory( dir.string().c_str(), true ).loaded == 2,
 	    "a rescan replaces the load; with the extension the NonSemantic file is taken" );

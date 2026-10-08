@@ -8749,14 +8749,10 @@
       "sources": [
         "unittests/shaderapivulkantest/test_gpu_zero_checks.cpp",
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
-        "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
-        "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
-        "materialsystem/shaderapivulkan/vulkan_world_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
-        "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
         "texturecontainer/block_decode.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
@@ -8802,7 +8798,7 @@
       "link_flags": [
         "-lvulkan"
       ],
-      "min_checks": 180,
+      "min_checks": 64,
       "expect": "pass"
     },
     {
@@ -20153,7 +20149,6 @@
         "tools/render/shader_toolchain.py",
         "quality/toolchain/shader-compiler.json",
         "materialsystem/shaderapivulkan/shaders/regen_material_spv.py",
-        "materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py",
         "tools/quality/conformance_result.py",
         "unittests/rendertest/core/device/test_shaders.h",
         "unittests/rendertest/core/device/test_device_vulkan.cpp"
@@ -20188,7 +20183,6 @@
         "tools/render/shader_toolchain.py",
         "quality/toolchain/shader-compiler.json",
         "materialsystem/shaderapivulkan/shaders/regen_material_spv.py",
-        "materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py",
         "tools/quality/conformance_result.py"
       ],
       "expect": "pass"
@@ -20322,7 +20316,7 @@
         "{out}"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 1200,
+      "min_checks": 350,
       "timeout_seconds": 900,
       "requires": [
         "path:dependencies/shader-toolchain/bin/glslc",
@@ -20336,7 +20330,6 @@
         "render/shaders/layouts.json",
         "quality/toolchain/shader-compiler.json",
         "materialsystem/shaderapivulkan/shaders/regen_material_spv.py",
-        "materialsystem/shaderapivulkan/shaders/regen_legacy_spv.py",
         "tools/quality/conformance_result.py"
       ],
       "expect": "pass"

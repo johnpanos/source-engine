@@ -1,16 +1,13 @@
 # ==== Copyright Valve Corporation, All rights reserved. ======================
-"""Source guards for the native PBR stages (RFC 0007 R47 / RFC 0001 R29).
+"""Source guard for the PBR stages (RFC 0007 R47).
 
-* The BRDF has one GLSL copy, render/shaders/common/pbr_brdf.glsl, which
-  every PBR stage and the render.material `pbr` family include (directly or
-  through world_pbr_probe.glsl); no stage defines its own GGX, Smith or
-  Schlick. Includes resolve against the including file, as glslc's do. The render.pbr-brdf.glsl GPU suite compares that
-  copy with public/render/pbr_brdf.h.
-* The PBR and GI stages bind their descriptors grouped by update frequency
-  (vulkan_descriptor_groups.h): no set above 2, so they fit the four sets
-  every Vulkan device binds.
+The BRDF has one GLSL copy, render/shaders/common/pbr_brdf.glsl, which the
+render.material surface program includes; no stage defines its own GGX, Smith
+or Schlick. Includes resolve against the including file, as glslc's do. The
+render.pbr-brdf.glsl GPU suite compares that copy with public/render/pbr_brdf.h.
+(The native backend's PBR stages were deleted with its draw path, RFC 0016 K9.)
 
-The negative cases feed each check a stage that breaks it.
+The negative cases feed the check a stage that breaks it.
 """
 
 import pathlib
@@ -19,15 +16,8 @@ import re
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-SHADERS = "materialsystem/shaderapivulkan/shaders/"
 LIBRARY = "pbr_brdf.glsl"  # its file name; render/shaders/common/ holds it
-PBR_STAGES = tuple(SHADERS + name for name in (
-    "pbr_direct.frag", "world_pbr.frag", "world_pbr_glass.frag", "model_pbr.frag")) + (
-    "render/material/families/surface.frag",)
-# Grouped stages: frame (0), material (1), constants (2).
-GROUPED_STAGES = tuple(SHADERS + name for name in (
-    "world_pbr.frag", "world_pbr_glass.frag", "model_pbr.frag"))
-MAX_SET = 2
+PBR_STAGES = ("render/material/families/surface.frag",)
 # A BRDF term defined outside the library: a GGX denominator, or a function
 # whose name says it is one.
 BRDF_DEFINITION = re.compile(
@@ -35,7 +25,6 @@ BRDF_DEFINITION = re.compile(
     r"^\s*(?:float|vec3)\s+\w*(?:Ggx|GGX|Smith|Schlick|Fresnel)\w*\s*\(",
     re.MULTILINE)
 INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"', re.MULTILINE)
-SET = re.compile(r"layout\(\s*set\s*=\s*(\d+)")
 
 
 def is_library(name):
@@ -65,16 +54,6 @@ def library_problems(stages, read):
     return problems
 
 
-def set_problems(stages, read):
-    problems = []
-    for stage in stages:
-        for name in [stage, *sorted(includes(stage, read))]:
-            for number in SET.findall(read(name)):
-                if int(number) > MAX_SET:
-                    problems.append("%s (for %s) binds set %s" % (name, stage, number))
-    return problems
-
-
 def read_shader(name):
     return (ROOT / name).read_text()
 
@@ -82,9 +61,6 @@ def read_shader(name):
 class PbrShaderLibraryTest(unittest.TestCase):
     def test_every_stage_uses_the_one_brdf(self):
         self.assertEqual(library_problems(PBR_STAGES, read_shader), [])
-
-    def test_grouped_stages_fit_four_sets(self):
-        self.assertEqual(set_problems(GROUPED_STAGES, read_shader), [])
 
     def test_a_private_ggx_is_rejected(self):
         files = {
@@ -106,13 +82,6 @@ class PbrShaderLibraryTest(unittest.TestCase):
         files = {"stage.frag": "void main() {}\n"}
         self.assertEqual(library_problems(("stage.frag",), files.__getitem__),
                          ["stage.frag does not include pbr_brdf.glsl"])
-
-    def test_an_ungrouped_set_is_rejected(self):
-        files = {"stage.frag": '#include "volume.glsl"\n'
-                               "layout( set = 1, binding = 0 ) uniform sampler2D a;\n",
-                 "volume.glsl": "layout( set = 8, binding = 0 ) uniform sampler2D b;\n"}
-        self.assertEqual(set_problems(("stage.frag",), files.__getitem__),
-                         ["volume.glsl (for stage.frag) binds set 8"])
 
 
 if __name__ == "__main__":

@@ -46,8 +46,8 @@ index: keys, files, sha256, reflected bindings, GL slots, specialization
 constants), and fails (exit 1) on any layout or compile failure; the Waf task
 (render/shaders/wscript) runs it, so products build artifacts at build time.
 With --headers DIR it also writes every generated header into DIR
-(shader_toolchain.GENERATED_NAMES): material_spv.h, material_spv_index.h and
-legacy_spv.h from the SPIR-V artifacts with the regenerators' own writers,
+(shader_toolchain.GENERATED_NAMES): material_spv.h and material_spv_index.h
+from the SPIR-V artifacts with the regenerator's own writers,
 the GENERATED headers from their rows. None is committed (RFC 0016 K4):
 consumers include "spv/<name>" from the build's generated directory.
 `headers --out DIR` writes the same headers without the GLSL 4.50 targets
@@ -97,7 +97,6 @@ import shader_toolchain as st  # noqa: E402
 from conformance_result import Checks  # noqa: E402
 
 SHADERS = "materialsystem/shaderapivulkan/shaders"
-LEGACY = SHADERS + "/legacy"
 BACKEND = "materialsystem/shaderapivulkan"
 LAYOUTS = ROOT / "render" / "shaders" / "layouts.json"
 LAYOUT_SCHEMA = "render-shader-layouts/v1"
@@ -178,8 +177,7 @@ def regenerators(root=ROOT):
     """The regenerators own the unit lists and header layouts until the
     switch-over; this tool reads their tables instead of copying them."""
     base = Path(root) / SHADERS
-    return (load_module("regen_material_spv", base / "regen_material_spv.py"),
-            load_module("regen_legacy_spv", base / "regen_legacy_spv.py"))
+    return load_module("regen_material_spv", base / "regen_material_spv.py")
 
 
 # ---------------------------------------------------------------------------
@@ -206,15 +204,9 @@ class Unit:
 
 
 def inventory(root=ROOT):
-    material, legacy = regenerators(root)
+    material = regenerators(root)
     units = [Unit(name, SHADERS + "/" + source, ["-O"], extra, "material")
              for name, source, extra in material.SHADERS]
-    legacy_dir = Path(root) / LEGACY
-    for path in sorted(list(legacy_dir.glob("*.vert")) + list(legacy_dir.glob("*.frag")),
-                       key=lambda p: p.name):
-        units.append(Unit(legacy.array_name(path.stem, path.suffix[1:]),
-                          LEGACY + "/" + path.name, ["-O", "-Werror", "-I", LEGACY], [],
-                          "legacy"))
     # The backend's file-static generated arrays (demo_triangle_spv.h) and the
     # material families' programs (families_spv.h, RFC 0016 K4), whose
     # layouts.json family entries the bind-group ceiling judges.
@@ -1375,10 +1367,9 @@ def build_artifacts(checks, units, layouts, out=None, root=ROOT):
 def headers_from_artifacts(units, words, root=ROOT):
     """{header file name: text} written by the regenerators' own writers, fed
     the artifact SPIR-V instead of compiling."""
-    material, legacy = regenerators(root)
+    material = regenerators(root)
     by_material = {(u.source[len(SHADERS) + 1:], tuple(u.extra)): words.get(u.name)
                    for u in units if u.header == "material"}
-    by_legacy = {Path(u.source).name: words.get(u.name) for u in units if u.header == "legacy"}
 
     def material_words(source, extra):
         found = by_material.get((source, tuple(extra)))
@@ -1386,17 +1377,9 @@ def headers_from_artifacts(units, words, root=ROOT):
             raise ArtifactError("no artifact for %s %s" % (source, " ".join(extra)))
         return found
 
-    def legacy_words(source):
-        found = by_legacy.get(Path(source).name)
-        if found is None:
-            raise ArtifactError("no artifact for legacy/%s" % Path(source).name)
-        return found
-
     material.compile_words = material_words
-    legacy.compile_words = legacy_words
     material_text, index_text = material.render()
-    return {"material_spv.h": material_text, "material_spv_index.h": index_text,
-            "legacy_spv.h": legacy.render()}
+    return {"material_spv.h": material_text, "material_spv_index.h": index_text}
 
 
 def first_difference(actual, expected):
@@ -1668,7 +1651,7 @@ def check_headers(checks, units, words, generated_dir, root=ROOT):
                      "%s --check exited %d: %s" % (Path(script).name, result.returncode,
                                                    " | ".join(detail[-3:])))
     for unit in units:
-        if unit.header in ("material", "legacy"):
+        if unit.header == "material":
             continue
         path = generated_dir / unit.header
         arrays = st.embedded_arrays(path.read_text()) if path.is_file() else {}
@@ -1701,13 +1684,11 @@ def seed_generated(generated_dir, units):
     """One word of one array changed in each backend header written in
     generated_dir; returns the checks that must fail."""
     expected = set()
-    for header in ["material_spv.h", "legacy_spv.h"] + sorted(
-            {u.header for u in units if u.header not in ("material", "legacy")}):
+    for header in ["material_spv.h"] + sorted(
+            {u.header for u in units if u.header != "material"}):
         array, _ = st.flip_one_byte(Path(generated_dir) / header)
         if header == "material_spv.h":
             expected.add("headers.material.regenerator-agrees")
-        elif header == "legacy_spv.h":
-            expected.add("headers.legacy.regenerator-agrees")
         else:
             expected.add("headers.%s:%s.identical" % (header, array))
     return expected

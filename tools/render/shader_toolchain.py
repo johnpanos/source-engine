@@ -106,14 +106,13 @@ LIGHTS_TESTS = "unittests/rendertest/core/pass/lights"
 SHADOWS_TESTS = "unittests/rendertest/core/pass/shadows"
 
 # The regenerators: the independent writers of the backend's generated
-# headers (material_spv.h, material_spv_index.h, legacy_spv.h). The build
+# headers (material_spv.h, material_spv_index.h). The build
 # writes those headers from the artifacts (tools/render/shader_artifacts.py
 # headers); the checks run each regenerator with --check --compare-dir against
 # the build's copies.
 REGENERATORS = (
     ("material", SHADERS + "/regen_material_spv.py",
      ("material_spv.h", "material_spv_index.h")),
-    ("legacy", SHADERS + "/regen_legacy_spv.py", ("legacy_spv.h",)),
 )
 
 DEVICE_OPTIONS = ("--target-env=vulkan1.1", "-O")
@@ -147,20 +146,6 @@ EMBEDDED = (
 # include "spv/<name>"). name: (namespace, or None for the backend's
 # file-static arrays, purpose, ((array, GLSL source, glslc options), ...)).
 GENERATED = {
-    "demo_triangle_spv.h": (None,
-        "the native Vulkan bring-up demo pipelines and the dynamic-mesh material "
-        "catalog (demo_dyn.vert with demo_triangle.frag, demo_greenify.frag and "
-        "demo_constcolor.frag)", (
-        ("g_demoTriangleVertSpv", SHADERS + "/demo_triangle.vert", ()),
-        ("g_demoTriangleFragSpv", SHADERS + "/demo_triangle.frag", ()),
-        ("g_demoTexQuadVertSpv", SHADERS + "/demo_texquad.vert", ()),
-        ("g_demoTexQuadFragSpv", SHADERS + "/demo_texquad.frag", ()),
-        ("g_demoIndexedUboVertSpv", SHADERS + "/demo_indexed_ubo.vert", ()),
-        ("g_demoIndexedUboFragSpv", SHADERS + "/demo_indexed_ubo.frag", ()),
-        ("g_demoDepthVertSpv", SHADERS + "/demo_depth.vert", ()),
-        ("g_demoGreenifyFragSpv", SHADERS + "/demo_greenify.frag", ()),
-        ("g_demoConstColorFragSpv", SHADERS + "/demo_constcolor.frag", ()),
-        ("g_demoDynVertSpv", SHADERS + "/demo_dyn.vert", ()))),
     "skin_spv.h": ("render::pass::skinning::spirv", "the skinning compute pass (RFC 0016 K6)", (
         ("kSkinCompute", SKINNING + "/skin.comp", DEVICE_OPTIONS),)),
     "cull_spv.h": ("render::culling::spirv",

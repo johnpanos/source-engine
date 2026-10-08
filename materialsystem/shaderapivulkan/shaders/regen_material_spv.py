@@ -44,38 +44,6 @@ OUTPUT = "material_spv.h"
 INDEX_OUTPUT = "material_spv_index.h"
 # (array name, source, extra glslc arguments)
 SHADERS = (
-    ("g_materialTexVertSpv", "demo_dyn_tex.vert", []),
-    ("g_materialTexClipVertSpv", "demo_dyn_tex.vert", ["-DCLIP_PLANES"]),
-    ("g_worldMeshVertSpv", "world_mesh.vert", []),
-    ("g_worldMeshClipVertSpv", "world_mesh.vert", ["-DCLIP_PLANES"]),
-    ("g_worldPbrVertSpv", "world_pbr.vert", []),
-    ("g_worldPbrClipVertSpv", "world_pbr.vert", ["-DCLIP_PLANES"]),
-    ("g_worldPbrFragSpv", "world_pbr.frag", []),
-    ("g_worldPbrClipFragSpv", "world_pbr.frag", ["-DCLIP_PLANES"]),
-    ("g_worldPbrIndirectFragSpv", "world_pbr.frag", ["-DINDIRECT_VIEW"]),
-    # RFC 0011 G2: the frame's unbaked lights (set 7).
-    ("g_worldPbrLightFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS"]),
-    ("g_worldPbrLightClipFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS", "-DCLIP_PLANES"]),
-    # RFC 0011 G2: the RuntimeIndirect policy (set 8), with and without lights.
-    ("g_worldPbrRuntimeFragSpv", "world_pbr.frag", ["-DRUNTIME_INDIRECT"]),
-    ("g_worldPbrRuntimeClipFragSpv", "world_pbr.frag", ["-DRUNTIME_INDIRECT", "-DCLIP_PLANES"]),
-    ("g_worldPbrLightRuntimeFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS",
-                                                          "-DRUNTIME_INDIRECT"]),
-    ("g_worldPbrLightRuntimeClipFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS",
-                                                              "-DRUNTIME_INDIRECT",
-                                                              "-DCLIP_PLANES"]),
-    ("g_worldPbrIndirectClipFragSpv", "world_pbr.frag", ["-DINDIRECT_VIEW", "-DCLIP_PLANES"]),
-    # RFC 0011 G4: BakedPlusDelta, the producer's change volume (sets 8 and 9),
-    # with and without lights, and in the indirect-light view.
-    ("g_worldPbrDeltaFragSpv", "world_pbr.frag", ["-DDELTA_VOLUME"]),
-    ("g_worldPbrDeltaClipFragSpv", "world_pbr.frag", ["-DDELTA_VOLUME", "-DCLIP_PLANES"]),
-    ("g_worldPbrLightDeltaFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS", "-DDELTA_VOLUME"]),
-    ("g_worldPbrLightDeltaClipFragSpv", "world_pbr.frag", ["-DDIRECT_LIGHTS", "-DDELTA_VOLUME",
-                                                            "-DCLIP_PLANES"]),
-    ("g_worldPbrIndirectDeltaFragSpv", "world_pbr.frag", ["-DINDIRECT_VIEW", "-DDELTA_VOLUME"]),
-    ("g_worldPbrIndirectDeltaClipFragSpv", "world_pbr.frag", ["-DINDIRECT_VIEW",
-                                                               "-DDELTA_VOLUME",
-                                                               "-DCLIP_PLANES"]),
     # RFC 0011 G5: the compute conformance suite's program.
     ("g_computeFillSpv", "compute_fill.comp", []),
     # RFC 0011 G7: the probe update traced with ray queries (SPIR-V 1.5), from
@@ -83,34 +51,6 @@ SHADERS = (
     # variant on the core since RFC 0016 K12).
     ("g_rayQueryProbeTraceSpv", "../../../render/pass/indirect/sdf_probe_trace.comp",
      ["--target-env=vulkan1.2", "-DRAY_QUERY"]),
-    ("g_worldGlassFragSpv", "world_pbr_glass.frag", []),
-    ("g_worldGlassClipFragSpv", "world_pbr_glass.frag", ["-DCLIP_PLANES"]),
-    ("g_materialTexFragSpv", "demo_dyn_tex.frag", []),
-    ("g_portalRefractVertSpv", "portal_refract.vert", []),
-    ("g_portalRefractFragSpv", "portal_refract.frag", []),
-    ("g_skinVertSpv", "skin.vert", []),
-    ("g_skinFragSpv", "skin.frag", []),
-    # LightmappedGeneric / WorldVertexTransition (lightmappedgeneric_vs20 / _ps2_3_x).
-    ("g_lightmappedVertSpv", "lightmapped.vert", []),
-    ("g_lightmappedFragSpv", "lightmapped.frag", []),
-    # The bloom and color-correction passes (Downsample_nohdr, BlurFilter, Engine_Post).
-    ("g_postVertSpv", "screenspace_post.vert", []),
-    ("g_postFragSpv", "screenspace_post.frag", []),
-    ("g_solidEnergyVertSpv", "solidenergy.vert", []),
-    ("g_solidEnergyFragSpv", "solidenergy.frag", []),
-    # Portal 2 paint blobs (paintblob_ps20b), after skin.vert.
-    ("g_paintBlobFragSpv", "paintblob.frag", []),
-    # Portal 2 paint on world surfaces (lightmappedpaint_ps20b), after lightmapped.vert.
-    ("g_lightmappedPaintFragSpv", "lightmappedpaint.frag", []),
-    ("g_modelPbrFragSpv", "model_pbr.frag", []),
-    ("g_modelPbrEnvFragSpv", "model_pbr.frag", ["-DENV_CUBE"]),
-    ("g_modelPbrIndirectFragSpv", "model_pbr.frag", ["-DINDIRECT_VIEW"]),
-    # RFC 0011: the map's probe volume sampled per pixel (sets 7 and 8).
-    ("g_modelPbrProbeFragSpv", "model_pbr.frag", ["-DPROBE_VOLUME"]),
-    ("g_modelPbrEnvProbeFragSpv", "model_pbr.frag", ["-DENV_CUBE", "-DPROBE_VOLUME"]),
-    ("g_modelPbrIndirectProbeFragSpv", "model_pbr.frag", ["-DINDIRECT_VIEW", "-DPROBE_VOLUME"]),
-    ("g_pbrDirectFragSpv", "pbr_direct.frag", []),
-    ("g_pbrDirectClipFragSpv", "pbr_direct.frag", ["-DCLIP_PLANES"]),
     # render.pbr-brdf.glsl: pbr_brdf.glsl evaluated beside public/render/pbr_brdf.h.
     ("g_pbrBrdfCheckSpv", "pbr_brdf_check.comp", []),
     ("g_presentGammaVertSpv", "present_gamma.vert", []),
@@ -122,16 +62,9 @@ SHADERS = (
 
 HEADER = """//========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Embedded SPIR-V of the native material shaders: the textured stages
-//          (with and without D3D9 user clip planes), PortalRefract (a port of
-//          portal_refract_vs20.fxc / portal_refract_ps2x.fxc) and VertexLitGeneric's
-//          $phong path (skin_vs20.fxc / skin_ps20b.fxc), SolidEnergy
-//          (solidenergy_vs20.fxc / solidenergy_ps20b.fxc), paint blobs
-//          (paintblob_ps20b.fxc), paint on world surfaces
-//          (lightmappedpaint_ps2x.fxc), PBRMetalRough on
-//          models (model_pbr.frag, both probe sources), and the RFC 0007
-//          synthetic PBR direct-light pixel stage, the WMSH PBR and glass
-//          stages, and the present-time monitor gamma pass. GENERATED
+// Purpose: Embedded SPIR-V of the native backend's remaining programs: the
+//          present-time monitor gamma pass, the soft-particle depth-to-alpha
+//          copy, and the compute suites' programs. GENERATED
 //          by shaders/regen_material_spv.py from the GLSL in shaders/; do not edit.
 //
 //===========================================================================//

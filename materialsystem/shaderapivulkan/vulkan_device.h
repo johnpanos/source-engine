@@ -37,7 +37,6 @@
 #include "vulkan_descriptor_groups.h"
 #include "vulkan_frame_stats.h"
 #include "vulkan_shader_library.h"
-#include "vulkan_legacy_programs.h"
 #include "vulkan_surface_host.h"
 #include "../../render/device/vulkan/host_device.h"
 #include "render/device/completion.h"
@@ -169,8 +168,6 @@ public:
 	// SetWorldLightmapHandle( -1 ) releases every layer.
 	void SetWorldLightmapHandles( int total, int direct, int indirect );
 	int WorldLightmapTotalHandle() const { return m_worldLightmapHandle; }
-	int WorldLightmapIndirectHandle() const { return m_worldLightmapIndirectHandle; }
-	int WorldLightmapDirectHandle() const { return m_worldLightmapDirectHandle; }
 	// The map's RFC 0011 PRBV probe volume: its RGBA16F atlas and the RGBA32F
 	// grid table (mapcontainer::WriteProbeGridTable), -1 when the map carries
 	// none. Replacing or releasing (-1, -1, 0) destroys the previous images
@@ -179,7 +176,6 @@ public:
 	// RFC 0011 G9: the map's SDF shadow field (handle -1: none; the old one
 	// is destroyed behind the frames that may read it).
 	void SetShadowField( int handle, const float origin[3], float voxel, const uint32_t dims[3] );
-	bool ShadowFieldResident() const { return m_shadowFieldHandle >= 0; }
 	// R50-PARALLAX: the map's RPRB (v8) reflection probes: `blocks` are the
 	// BC6H radiance cube array as the lump stores it (mip-major, then probe,
 	// then face; `count` cubes of `faceSize` and `mips` levels) and `words` the
@@ -192,13 +188,6 @@ public:
 	bool SetReflectionProbes( const uint32_t *words, uint32_t wordCount, uint32_t count,
 	    uint32_t faceSize, uint32_t mips, const uint8_t *blocks, std::string *outError = nullptr );
 	void SetReflectionProbeMode( int mode );
-	int ReflectionProbeHandle() const { return m_reflectionProbeHandle; }
-	// The frame set's reflection images: the probes' cube array and table, or
-	// neutral ones (a count of 0) without them.
-	CGroupedDescriptors::Image ReflectionCubesImage() const;
-	CGroupedDescriptors::Image ReflectionTableImage() const;
-	CGroupedDescriptors::Image ReflectionNeutralCubesImage() const;
-	CGroupedDescriptors::Image ReflectionNeutralTableImage() const;
 	bool ProbeVolumeResident() const { return m_probeAtlasHandle >= 0 && m_probeGridCount > 0; }
 	int ProbeAtlasHandle() const { return m_probeAtlasHandle; }
 	int ProbeDeltaHandle() const { return m_probeDeltaHandle; }
@@ -215,11 +204,6 @@ public:
 	// behind it (Compute().Retire), collected with the managed textures.
 	const ComputeCaps &ComputeCapabilities() const { return m_computeCaps; }
 	ComputeResources &Compute() { return m_compute; }
-	void QueueComputeWork( std::function<void( VkCommandBuffer, uint64_t )> work )
-	{
-		m_computeWork.push_back( std::move( work ) );
-	}
-	uint64_t NextSubmitSerial() const { return m_submitSerial + 1; }
 	// Compute whose results the CPU reads back (render/gpu_compute.h, RFC 0011
 	// G6): `flush` records it at the end of each frame's command buffer, after
 	// every render pass, stamped with that frame's serial (valid once
@@ -229,21 +213,10 @@ public:
 		m_computeFlush = std::move( flush );
 	}
 	uint64_t CompletedFrameSerial() const { return m_completedSerial; }
-	bool ProbeDeltaResident() const { return m_probeDeltaHandle >= 0 && ProbeVolumeResident(); }
 	// Whether PBRMetalRough models can sample the volume per pixel (their
 	// probe-volume variants were built).
 	bool ProbeVolumeSamplingSupported() const { return m_pbrModelFrag[3] != VK_NULL_HANDLE; }
-	// The descriptor sets a pipeline layout may use: the device's
-	// maxBoundDescriptorSets, or VulkanContextConfig::descriptorSetLimit when
-	// lower. Every PBR and GI layout uses at most kPbrDescriptorSets.
-	uint32_t DescriptorSetLimit() const { return m_descriptorSetLimit; }
 	static constexpr uint32_t kPbrDescriptorSets = 3;
-	// The largest set count of any PBR or GI pipeline layout created so far
-	// (world, glass, model, and their GI variants).
-	uint32_t PbrDescriptorSetsUsed() const { return m_pbrDescriptorSetsUsed; }
-	// The grouped frame/material sets (vulkan_descriptor_groups.h): written
-	// and reused counts, for the suites.
-	const CGroupedDescriptors &GroupedDescriptors() const { return m_groupedDescriptors; }
 	// RFC 0011 G2: the frame's unbaked lights (dynamic and entity lights from
 	// the engine's light set, render/light_set.h) that WMSH PBR adds as direct
 	// light, through the legacy dlight falloff times the Lambert cosine. At most
@@ -264,25 +237,6 @@ public:
 	};
 	static constexpr uint32_t kMaxDirectLights = 7;
 	void SetDirectLights( const DirectLight *lights, uint32_t count );
-	uint32_t DirectLightCount() const { return m_directLightCount; }
-	// Whether WMSH PBR can add direct lights and run the RuntimeIndirect
-	// policy: the per-frame constants ring exists and the variants were built
-	// (m_worldPbrExtendedLayout).
-	bool DirectLightsSupported() const { return m_worldPbrExtendedLayout != VK_NULL_HANDLE; }
-	// Whether WMSH PBR can run the BakedPlusDelta policy (its variants were built).
-	bool BakedPlusDeltaSupported() const { return m_worldPbrDeltaLayout != VK_NULL_HANDLE; }
-	// RFC 0011 render.indirect-policy.v1 for the world (indirect_policy.h):
-	// -1 the producer's (BakedPlusDelta while a change volume is resident,
-	// else Baked), 0 Baked, 1 BakedPlusDelta, 2 RuntimeIndirect.
-	// RuntimeIndirect takes effect only while the map's LMAP carries direct and
-	// indirect layers; the world then reads the direct layer plus the
-	// producer's indirect atlas (the baked producer's: the LMAP indirect
-	// layer). BakedPlusDelta reads the total layer plus the change volume while
-	// one is resident. `seedDoubleCount` is the sensitivity control: the
-	// RuntimeIndirect variant reads the total layer. Read when a frame is
-	// recorded.
-	void SetIndirectPolicy( int policy, bool seedDoubleCount );
-	int EffectiveIndirectPolicy() const;
 	// Per-pixel probe sampling: 0 off (models use their ambient cube), 1 with
 	// the visibility test, 2 without it. Read when a frame is recorded.
 	void SetProbeVolumeSampling( int mode ) { m_probeSampling = mode < 0 || mode > 2 ? 0 : mode; }
@@ -369,25 +323,6 @@ public:
 		return m_corePassRecorder && m_corePassRecorder->AcceptsMeshes();
 	}
 
-	// Retained custom portal effects (R91, user decision 2026-10-02).
-	// Stage 1's aperture is owned by the core depth/stencil program.
-	bool RetainsPortalEffect( int stage ) const
-	{
-		return m_queueCustomEffects && ( stage == 0 || stage == 2 );
-	}
-
-	bool RetainsSolidEnergy() const { return m_queueCustomEffects; }
-	// Non-writing visibility producers survive core-only conversion/replay;
-	// luminance inputs require their separate framebuffer-copy producer.
-	bool RetainsQueryInput() const;
-
-	bool CoreOnlyQueue() const
-	{
-		return m_queueCoreOnly && !m_queueLegacyHud && !m_dynFramePresented;
-	}
-	// Slots whose sections this context ran, and the frames that had one.
-	uint64_t CorePassesRun() const { return m_corePassesRun; }
-
 	// The color the next frame's render pass clears to (linear RGBA, 0..1).
 	void SetClearColor( float r, float g, float b, float a );
 
@@ -434,26 +369,6 @@ public:
 	{
 		kDynVertexFloats = 22
 	};
-	// `normalTangent`, when given, holds each vertex's normal (3) and tangent
-	// (4, TANGENT/USERDATA with the binormal sign in w), 7 floats per vertex; it
-	// follows the lightmap coordinates in the record (zeros otherwise).
-	// `vertexAlpha`, when given, holds each vertex color's alpha, 1 float per
-	// vertex; it ends the record (1, opaque, otherwise).
-	void QueueDynamicTriangles( const float *posColorUvInterleaved, uint32_t vertexCount,
-	    const float *lightmapUv = nullptr, const float *normalTangent = nullptr,
-	    const float *vertexAlpha = nullptr );
-	// The same draw written in place: record a draw with the current state and
-	// reserve room for up to `maxVertices` kDynVertexFloats-wide records in the
-	// frame's stream; the caller fills them and ends the draw with the count it
-	// wrote (0 withdraws the draw). The pointer is valid until the next call
-	// that queues geometry. This avoids building the vertices in caller buffers
-	// only to copy them here.
-	// A draw may also be indexed: `maxIndices` > 0 reserves an index list,
-	// relative to the draw's first vertex, returned through *outIndices; the
-	// draw then renders the index count EndDynamicDraw is given.
-	float *BeginDynamicDraw(
-	    uint32_t maxVertices, uint32_t maxIndices = 0, uint32_t **outIndices = nullptr );
-	void EndDynamicDraw( uint32_t vertexCount, uint32_t indexCount = 0 );
 	// Record a draw with the current state over geometry an earlier draw of the
 	// same stream already queued (its vertex and index ranges, as a DrawRange
 	// read back after its EndDynamicDraw). Nothing is added to the stream.
@@ -464,9 +379,6 @@ public:
 		uint32_t firstIndex;
 		uint32_t indexCount;
 	};
-	// Changes whenever the stream is discarded; a DrawRange is valid only while
-	// the epoch it was read in lasts.
-	uint64_t StreamEpoch() const { return m_streamEpoch; }
 	// Discard the accumulated frame geometry. Called at frame start (ClearBuffers)
 	// rather than after Present, so the last frame's geometry stays available for
 	// an on-demand screenshot capture (ReadPixels).
@@ -484,7 +396,6 @@ public:
 		m_queueLegacyHud = false;
 		m_frameLabels.clear();
 		m_dynSkinConstants.clear();
-		m_dynLegacyConstants.clear();
 		m_dynFramePresented = false;
 		m_sceneCaptureCurrent = false;
 		m_sceneCapturesQueued = 0;
@@ -531,10 +442,7 @@ public:
 		// blobulator's isosurface, on the skin pipeline's layout and vertex
 		// stage (its constants arrive through SetDynamicSkinConstants); see
 		// shaders/paintblob.frag.
-		kDynShaderPaintBlob = 14,
-		// A legacy shader port (vulkan_legacy_programs.h): its program and
-		// constants arrive through SetDynamicLegacy.
-		kDynShaderLegacy = 15
+		kDynShaderPaintBlob = 14
 	};
 	// paintblob.frag's combo flags (SkinConstants::combos, c27.x of
 	// paintblob_helper.cpp); the draw clears kPaintBlobEnvMap when the bound
@@ -580,29 +488,11 @@ public:
 		kPostBlur = 2,
 		kPostEnginePost = 3
 	};
-	// False when the device cannot bind lightmapped.frag's two descriptor sets
-	// (the grouped texture set and the constants) or the skin push block;
-	// LightmappedGeneric then keeps the textured pipeline's flat-lightmap
-	// approximation.
-	bool LightmappedPipelineSupported() const { return m_lightmappedVert != VK_NULL_HANDLE; }
-	bool LightmappedPaintPipelineSupported() const
-	{
-		return m_lightmappedVert != VK_NULL_HANDLE && m_lightmappedPaintFrag != VK_NULL_HANDLE;
-	}
 	// False without the skin layout or a volume texture fallback; the post
 	// passes are then declined.
 	bool PostPipelineSupported() const
 	{
 		return m_postVert != VK_NULL_HANDLE && m_whiteVolumeHandle >= 0;
-	}
-	// False when the device cannot bind the legacy ports' nine descriptor sets or
-	// the skin push block; their passes are then declined.
-	bool LegacyPipelineSupported() const { return m_legacyPipelineLayout != VK_NULL_HANDLE; }
-	// The legacy port and constants of the draws queued next (kDynShaderLegacy).
-	void SetDynamicLegacy( int program, const LegacyConstants &constants )
-	{
-		m_dynLegacyProgram = program;
-		m_dynLegacy = constants;
 	}
 	// The textured pipeline's alternative pixel stages (alphaParams.y), per draw:
 	// 0 the material shader the flags describe, 2 shadow_ps2x's projected
@@ -615,8 +505,6 @@ public:
 		kTexturedModeShadow = 2,
 		kTexturedModeSpriteCard = 3
 	};
-	void SelectDynamicTexturedMode( int mode ) { m_dynTexturedMode = mode; }
-	void SelectDynamicShader( int shaderIndex ) { m_dynShaderIndex = shaderIndex; }
 	// Output-merger state of the queued geometry, in the terms of the D3D9 state a
 	// material's IShaderShadow selects: blend factors (applied to color and alpha
 	// alike, as D3D9 does without separate alpha blending) and the depth test,
@@ -668,39 +556,9 @@ public:
 		// devices with fillModeNonSolid (WireframeSupported).
 		bool wireframe = false;
 	};
-	void SelectDynamicRasterState( const DynRasterState &state ) { m_dynRaster = state; }
-	// Whether the device rasterizes polygons as lines (fillModeNonSolid).
-	bool WireframeSupported() const { return m_fillModeNonSolid; }
-	void SetDynamicDepthBias( float constantFactor, float slopeFactor )
-	{
-		m_dynDepthBiasConstant = constantFactor;
-		m_dynDepthBiasSlope = slopeFactor;
-	}
+
 	float DynamicDepthBiasConstant() const { return m_dynDepthBiasConstant; }
 	float DynamicDepthBiasSlope() const { return m_dynDepthBiasSlope; }
-	// D3D9 supplies a normalized bias; Vulkan's constant factor is in depth
-	// buffer units. The D32 float scale is approximate near depth 0.5.
-	float DepthBiasUnitScale() const
-	{
-		return m_depthFormat == VK_FORMAT_D32_SFLOAT_S8_UINT ? 8388608.0f : 16777216.0f;
-	}
-	// Distinct states have distinct keys.
-	static uint64_t RasterStateKey( const DynRasterState &state );
-	// Its inverse: the state a key was made from (fields a disabled stencil test
-	// ignores come back as their defaults).
-	static DynRasterState RasterStateFromKey( uint64_t key );
-	// $alphatest: fragments whose alpha is below `ref` are discarded (matching the
-	// D3D9 fixed-function GREATEREQUAL alpha test, or GREATER with
-	// kFragmentAlphaGreater). A negative `ref` disables it.
-	void SelectDynamicAlphaTest( float ref ) { m_dynAlphaRef = ref; }
-	// D3DRS_STENCILREF, D3DRS_STENCILMASK and D3DRS_STENCILWRITEMASK of the draws
-	// that follow.
-	void SetDynamicStencilValues( uint32_t reference, uint32_t testMask, uint32_t writeMask )
-	{
-		m_dynStencilRef = reference;
-		m_dynStencilTestMask = testMask;
-		m_dynStencilWriteMask = writeMask;
-	}
 	// Bits of the depth-stencil attachment's stencil aspect (0 when the device
 	// offers no depth format with stencil).
 	int StencilBits() const { return m_stencilBits; }
@@ -711,7 +569,6 @@ public:
 	// first pass opens in the view its first color draw needs. Off restores the
 	// earlier pass per view change (-vkpassmerge 0), for A/B runs and rollback.
 	void SetPassMerging( bool enable ) { m_passMerging = enable; }
-	bool PassMerging() const { return m_passMerging; }
 	// User clip planes of the draws that follow, in D3D clip space (D3D9's
 	// SetClipPlane under a vertex shader): a vertex is kept where
 	// dot( plane, position ) >= 0. At most kMaxClipPlanes; 0 disables clipping.
@@ -732,50 +589,6 @@ public:
 	// Whether BC1-BC3 (DXT1/DXT3/DXT5) images can be created and sampled: the
 	// textureCompressionBC feature, enabled at device creation when supported.
 	bool SupportsBlockCompression() const { return m_blockCompression; }
-	void SetDynamicClipPlanes( int count, const float ( *planes )[4] )
-	{
-		m_dynClipPlaneCount = count < 0 ? 0 : ( count > kMaxClipPlanes ? kMaxClipPlanes : count );
-		for ( int i = 0; i < m_dynClipPlaneCount; ++i )
-			for ( int k = 0; k < 4; ++k )
-				m_dynClipPlanes[i][k] = planes[i][k];
-	}
-	// Set the shader constant the "constant color" material shader reads (linear
-	// RGBA), the way a material's pixel-shader constant parameterizes its shader.
-	void SetDynamicConstantColor( float r, float g, float b, float a )
-	{
-		m_dynConstColor[0] = r;
-		m_dynConstColor[1] = g;
-		m_dynConstColor[2] = b;
-		m_dynConstColor[3] = a;
-	}
-	// Set cModulationColor ($color * $alpha), the modulation the UnlitGeneric
-	// material path multiplies the base texture by (linear RGBA). Defaults to
-	// white (1,1,1,1) so an unmodulated material is unaffected.
-	void SetDynamicModulation( const float *rgba )
-	{
-		if ( !rgba )
-			return;
-		for ( int i = 0; i < 4; ++i )
-			m_dynModulation[i] = rgba[i];
-	}
-	void SetDynamicMonitorContrast( float contrast ) { m_dynMonitorContrast = contrast; }
-	// Set cBaseTextureTransform (the two float4 rows of the 2x4 affine UV
-	// transform, SHADER_SPECIFIC_CONST_0/1). Defaults to identity (row0 =
-	// 1,0,0,0 / row1 = 0,1,0,0), i.e. the texture coordinate passes through.
-	void SetDynamicBaseTexTransform( const float *row0, const float *row1 )
-	{
-		for ( int i = 0; i < 4; ++i )
-		{
-			if ( row0 )
-				m_dynTexXform0[i] = row0[i];
-			if ( row1 )
-				m_dynTexXform1[i] = row1[i];
-		}
-	}
-	// Set the model->projection transform the dynamic vertex shader applies (16
-	// floats, column-major), the way a material sets vertex-shader constants
-	// c0-c3. Defaults to identity.
-	void SetDynamicTransform( const float *m16 );
 
 	// Material-supplied textures (IShaderAPI CreateTexture/TexImage2D/BindTexture).
 	// CreateManagedTexture returns a handle >= 0, UploadManagedTexture fills it
@@ -826,21 +639,11 @@ public:
 		           ? m_managedTextures[static_cast<size_t>( handle )].mipLevels
 		           : 0;
 	}
-	bool ManagedTextureIsCube( int handle ) const
-	{
-		return handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
-		       m_managedTextures[static_cast<size_t>( handle )].layers == 6;
-	}
 	bool ManagedTextureIsVolume( int handle ) const
 	{
 		return handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
 		       m_managedTextures[static_cast<size_t>( handle )].depth > 1;
 	}
-	void BindManagedTexture( int handle );
-	// The lightmap page the textured pipeline multiplies by (LightmappedGeneric's
-	// TEXTURE_LIGHTMAP on sampler 1), sampled at the lightmap coordinates; -1
-	// draws without a lightmap.
-	void BindManagedLightmap( int handle ) { m_dynLightmapHandle = handle; }
 	// Textures on samplers 1..15 for shaders that read them as ordinary
 	// textures (PortalRefract's noise and color, the skin shader's normal,
 	// exponent, warp and self-illumination maps), -1 for none.
@@ -848,11 +651,6 @@ public:
 	{
 		kMaxSamplers = 16
 	};
-	void BindManagedSampler( int sampler, int handle )
-	{
-		if ( sampler >= 1 && sampler < kMaxSamplers )
-			m_dynSamplerHandles[sampler] = handle;
-	}
 	// PortalRefract's constants, in its registers' terms (portal_refract_vs20.fxc
 	// and portal_refract_ps2x.fxc). The model and view-projection matrices are
 	// laid out like SetDynamicTransform's; `stage` is the STAGE static combo.
@@ -868,7 +666,6 @@ public:
 		float colorScale = 0.0f;
 		int stage = 0;
 	};
-	void SetDynamicPortalConstants( const PortalConstants &constants ) { m_dynPortal = constants; }
 	// The skin shader's constants: the pixel shader registers c0..c31 as the
 	// material's dynamic state wrote them (skin_dx9_helper.cpp), and the vertex
 	// stage's cViewProj, cBaseTexCoordTransform and cEyePos. `combos` holds the
@@ -883,7 +680,6 @@ public:
 		int combos = 0;
 		int numLights = 0;
 	};
-	void SetDynamicSkinConstants( const SkinConstants &constants ) { m_dynSkin = constants; }
 	// A draw's pixel fog (common_ps_fxc.h FinalOutput's BlendPixelFog), in the
 	// D3D9 registers' terms: the fog color (g_LinearFogColor, c29) with the pixel
 	// fog type in w (0 range, 1 height, -1 the shader does not fog); the pass's
@@ -904,14 +700,6 @@ public:
 			return std::memcmp( this, &other, sizeof( DrawFog ) ) == 0;
 		}
 	};
-	void SetDynamicFog( const DrawFog &fog ) { m_dynFog = fog; }
-	// Synthetic PBR test inputs: N.V, N.L, N.H and V.H. The real material
-	// receives these from geometry and lights when the PBR world path arrives.
-	void SetDynamicPbrAngles( const float *angles )
-	{
-		for ( int i = 0; i < 4; ++i )
-			m_dynPbrAngles[i] = angles[i];
-	}
 	struct PbrWorldScene
 	{
 		float eye[4] = { 0, 0, 1, 0 };
@@ -927,19 +715,6 @@ public:
 		// world units (0 = a thin sheet), unused.
 		float glass[4] = { 1, 1.5f, 0, 0 };
 	};
-	void SetDynamicPbrWorldScene( const PbrWorldScene &scene ) { m_dynPbrWorld = scene; }
-	bool PbrWorldPipelineSupported() const { return m_pbrWorldReady; }
-	// RFC 0011 indirect-light debug view: 0 off, 1 indirect diffuse light
-	// (irradiance / pi), 2 indirect diffuse radiance; `scale` multiplies the
-	// written value. WMSH PBR batches show the LMAP indirect layer (black when
-	// the map has none) and PBRMetalRough models their ambient cube; every
-	// other draw is unchanged. Read when a frame is recorded.
-	void SetIndirectLightView( int mode, float scale );
-	int IndirectLightViewMode() const { return m_indirectViewMode; }
-	// Views 1 and 2 draw the indirect layer through the INDIRECT_VIEW shaders;
-	// view 3 (RFC 0011 G9) is the diffuse light of the lit shaders.
-	bool IndirectViewShading() const { return m_indirectViewMode == 1 || m_indirectViewMode == 2; }
-	bool SelectPbrWorldMaterial( int mrao, int normal, const float eye[3], float alphaReference );
 	// The optional maps of an opaque WMSH PBR material: an sRGB emission
 	// color (decoded by the shader) times `emissionScale`, and an $envmap cube
 	// replacing the map probe. A handle that is not uploaded, or an envmap that
@@ -959,8 +734,6 @@ public:
 		float clearCoat = 0.0f;
 		float clearCoatRoughness = 0.03f;
 	};
-	bool SelectPbrWorldMaterial( int mrao, int normal, const float eye[3], float alphaReference,
-	    const PbrWorldMaps &maps );
 	// Transmissive PBR (glass) on WMSH batches. Its draw refracts the scene
 	// captured just before it: the first glass draw after anything else was
 	// drawn or cleared on the target queues a scene capture (color mip chain and
@@ -978,30 +751,6 @@ public:
 	{
 		kMaxSceneCaptures = 16
 	};
-	bool PbrGlassPipelineSupported() const { return m_pbrGlassReady; }
-	bool SelectPbrGlassMaterial( int mrao, int normal, const float eye[3], float alphaReference,
-	    const PbrGlassParams &glass );
-	// Readable scene depth: whether this device can copy and sample its depth
-	// format (and so glass can reject foreground samples), and the depth of the
-	// latest scene capture of the last recorded frame, one float per pixel of
-	// the captured area. The capture of a multisampled back buffer has no
-	// depth; ReadSceneDepth then fails.
-	bool SceneDepthSupported() const { return m_sceneDepthUsable; }
-	// Diagnostic: captures skip depth while disabled, as on a device without
-	// readable depth (glass then keeps refracted samples of nearer geometry).
-	void SetSceneDepthEnabled( bool enabled ) { m_sceneDepthEnabled = enabled; }
-	bool ReadSceneDepth( std::vector<float> *outDepth, uint32_t *outWidth, uint32_t *outHeight,
-	    std::string *outError );
-	// Scene captures replayed into the last recorded frame, and how many of
-	// them also copied depth.
-	uint32_t LastFrameSceneCaptures() const { return m_lastFrameSceneCaptures; }
-	uint32_t LastFrameSceneDepthCaptures() const { return m_lastFrameSceneDepthCaptures; }
-	bool PbrDirectPipelineSupported() const { return m_pbrDirectReady; }
-	// PBRMetalRough model draws: the skin layout plus the split-sum table. Their
-	// constants arrive through SetDynamicSkinConstants, `combos` holding
-	// model_pbr.frag's flags. Samplers: s0 base, s10 MRAO, s1 normal, s2
-	// emission, s3 the $envmap cube.
-	bool PbrModelPipelineSupported() const { return m_pbrModelReady; }
 	enum
 	{
 		kPbrModelNormalMap = 1,
@@ -1013,20 +762,6 @@ public:
 		// probe volume (R50-RELIGHT: relit reflection probes).
 		kPbrModelProbeChange = 64
 	};
-	// False when the device cannot bind the skin shader's seven descriptor sets
-	// or its push block; its draws are then declined.
-	bool SkinPipelineSupported() const { return m_skinPipelineLayout != VK_NULL_HANDLE; }
-	bool SolidEnergyPipelineSupported() const
-	{
-		return m_skinPipelineLayout != VK_NULL_HANDLE && m_solidEnergyVert != VK_NULL_HANDLE;
-	}
-	bool PaintBlobPipelineSupported() const
-	{
-		return m_skinPipelineLayout != VK_NULL_HANDLE && m_paintBlobFrag != VK_NULL_HANDLE;
-	}
-	// False when the device's push constants cannot hold PortalRefract's block;
-	// its draws are then declined.
-	bool PortalPipelineSupported() const { return m_portalPipelineLayout != VK_NULL_HANDLE; }
 	// Which of the textured pipeline's inputs and output are sRGB-encoded, as the
 	// material's IShaderShadow EnableSRGBRead/EnableSRGBWrite declared them: an
 	// sRGB input is decoded to linear before use, and linear output is encoded.
@@ -1087,17 +822,6 @@ public:
 		// their own branch, and neither stage nor the device reads the bit.
 		kFragmentSpriteMod2x = kFragmentSky
 	};
-	void SelectDynamicColorSpace( int flags ) { m_dynColorFlags = flags; }
-	// Linear scale applied to the textured pipeline's color before the sRGB
-	// encode: D3D9's FinalOutput LINEAR_LIGHT_SCALE (cLightScale.x), the tone
-	// mapping scale in integer HDR. 1 leaves the color unchanged.
-	void SetDynamicOutputScale( float scale ) { m_dynOutputScale = scale; }
-	// True when this managed texture has had pixel data uploaded into it.
-	bool IsManagedTextureUploaded( int handle ) const
-	{
-		return handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) &&
-		       m_managedTextures[static_cast<size_t>( handle )].uploaded;
-	}
 
 	// Render targets (IShaderAPI SetRenderTarget and TEXTURE_CREATE_RENDERTARGET).
 	// A render-target texture is a managed texture that can also be drawn into:
@@ -1171,10 +895,6 @@ public:
 	// `depthToAlpha` the copy's alpha then holds the source's depth.
 	bool QueueCopyToTexture( int dstHandle, const int *srcRect, const int *dstRect,
 	    const DepthToAlpha *depthToAlpha = nullptr );
-	// Frame copies whose alpha took depth last frame, and those that could not
-	// (no single-sampled depth, or the pass was unavailable).
-	uint32_t LastFrameDepthToAlphaCopies() const { return m_lastFrameDepthToAlpha; }
-	uint32_t LastFrameDepthToAlphaSkipped() const { return m_lastFrameDepthToAlphaSkipped; }
 	// Occlusion queries (IShaderAPI CreateOcclusionQueryObject and friends). Begin
 	// and end are stream records like draws, so a query counts exactly the
 	// samples the draws between them pass, in engine order. A result exists once
@@ -1238,7 +958,6 @@ public:
 	// Selected adapter facts, valid after a successful Init().
 	const char *DeviceName() const { return m_deviceName.c_str(); }
 	uint32_t VendorId() const { return m_vendorId; }
-	uint32_t DeviceId() const { return m_deviceId; }
 	uint64_t DeviceLocalMemoryBytes() const { return m_deviceLocalMemoryBytes; }
 	bool IsDiscrete() const { return m_isDiscrete; }
 	bool ValidationEnabled() const { return m_validationEnabled; }
@@ -1323,10 +1042,6 @@ public:
 	// 0 and 1 mean no multisampling. Call it on the thread that owns the device.
 	void RequestSampleCount( int samples ) { m_requestedSamples = samples; }
 	int ActiveSampleCount() const { return m_activeSamples; }
-	uint64_t ResolveCount() const { return m_resolveCount; }
-	// Acquires that timed out (kAcquireTimeoutNs) and made the next frame
-	// replace the swapchain.
-	uint64_t AcquireTimeouts() const { return m_acquireTimeouts; }
 	static constexpr uint64_t kAcquireTimeoutNs = 1000000000ull;
 	// Frame submissions so far (each EndFrame that submitted adds one), and a
 	// wait of at most timeoutNs for the submission with that serial to complete
@@ -1371,7 +1086,6 @@ public:
 	// Shutdown) writes both files back. A missing or unreadable store starts
 	// empty; the driver rejects cache data from another device or driver.
 	bool OpenPipelineStore( const std::string &directory, std::string *outError );
-	int PrewarmPipelines();
 	bool SavePipelineStore( std::string *outError );
 	bool OpenFrameStats( const char *path, std::string *outError );
 	// -vkgputimers: GPU time per render pass, target copy, scene capture and
@@ -1388,8 +1102,6 @@ public:
 	// then carries "renderdoc_capture":true. `frames` must be ascending.
 	void SetRenderDocFrames( std::vector<uint64_t> frames, bool ( *trigger )() );
 	FrameCost &CurrentFrameCost() { return m_frameCost; }
-	// The costs of the last finished frame (kept when its stats are written).
-	const FrameCost &LastFrameCost() const { return m_lastFrameCost; }
 
 	enum
 	{
@@ -1846,21 +1558,8 @@ private:
 
 	uint32_t m_framesInFlight = 2;
 	uint32_t m_descriptorSetLimit = 0;
-	uint32_t m_pbrDescriptorSetsUsed = 0;
 	// The PBR and GI stages' frame and material sets (vulkan_descriptor_groups.h).
 	CGroupedDescriptors m_groupedDescriptors;
-	// A grouped layout: the frame set, the material set and, when the
-	// constants ring exists, its dynamic block (set 2), with one push range
-	// of `pushBytes` for both stages. Records the set count it used.
-	bool CreatePbrPipelineLayout(
-	    uint32_t pushBytes, VkPipelineLayout *outLayout, std::string *outError );
-	// A managed texture as a grouped binding, as the per-texture sets bind it:
-	// its view (its sRGB view when `srgb` and it has one; *outSrgb says which)
-	// and sampler; `fallback` (a built-in white cube or volume handle, or -1
-	// for the built-in 2D texture) when the handle holds no texture or is
-	// `openTarget`, the target open for rendering.
-	CGroupedDescriptors::Image GroupedImage(
-	    int handle, int fallback, int openTarget, bool srgb, bool *outSrgb = nullptr ) const;
 	uint32_t m_currentFrame = 0;
 	std::vector<VkSemaphore> m_imageAvailable;
 	std::vector<VkSemaphore> m_renderFinished; // per swapchain image (GrowRenderFinished)
@@ -1910,40 +1609,19 @@ private:
 
 	// Dynamic geometry path (material-system mesh draws).
 	VkPipelineLayout m_dynPipelineLayout = VK_NULL_HANDLE;
+	bool m_dynamicResourcesReady = false;           // InitDynamicMesh ran
 	VkPipeline m_dynPipeline = VK_NULL_HANDLE;      // vertex-color passthrough
 	VkPipeline m_dynPipelineGreen = VK_NULL_HANDLE; // "greenify" material shader
 	VkPipeline m_dynPipelineConst = VK_NULL_HANDLE; // "constant color" material shader
-	int m_dynShaderIndex = 0;
-	float m_dynConstColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-	// UnlitGeneric material state: cModulationColor ($color * $alpha) and the two
-	// rows of cBaseTextureTransform. Defaults leave the material unmodulated and
-	// the UV coordinate untransformed.
-	float m_dynModulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-	float m_dynMonitorContrast = 0.0f;
-	float m_dynTexXform0[4] = { 1.0f, 0.0f, 0.0f, 0.0f };
-	float m_dynTexXform1[4] = { 0.0f, 1.0f, 0.0f, 0.0f };
-	float m_dynPbrAngles[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-	PbrWorldScene m_dynPbrWorld;
-	uint64_t m_dynGlassKey = 0; // SelectPbrGlassMaterial's material identity
-	DynRasterState m_dynRaster;
 	float m_dynDepthBiasConstant = 0.0f;
 	float m_dynDepthBiasSlope = 0.0f;
-	DrawFog m_dynFog;
-	float m_dynAlphaRef = -1.0f; // $alphatest reference; < 0 disables
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
 	// mesh UVs, bound through a descriptor set (its own layout adds the sampler).
 	// One textured pipeline per distinct DynRasterState (see RasterStateKey),
 	// built from m_texTemplate when a draw first needs it.
 	// Keyed by RasterStateKey, with bit 32 set for pipelines of the sRGB passes.
 	std::map<uint64_t, VkPipeline> m_dynTexPipelines;
-	VkPipeline TexturedPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	std::map<uint64_t, VkPipeline> m_worldTexPipelines;
-	VkPipeline WorldTexturedPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
-	std::map<uint64_t, VkPipeline> m_worldPbrPipelines;
-	// world_pbr.frag -DINDIRECT_VIEW, selected while the indirect view is on.
-	std::map<uint64_t, VkPipeline> m_worldPbrIndirectPipelines;
 	// `extended`: kWorldPbrDirectLights (world_pbr.frag -DDIRECT_LIGHTS, the
 	// frame's direct-light block in set 2) and kWorldPbrRuntimeIndirect
 	// (-DRUNTIME_INDIRECT, the producer's indirect atlas in the frame set), on
@@ -1957,32 +1635,7 @@ private:
 		kWorldPbrRuntimeIndirect = 2,
 		kWorldPbrDeltaVolume = 4,
 	};
-	VkPipeline WorldPbrPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1, int extended = 0 );
-	bool PbrWorldTexturesReady(
-	    int base, int mrao, int normal, bool useNormal, bool baseReadSrgb ) const;
-	bool PbrWorldNormalReady( int handle ) const;
 	VkShaderModule m_worldVert = VK_NULL_HANDLE;
-	// Binding 0 is the WMSH corner stream, binding 1 the per-draw fog stream.
-	VkVertexInputBindingDescription m_worldBindings[2] = {};
-	VkVertexInputAttributeDescription m_worldAttrs[8] = {};
-	VkVertexInputAttributeDescription m_worldPbrAttrs[6] = {};
-	VkPipelineVertexInputStateCreateInfo m_worldPbrVin = {};
-	VkShaderModule m_worldPbrVert = VK_NULL_HANDLE;
-	VkShaderModule m_worldPbrFrag = VK_NULL_HANDLE;
-	VkShaderModule m_worldPbrIndirectFrag = VK_NULL_HANDLE;
-	VkPipelineLayout m_worldPbrPipelineLayout = VK_NULL_HANDLE;
-	bool m_pbrWorldReady = false;
-	// Glass: world_pbr.vert with world_pbr_glass.frag, the WMSH PBR sets with
-	// the scene capture's color and depth in the material set.
-	std::map<uint64_t, VkPipeline> m_worldGlassPipelines;
-	VkPipeline WorldGlassPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
-	VkShaderModule m_worldGlassFrag = VK_NULL_HANDLE;
-	VkPipelineLayout m_worldGlassPipelineLayout = VK_NULL_HANDLE;
-	bool m_pbrGlassReady = false;
-	bool InitPbrGlassPipeline( std::string *outError );
-	void DestroyPbrGlassPipeline();
 	// Scene capture (vulkan_scene_capture.cpp): managed textures the size of the
 	// back buffer. Color is the swapchain format with its sRGB view and a full
 	// mip chain; depth is the depth format, sampled through a depth-only view.
@@ -1995,8 +1648,6 @@ private:
 	// copied, which target and glass material it served, and captures queued.
 	bool m_sceneCaptureCurrent = false;
 	int m_sceneCaptureTarget = -1;
-	uint64_t m_sceneCaptureKey = 0;
-	bool m_sceneCaptureGlassDrawn = false;
 	uint32_t m_sceneCapturesQueued = 0;
 	uint32_t m_lastFrameSceneCaptures = 0;
 	uint32_t m_lastFrameSceneDepthCaptures = 0;
@@ -2010,7 +1661,6 @@ private:
 	// Copies `target`'s depth (width x height from the origin) into the capture's
 	// depth image; false when there is no single-sampled depth to copy.
 	bool RecordSceneDepthCopy( VkCommandBuffer cmd, int target, uint32_t width, uint32_t height );
-	VkPipelineVertexInputStateCreateInfo m_worldVin = {};
 	// The pipeline store (OpenPipelineStore): the cache every material pipeline
 	// is built through, the variants built this session, and the files.
 	enum PipelineFamily
@@ -2033,94 +1683,14 @@ private:
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
 	std::vector<std::pair<int, uint64_t>> m_pipelineVariants;
 	std::string m_pipelineStoreDirectory;
-	void NotePipelineVariant( int family, uint64_t key )
-	{
-		m_pipelineVariants.push_back( std::make_pair( family, key ) );
-	}
 
 	// PortalRefract pipelines, one per raster state, built on first use.
 	std::map<uint64_t, VkPipeline> m_portalPipelines;
-	VkPipeline PortalPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	VkPipelineLayout m_portalPipelineLayout = VK_NULL_HANDLE;
-	// The skin shader: six sampler sets (s0, s1, s2, s3, s7, s14) and its pixel
-	// shader constants in a uniform buffer per frame in flight, written only
-	// after that frame's fence has signaled, bound at a per-draw dynamic offset.
-	std::map<uint64_t, VkPipeline> m_skinPipelines;
-	VkPipeline SkinPipeline( const DynRasterState &state, bool srgbPass = false, int samples = 1 );
-	// SolidEnergy shares the skin layout: six sampler sets (s0, s1, s4, s5, s6,
-	// s7) and the constants uniform buffer.
-	std::map<uint64_t, VkPipeline> m_solidEnergyPipelines;
-	VkPipeline SolidEnergyPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
-	VkShaderModule m_solidEnergyVert = VK_NULL_HANDLE;
-	VkShaderModule m_solidEnergyFrag = VK_NULL_HANDLE;
-	// Paint blobs: skin.vert and paintblob.frag on the skin layout, with six
-	// sampler sets (s0, s1, s3, s7 as a cube, s4, s2) and the constants.
-	std::map<uint64_t, VkPipeline> m_paintBlobPipelines;
-	VkPipeline PaintBlobPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
-	VkShaderModule m_paintBlobFrag = VK_NULL_HANDLE;
-	// LightmappedGeneric: the skin push block and nine sets (s0, s1, s2, s4, s5,
-	// s7, the constants, s8, s12), with its own vertex input (the tangent T and
-	// the bumped lightmap offset beyond the skin record, and the fog stream).
-	std::map<uint64_t, VkPipeline> m_lightmappedPipelines;
-	VkPipeline LightmappedPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
-	VkPipelineLayout m_lightmappedPipelineLayout = VK_NULL_HANDLE;
-	VkShaderModule m_lightmappedVert = VK_NULL_HANDLE;
-	VkShaderModule m_lightmappedFrag = VK_NULL_HANDLE;
-	VkVertexInputAttributeDescription m_lightmappedAttrs[13] = {};
-	VkPipelineVertexInputStateCreateInfo m_lightmappedVin = {};
-	bool InitLightmappedPipeline( std::string *outError );
-	void DestroyLightmappedPipeline();
-	// Portal 2's paint on world surfaces: lightmappedpaint.frag on the
-	// lightmapped layout and vertex stage (kLightmappedPaint draws).
-	std::map<uint64_t, VkPipeline> m_lightmappedPaintPipelines;
-	VkPipeline LightmappedPaintPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
-	VkShaderModule m_lightmappedPaintFrag = VK_NULL_HANDLE;
-	// The bloom and color-correction passes on the skin layout (s0..s5 and the
-	// constants); samplers 2..5 are volumes, with a 1x1x1 white fallback.
-	std::map<uint64_t, VkPipeline> m_postPipelines;
-	VkPipeline PostPipeline( const DynRasterState &state, bool srgbPass = false, int samples = 1 );
 	VkShaderModule m_postVert = VK_NULL_HANDLE;
-	VkShaderModule m_postFrag = VK_NULL_HANDLE;
 	int m_whiteVolumeHandle = -1;
 	uint32_t m_maxImageDimension3D = 0;
-	bool InitPostPipeline( std::string *outError );
-	void DestroyPostPipeline();
-	// PBRMetalRough models share the skin vertex stage and constants ring, on
-	// their own grouped layout (m_pbrModelPipelineLayout). Variant 0 reads the
-	// map probe from the LMAP atlas (frame set); variant 1 ($envmap) reads the
-	// material's cube instead; variant 2 is the indirect view. Variants 3..5
-	// are those three with the map's PRBV probe volume sampled per pixel.
-	std::map<uint64_t, VkPipeline> m_pbrModelPipelines[6];
-	VkPipeline PbrModelPipeline( const DynRasterState &state, bool envCube, bool srgbPass = false,
-	    int samples = 1, bool probeVolume = false );
 	VkShaderModule m_pbrModelFrag[6] = {};
-	VkPipelineLayout m_pbrModelPipelineLayout = VK_NULL_HANDLE;
-	bool m_pbrModelReady = false;
-	bool InitPbrModelPipeline( std::string *outError );
-	void DestroyPbrModelPipeline();
-	std::map<uint64_t, VkPipeline> m_pbrDirectPipelines;
-	VkPipeline PbrDirectPipeline(
-	    const DynRasterState &state, bool srgbPass = false, int samples = 1 );
-	VkPipelineLayout m_pbrDirectPipelineLayout = VK_NULL_HANDLE;
-	VkShaderModule m_pbrDirectFrag = VK_NULL_HANDLE;
-	int m_pbrSplitSumHandle = -1;
-	bool m_pbrDirectReady = false;
-	bool InitPbrDirectPipeline( std::string *outError );
-	void DestroyPbrDirectPipeline();
-	bool InitPbrWorldPipeline( std::string *outError );
-	void DestroyPbrWorldPipeline();
-	VkPipelineLayout m_skinPipelineLayout = VK_NULL_HANDLE;
-	VkDescriptorSetLayout m_skinUboLayout = VK_NULL_HANDLE;
-	VkDescriptorPool m_skinUboPool = VK_NULL_HANDLE;
-	VkShaderModule m_skinVert = VK_NULL_HANDLE;
-	VkShaderModule m_skinFrag = VK_NULL_HANDLE;
-	VkVertexInputAttributeDescription m_skinAttrs[11] = {};
-	VkPipelineVertexInputStateCreateInfo m_skinVin = {};
 	struct SkinUniformBuffer
 	{
 		VkBuffer buffer = VK_NULL_HANDLE;
@@ -2129,35 +1699,9 @@ private:
 		VkDeviceSize capacity = 0;
 		VkDescriptorSet set = VK_NULL_HANDLE;
 	};
-	std::vector<SkinUniformBuffer> m_skinUbos; // one per frame in flight
-	VkDeviceSize m_uboAlignment = 256;
-	bool InitSkinPipeline( std::string *outError );
-	// Grows a frame slot's uniform ring to hold `needed` bytes of `stride`-spaced
-	// blocks, each bound `range` bytes through the slot's dynamic set; false when
-	// the buffer cannot be provided.
-	bool EnsureUniformRingSlot( SkinUniformBuffer &slot, VkDeviceSize needed, VkDeviceSize stride,
-	    VkDeviceSize range, const char *what );
-	// Copies this frame's skin constants into the frame's uniform buffer (grown
-	// as needed) and returns each draw's offset in `offsets`; false when the
-	// buffer cannot be provided.
-	bool UploadSkinConstants( std::vector<uint32_t> *offsets );
-	void DestroySkinPipeline();
 	VkShaderModule m_portalVert = VK_NULL_HANDLE;
 	VkShaderModule m_portalFrag = VK_NULL_HANDLE;
 	bool m_portalPushSupported = false;
-	bool InitPortalPipeline( std::string *outError );
-	VkPipeline BuildMaterialPipeline( const DynRasterState &state, VkShaderModule vert,
-	    VkShaderModule frag, VkPipelineLayout layout,
-	    const VkPipelineVertexInputStateCreateInfo *vertexInput, VkRenderPass renderPass,
-	    int samples = 1 );
-	// Pipeline caches key on the raster state, the sRGB pass (bit 32) and
-	// log2 of the sample count (bits 33-35); one owner for that layout.
-	static uint64_t PipelineKey( const DynRasterState &state, bool srgbPass, int samples );
-	static int PipelineKeySamples( uint64_t key );
-	// The pass a pipeline for (sRGB, samples) is built against: the ordinary
-	// back-buffer/render-target class, or the multisampled back buffer's (only
-	// while that sample count is active; otherwise VK_NULL_HANDLE).
-	VkRenderPass PipelineRenderPass( bool srgbPass, int samples ) const;
 	// D3D9 blends a draw that writes sRGB (SRGBWRITEENABLE) in linear space: the
 	// destination is decoded, blended and encoded again. Such draws render
 	// through sRGB-format views of the same attachments (mutable-format swapchain
@@ -2182,9 +1726,6 @@ private:
 	std::uint64_t m_opaqueCandidates = 0;
 	std::uint64_t m_opaqueBatches = 0;
 	std::uint64_t m_opaqueFollowers = 0;
-	// PortalRefract's vertex input: the textured one plus normal and tangent.
-	VkVertexInputAttributeDescription m_portalAttrs[6] = {};
-	VkPipelineVertexInputStateCreateInfo m_portalVin = {};
 	// The fixed-function state every textured pipeline shares; only the blend and
 	// depth state vary. Kept (with its shader modules) for pipelines built later.
 	struct TexturedPipelineTemplate
@@ -2267,14 +1808,10 @@ private:
 	std::vector<ManagedTexture> m_managedTextures;
 	uint64_t m_nextTextureContentRevision = 1;
 	int m_worldLightmapHandle = -1;
-	int m_indirectViewMode = 0;
-	float m_indirectViewScale = 1.0f;
 	int m_worldLightmapDirectHandle = -1;
 	int m_worldLightmapIndirectHandle = -1;
 	int m_probeAtlasHandle = -1;
 	int m_shadowFieldHandle = -1;
-	// R50-PARALLAX: SetReflectionProbes' texture, its texels and mode.
-	CGroupedDescriptors::Image ProbeImage( int handle ) const;
 	int m_reflectionProbeHandle = -1;   // the radiance cube array
 	int m_reflectionTableHandle = -1;   // the probe buffer's words, R32_UINT
 	int m_neutralProbeCubesHandle = -1; // a cube array bound without probes
@@ -2294,23 +1831,6 @@ private:
 	int m_probeSampling = 1;
 	DirectLight m_directLights[kMaxDirectLights] = {};
 	uint32_t m_directLightCount = 0;
-	// This frame's direct-light block in the constants ring (UINT32_MAX: none).
-	uint32_t m_directLightOffset = UINT32_MAX;
-	int m_indirectPolicy = -1;
-	bool m_indirectPolicySeedDouble = false;
-	// world_pbr.frag's extended variants (the direct-light block in set 2,
-	// the producer's indirect atlas in the frame set), indexed by
-	// kWorldPbrDirectLights | kWorldPbrRuntimeIndirect (index 0 unused).
-	VkPipelineLayout m_worldPbrExtendedLayout = VK_NULL_HANDLE;
-	VkShaderModule m_worldPbrExtendedFrag[8] = {};
-	std::map<uint64_t, VkPipeline> m_worldPbrExtendedPipelines[8];
-	// The BakedPlusDelta variants (the change atlas and grid table in the
-	// frame set), and the indirect view's.
-	VkPipelineLayout m_worldPbrDeltaLayout = VK_NULL_HANDLE;
-	VkShaderModule m_worldPbrIndirectDeltaFrag = VK_NULL_HANDLE;
-	std::map<uint64_t, VkPipeline> m_worldPbrIndirectDeltaPipelines;
-	void DestroyWorldPbrExtendedVariants();
-	void DestroyWorldPbrDeltaVariants();
 	// Deleted textures awaiting the completion of the submission that may still
 	// use them (`afterSerial`, a value of m_submitSerial), and handles free again.
 	struct RetiredTexture
@@ -2346,26 +1866,10 @@ private:
 	// The managed texture currently bound (BindManagedTexture); captured per draw.
 	int m_dynBoundTexHandle = -1;
 	int m_dynLightmapHandle = -1;
-	int m_dynColorFlags = 0;
-	float m_dynOutputScale = 1.0f;
-	uint32_t m_dynStencilRef = 0;
-	uint32_t m_dynStencilTestMask = 0xFF;
-	uint32_t m_dynStencilWriteMask = 0xFF;
-	int m_dynClipPlaneCount = 0;
-	float m_dynClipPlanes[kMaxClipPlanes][4] = {};
 	int m_dynSamplerHandles[kMaxSamplers] = {
 	    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
-	PortalConstants m_dynPortal;
-	SkinConstants m_dynSkin;
-	int m_dynTexturedMode = kTexturedModeDefault;
 	// The skin constants of this frame's skin draws (DynDraw::skin indexes them).
 	std::vector<SkinConstants> m_dynSkinConstants;
-	int m_dynLegacyProgram = -1;
-	LegacyConstants m_dynLegacy = {};
-	// The legacy constants of this frame's legacy draws (DynDraw::legacy).
-	std::vector<LegacyConstants> m_dynLegacyConstants;
-	// Column-major model->projection matrix; identity by default.
-	float m_dynTransform[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	// A persistently mapped host-visible buffer the frame's stream is copied
 	// into. Each frame slot has its own: a slot's fence has signalled when its
 	// frame begins, so its buffers are free to rewrite or regrow, while the
@@ -2518,13 +2022,9 @@ private:
 		    -1, -1 }; // samplers 1..15 ([0] unused)
 		PortalConstants portal;
 		int skin = -1; // index into m_dynSkinConstants
-		int legacy = -1;        // index into m_dynLegacyConstants
-		int legacyProgram = -1; // the legacy port (vulkan_legacy_programs.h)
 		DrawFog fog;
 		int texturedMode = kTexturedModeDefault; // the textured pipeline's alphaParams.y
 	};
-	// A draw record carrying the state current now, before its geometry.
-	DynDraw &AppendDrawRecord();
 	std::vector<DynDraw> m_dynDrawRecords;
 	std::vector<CorePassTerms> m_corePassTerms; // the kRecordCorePass records' terms
 	// QueueFrameLabel's labels, each before the record at `record`.
@@ -2537,13 +2037,6 @@ private:
 	};
 	std::vector<FrameLabel> m_frameLabels;
 	void ReplayFrameLabels( size_t *cursor, size_t throughRecord );
-	// The legacy shader ports (vulkan_legacy_pipeline.cpp): one layout for all
-	// of them (a set of up to eight samplers, then the constants), their stages
-	// created on first use, and pipelines per port and raster state.
-	VkPipelineLayout m_legacyPipelineLayout = VK_NULL_HANDLE;
-	VkDescriptorSetLayout m_legacySamplerLayout = VK_NULL_HANDLE;
-	VkDescriptorSetLayout m_legacyUboLayout = VK_NULL_HANDLE;
-	VkDescriptorPool m_legacyUboPool = VK_NULL_HANDLE;
 	// The sampler sets of a frame in flight: a pool reset when the frame slot
 	// is reused, and the sets already written this frame by their images.
 	struct LegacySamplerPool
@@ -2552,10 +2045,6 @@ private:
 		uint32_t capacity = 0;
 		std::map<std::vector<uint64_t>, VkDescriptorSet> written;
 	};
-	std::vector<LegacySamplerPool> m_legacySamplerPools;
-	VkVertexInputAttributeDescription m_legacyAttrs[8] = {};
-	VkPipelineVertexInputStateCreateInfo m_legacyVin = {};
-	std::vector<SkinUniformBuffer> m_legacyUbos; // one per frame in flight
 	struct LegacyStages
 	{
 		VkShaderModule vert = VK_NULL_HANDLE;
@@ -2563,24 +2052,6 @@ private:
 		bool failed = false;
 		std::map<uint64_t, VkPipeline> pipelines;
 	};
-	std::vector<LegacyStages> m_legacyStages; // one per registered port
-	// What D3D9 reads from a sampler with no texture set, ( 0, 0, 0, 1 ): the
-	// legacy ports' samplers their pass did not enable (2D and cube).
-	int m_legacyNoTextureHandle = -1;
-	int m_legacyNoTextureCubeHandle = -1;
-	VkPipeline LegacyPipeline(
-	    int program, const DynRasterState &state, bool srgbPass = false, int samples = 1 );
-	bool InitLegacyPipeline( std::string *outError );
-	void DestroyLegacyPipeline();
-	// Copies this frame's legacy constants into the frame's uniform buffer and
-	// returns each draw's offset, and readies the frame's sampler-set pool;
-	// false when either cannot be provided.
-	bool UploadLegacyConstants( std::vector<uint32_t> *offsets );
-	// Binds a legacy draw's sampler sets and constants; returns the sets the
-	// shader must decode from sRGB itself (params.z bits 0..15), or -1 when a
-	// cube or volume sampler has neither a texture nor a white fallback.
-	int BindLegacySets(
-	    VkCommandBuffer cmd, const DynDraw &d, int openTarget, uint32_t constantsOffset, int *gammaSceneSamplers );
 	// Target/viewport/scissor state captured by each record.
 	int m_dynTarget = -1;
 	int m_dynTag = -1;
@@ -2629,9 +2100,6 @@ private:
 	// (kKeepDepth | kKeepStencil). Unknown kinds count as reading both.
 	static bool SkipLegacyRecord( const DynDraw &record, bool legacyOff, bool legacyHud );
 	static int RecordBackBufferDepthReads( const DynDraw &r );
-	// The draw's raster state with alphaTest off when its alpha reference is
-	// (textured, skin and lightmapped pipelines).
-	static DynRasterState RasterWithAlphaTest( const DynDraw &d );
 	// Raster-key bits for DynRasterState::specCombos + 1 (bits 40-57).
 	static constexpr uint64_t kSpecCombosKeyMask = 0x3FFFF;
 	bool RecordViewAgnostic( const DynDraw &r ) const;
