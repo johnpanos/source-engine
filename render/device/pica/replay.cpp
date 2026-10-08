@@ -59,6 +59,10 @@ class Replayer
 public:
 	explicit Replayer( PicaDevice &device ) : m_D( device ) {}
 
+	// No command flushes the data cache: the GPU runs a frame's commands
+	// only at PicaDevice::Drain, whose C3D_FrameEnd( 0 ) flushes the whole
+	// linear heap first, so every CPU write of the frame reaches memory
+	// before the GPU reads it (one flush per frame, not one per command).
 	void Run( const std::vector<Command> &commands )
 	{
 		for ( const Command &command : commands )
@@ -79,7 +83,6 @@ private:
 			// (PicaDevice::StageUpload); a staged one carries all of them.
 			if ( !command.bytes.empty() )
 				std::memcpy( to, command.bytes.data(), command.bytes.size() );
-			GSPGPU_FlushDataCache( to, command.copy.size );
 			break;
 		}
 		case Op::kCopyBuffer:
@@ -89,7 +92,6 @@ private:
 			BufferRecord &to = m_D.m_Buffers.at( command.b );
 			std::byte *at = to.data + command.copy.destinationOffset;
 			std::memmove( at, from.data + command.copy.sourceOffset, command.copy.size );
-			GSPGPU_FlushDataCache( at, command.copy.size );
 			break;
 		}
 		case Op::kClearTexture:
@@ -104,7 +106,6 @@ private:
 			const LevelLayout &level = t.layout.levels[c.mip];
 			std::byte *at = b.data + c.bufferOffset;
 			CopyOut( t.desc.format, level, t.data + level.offset, c.x, c.y, c.width, c.height, at );
-			GSPGPU_FlushDataCache( at, RegionBytes( t.desc.format, c.width, c.height ) );
 			break;
 		}
 		case Op::kCopyBufferToTexture:
@@ -127,7 +128,6 @@ private:
 			if ( m_D.m_Options.sensitivity.etc1BytesUnswapped && t.desc.format == Format::kETC1Rgb )
 				for ( std::uint64_t at = 0; at + 8 <= level.bytes; at += 8 )
 					std::reverse( t.data + level.offset + at, t.data + level.offset + at + 8 );
-			GSPGPU_FlushDataCache( t.data + level.offset, std::size_t( level.bytes ) );
 			break;
 		}
 		case Op::kCopyTexture:
@@ -213,7 +213,6 @@ private:
 					std::memcpy( base + std::size_t( TiledIndex( x, y, level.storedWidth ) ) * 4,
 					    bytes, 4 );
 		}
-		GSPGPU_FlushDataCache( base, std::size_t( level.bytes ) );
 	}
 
 	static std::uint32_t ClearOf( const TextureRecord &t, const ClearColor &color )
@@ -245,7 +244,6 @@ private:
 		const LevelLayout &target = to.layout.levels[c.mip];
 		CopyBetween( from.desc.format, source, from.data + source.offset, target,
 		    to.data + target.offset, c.x, c.y, c.width, c.height );
-		GSPGPU_FlushDataCache( to.data + target.offset, std::size_t( target.bytes ) );
 	}
 
 	void BeginRendering( const Command &command )
@@ -577,7 +575,6 @@ private:
 				}
 				narrow[i] = std::uint16_t( wide[i] );
 			}
-			GSPGPU_FlushDataCache( narrow, command.count * 2 );
 			C3D_DrawElements( m_Pipeline->topology, int( command.count ), C3D_UNSIGNED_SHORT, narrow );
 			return;
 		}

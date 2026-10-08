@@ -633,14 +633,10 @@ std::span<std::byte> PicaDevice::MapUploadBuffer( BufferId buffer )
 	return { found->second.data, std::size_t( found->second.desc.size ) };
 }
 
-void PicaDevice::FlushUploadBuffer( BufferId buffer, std::uint64_t offset, std::uint64_t size )
+void PicaDevice::FlushUploadBuffer( BufferId, std::uint64_t, std::uint64_t )
 {
-	std::lock_guard<std::recursive_mutex> lock( m_Lock );
-	const auto found = m_Buffers.find( buffer.value );
-	if ( found == m_Buffers.end() || found->second.released || offset >= found->second.desc.size )
-		return;
-	size = std::min<std::uint64_t>( size, found->second.desc.size - offset );
-	GSPGPU_FlushDataCache( found->second.data + offset, u32( size ) );
+	// Nothing to do: the GPU reads upload memory only after Drain's
+	// C3D_FrameEnd( 0 ) has flushed the whole linear heap (Replayer::Run).
 }
 
 DeviceResult<BufferId> PicaDevice::CreateUploadBuffer( std::span<const std::byte> bytes )

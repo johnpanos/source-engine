@@ -630,3 +630,15 @@ See the [progress section](#progress).
     364 -> 186 ms (its 3.4 s spike now 0.6 s), windows 629 -> 299 and
     127 -> 81 ms. The matched camera's image is unchanged. Remaining waits:
     `GSPGPU_FlushDataCache` per replayed command, about 13 % of core 0.
+- 2026-10-07: one data-cache flush per frame. The replay flushed the data
+  cache after every CPU write the GPU would read (buffer writes and copies,
+  texture uploads, clears and copies, narrowed indices), and
+  `FlushUploadBuffer` flushed each upload range. The GPU runs a frame's
+  commands only at `PicaDevice::Drain`, and its `C3D_FrameEnd( 0 )` already
+  flushes the whole linear heap first, so those flushes were redundant;
+  they are removed (`replay.cpp`, `pica_device.cpp`). Matched camera
+  identical (0 of 192,000 pixels > 4). The profiled demo stretch took 15 %
+  less emulated time (60,036 against 70,833 samples at 500 us), core 0 idle
+  19.7 % -> 7.9 %, and the flush waits fell from about 13 % to 0.3 %.
+  Remaining top costs: `memcpy` in `StageUpload` 14.5 %, `EmitToCore`
+  15.9 %, string hash maps (`memcmp`, `_Hash_bytes`) about 9 %.
