@@ -301,7 +301,8 @@
           "texturecontainer/block_decode.cpp"
         ],
         "allowedEdges": [
-          "content.texture-contract"
+          "content.texture-contract",
+          "external.bcdec"
         ],
         "externalHeaders": [
           "bcdec.h"

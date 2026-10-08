@@ -59,10 +59,9 @@ def _flags(profile, suite, static):
 
 
 def _includes(root, profile):
-    includes = []
-    for inc in profile.get("include_roots", []):
-        includes += ["-I", os.path.join(root, inc)]
-    return includes
+    # The runner's include roots, generated ones (the shader artifact headers)
+    # included: one owner, so the PE build finds what the native build does.
+    return conformance.include_flags(root, profile)
 
 
 def build_command(root, cxx, profile, suite, out_bin, static):
@@ -194,10 +193,11 @@ def cmd_check(args):
         return profile_cache[pid]
 
     # Mixed-dialect unit suites prove same-toolchain ABI combinations on their
-    # native profile; they are not Windows parity suites.
+    # native profile, and command suites run host programs (Python harnesses,
+    # the GTK editor); neither is a Windows parity suite.
     suites = [
         s for s in manifest["suites"]
-        if s.get("units") is None
+        if s.get("units") is None and s.get("command") is None
         and (args.rfc is None or s.get("rfc") == args.rfc)
         and (args.domain is None or s.get("domain") == args.domain)
     ]
