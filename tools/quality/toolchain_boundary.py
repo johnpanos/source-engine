@@ -307,7 +307,8 @@ ARTIFACT_SUITES = {
     # manifest suite -> Waf static archives that replace its engine unit's
     # module sources (paths relative to the Waf build directory)
     "toolchain.abi.jobsystem-batch": ["jobsystem/libjobsystem.a"],
-    "toolchain.abi.mapcontainer": ["mapcontainer/libmapcontainer.a"],
+    "toolchain.abi.mapcontainer": ["mapcontainer/libmapcontainer.a",
+                                   "content/libcontent_hash_legacyabi.a"],
 }
 
 

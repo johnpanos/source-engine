@@ -31,8 +31,8 @@ bool ConeFacesAway( const float eye[3], const float center[3], float radius, con
 class OcclusionBuffer
 {
 public:
-	static const int kWidth = 128;
-	static const int kHeight = 64;
+	static constexpr int kWidth = 128;
+	static constexpr int kHeight = 64;
 
 	// Starts a view. worldToClip is row-major, clip = M * (x, y, z, 1), with w
 	// the view depth; the GPU draws clip points with -w <= x, y <= w and

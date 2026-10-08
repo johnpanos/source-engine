@@ -755,7 +755,8 @@ foundation::Expected<PipelineId, ShadowPassStatus> ShadowReceiverRenderer::Pipel
 	    shaderlib::CoreRecipe( { "render/pass/shadows/shadow_receiver.vert", kFragment } );
 	recipe.layouts = { m_FrameLayout, m_ViewLayout, {}, m_DrawLayout };
 	recipe.raster.cull = CullMode::kNone;
-	recipe.colorFormats = { m_ColorFormat };
+	// assign(1, ...): GCC 13 misreports a one-element initializer list (-Warray-bounds).
+	recipe.colorFormats.assign( 1, m_ColorFormat );
 	recipe.debugName = "render.pass.shadows.receiver";
 	auto resolved = shaderlib::Resolve( recipe, artifacts, m_Device.Facts().artifactFormat );
 	if ( !resolved )

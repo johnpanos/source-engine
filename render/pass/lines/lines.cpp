@@ -217,8 +217,9 @@ foundation::Expected<PipelineId, LinesStatus> LinesRenderer::PipelineFor(
 	                                                : PrimitiveTopology::kLineList;
 	recipe.raster.cull = CullMode::kNone;
 	recipe.depthStencil = { depthTest, depthTest, CompareOp::kLessEqual };
-	recipe.colorFormats = { m_ColorFormat };
-	recipe.blends = { BlendMode::kAlpha };
+	// assign(1, ...): GCC 13 misreports a one-element initializer list (-Warray-bounds).
+	recipe.colorFormats.assign( 1, m_ColorFormat );
+	recipe.blends.assign( 1, BlendMode::kAlpha );
 	recipe.depthFormat = m_DepthFormat;
 	recipe.debugName = "render.pass.lines";
 	auto resolved =

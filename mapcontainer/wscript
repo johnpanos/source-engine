@@ -27,7 +27,7 @@ def build(bld):
 		features  = 'c cxx',
 		includes  = [ '../public', '..' ],
 		defines   = [],
-		use       = [ 'content_hash' ],
+		use       = [ 'content_hash_legacyabi' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)

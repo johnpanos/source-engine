@@ -21,6 +21,14 @@ def build(bld):
 		bld.stlib(env=strict, source=[source], target=target, name=target,
 			arch_module=module, features='cxx', includes=['../public'], use=use,
 			install_path=None)
+	# The hash at libstdc++'s old dual ABI for legacy-ABI consumers
+	# (mapcontainer, in the engine and filesystem); the policy forbids mixing
+	# the values in one link (quality/toolchain/policy.json abi).
+	legacy_abi = ['_GLIBCXX_USE_CXX11_ABI=0'] if bld.env.DEST_OS == 'linux' else []
+	# Its own environment: Waf appends a generator's defines to its env.
+	bld.stlib(env=bld.strict_cpp20_env(), source=['hash.cpp'], target='content_hash_legacyabi',
+		name='content_hash_legacyabi', arch_module='content.block-container', features='cxx',
+		includes=['../public'], defines=legacy_abi, install_path=None)
 	if bld.env.TOOLS or bld.env.TESTS:
 		bld.stlib(env=strict, source=['build_graph.cpp'], target='content_graph',
 			name='content_graph', arch_module='content.build-graph',

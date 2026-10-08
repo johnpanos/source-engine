@@ -132,7 +132,8 @@ OutputRenderer::CreateWithFragment(
 	    BindGroupLayoutId(), BindGroupLayoutId(), BindGroupLayoutId(), renderer->m_Layout };
 	recipe.topology = PrimitiveTopology::kTriangleList;
 	recipe.raster.cull = CullMode::kNone;
-	recipe.colorFormats = { targetFormat };
+	// assign(1, ...): GCC 13 misreports a one-element initializer list (-Warray-bounds).
+	recipe.colorFormats.assign( 1, targetFormat );
 	recipe.debugName = "render.pass.output";
 	auto resolved = shaderlib::Resolve( recipe, artifacts, device.Facts().artifactFormat );
 	if ( !resolved )

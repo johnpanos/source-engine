@@ -810,12 +810,25 @@ def dxc_release(kind):
     toolchain = ROOT / "dependencies" / "shader-toolchain"
     archive = toolchain / "archives" / entry["archive"]
     if not archive.exists():
+        # The public release asset over HTTPS, bounded by the pinned size; the
+        # sha256 below is the authority, so no client tool (gh) is needed.
         archive.parent.mkdir(parents=True, exist_ok=True)
-        result = subprocess.run(["gh", "release", "download", pin["release"], "-R",
-                                 pin["repository"], "-p", entry["archive"], "-D",
-                                 str(archive.parent)], capture_output=True, text=True)
-        if result.returncode != 0:
-            raise ToolchainError("download %s: %s" % (entry["archive"], result.stderr.strip()))
+        url = "https://github.com/%s/releases/download/%s/%s" % (
+            pin["repository"], pin["release"], entry["archive"])
+        partial = archive.with_name(archive.name + ".partial")
+        try:
+            with urllib.request.urlopen(url, timeout=120) as response, open(partial, "wb") as out:
+                count = 0
+                while block := response.read(1 << 20):
+                    count += len(block)
+                    if count > entry["bytes"]:
+                        raise ToolchainError("download %s exceeded the pinned %d bytes"
+                                             % (entry["archive"], entry["bytes"]))
+                    out.write(block)
+        except OSError as error:
+            partial.unlink(missing_ok=True)
+            raise ToolchainError("download %s: %s" % (url, error)) from error
+        partial.rename(archive)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     if digest != entry["sha256"]:
         raise ToolchainError("%s: sha256 %s is not the pin %s" % (archive, digest, entry["sha256"]))
@@ -1492,6 +1505,13 @@ def command_build(args):
     status = build(pin, args.jobs, args.fetch_only)
     if status == 0 and "cross_compiler" in pin:
         status = build_cross(pin, args.jobs, args.fetch_only)
+    if status == 0:
+        # The build checks every HLSL artifact with the pinned Linux DXC.
+        try:
+            dxc_release("linux")
+        except ToolchainError as error:
+            print("shader_toolchain: %s" % error, file=sys.stderr)
+            return 1
     return status
 
 

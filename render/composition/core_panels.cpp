@@ -88,7 +88,8 @@ bool CorePanels::DrawPanel( const RenderCorePanel &panel, const float worldToCli
 
 	pass::panels::PanelView view;
 	view.hostFrame = hostFrame;
-	view.panels = { panel.id };
+	// assign(1, ...): GCC 13 misreports a one-element initializer list (-Warray-bounds).
+	view.panels.assign( 1, panel.id );
 	// The engine's transform puts pixel centers on integer coordinates
 	// (D3D9); the port's are half a pixel right and down of them (the same
 	// correction as the world's views).

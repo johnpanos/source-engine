@@ -195,7 +195,8 @@ foundation::Expected<std::unique_ptr<BloomRenderer>, PostStatus> BloomRenderer::
 	    BindGroupLayoutId(), BindGroupLayoutId(), BindGroupLayoutId(), renderer->m_Layout };
 	recipe.topology = PrimitiveTopology::kTriangleList;
 	recipe.raster.cull = CullMode::kNone;
-	recipe.colorFormats = { Format::kRGBA8Unorm };
+	// assign(1, ...): GCC 13 misreports a one-element initializer list (-Warray-bounds).
+	recipe.colorFormats.assign( 1, Format::kRGBA8Unorm );
 	recipe.debugName = "render.pass.post";
 	auto resolved = shaderlib::Resolve( recipe, artifacts, device.Facts().artifactFormat );
 	if ( !resolved )

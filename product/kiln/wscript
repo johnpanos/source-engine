@@ -15,11 +15,11 @@ def build(bld):
 	strict = bld.strict_cpp20_env()
 	bld.stlib(env=strict, source=['core/session.cpp', 'core/launch.cpp'], target='kiln_core', name='kiln_core',
 		arch_module='kiln.core', features='cxx', includes=['../../public'],
-		use=['product_contracts', 'product_profile', 'foundation_json', 'jobsystem'], install_path=None)
+		use=['product_contracts', 'product_profile', 'foundation_json', 'jobsystem_defaultabi'], install_path=None)
 	bld.stlib(env=strict, source=['composition/composition.cpp'], target='kiln_composition',
 		name='kiln_composition', arch_module='kiln.composition', features='cxx',
 		includes=['../../public'],
-		use=['kiln_core', 'product_toolchain_linux', 'product_stage_waf', 'product_package_linux_dir', 'product_stage_fstop', 'product_stage_video_av1', 'product_display_desktop', 'product_run_desktop', 'platform_posix', 'jobsystem'],
+		use=['kiln_core', 'product_toolchain_linux', 'product_stage_waf', 'product_package_linux_dir', 'product_stage_fstop', 'product_stage_video_av1', 'product_display_desktop', 'product_run_desktop', 'platform_posix', 'jobsystem_defaultabi'],
 		install_path=None)
 	bld.program(env=strict, source=['app/kiln_main.cpp'], target='kiln', name='kiln',
 		arch_module='kiln.app', features='cxx cxxprogram', includes=['../../public'],

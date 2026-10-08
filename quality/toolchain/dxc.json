@@ -1,6 +1,6 @@
 {
   "schema": "dxc-pin/v1",
-  "description": "The pinned DirectX Shader Compiler (RFC 0024): the Linux release checks every HLSL artifact at build time (tools/render/shader_artifacts.py hlsl_compile), and the Windows release's dxcompiler.dll and dxil.dll are the Direct3D 12 adapter's runtime compiler (render/device/d3d12/pipelines.cpp). tools/render/shader_toolchain.py dxc_release owns fetching (gh release download), sha256 verification and extraction into dependencies/shader-toolchain/<directory>.",
+  "description": "The pinned DirectX Shader Compiler (RFC 0024): the Linux release checks every HLSL artifact at build time (tools/render/shader_artifacts.py hlsl_compile), and the Windows release's dxcompiler.dll and dxil.dll are the Direct3D 12 adapter's runtime compiler (render/device/d3d12/pipelines.cpp). tools/render/shader_toolchain.py dxc_release owns fetching (the release asset over HTTPS, bounded by the pinned size), sha256 verification and extraction into dependencies/shader-toolchain/<directory>.",
   "release": "v1.9.2609",
   "repository": "microsoft/DirectXShaderCompiler",
   "archives": {
