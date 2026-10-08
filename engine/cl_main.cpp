@@ -1074,6 +1074,21 @@ void CL_FullyConnected( void )
 	// Purge the preload stores, oreder is critical
 	g_pMDLCache->ShutdownPreloadData();
 
+#if defined( PLATFORM_3DS )
+	// The meshes of every model the level keeps (precached and static
+	// props; the unused ones were just purged) are built now, at load (RFC
+	// 0026): a model first drawn mid-level read its VTX and VVD from the card
+	// then, a one-second frame in the intro4 demo when the cube, the wall
+	// pieces and the observation glass come into view.
+	for ( int i = 0; i < modelloader->GetCount(); ++i )
+	{
+		model_t *pModel = modelloader->GetModelForIndex( i );
+		if ( pModel && pModel->type == mod_studio &&
+		     ( pModel->nLoadFlags & IModelLoader::FMODELLOADER_LOADED ) )
+			g_pMDLCache->GetHardwareData( pModel->studio );
+	}
+#endif
+
 	// NOTE: purposely disabling for singleplayer, memory spike causing issues, preload's stay in
 	// UNDONE: discard preload for TF to save memory
 	// g_pFileSystem->DiscardPreloadData();

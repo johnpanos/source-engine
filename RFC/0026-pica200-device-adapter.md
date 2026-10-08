@@ -734,3 +734,17 @@ See the [progress section](#progress).
     objects behind a portal update at most every 4 frames while the eye is
     still; the PortalRefract overlay effects (static, opening) still draw
     as the flat fallback; New 3DS hardware.
+- 2026-10-08: two frame-time fixes on the intro4 demo.
+  - Model draws share their revision's cached material
+    (`DynamicDraw::sharedMaterial`, read through `Material()`): the core
+    copied the cached `WorldMaterial` (name, shader, three vectors of string
+    pairs) into every model draw. The profiled stretch fell 20 %
+    (12,832 -> 10,285 samples at 500 us).
+  - The one-second frame (178): about 48 models (the cube, the wall
+    destruction pieces, the observation glass, static-prop vines and
+    windows) read their VTX and VVD synchronously from the card on first
+    draw, because the 3DS builds a model's meshes on first use and releases
+    its VVD after (the memory audit). On the 3DS the client now builds the
+    meshes of every model the level keeps when it finishes loading
+    (`CL_FullyConnected`). No slow frame remains (worst 149 ms) and no model
+    loads during the demo; linear memory free falls from ~13 to ~7 MB.
