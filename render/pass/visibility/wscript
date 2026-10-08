@@ -1,0 +1,17 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# render.pass.visibility (RFC 0016 layer 6 feature, K8 sprites cohort): the
+# client's pixel visibility proxies under occlusion queries (clause D43).
+
+def build(bld):
+	bld.stlib(
+		env         = bld.strict_cpp20_env(),
+		features    = 'cxx capability_strict',
+		arch_module = 'render.pass.visibility',
+		target      = 'render_pass_visibility',
+		name        = 'render_pass_visibility',
+		source      = bld.path.ant_glob('*.cpp'),
+		includes    = ['../../../public'],
+		use         = ['render_device', 'render_shaderlib', 'render_spv'],
+		idx         = bld.get_taskgen_count()
+	)

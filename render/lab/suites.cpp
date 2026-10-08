@@ -66,6 +66,8 @@ int RunSuite( int argc, char **argv )
 		return RunUiSuite( argc - 1, argv + 1 );
 	if ( name == "luminance" )
 		return RunLuminanceSuite( argc - 1, argv + 1 );
+	if ( name == "visibility" )
+		return RunVisibilitySuite( argc - 1, argv + 1 );
 	if ( name == "posed-model" )
 		return RunPosedModelSuite( argc - 1, argv + 1 );
 	if ( name == "sprite" )

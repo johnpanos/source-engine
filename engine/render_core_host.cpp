@@ -47,6 +47,7 @@ struct RenderCoreHostState
 	IRenderCorePanels *panels = nullptr;
 	IRenderCoreUi *ui = nullptr;
 	IRenderCoreLuminance *luminance = nullptr;
+	IRenderCoreVisibility *visibility = nullptr;
 	gpu_compute::IGpuCompute *gpuCompute = nullptr; // the core's (RFC 0016 K12)
 	std::unique_ptr<render::scene::IRenderScene> worldScene;
 	std::vector<int> worldLeaves; // snapshot index -> leaf, or -(prop + 1) (RFC 0016 K5)
@@ -255,6 +256,7 @@ DLL_EXPORT bool Engine_BindRenderCore( const RenderCoreBinding *pBinding )
 	host.panels = pBinding->panels;
 	host.ui = pBinding->ui;
 	host.luminance = pBinding->luminance;
+	host.visibility = pBinding->visibility;
 	host.gpuCompute = pBinding->gpuCompute;
 	host.bound = true;
 	return true;
@@ -283,6 +285,11 @@ IRenderCoreUi *RenderCoreHost_Ui()
 IRenderCoreLuminance *RenderCoreHost_Luminance()
 {
 	return Host().bound ? Host().luminance : nullptr;
+}
+
+IRenderCoreVisibility *RenderCoreHost_Visibility()
+{
+	return Host().bound ? Host().visibility : nullptr;
 }
 
 // RFC 0016 K12: each world mesh upload the renderer's provider accepts

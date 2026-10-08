@@ -63,6 +63,10 @@ IRenderCoreUi *RenderCoreHost_Ui();
 // render_core_luminance.h); null when unbound.
 class IRenderCoreLuminance;
 IRenderCoreLuminance *RenderCoreHost_Luminance();
+// The client's pixel visibility counts (RFC 0016 render.pass.visibility,
+// render_core_visibility.h); null when unbound.
+class IRenderCoreVisibility;
+IRenderCoreVisibility *RenderCoreHost_Visibility();
 
 // Host render steps (host_render_steps.h): EngineFrameBegin and EngineFrameEnd.
 void RenderCoreHost_BeginFrame();

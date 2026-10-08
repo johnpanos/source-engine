@@ -17,6 +17,7 @@
 #include "vprof.h"
 #include "icommandline.h"
 #include "sourcevr/isourcevirtualreality.h"
+#include "engine/ivisibilitycount.h"
 
 static void PixelvisDrawChanged( IConVar *pPixelvisVar, const char *pOld, float flOldValue );
 
@@ -45,7 +46,77 @@ extern ConVar building_cubemaps;
 
 const float MIN_PROXY_PIXELS = 5.0f;
 
+// RFC 0016 render.pass.visibility: the engine's proxy counts on the render
+// core (cdll_client_int.cpp sets it); null counts with occlusion queries.
+IEngineVisibilityCount *g_pEngineVisibilityCount = NULL;
+
+// The proxy's points (the apex then the four base corners) and the fraction
+// of it inside the frustum; -1 when it is off screen (nothing to count).
+static float PixelVisibility_ProxyPoints( IMatRenderContext *pRenderContext, Vector origin,
+    float scale, float proxyAspect, bool screenspace, Vector verts[5] );
+
 float PixelVisibility_DrawProxy( IMatRenderContext *pRenderContext, OcclusionQueryObjectHandle_t queryHandle, Vector origin, float scale, float proxyAspect, IMaterial *pMaterial, bool screenspace )
+{
+	Vector verts[5];
+	const float ratio = PixelVisibility_ProxyPoints(
+	    pRenderContext, origin, scale, proxyAspect, screenspace, verts );
+	if ( ratio < 0 )
+		return -1;
+
+	pRenderContext->BeginOcclusionQueryDrawing( queryHandle );
+	CMeshBuilder meshBuilder;
+	IMesh *pMesh = pRenderContext->GetDynamicMesh( false, NULL, NULL, pMaterial );
+	meshBuilder.Begin( pMesh, MATERIAL_TRIANGLES, 4 );
+	// draw a pyramid
+	for ( int i = 0; i < 4; i++ )
+	{
+		int a = i + 1;
+		int b = ( a % 4 ) + 1;
+		meshBuilder.Position3fv( verts[0].Base() );
+		meshBuilder.AdvanceVertex();
+		meshBuilder.Position3fv( verts[a].Base() );
+		meshBuilder.AdvanceVertex();
+		meshBuilder.Position3fv( verts[b].Base() );
+		meshBuilder.AdvanceVertex();
+	}
+	meshBuilder.End();
+	pMesh->Draw();
+	pRenderContext->EndOcclusionQueryDrawing( queryHandle );
+
+	// fraction clipped by frustum
+	return ratio;
+}
+
+// The proxy counted by the render core (RFC 0016 render.pass.visibility):
+// its points in clip space as the view's transform gives them, in the
+// current viewport. Returns the frustum fraction (-1 off screen) and the
+// core's query id in *pQuery (0 when the core did not take it).
+static float PixelVisibility_QueueProxy( IMatRenderContext *pRenderContext, Vector origin,
+    float scale, float proxyAspect, bool screenspace, unsigned *pQuery )
+{
+	*pQuery = 0;
+	Vector verts[5];
+	const float ratio = PixelVisibility_ProxyPoints(
+	    pRenderContext, origin, scale, proxyAspect, screenspace, verts );
+	if ( ratio < 0 )
+		return -1;
+	const VMatrix &worldToClip = engine->WorldToScreenMatrix();
+	float points[5][4];
+	for ( int i = 0; i < 5; ++i )
+	{
+		for ( int r = 0; r < 4; ++r )
+			points[i][r] = worldToClip[r][0] * verts[i].x + worldToClip[r][1] * verts[i].y +
+			               worldToClip[r][2] * verts[i].z + worldToClip[r][3];
+	}
+	int x, y, w, h;
+	pRenderContext->GetViewport( x, y, w, h );
+	const float viewport[6] = { float( x ), float( y ), float( w ), float( h ), 0.0f, 1.0f };
+	*pQuery = g_pEngineVisibilityCount->Queue( points, viewport );
+	return ratio;
+}
+
+static float PixelVisibility_ProxyPoints( IMatRenderContext *pRenderContext, Vector origin,
+    float scale, float proxyAspect, bool screenspace, Vector verts[5] )
 {
 	Vector point;
 
@@ -78,9 +149,8 @@ float PixelVisibility_DrawProxy( IMatRenderContext *pRenderContext, OcclusionQue
 	VectorNormalize(dir);
 	origin -= dir * forwardScale;
 	forwardScale = 0.0f;
-	// 
+	//
 
-	Vector verts[5];
 	const float sqrt2 = 0.707106781f; // sqrt(2) - keeps all vectors the same length from origin
 	scale *= sqrt2;
 	float scale45x = scale;
@@ -115,55 +185,6 @@ float PixelVisibility_DrawProxy( IMatRenderContext *pRenderContext, OcclusionQue
 		ratio = clamp(ratio, 0.0f, 1.0f);
 	}
 
-	pRenderContext->BeginOcclusionQueryDrawing( queryHandle );
-	CMeshBuilder meshBuilder;
-	IMesh* pMesh = pRenderContext->GetDynamicMesh( false, NULL, NULL, pMaterial );
-	meshBuilder.Begin( pMesh, MATERIAL_TRIANGLES, 4 );
-	// draw a pyramid
-	for ( int i = 0; i < 4; i++ )
-	{
-		int a = i+1;
-		int b = (a%4)+1;
-		meshBuilder.Position3fv( verts[0].Base() );
-		meshBuilder.AdvanceVertex();
-		meshBuilder.Position3fv( verts[a].Base() );
-		meshBuilder.AdvanceVertex();
-		meshBuilder.Position3fv( verts[b].Base() );
-		meshBuilder.AdvanceVertex();
-	}
-	meshBuilder.End();
-	pMesh->Draw();
-
-	// sprite/quad proxy
-#if 0
-	meshBuilder.Begin( pMesh, MATERIAL_QUADS, 1 );
-
-	VectorMA (origin, -scale, CurrentViewUp(), point);
-	VectorMA (point, -scale, CurrentViewRight(), point);
-	meshBuilder.Position3fv (point.Base());
-	meshBuilder.AdvanceVertex();
-
-	VectorMA (origin, scale, CurrentViewUp(), point);
-	VectorMA (point, -scale, CurrentViewRight(), point);
-	meshBuilder.Position3fv (point.Base());
-	meshBuilder.AdvanceVertex();
-
-	VectorMA (origin, scale, CurrentViewUp(), point);
-	VectorMA (point, scale, CurrentViewRight(), point);
-	meshBuilder.Position3fv (point.Base());
-	meshBuilder.AdvanceVertex();
-
-	VectorMA (origin, -scale, CurrentViewUp(), point);
-	VectorMA (point, scale, CurrentViewRight(), point);
-	meshBuilder.Position3fv (point.Base());
-	meshBuilder.AdvanceVertex();
-	
-	meshBuilder.End();
-	pMesh->Draw();
-#endif
-	pRenderContext->EndOcclusionQueryDrawing( queryHandle );
-
-	// fraction clipped by frustum
 	return ratio;
 }
 
@@ -252,6 +273,11 @@ private:
 	float							m_clipFraction;
 	OcclusionQueryObjectHandle_t	m_queryHandle;
 	OcclusionQueryObjectHandle_t	m_queryHandleCount;
+	// The render core's count in flight (RFC 0016 render.pass.visibility),
+	// or 0; its visible and possible samples arrive together.
+	unsigned m_coreQuery = 0;
+	// The query's counts: the core's, or the material system's queries'.
+	void ReadCounts( IMatRenderContext *pRenderContext, int &pixels, int &pixelsPossible );
 	unsigned short					m_wasQueriedThisFrame : 1;
 	unsigned short					m_failed : 1;
 	unsigned short					m_hasValidQueryResults : 1;
@@ -306,6 +332,26 @@ void CPixelVisibilityQuery::ResetOcclusionQueries()
 	}
 }
 
+void CPixelVisibilityQuery::ReadCounts(
+    IMatRenderContext *pRenderContext, int &pixels, int &pixelsPossible )
+{
+	if ( !m_coreQuery )
+	{
+		pixelsPossible = pRenderContext->OcclusionQuery_GetNumPixelsRendered( m_queryHandleCount );
+		pixels = pRenderContext->OcclusionQuery_GetNumPixelsRendered( m_queryHandle );
+		return;
+	}
+	// -1 while the core's count is in flight, as a material system query's.
+	int visible = 0, possible = 0;
+	const int status = g_pEngineVisibilityCount->Result( m_coreQuery, &visible, &possible );
+	pixels = pixelsPossible = -1;
+	if ( status == 0 )
+		return;
+	m_coreQuery = 0;
+	pixels = status == 1 ? visible : 0;
+	pixelsPossible = status == 1 ? possible : 0;
+}
+
 bool CPixelVisibilityQuery::IsValid()
 {
 	return (m_queryHandle != INVALID_OCCLUSION_QUERY_OBJECT_HANDLE) ? true : false;
@@ -335,8 +381,7 @@ float CPixelVisibilityQuery::GetFractionVisible( float fadeTimeInv )
 		{
 			if ( m_frameIssued != -1 )
 			{
-				pixelsPossible = pRenderContext->OcclusionQuery_GetNumPixelsRendered( m_queryHandleCount );
-				pixels = pRenderContext->OcclusionQuery_GetNumPixelsRendered( m_queryHandle );
+				ReadCounts( pRenderContext, pixels, pixelsPossible );
 			}
 
 			if ( r_pixelvisibility_spew.GetBool() && CurrentViewID() == 0 ) 
@@ -367,7 +412,8 @@ float CPixelVisibilityQuery::GetFractionVisible( float fadeTimeInv )
 		{
 			if ( m_frameIssued != -1 )
 			{
-				pixels = pRenderContext->OcclusionQuery_GetNumPixelsRendered( m_queryHandle );
+				int pixelsPossibleUnused = -1;
+				ReadCounts( pRenderContext, pixels, pixelsPossibleUnused );
 			}
 
 			if ( r_pixelvisibility_spew.GetBool() && CurrentViewID() == 0 ) 
@@ -414,7 +460,15 @@ void CPixelVisibilityQuery::IssueQuery( IMatRenderContext *pRenderContext, float
 			DevMsg( 1, "Draw Proxy: qh:%d org:<%d,%d,%d> (frame:%d)\n", (int)(intp)m_queryHandle, (int)m_origin[0], (int)m_origin[1], (int)m_origin[2], gpGlobals->framecount );
 		}
 
-		m_clipFraction = PixelVisibility_DrawProxy( pRenderContext, m_queryHandle, m_origin, proxySize, proxyAspect, pMaterial, sizeIsScreenSpace );
+		// RFC 0016 render.pass.visibility: the render core counts the proxy
+		// (visible and possible together); the material system otherwise.
+		m_coreQuery = 0;
+		if ( g_pEngineVisibilityCount && g_pEngineVisibilityCount->CoreCounts() )
+			m_clipFraction = PixelVisibility_QueueProxy(
+			    pRenderContext, m_origin, proxySize, proxyAspect, sizeIsScreenSpace, &m_coreQuery );
+		if ( !m_coreQuery )
+			m_clipFraction = PixelVisibility_DrawProxy( pRenderContext, m_queryHandle, m_origin,
+			    proxySize, proxyAspect, pMaterial, sizeIsScreenSpace );
 		if ( m_clipFraction < 0 )
 		{
 			// NOTE: In this case, the proxy wasn't issued cause it was offscreen
@@ -436,6 +490,9 @@ void CPixelVisibilityQuery::IssueQuery( IMatRenderContext *pRenderContext, float
 
 void CPixelVisibilityQuery::IssueCountingQuery( IMatRenderContext *pRenderContext, float proxySize, float proxyAspect, IMaterial *pMaterial, bool sizeIsScreenSpace )
 {
+	// The render core's query counts the possible samples too.
+	if ( m_coreQuery || ( g_pEngineVisibilityCount && g_pEngineVisibilityCount->CoreCounts() ) )
+		return;
 	if ( !m_failed )
 	{
 		Assert( IsValid() );

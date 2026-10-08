@@ -13834,6 +13834,38 @@
       "expect": "pass"
     },
     {
+      "id": "render.lab.visibility",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "RFC/0016-render-core.md",
+      "profile": "linux-native-vulkan-gpu",
+      "kind": "positive",
+      "description": "RFC 0016 K8 sprites cohort: render.pass.visibility counts the client's pixel visibility proxy (the apex and four base corners PixelVisibility_DrawProxy builds) under occlusion queries (device clause D43) against an occluder render.pass.world draws into the canvas depth first, with every edge on a pixel boundary after the views' half-pixel shift: an unoccluded proxy 192 of 192 samples, behind a full-screen occluder 0 of 192, behind a left-half occluder 48 of 192, in front of the occluder 192 of 192; counts pending until the frame's token, read once; a recapture draws nothing; an empty viewport refused. No validation messages.",
+      "command": [
+        "{python}",
+        "tools/render/lab.py",
+        "suite",
+        "visibility",
+        "--validate"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 11,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:build-rc-lab/render/lab/render_lab",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/lab/visibility_suite.cpp",
+        "render/pass/visibility/visibility.cpp",
+        "public/render/pass/visibility/visibility.h",
+        "render/device/vulkan/encoder.cpp",
+        "tools/render/lab.py"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.lab.particles",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

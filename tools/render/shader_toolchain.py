@@ -88,6 +88,7 @@ CULL = "render/culling"
 LINES = "render/pass/lines"
 PANELS = "render/pass/panels"
 LUMINANCE = "render/pass/luminance"
+VISIBILITY = "render/pass/visibility"
 FAMILIES = "render/material/families"
 SKINNING_TESTS = "unittests/rendertest/core/skinning"
 LIGHTS = "render/pass/lights"
@@ -215,6 +216,10 @@ GENERATED = {
     "luminance_spv.h": ("render::pass::luminance::spirv",
         "the luminance pass: the counts behind auto exposure (RFC 0016 K8)", (
         ("kLuminanceCount", LUMINANCE + "/luminance_count.comp", DEVICE_OPTIONS),)),
+    "visibility_spv.h": ("render::pass::visibility::spirv",
+        "the visibility pass: the client's pixel visibility proxies (RFC 0016 K8)", (
+        ("kVisibilityVertex", VISIBILITY + "/visibility.vert", DEVICE_OPTIONS),
+        ("kVisibilityFragment", VISIBILITY + "/visibility.frag", DEVICE_OPTIONS))),
     "luminance_defects_spv.h": ("render::lab::spirv",
         "render_lab's luminance suite's seeded program (render.lab.luminance sensitivity)", (
         ("kLuminanceHalfOpen", LUMINANCE + "/luminance_count.comp",
@@ -580,7 +585,8 @@ GLSL_GENERATED = {
 CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "cull_spv.h", "debug_spv.h", "families_spv.h", "lines_spv.h",
                         "output_spv.h", "temporal_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h",
                         "ssr_spv.h", "ao_spv.h", "bounce_spv.h", "indirect_spv.h",
-                        "panels_spv.h", "post_spv.h", "luminance_spv.h")
+                        "panels_spv.h", "post_spv.h", "luminance_spv.h",
+                        "visibility_spv.h")
 for _header in CORE_PROGRAM_HEADERS:
     _namespace, _purpose, _rows = GENERATED[_header]
     GLSL_GENERATED[_header.replace("_spv.h", "_glsl.h")] = (

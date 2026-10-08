@@ -11,6 +11,7 @@
 #define RENDER_COMPOSITION_CORE_PANELS_H
 
 #include "core_luminance.h"
+#include "core_visibility.h"
 #include "render/composition/render_core_panels.h"
 #include "render/frame/renderer.h"
 #include "render/legacy/capabilities.h"
@@ -61,14 +62,15 @@ private:
 	std::string m_LastRefusal;
 };
 
-// The frontend's forwarded recorder: panel tags to the panels, luminance tags
-// to the luminance counts, every other forwarded slot (and the output) to the
-// world, which owns the rest.
+// The frontend's forwarded recorder: panel tags to the panels, luminance and
+// visibility tags to their counts, every other forwarded slot (and the
+// output) to the world, which owns the rest.
 class ForwardedSlots final : public legacy::ICorePassRecorder
 {
 public:
-	ForwardedSlots( legacy::ICorePassRecorder &world, CorePanels &panels, CoreLuminance &luminance )
-	    : m_World( world ), m_Panels( panels ), m_Luminance( luminance )
+	ForwardedSlots( legacy::ICorePassRecorder &world, CorePanels &panels, CoreLuminance &luminance,
+	    CoreVisibility &visibility )
+	    : m_World( world ), m_Panels( panels ), m_Luminance( luminance ), m_Visibility( visibility )
 	{
 	}
 
@@ -86,6 +88,8 @@ public:
 			m_Panels.RecordSlot( tag, encoder, target );
 		else if ( pass::luminance::IsLuminanceTag( tag ) )
 			m_Luminance.RecordSlot( tag, encoder, target );
+		else if ( pass::visibility::IsVisibilityTag( tag ) )
+			m_Visibility.RecordSlot( tag, encoder, target );
 		else
 			m_World.RecordSlot( tag, encoder, target );
 	}
@@ -94,7 +98,8 @@ public:
 	{
 		std::size_t count = 0;
 		while ( count < tags.size() && !pass::panels::IsPanelTag( tags[count] ) &&
-		        !pass::luminance::IsLuminanceTag( tags[count] ) )
+		        !pass::luminance::IsLuminanceTag( tags[count] ) &&
+		        !pass::visibility::IsVisibilityTag( tags[count] ) )
 			++count;
 		return count ? m_World.RecordOpaqueBatch( tags.first( count ), encoder, target )
 		             : ICorePassRecorder::RecordOpaqueBatch( tags, encoder, target );
@@ -107,11 +112,13 @@ public:
 	void FrameSubmitted( device::CompletionToken token, bool submitted ) override
 	{
 		m_Luminance.FrameSubmitted( token, submitted );
+		m_Visibility.FrameSubmitted( token, submitted );
 		m_World.FrameSubmitted( token, submitted );
 	}
 	void ReleaseDevice( device::IRenderDevice2 &device ) override
 	{
 		m_Luminance.ReleaseDevice( device );
+		m_Visibility.ReleaseDevice( device );
 		m_Panels.ReleaseDevice( device );
 		m_World.ReleaseDevice( device );
 	}
@@ -120,6 +127,7 @@ private:
 	legacy::ICorePassRecorder &m_World;
 	CorePanels &m_Panels;
 	CoreLuminance &m_Luminance;
+	CoreVisibility &m_Visibility;
 };
 
 } // namespace render::composition

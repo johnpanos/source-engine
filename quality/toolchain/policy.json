@@ -532,6 +532,10 @@
       "dialect": "cxx20",
       "rfc": "0016"
     },
+    "render_pass_visibility": {
+      "dialect": "cxx20",
+      "rfc": "0016"
+    },
     "render_pass_luminance": {
       "dialect": "cxx20",
       "rfc": "0016"

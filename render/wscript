@@ -29,6 +29,7 @@ PORTABLE = [
 	'pass/lines',
 	'pass/panels',
 	'pass/luminance',
+	'pass/visibility',
 	'pass/debug',
 	'pass/lights',
 	'pass/shadows',

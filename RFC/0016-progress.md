@@ -13019,3 +13019,63 @@ monitors, motion blur and RTT shadows, which this view drops without a core
 replacement); the client still acquires the render context in the histogram
 code for the viewport and the legacy fallback (static ratchet unchanged at
 496); frame cost unmeasured on target hardware.
+
+## R91 K8 sprites cohort: pixel visibility on the core, device clause D43 (2026-10-07, user goal)
+
+The multi-map runtime census (`tools/render/legacy_stream_census.py`, new:
+boots each view headless with the product's core settings and records the
+settled frames' `legacy_stream_draws`, the captured frame's legacy draws by
+material and the backend's dropped materials) found every settled spawn view
+at zero after the UI and luminance slices (`sp_a1_intro2`, `sp_a1_intro3`,
+`sp_a1_intro4` and its pause menu, `sp_a1_wakeup`, `sp_a2_laser_intro`,
+`sp_a2_fizzler_intro`, `sp_a2_laser_over_goo`, `sp_a3_jump_intro`,
+`mp_coop_multifling_1`). None of those views had a portal in sight, so the
+census gained `portal-walk`: `qa_portal_walk` (`tools/quality/portal2_portal_map.py`)
+with blue on the north wall, orange on the east, looking into blue. It drew
+**35** legacy draws per settled frame: 32 `engine/occlusionproxy` (the
+client's pixel visibility proxies for the room's glow sprites, in the view and
+the portal's view) and 3 portal static overlays.
+
+- **Device clause D43** (`Capability::kOcclusionQueries`,
+  `CommandEncoder::BeginOcclusionQuery`/`EndOcclusionQuery`, contract
+  `render.device.v2.md`): exact sample counts of the draws between Begin and
+  End, into a `kReadback` buffer at the end of the submission; inside one
+  rendering scope, not nested. Vulkan claims it where the device has
+  `occlusionQueryPrecise` (an occlusion pool per submission, the precise
+  bit); null and the recording adapters do not claim it. The shared suite's
+  D43 case draws a half-screen triangle (32 of 64 samples), a full-screen one
+  at the same depth (the other 32, kLess) and a third (0), and refuses a query
+  outside rendering, a nested one, one open at EndRendering, an End with none
+  open and an unaligned offset; the bad adapter `kDropsOcclusion` is caught.
+  `render.device.v2.vulkan` (1,411), `.gl` (1,309), `.null` (721) and both
+  sensitivity suites pass. The Vulkan facts check was stale against D39's
+  `kFloatTargets` (added by the 3DS slice) and is corrected with D43.
+- **`render.pass.visibility`** (`public/render/pass/visibility/visibility.h`):
+  the client's proxy (apex and four base corners in clip space) drawn at its
+  slot into the frame's target with writes masked off, twice, each under a
+  D43 query: depth-tested (LessEqual, the occlusionproxy material) and
+  untested (occlusionproxy_countdraw), so visible and possible samples arrive
+  together; read back once the frame's token completes.
+- **Composition / engine / client**: `CoreVisibility` (tags 0x8f, routed and
+  given submissions like the luminance counts), `VEngineVisibilityCount001`
+  and `r_core_visibility` (default 1), `r_core_visibility_stats`;
+  `c_pixel_visibility.cpp` builds the same proxy once
+  (`PixelVisibility_ProxyPoints`), queues it in clip space when the core
+  counts, skips the separate counting draw and reads both counts in
+  `ReadCounts`, keeping the legacy pending/failed flow.
+
+**Lab** (`render_lab suite visibility`, row `render.lab.visibility`): 11
+checks, 0 failed, validation silent: 192 of 192 samples unoccluded, 0 of 192
+behind a full-screen occluder drawn by the world pass, 48 of 192 behind a
+left-half one, 192 of 192 in front; pending until the token, read once, a
+recapture draws nothing, an empty viewport refused.
+
+**Game** (`portal-walk`): legacy-stream draws per settled frame 35 → **3**
+(the portal static overlays); 800 proxies queued, 800 resolved, 0 failed. The
+glow sprites read the same with core and material-system counts (screenshots
+toggled in one run; the difference is below the run's own scene noise).
+
+Remaining on this view: the portal static overlays
+(`models/portals/portalstaticoverlay_1/_2` drawn by legacy, `_noz` dropped),
+Chell's eyes (`gambler_eyeball_l/_r`, dropped) and motion blur (dropped). The
+portal's far view reads dark against legacy: to be compared next.

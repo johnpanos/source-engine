@@ -13,6 +13,7 @@
 #include "core_panels.h"
 #include "core_luminance.h"
 #include "core_ui.h"
+#include "core_visibility.h"
 #include "core_world.h"
 #include "render/legacy/core_backend.h"
 #include "render/legacy/frame_source.h"
@@ -58,6 +59,8 @@ struct RenderCore
 	std::unique_ptr<render::composition::CoreUi> ui;
 	// The luminance counts behind auto exposure (render.pass.luminance).
 	std::unique_ptr<render::composition::CoreLuminance> luminance;
+	// The client's pixel visibility proxies (render.pass.visibility).
+	std::unique_ptr<render::composition::CoreVisibility> visibility;
 	std::unique_ptr<render::composition::ForwardedSlots> forwarded;
 	std::unique_ptr<render::frame::IRenderer> renderer;
 	std::string deviceName;
@@ -92,6 +95,7 @@ struct RenderCore
 		if ( renderer && world )
 			renderer->RemoveStageHooks( world.get() );
 		forwarded.reset();
+		visibility.reset();
 		luminance.reset();
 		ui.reset();
 		panels.reset();
@@ -386,8 +390,9 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	        core->device->Facts().capabilities.Has( render::device::Capability::kCompute ) );
 	core->ui = std::make_unique<render::composition::CoreUi>( *core->frontend, *core->world );
 	core->luminance = std::make_unique<render::composition::CoreLuminance>( *core->frontend );
+	core->visibility = std::make_unique<render::composition::CoreVisibility>( *core->frontend );
 	core->forwarded = std::make_unique<render::composition::ForwardedSlots>(
-	    *core->world, *core->panels, *core->luminance );
+	    *core->world, *core->panels, *core->luminance, *core->visibility );
 	core->world->EnableTemporal( config->temporal, config->temporalAssets );
 	core->binding.temporal.context = core->world.get();
 	core->binding.temporal.setEnabled = []( void *context, bool enabled )
@@ -405,6 +410,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->binding.panels = core->panels.get();
 	core->binding.ui = core->ui.get();
 	core->binding.luminance = core->luminance.get();
+	core->binding.visibility = core->visibility.get();
 	core->binding.deviceName = core->deviceName.c_str();
 	if ( result )
 	{

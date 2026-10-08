@@ -204,7 +204,9 @@ void SimulateEntities();
 #include "engine/iworldpanels.h"
 #include "vgui/IWorldPanelRecorder.h"
 #include "engine/iluminancecount.h"
+#include "engine/ivisibilitycount.h"
 extern IEngineLuminanceCount *g_pEngineLuminanceCount;
+extern IEngineVisibilityCount *g_pEngineVisibilityCount;
 
 #ifdef FSTOP
 #include "blob_networkbypass.h"
@@ -1079,6 +1081,10 @@ int CHLClient::Init( CreateInterfaceFn appSystemFactory, CreateInterfaceFn physi
 	// the core (viewpostprocess.cpp); occlusion queries without it.
 	g_pEngineLuminanceCount =
 	    (IEngineLuminanceCount *)appSystemFactory( ENGINE_LUMINANCE_COUNT_INTERFACE_VERSION, NULL );
+	// RFC 0016 render.pass.visibility: the pixel visibility proxies' counts
+	// on the core (c_pixel_visibility.cpp).
+	g_pEngineVisibilityCount = (IEngineVisibilityCount *)appSystemFactory(
+	    ENGINE_VISIBILITY_COUNT_INTERFACE_VERSION, NULL );
 
 	// The render core's stage markers (RFC 0016); absent without a core.
 	g_pRenderStageMarkers =
