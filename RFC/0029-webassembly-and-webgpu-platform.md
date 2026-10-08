@@ -80,10 +80,10 @@ pipelines) maps onto `render.device.v2` directly.
    HLSL) plus FXC (D3D9) already pass their adapters' suites. A program
    that does not translate is left out of the store and refused by name on
    this device only; core shader source is not reduced to WebGPU's level.
-   Every `kWgsl` artifact is also validated by a pinned Naga CLI (Firefox's
-   WGSL compiler; Rust toolchain and vendored crates pinned in the profile,
-   host tool only), and a rejection fails the build, so Tint output that
-   Firefox would refuse never ships. Naga is a validator, not a translator.
+   No second WGSL validator is pinned (user decision, 2026-10-07): WGSL
+   that Firefox rejects is caught by W4's Firefox runs, not at build time.
+   SPIRV-Cross has no WGSL backend and browsers accept no SPIR-V, so a WGSL
+   translator is required; Tint is the only one.
 6. **Threads.** Emscripten pthreads (Web Workers sharing one
    `SharedArrayBuffer` heap). The root creates the `CmpJob` pool before the
    engine starts, sized from `navigator.hardwareConcurrency` through the
@@ -133,7 +133,7 @@ pipelines) maps onto `render.device.v2` directly.
 | W0 | Profile declared and pinned; `--emscripten` configure; dedicated/test products link statically to `.wasm`; `static_composition.py` reads wasm with seeded defects; archlint clean | open |
 | W1 | Node lane: foundation, `platform.task-runner.v1`, jobs (serial and pooled, `jobsystem.continuous`) and `physics.conformance` suites pass with their counts; thread census matches the declared pool; serial mode passes without `SharedArrayBuffer` | open |
 | W2 | Headless Portal boots a map in the engine worker with the null device and exits cleanly; content through the OPFS package source; missing content named | open |
-| W3 | `render.device.webgpu`: shared `render.device.v2` suite and bad adapters pass for every claimed capability on Dawn and in headless Chromium, conventions section included; `kWgsl` artifacts for every translatable core program, each accepted by the pinned Naga validator with a seeded invalid artifact rejected, the rest refused by name | open |
+| W3 | `render.device.webgpu`: shared `render.device.v2` suite and bad adapters pass for every claimed capability on Dawn and in headless Chromium, conventions section included; `kWgsl` artifacts for every translatable core program, the rest refused by name | open |
 | W4 | `render.graph.v1` on the adapter; core pixel families within recorded cross-backend tolerance of Vulkan in Chromium and Firefox | open |
 | W5 | Portal playable in a browser on the core: input, audio, resize, focus loss and tab backgrounding; matched captures against native Vulkan | open |
 | W6 | Resolution sweep and frame-floor runs against native Vulkan on the same host, threaded and serial; budgets for the profile set before measuring | open |
