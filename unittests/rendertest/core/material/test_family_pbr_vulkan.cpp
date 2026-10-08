@@ -108,8 +108,30 @@ int main()
 		const char *const base =
 		    "\"PBRMetalRough\" { \"$basetexture\" \"a\" \"$mraotexture\" \"b\" "
 		    "\"$fallbackmaterial\" \"f\" ";
-		checks.That( refused( ( std::string( base ) + "\"$envmap\" \"c\" }" ).c_str(), "envmap" ),
-		    "claim.refuses-an-environment-map-by-name" );
+		// $envmap is the view's reflection probes (6049332f6); a named cube is
+		// refused by the program resolver, not the family.
+		{
+			VmtImportContext context;
+			context.resolve = []( std::string_view ) -> std::optional<std::string>
+			{
+				return std::string();
+			};
+			auto imported =
+			    ImportVmt( ( std::string( base ) + "\"$envmap\" \"c\" }" ).c_str(), context );
+			bool claimed = false;
+			if ( imported )
+			{
+				ParameterBlock block( *pbr );
+				if ( ApplyValues( imported.Value(), block ) )
+				{
+					for ( const MaterialValue &value : imported.Value().values )
+						if ( value.kind == ValueKind::kTexture )
+							(void)block.SetTexture( value.parameter, device::TextureId( 1 ) );
+					claimed = ClaimPbr( block, false ).claimed;
+				}
+			}
+			checks.That( claimed, "claim.takes-an-environment-map-as-the-probes" );
+		}
 		{
 			VmtImportContext context;
 			context.resolve = []( std::string_view ) -> std::optional<std::string>
