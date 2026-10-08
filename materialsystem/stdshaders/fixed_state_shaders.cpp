@@ -626,9 +626,9 @@ protected:
 			{
 				if ( step.op == Op::End )
 					break;
-				if ( step.when == When::Flag && !IS_FLAG_SET( step.c ) )
+				if ( step.when == When::Flag && !IS_FLAG_SET( MaterialVarFlags_t( step.c ) ) )
 					continue;
-				if ( step.when == When::NotFlag && IS_FLAG_SET( step.c ) )
+				if ( step.when == When::NotFlag && IS_FLAG_SET( MaterialVarFlags_t( step.c ) ) )
 					continue;
 				if ( step.when == When::Param && !params[Extra( step.c )]->GetIntValue() )
 					continue;
