@@ -1277,6 +1277,37 @@
       "expect": "pass"
     },
     {
+      "id": "tier0.facade",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R103",
+      "contract": "RFC/0001-capability-based-platform-architecture.md",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "R103 T0 (RFC 0001 'Tier 0 facade over the foundation providers'): a built libtier0 against its export fixture (255 exports on linux-x86_64; C exports with their frozen declarations), the kept mod-fixture binary (built once, SDK-style C++11 and the old libstdc++ ABI) loaded into it and calling every cohort's exports, and the shrink-only OS-call ratchet per cohort, each with seeded-fault self-tests.",
+      "command": [
+        "{python}",
+        "tools/quality/tier0_facade.py",
+        "check",
+        "--tier0",
+        "build/tier0"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 120,
+      "requires": [
+        "path:build/tier0/libtier0.so"
+      ],
+      "sources": [
+        "tools/quality/tier0_facade.py",
+        "tools/quality/tier0_abi.py",
+        "tools/quality/tier0_ratchet.py",
+        "quality/fixtures/tier0-abi/mod-fixture/mod_fixture.cpp",
+        "quality/fixtures/tier0-abi/mod-fixture/host.cpp"
+      ],
+      "expect": "pass",
+      "min_checks": 400
+    },
+    {
       "id": "platform.foundation.posix",
       "domain": "Q-FOUNDATION",
       "rfc": "0001",

@@ -1,0 +1,1230 @@
+{
+ "exports": {
+  "AllocateThreadID": {
+   "declarations": [],
+   "kind": "T"
+  },
+  "ApproximateProcessMemoryUsage": {
+   "declarations": [
+    "memalloc.h: PLATFORM_INTERFACE size_t ApproximateProcessMemoryUsage( void )"
+   ],
+   "kind": "T"
+  },
+  "AreAllAssertsDisabled": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool AreAllAssertsDisabled()"
+   ],
+   "kind": "T"
+  },
+  "AssertValidStringPtr": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void AssertValidStringPtr( const tchar* ptr, int maxchar = 0xFFFFFF )"
+   ],
+   "kind": "T"
+  },
+  "BuildCmdLine": {
+   "declarations": [
+    "vcrmode.h: DBG_INTERFACE const char *BuildCmdLine( int argc, char **argv, bool fAddSteam = true )"
+   ],
+   "kind": "T"
+  },
+  "COM_TimestampedLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void COM_TimestampedLog( PRINTF_FORMAT_STRING char const *fmt, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "CallAssertFailedNotifyFunc": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void CallAssertFailedNotifyFunc( const char *pchFile, int nLine, const char *pchMessage )"
+   ],
+   "kind": "T"
+  },
+  "CatchAndWriteMiniDump": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void CatchAndWriteMiniDump( FnWMain pfn, int argc, tchar *argv[] )"
+   ],
+   "kind": "T"
+  },
+  "ColorSpewMessage": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewRetval_t ColorSpewMessage( SpewType_t type, const Color *pColor, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 3, 4 )"
+   ],
+   "kind": "T"
+  },
+  "CommandLine_Tier0": {
+   "declarations": [
+    "icommandline.h: PLATFORM_INTERFACE ICommandLine *CommandLine_Tier0()"
+   ],
+   "kind": "T"
+  },
+  "ConColorMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConColorMsg( int level, const Color& clr, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 3, 4 )",
+    "dbg.h: DBG_OVERLOAD void ConColorMsg( const Color& clr, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 )"
+   ],
+   "kind": "T"
+  },
+  "ConDColorMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConDColorMsg( const Color& clr, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 )"
+   ],
+   "kind": "T"
+  },
+  "ConDLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConDLog( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "ConDMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConDMsg( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "ConDWarning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConDWarning( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "ConLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConLog( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void ConLog( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "ConMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConMsg( int level, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void ConMsg( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "ConWarning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConWarning( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void ConWarning( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "CrackSmokingCompiler": {
+   "declarations": [],
+   "kind": "T"
+  },
+  "CreateSimpleThread": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE ThreadHandle_t CreateSimpleThread( ThreadFunc_t, void *pParam, unsigned stackSize = 0 )",
+    "threadtools.h: PLATFORM_OVERLOAD ThreadHandle_t CreateSimpleThread( ThreadFunc_t, void *pParam, ThreadId_t *pID, unsigned stackSize = 0 )"
+   ],
+   "kind": "T"
+  },
+  "DLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DLog( const tchar *pGroupName, int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 3, 4 )"
+   ],
+   "kind": "T"
+  },
+  "DMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DMsg( const tchar *pGroupName, int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 3, 4 )"
+   ],
+   "kind": "T"
+  },
+  "DWarning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DWarning( const tchar *pGroupName, int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 3, 4 )"
+   ],
+   "kind": "T"
+  },
+  "DebugLogger": {
+   "declarations": [
+    "dbg.h: PLATFORM_INTERFACE IDbgLogger *DebugLogger()"
+   ],
+   "kind": "T"
+  },
+  "DeclareCurrentThreadIsMainThread": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void DeclareCurrentThreadIsMainThread()"
+   ],
+   "kind": "T"
+  },
+  "DecodeBinaryFromString": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE int DecodeBinaryFromString( const char *pString, void *pDestBuffer, int iDestBufferSize, char **ppParseFinishOut = NULL )"
+   ],
+   "kind": "T"
+  },
+  "DefaultSpewFunc": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewRetval_t DefaultSpewFunc( SpewType_t type, const tchar *pMsg )"
+   ],
+   "kind": "T"
+  },
+  "DefaultSpewFuncAbortOnAsserts": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewRetval_t DefaultSpewFuncAbortOnAsserts( SpewType_t type, const tchar *pMsg )"
+   ],
+   "kind": "T"
+  },
+  "DevLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DevLog( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void DevLog( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "DevMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DevMsg( int level, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void DevMsg( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "DevWarning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DevWarning( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void DevWarning( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "DoNewAssertDialog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool DoNewAssertDialog( const tchar *pFile, int line, const tchar *pExpression )"
+   ],
+   "kind": "T"
+  },
+  "EncodeBinaryToString": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE int EncodeBinaryToString( const void *pToEncode, int iDataLength, char *pEncodeOut, int iEncodeBufferSize )"
+   ],
+   "kind": "T"
+  },
+  "Error": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void Error( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )",
+    "dbg.h: DBG_INTERFACE void NORETURN Error( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "ErrorV": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void NORETURN ErrorV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist )"
+   ],
+   "kind": "T"
+  },
+  "FreeThreadID": {
+   "declarations": [],
+   "kind": "T"
+  },
+  "GetCPUFrequencyResults": {
+   "declarations": [
+    "cpumonitoring.h: PLATFORM_INTERFACE CPUFrequencyResults GetCPUFrequencyResults( bool fGetDisabledResults = false )"
+   ],
+   "kind": "T"
+  },
+  "GetCPUInformation": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE const CPUInformation* GetCPUInformation()"
+   ],
+   "kind": "T"
+  },
+  "GetCPUUsage": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE float GetCPUUsage()"
+   ],
+   "kind": "T"
+  },
+  "GetCallStack": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE int GetCallStack( void **pReturnAddressesOut, int iArrayCount, int iSkipCount )"
+   ],
+   "kind": "T"
+  },
+  "GetCallStack_Fast": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE int GetCallStack_Fast( void **pReturnAddressesOut, int iArrayCount, int iSkipCount )"
+   ],
+   "kind": "T"
+  },
+  "GetFileAndLineFromAddress": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE bool GetFileAndLineFromAddress( const void *pAddress, tchar *pFileNameOut, int iMaxFileNameLength, uint32 &iLineNumberOut, uint32 *pDisplacementOut = NULL )"
+   ],
+   "kind": "T"
+  },
+  "GetMemoryInformation": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool GetMemoryInformation( MemoryInformation *pOutMemoryInfo )"
+   ],
+   "kind": "T"
+  },
+  "GetModuleNameFromAddress": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE bool GetModuleNameFromAddress( const void *pAddress, tchar *pModuleNameOut, int iMaxModuleNameLength )"
+   ],
+   "kind": "T"
+  },
+  "GetSpewOutputColor": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE const Color* GetSpewOutputColor( void )"
+   ],
+   "kind": "T"
+  },
+  "GetSpewOutputFunc": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewOutputFunc_t GetSpewOutputFunc( void )"
+   ],
+   "kind": "T"
+  },
+  "GetSpewOutputGroup": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE const tchar* GetSpewOutputGroup( void )"
+   ],
+   "kind": "T"
+  },
+  "GetSpewOutputLevel": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE int GetSpewOutputLevel( void )"
+   ],
+   "kind": "T"
+  },
+  "GetSymbolNameFromAddress": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE bool GetSymbolNameFromAddress( const void *pAddress, tchar *pSymbolNameOut, int iMaxSymbolNameLength, uint64 *pDisplacementOut = NULL )"
+   ],
+   "kind": "T"
+  },
+  "GetThreadedLoadLibraryFunc": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE ThreadedLoadLibraryFunc_t GetThreadedLoadLibraryFunc()"
+   ],
+   "kind": "T"
+  },
+  "HushAsserts": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool HushAsserts()"
+   ],
+   "kind": "T"
+  },
+  "InitPME": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void InitPME()"
+   ],
+   "kind": "T"
+  },
+  "InstallProgressReportHandler": {
+   "declarations": [
+    "progressbar.h: PLATFORM_INTERFACE ProgressReportHandler_t InstallProgressReportHandler( ProgressReportHandler_t pfn)"
+   ],
+   "kind": "T"
+  },
+  "Is64BitOS": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Is64BitOS()"
+   ],
+   "kind": "T"
+  },
+  "IsSpewActive": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool IsSpewActive( const tchar* pGroupName, int level )"
+   ],
+   "kind": "T"
+  },
+  "Log": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void Log( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "LogV": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void LogV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist )"
+   ],
+   "kind": "T"
+  },
+  "MemAllocOOMError": {
+   "declarations": [
+    "mem.h: MEM_INTERFACE void MemAllocOOMError( size_t nSize )"
+   ],
+   "kind": "T"
+  },
+  "MemAllocScratch": {
+   "declarations": [
+    "mem.h: MEM_INTERFACE void *MemAllocScratch( int nMemSize )"
+   ],
+   "kind": "T"
+  },
+  "MemFreeScratch": {
+   "declarations": [
+    "mem.h: MEM_INTERFACE void MemFreeScratch()"
+   ],
+   "kind": "T"
+  },
+  "MinidumpUserStreamInfoAppend": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void MinidumpUserStreamInfoAppend( const char *pFormat, ... )"
+   ],
+   "kind": "T"
+  },
+  "MinidumpUserStreamInfoGet": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE const char *MinidumpUserStreamInfoGet( int Index )"
+   ],
+   "kind": "T"
+  },
+  "MinidumpUserStreamInfoSetHeader": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void MinidumpUserStreamInfoSetHeader( const char *pFormat, ... )"
+   ],
+   "kind": "T"
+  },
+  "ModuleLoadTelemetry_dlclose": {
+   "declarations": [
+    "native_module_load_telemetry.h: PLATFORM_INTERFACE int ModuleLoadTelemetry_dlclose( void *pModule, const char *pRequester, int nSourceLine )"
+   ],
+   "kind": "T"
+  },
+  "ModuleLoadTelemetry_dlopen": {
+   "declarations": [
+    "native_module_load_telemetry.h: ModuleLoadTelemetry_LoadLibraryA( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryW( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExA( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExW( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_GetProcAddress( \\ module, entry, __FILE__, __LINE__ ) ModuleLoadTelemetry_FreeLibrary( module, __FILE__, __LINE__ ) PLATFORM_INTERFACE void *ModuleLoadTelemetry_dlopen( const char *pPath, int nMode, const char *pRequester, int nSourceLine )"
+   ],
+   "kind": "T"
+  },
+  "ModuleLoadTelemetry_dlsym": {
+   "declarations": [
+    "native_module_load_telemetry.h: PLATFORM_INTERFACE void *ModuleLoadTelemetry_dlsym( void *pModule, const char *pEntryPoint, const char *pRequester, int nSourceLine )"
+   ],
+   "kind": "T"
+  },
+  "Msg": {
+   "declarations": [
+    "dbg.h: while (0) DBG_INTERFACE void Msg( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "MsgV": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void MsgV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist )"
+   ],
+   "kind": "T"
+  },
+  "NetLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void NetLog( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )"
+   ],
+   "kind": "T"
+  },
+  "NetMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void NetMsg( int level, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 )"
+   ],
+   "kind": "T"
+  },
+  "NetWarning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void NetWarning( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )"
+   ],
+   "kind": "T"
+  },
+  "Plat_ApplyHardwareDataBreakpointsToNewThread": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_ApplyHardwareDataBreakpointsToNewThread( unsigned long dwThreadID )"
+   ],
+   "kind": "T"
+  },
+  "Plat_BeginWatchdogTimer": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_BeginWatchdogTimer( int nSecs )"
+   ],
+   "kind": "T"
+  },
+  "Plat_DebugString": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_DebugString( const char * )"
+   ],
+   "kind": "T"
+  },
+  "Plat_EndWatchdogTimer": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_EndWatchdogTimer( void )"
+   ],
+   "kind": "T"
+  },
+  "Plat_ExitProcess": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_ExitProcess( int nCode )"
+   ],
+   "kind": "T"
+  },
+  "Plat_FastVerifyHardwareKey": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_FastVerifyHardwareKey()"
+   ],
+   "kind": "T"
+  },
+  "Plat_FloatTime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE double Plat_FloatTime()"
+   ],
+   "kind": "T"
+  },
+  "Plat_GetCommandLine": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE const tchar *Plat_GetCommandLine()"
+   ],
+   "kind": "T"
+  },
+  "Plat_GetCommandLineA": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE const char *Plat_GetCommandLineA()"
+   ],
+   "kind": "T"
+  },
+  "Plat_GetMemPageSize": {
+   "declarations": [
+    "systeminformation.h: PLATFORM_INTERFACE unsigned long Plat_GetMemPageSize()"
+   ],
+   "kind": "T"
+  },
+  "Plat_GetPagedPoolInfo": {
+   "declarations": [
+    "systeminformation.h: PLATFORM_INTERFACE SYSTEM_CALL_RESULT_t Plat_GetPagedPoolInfo( PAGED_POOL_INFO_t *pPPI )"
+   ],
+   "kind": "T"
+  },
+  "Plat_GetWatchdogTime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE int Plat_GetWatchdogTime( void )"
+   ],
+   "kind": "T"
+  },
+  "Plat_IsInBenchmarkMode": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_IsInBenchmarkMode()"
+   ],
+   "kind": "T"
+  },
+  "Plat_IsInDebugSession": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_IsInDebugSession()"
+   ],
+   "kind": "T"
+  },
+  "Plat_MSTime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE uint32 Plat_MSTime()"
+   ],
+   "kind": "T"
+  },
+  "Plat_SetBenchmarkMode": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_SetBenchmarkMode( bool bBenchmarkMode )"
+   ],
+   "kind": "T"
+  },
+  "Plat_SetCommandLine": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_SetCommandLine( const char *cmdLine )"
+   ],
+   "kind": "T"
+  },
+  "Plat_SetHardwareDataBreakpoint": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_SetHardwareDataBreakpoint( const void *pAddress, int nWatchBytes, bool bBreakOnRead )"
+   ],
+   "kind": "T"
+  },
+  "Plat_SetWatchdogHandlerFunction": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_SetWatchdogHandlerFunction( Plat_WatchDogHandlerFunction_t function )"
+   ],
+   "kind": "T"
+  },
+  "Plat_SimpleLog": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void* Plat_SimpleLog( const tchar* file, int line )"
+   ],
+   "kind": "T"
+  },
+  "Plat_USTime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE uint64 Plat_USTime()"
+   ],
+   "kind": "T"
+  },
+  "Plat_VerifyHardwareKey": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_VerifyHardwareKey()"
+   ],
+   "kind": "T"
+  },
+  "Plat_VerifyHardwareKeyDriver": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_VerifyHardwareKeyDriver()"
+   ],
+   "kind": "T"
+  },
+  "Plat_VerifyHardwareKeyPrompt": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_VerifyHardwareKeyPrompt()"
+   ],
+   "kind": "T"
+  },
+  "Plat_ctime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE char * Plat_ctime( const time_t *timep, char *buf, size_t bufsize )"
+   ],
+   "kind": "T"
+  },
+  "Plat_gmtime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE struct tm * Plat_gmtime( const time_t *timep, struct tm *result )"
+   ],
+   "kind": "T"
+  },
+  "Plat_localtime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE struct tm * Plat_localtime( const time_t *timep, struct tm *result )"
+   ],
+   "kind": "T"
+  },
+  "Plat_timegm": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE time_t Plat_timegm( struct tm *timeptr )"
+   ],
+   "kind": "T"
+  },
+  "ReleaseThreadHandle": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ReleaseThreadHandle( ThreadHandle_t )"
+   ],
+   "kind": "T"
+  },
+  "ReportProgress": {
+   "declarations": [
+    "progressbar.h: PLATFORM_INTERFACE void ReportProgress(char const *job_name, int total_units_to_do, int n_units_completed)"
+   ],
+   "kind": "T"
+  },
+  "RunTSListTests": {
+   "declarations": [
+    "tslist.h: PLATFORM_INTERFACE bool RunTSListTests( int nListSize = 10000, int nTests = 1 )"
+   ],
+   "kind": "T"
+  },
+  "RunTSQueueTests": {
+   "declarations": [
+    "tslist.h: PLATFORM_INTERFACE bool RunTSQueueTests( int nListSize = 10000, int nTests = 1 )"
+   ],
+   "kind": "T"
+  },
+  "SetAllAssertsDisabled": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void SetAllAssertsDisabled( bool bAssertsEnabled )"
+   ],
+   "kind": "T"
+  },
+  "SetAssertFailedNotifyFunc": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void SetAssertFailedNotifyFunc( AssertFailedNotifyFunc_t func )"
+   ],
+   "kind": "T"
+  },
+  "SetCPUMonitoringInterval": {
+   "declarations": [
+    "cpumonitoring.h: PLATFORM_INTERFACE void SetCPUMonitoringInterval( unsigned nDelayMilliseconds )"
+   ],
+   "kind": "T"
+  },
+  "SetStackTranslationSymbolSearchPath": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE void SetStackTranslationSymbolSearchPath( const char *szSemicolonSeparatedList = NULL )"
+   ],
+   "kind": "T"
+  },
+  "SetThreadedLoadLibraryFunc": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void SetThreadedLoadLibraryFunc( ThreadedLoadLibraryFunc_t func )"
+   ],
+   "kind": "T"
+  },
+  "ShouldUseNewAssertDialog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool ShouldUseNewAssertDialog()"
+   ],
+   "kind": "T"
+  },
+  "ShutdownPME": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void ShutdownPME()"
+   ],
+   "kind": "T"
+  },
+  "SpewActivate": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void SpewActivate( const tchar* pGroupName, int level )"
+   ],
+   "kind": "T"
+  },
+  "SpewOutputFunc": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void SpewOutputFunc( SpewOutputFunc_t func )"
+   ],
+   "kind": "T"
+  },
+  "StackToolsNotify_LoadedLibrary": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE void StackToolsNotify_LoadedLibrary( const char *szLibName )"
+   ],
+   "kind": "T"
+  },
+  "Sys_RecordModuleEntryPoint": {
+   "declarations": [
+    "module_load_telemetry_internal.h: PLATFORM_INTERFACE void Sys_RecordModuleEntryPoint( CSysModule *pModule, const char *pRequestedPath, const char *pEntryPoint, bool bSuccess, int nProviderResult, const char *pProviderError )"
+   ],
+   "kind": "T"
+  },
+  "Sys_RecordModuleInterface": {
+   "declarations": [
+    "module_load_telemetry_internal.h: PLATFORM_INTERFACE void Sys_RecordModuleInterface( CSysModule *pModule, const char *pInterfaceName, bool bSuccess )"
+   ],
+   "kind": "T"
+  },
+  "Sys_RecordModuleLoad": {
+   "declarations": [
+    "module_load_telemetry_internal.h: PLATFORM_INTERFACE void Sys_RecordModuleLoad( CSysModule *pModule, const char *pRequestedPath, const char *pResolvedPath, int nProviderResult, const char *pProviderError )"
+   ],
+   "kind": "T"
+  },
+  "Sys_RecordModuleUnload": {
+   "declarations": [
+    "module_load_telemetry_internal.h: PLATFORM_INTERFACE void Sys_RecordModuleUnload( CSysModule *pModule, bool bSuccess, int nProviderResult, const char *pProviderError )"
+   ],
+   "kind": "T"
+  },
+  "Sys_SetModuleLoadTelemetrySink": {
+   "declarations": [],
+   "kind": "T"
+  },
+  "ThreadGetCurrentHandle": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE ThreadHandle_t ThreadGetCurrentHandle()"
+   ],
+   "kind": "T"
+  },
+  "ThreadGetCurrentId": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE ThreadId_t ThreadGetCurrentId()"
+   ],
+   "kind": "T"
+  },
+  "ThreadGetPriority": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int ThreadGetPriority( ThreadHandle_t hThread = NULL )"
+   ],
+   "kind": "T"
+  },
+  "ThreadInMainThread": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadInMainThread()"
+   ],
+   "kind": "T"
+  },
+  "ThreadInterlockedAssignIf64": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadInterlockedAssignIf64( volatile int64 *pDest, int64 value, int64 comperand ) NOINLINE"
+   ],
+   "kind": "T"
+  },
+  "ThreadInterlockedCompareExchange64": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int64 ThreadInterlockedCompareExchange64( int64 volatile *, int64 value, int64 comperand ) NOINLINE"
+   ],
+   "kind": "T"
+  },
+  "ThreadInterlockedCompareExchangePointer": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void *ThreadInterlockedCompareExchangePointer( void * volatile *, void *value, void *comperand ) NOINLINE"
+   ],
+   "kind": "T"
+  },
+  "ThreadInterlockedExchange64": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int64 ThreadInterlockedExchange64( int64 volatile *, int64 value ) NOINLINE"
+   ],
+   "kind": "T"
+  },
+  "ThreadInterlockedExchangePointer": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void *ThreadInterlockedExchangePointer( void * volatile *, void *value ) NOINLINE"
+   ],
+   "kind": "T"
+  },
+  "ThreadJoin": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadJoin( ThreadHandle_t, unsigned timeout = TT_INFINITE )"
+   ],
+   "kind": "T"
+  },
+  "ThreadSetAffinity": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void ThreadSetAffinity( ThreadHandle_t hThread, int nAffinityMask )"
+   ],
+   "kind": "T"
+  },
+  "ThreadSetDebugName": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void ThreadSetDebugName( ThreadHandle_t hThread, const char *pszName )"
+   ],
+   "kind": "T"
+  },
+  "ThreadSetPriority": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadSetPriority( ThreadHandle_t hThread, int priority )"
+   ],
+   "kind": "T"
+  },
+  "TranslateStackInfo": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE int TranslateStackInfo( const void * const *pCallStack, int iCallStackCount, tchar *szOutput, int iOutBufferSize, const tchar *szEntrySeparator, TranslateStackInfo_StyleFlags_t style = TSISTYLEFLAG_DEFAULT )"
+   ],
+   "kind": "T"
+  },
+  "VoidFnPtrLookup_Tier0": {
+   "declarations": [
+    "dynfunction.h: DLL_EXPORT void *VoidFnPtrLookup_Tier0(const char *libname, const char *fn, void *fallback)"
+   ],
+   "kind": "T"
+  },
+  "Warning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void Warning( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "WarningV": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void WarningV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist )"
+   ],
+   "kind": "T"
+  },
+  "WriteMiniDump": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void WriteMiniDump( const char *pszFilenameSuffix = NULL )"
+   ],
+   "kind": "T"
+  },
+  "ZeroMemory": {
+   "declarations": [
+    "mem.h: MEM_INTERFACE void ZeroMemory( void *mem, size_t length )"
+   ],
+   "kind": "T"
+  },
+  "_AssertValidReadPtr": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void _AssertValidReadPtr( void* ptr, int count = 1 )"
+   ],
+   "kind": "T"
+  },
+  "_AssertValidReadWritePtr": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void _AssertValidReadWritePtr( void* ptr, int count = 1 )"
+   ],
+   "kind": "T"
+  },
+  "_AssertValidWritePtr": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void _AssertValidWritePtr( void* ptr, int count = 1 )"
+   ],
+   "kind": "T"
+  },
+  "_DSpewMessage": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewRetval_t _DSpewMessage( const tchar *pGroupName, int level, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 3, 4 )"
+   ],
+   "kind": "T"
+  },
+  "_ExitOnFatalAssert": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void _ExitOnFatalAssert( const tchar* pFile, int line )"
+   ],
+   "kind": "T"
+  },
+  "_SpewInfo": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void _SpewInfo( SpewType_t type, const tchar* pFile, int line )"
+   ],
+   "kind": "T"
+  },
+  "_SpewMessage": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewRetval_t _SpewMessage( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "T"
+  },
+  "_Z10ConWarningPKcz": {
+   "kind": "T"
+  },
+  "_Z10DevWarningPKcz": {
+   "kind": "T"
+  },
+  "_Z11ConColorMsgRK5ColorPKcz": {
+   "kind": "T"
+  },
+  "_Z18CreateSimpleThreadPFyPvES_Pyj": {
+   "kind": "T"
+  },
+  "_Z6ConLogPKcz": {
+   "kind": "T"
+  },
+  "_Z6ConMsgPKcz": {
+   "kind": "T"
+  },
+  "_Z6DevLogPKcz": {
+   "kind": "T"
+  },
+  "_Z6DevMsgPKcz": {
+   "kind": "T"
+  },
+  "_ZN12CThreadEvent15WaitForMultipleEiPPS_bj": {
+   "kind": "T"
+  },
+  "_ZN12CThreadEvent15WaitForMultipleEiPS_bj": {
+   "kind": "T"
+  },
+  "_ZN12CThreadEvent3SetEv": {
+   "kind": "T"
+  },
+  "_ZN12CThreadEvent4WaitEj": {
+   "kind": "T"
+  },
+  "_ZN12CThreadEvent5CheckEv": {
+   "kind": "T"
+  },
+  "_ZN12CThreadEvent5ResetEv": {
+   "kind": "T"
+  },
+  "_ZN12CThreadEventC1Eb": {
+   "kind": "T"
+  },
+  "_ZN12CThreadEventC2Eb": {
+   "kind": "T"
+  },
+  "_ZN12CThreadMutex7TryLockEv": {
+   "kind": "T"
+  },
+  "_ZN13CThreadRWLock11UnlockWriteEv": {
+   "kind": "T"
+  },
+  "_ZN13CThreadRWLock11WaitForReadEv": {
+   "kind": "T"
+  },
+  "_ZN13CThreadRWLock12LockForWriteEv": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread10CallMasterEjj": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread10CallWorkerEjjb": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread11WaitForCallEPj": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread11WaitForCallEjPj": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread12WaitForReplyEj": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread12WaitForReplyEjPFjjPP12CThreadEventijE": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread13BoostPriorityEv": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread13GetCallHandleEv": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread4CallEjjbPFjjPP12CThreadEventijE": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread5ReplyEj": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThread8PeekCallEPj": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThreadC1Ev": {
+   "kind": "T"
+  },
+  "_ZN13CWorkerThreadC2Ev": {
+   "kind": "T"
+  },
+  "_ZN15CClockSpeedInit4InitEv": {
+   "kind": "T"
+  },
+  "_ZN17CCallStackStorageC1EPFiPPviiEj": {
+   "kind": "T"
+  },
+  "_ZN17CCallStackStorageC2EPFiPPviiEj": {
+   "kind": "T"
+  },
+  "_ZN17CThreadSpinRWLock15SpinLockForReadEv": {
+   "kind": "T"
+  },
+  "_ZN17CThreadSpinRWLock16SpinLockForWriteEv": {
+   "kind": "T"
+  },
+  "_ZN17CThreadSyncObject13AssertUseableEv": {
+   "kind": "T"
+  },
+  "_ZN17CThreadSyncObject15WaitForMultipleEiPPS_bj": {
+   "kind": "T"
+  },
+  "_ZN17CThreadSyncObject15WaitForMultipleEiPS_bj": {
+   "kind": "T"
+  },
+  "_ZN17CThreadSyncObject4WaitEj": {
+   "kind": "T"
+  },
+  "_ZN17CThreadSyncObjectC1Ev": {
+   "kind": "T"
+  },
+  "_ZN17CThreadSyncObjectC2Ev": {
+   "kind": "T"
+  },
+  "_ZN17CThreadSyncObjectD1Ev": {
+   "kind": "T"
+  },
+  "_ZN17CThreadSyncObjectD2Ev": {
+   "kind": "T"
+  },
+  "_ZN19GenericThreadLocals16CThreadLocalBase3SetEPv": {
+   "kind": "T"
+  },
+  "_ZN19GenericThreadLocals16CThreadLocalBaseC1Ev": {
+   "kind": "T"
+  },
+  "_ZN19GenericThreadLocals16CThreadLocalBaseC2Ev": {
+   "kind": "T"
+  },
+  "_ZN19GenericThreadLocals16CThreadLocalBaseD1Ev": {
+   "kind": "T"
+  },
+  "_ZN19GenericThreadLocals16CThreadLocalBaseD2Ev": {
+   "kind": "T"
+  },
+  "_ZN24CScopedModuleLoadRequestC1EPKciS1_": {
+   "kind": "T"
+  },
+  "_ZN24CScopedModuleLoadRequestC2EPKciS1_": {
+   "kind": "T"
+  },
+  "_ZN24CScopedModuleLoadRequestD1Ev": {
+   "kind": "T"
+  },
+  "_ZN24CScopedModuleLoadRequestD2Ev": {
+   "kind": "T"
+  },
+  "_ZN25CStackTop_CopyParentStackC1EPKPvi": {
+   "kind": "T"
+  },
+  "_ZN25CStackTop_CopyParentStackC2EPKPvi": {
+   "kind": "T"
+  },
+  "_ZN25CStackTop_CopyParentStackD1Ev": {
+   "kind": "T"
+  },
+  "_ZN25CStackTop_CopyParentStackD2Ev": {
+   "kind": "T"
+  },
+  "_ZN30CStackTop_ReferenceParentStack28ReleaseParentStackReferencesEv": {
+   "kind": "T"
+  },
+  "_ZN30CStackTop_ReferenceParentStackC1EPKPvi": {
+   "kind": "T"
+  },
+  "_ZN30CStackTop_ReferenceParentStackC2EPKPvi": {
+   "kind": "T"
+  },
+  "_ZN30CStackTop_ReferenceParentStackD1Ev": {
+   "kind": "T"
+  },
+  "_ZN30CStackTop_ReferenceParentStackD2Ev": {
+   "kind": "T"
+  },
+  "_ZN7CThread10ThreadProcEPv": {
+   "kind": "T"
+  },
+  "_ZN7CThread11SetPriorityEi": {
+   "kind": "T"
+  },
+  "_ZN7CThread13GetThreadProcEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread15GetThreadHandleEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread15IsThreadRunningEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread17GetCurrentCThreadEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread21WaitForCreateCompleteEP12CThreadEvent": {
+   "kind": "T"
+  },
+  "_ZN7CThread32ThreadProcRunWithMinidumpHandlerEPv": {
+   "kind": "T"
+  },
+  "_ZN7CThread4InitEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread4JoinEj": {
+   "kind": "T"
+  },
+  "_ZN7CThread4StopEi": {
+   "kind": "T"
+  },
+  "_ZN7CThread5SleepEj": {
+   "kind": "T"
+  },
+  "_ZN7CThread5StartEj20ThreadPriorityEnum_t": {
+   "kind": "T"
+  },
+  "_ZN7CThread5YieldEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread6OnExitEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread6ResumeEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread7GetNameEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread7IsAliveEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread7SetNameEPKc": {
+   "kind": "T"
+  },
+  "_ZN7CThread7SuspendEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread9GetResultEv": {
+   "kind": "T"
+  },
+  "_ZN7CThread9TerminateEi": {
+   "kind": "T"
+  },
+  "_ZN7CThreadC1Ev": {
+   "kind": "T"
+  },
+  "_ZN7CThreadC2Ev": {
+   "kind": "T"
+  },
+  "_ZN7CThreadD0Ev": {
+   "kind": "T"
+  },
+  "_ZN7CThreadD1Ev": {
+   "kind": "T"
+  },
+  "_ZN7CThreadD2Ev": {
+   "kind": "T"
+  },
+  "_ZNK13CWorkerThread12GetCallParamEv": {
+   "kind": "T"
+  },
+  "_ZNK17CThreadSyncObjectntEv": {
+   "kind": "T"
+  },
+  "_ZNK19GenericThreadLocals16CThreadLocalBase3GetEv": {
+   "kind": "T"
+  },
+  "_ZNK7CThread11GetPriorityEv": {
+   "kind": "T"
+  },
+  "_ZNV16CThreadFastMutex4LockEjj": {
+   "kind": "T"
+  },
+  "_ZTI13CWorkerThread": {
+   "kind": "V"
+  },
+  "_ZTI7CThread": {
+   "kind": "V"
+  },
+  "_ZTS13CWorkerThread": {
+   "kind": "V"
+  },
+  "_ZTS7CThread": {
+   "kind": "V"
+  },
+  "_ZTV13CWorkerThread": {
+   "kind": "V"
+  },
+  "_ZTV7CThread": {
+   "kind": "V"
+  },
+  "g_ClockSpeed": {
+   "declarations": [
+    "fasttimer.h: PLATFORM_INTERFACE uint64 g_ClockSpeed"
+   ],
+   "kind": "B"
+  },
+  "g_ClockSpeedMicrosecondsMultiplier": {
+   "declarations": [
+    "fasttimer.h: PLATFORM_INTERFACE double g_ClockSpeedMicrosecondsMultiplier"
+   ],
+   "kind": "B"
+  },
+  "g_ClockSpeedMillisecondsMultiplier": {
+   "declarations": [
+    "fasttimer.h: PLATFORM_INTERFACE double g_ClockSpeedMillisecondsMultiplier"
+   ],
+   "kind": "B"
+  },
+  "g_ClockSpeedSecondsMultiplier": {
+   "declarations": [
+    "fasttimer.h: PLATFORM_INTERFACE double g_ClockSpeedSecondsMultiplier"
+   ],
+   "kind": "B"
+  },
+  "g_dwClockSpeed": {
+   "declarations": [],
+   "kind": "B"
+  },
+  "g_nThreadID": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE GenericThreadLocals::CThreadLocalInt<int> g_nThreadID"
+   ],
+   "kind": "B"
+  },
+  "g_pMemAlloc": {
+   "declarations": [
+    "memalloc.h: MEM_INTERFACE IMemAlloc *g_pMemAlloc"
+   ],
+   "kind": "D"
+  },
+  "g_pVCR": {
+   "declarations": [
+    "vcrmode.h: PLATFORM_INTERFACE VCR_t *g_pVCR"
+   ],
+   "kind": "D"
+  },
+  "vtune": {
+   "declarations": [
+    "platform.h: ( ( OuterType * ) ( (uint8 *)this - offsetof( OuterType, OuterMember ) ) ) PLATFORM_INTERFACE bool vtune( bool resume )"
+   ],
+   "kind": "T"
+  }
+ },
+ "library": "libtier0.so",
+ "platform": "linux-x86_64",
+ "schema": "tier0-abi/v1"
+}

@@ -1,0 +1,74 @@
+{
+ "counts": {
+  "T1-time": {
+   "public/tier0/bootstrap_module_load_telemetry.h": 3,
+   "public/tier0/platform.h": 1,
+   "tier0/PMELib.cpp": 3,
+   "tier0/cpu.cpp": 3,
+   "tier0/cpu_posix.cpp": 2,
+   "tier0/cpumonitoring.cpp": 3,
+   "tier0/etwprof.cpp": 2,
+   "tier0/platform.cpp": 5,
+   "tier0/platform_posix.cpp": 9,
+   "tier0/threadtools.cpp": 1
+  },
+  "T2-threads": {
+   "public/tier0/PMELib.h": 2,
+   "public/tier0/threadtools.h": 7,
+   "tier0/cpu_posix.cpp": 1,
+   "tier0/cpumonitoring.cpp": 7,
+   "tier0/etwprof.cpp": 1,
+   "tier0/extendedtrace.cpp": 1,
+   "tier0/minidump.cpp": 1,
+   "tier0/security.cpp": 1,
+   "tier0/security_linux.cpp": 1,
+   "tier0/thread.cpp": 5,
+   "tier0/threadtools.cpp": 8,
+   "tier0/vcrmode.cpp": 8
+  },
+  "T3-process-environment": {
+   "public/tier0/vcrmode.h": 1,
+   "tier0/assert_dialog.cpp": 2,
+   "tier0/dbg.cpp": 1,
+   "tier0/platform.cpp": 4,
+   "tier0/platform_posix.cpp": 8,
+   "tier0/vcrmode.cpp": 5,
+   "tier0/vcrmode_posix.cpp": 2
+  },
+  "T4-debug-output": {
+   "public/tier0/bootstrap_module_load_telemetry.h": 1,
+   "tier0/assert_dialog.cpp": 2,
+   "tier0/dbg.cpp": 1,
+   "tier0/mem.cpp": 1,
+   "tier0/memstd.cpp": 6,
+   "tier0/module_load_telemetry.cpp": 2,
+   "tier0/platform.cpp": 1,
+   "tier0/vcrmode_posix.cpp": 2
+  },
+  "T5-crash-reporting": {
+   "tier0/assert_dialog.cpp": 1,
+   "tier0/memstd.cpp": 1,
+   "tier0/minidump.cpp": 1,
+   "tier0/platform_posix.cpp": 3,
+   "tier0/stacktools.cpp": 2
+  },
+  "T6-memory-paths": {
+   "public/tier0/bootstrap_module_load_telemetry.h": 2,
+   "public/tier0/memoverride.cpp": 4,
+   "tier0/memstd.cpp": 8,
+   "tier0/minidump.cpp": 2,
+   "tier0/module_load_telemetry.cpp": 1,
+   "tier0/platform.cpp": 1,
+   "tier0/vprof.cpp": 1
+  }
+ },
+ "schema": "tier0-ratchet/v1",
+ "totals": {
+  "T1-time": 32,
+  "T2-threads": 43,
+  "T3-process-environment": 23,
+  "T4-debug-output": 16,
+  "T5-crash-reporting": 8,
+  "T6-memory-paths": 19
+ }
+}
