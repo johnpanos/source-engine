@@ -97,10 +97,21 @@ int main()
 		                      "\"$normalmapalphaenvmapmask\" \"1\" }",
 		                 "normalmapalphaenvmapmask" ),
 		    "claim.refuses-a-blended-normal-alpha-mask-by-name" );
-		checks.That(
-		    refused( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$additive\" \"1\" }",
-		        "additive" ),
-		    "claim.refuses-additive-by-name" );
+		// $additive is claimed (2dd13d0d8): added light, fogged toward black.
+		{
+			VmtImportContext context;
+			auto imported = ImportVmt(
+			    "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$additive\" \"1\" }", context );
+			ParameterBlock block( *lightmapped );
+			bool additive = imported && ApplyValues( imported.Value(), block );
+			if ( additive )
+			{
+				(void)block.SetTexture( "basetexture", device::TextureId( 1 ) );
+				const LightmappedClaim claim = ClaimLightmapped( block );
+				additive = claim.claimed && claim.fogToBlack;
+			}
+			checks.That( additive, "claim.additive-fogs-to-black" );
+		}
 		checks.That(
 		    refused( "\"LightmappedGeneric\" { \"$basetexture\" \"a\" \"$envmapmasktransform\" "
 		             "\"center .5 .5 scale 2 2 rotate 0 translate 0 0\" }",
