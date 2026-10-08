@@ -623,7 +623,7 @@ void FileProbeAndResolverSuites()
 	symlink( "engine.so", ( root + "/link.so" ).c_str() );
 	symlink( "nowhere.so", ( root + "/dangling.so" ).c_str() );
 	symlink( "bin", ( root + "/bin-link" ).c_str() );
-	mkfifo( ( root + "/pipe" ).c_str(), 0644 );
+	const bool fifoCreated = mkfifo( ( root + "/pipe" ).c_str(), 0644 ) == 0;
 
 	using platform::FileKind;
 	auto P = []( const std::string &s )
@@ -638,11 +638,22 @@ void FileProbeAndResolverSuites()
 	    { P( root + "/link.so" ), FileKind::kRegularFile, "link to a file" },
 	    { P( root + "/bin-link" ), FileKind::kDirectory, "link to a directory" },
 	    { P( root + "/dangling.so" ), FileKind::kMissing, "dangling link" },
-	    { P( root + "/pipe" ), FileKind::kOther, "fifo" },
+	    { P( "/dev/null" ), FileKind::kOther, "character device" },
 	    { P( root + "/\xc3\xa9t\xc3\xa9.so" ), FileKind::kRegularFile, "UTF-8 name" },
 	    { P( root + "/\xff\xfe.so" ), FileKind::kRegularFile, "name that is not UTF-8" },
 	    { P( root + "/engine.so/x" ), FileKind::kMissing, "below a file" },
 	};
+	// Android's SELinux policy refuses mkfifo to the shell user; the case runs
+	// where the platform allows it.
+	if ( fifoCreated )
+	{
+		fixture.cases.push_back( { P( root + "/pipe" ), FileKind::kOther, "fifo" } );
+	}
+	else
+	{
+		std::printf( "note posix.file-probe: this platform refuses mkfifo here; fifo case not "
+		             "applicable\n" );
+	}
 	fixture.foreignFlavor = platformtest::Windows( u"C:\\Windows" );
 	fixture.countEntries = [root]()
 	{

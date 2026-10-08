@@ -1,9 +1,8 @@
 # RFC 0001 rank 12 / R26: foundation contracts and native providers
 
-Status: `partial` (2026-10-08). R26's own gate passes: every required profile
-has native evidence (Linux x86_64 and i386, Windows PE under Wine, and Android
-on a Galaxy Tab S8 Ultra). The row is not `done` because its hard prerequisite
-R11 (paths and module resolution) is still partial; it closes when R11 does.
+Status: `done` (2026-10-08). Every required profile has native evidence (Linux
+x86_64 and i386, Windows PE under Wine, and Android on a Galaxy Tab S8 Ultra),
+and the hard prerequisite R11 is done (see below).
 Source revision: `6eabeb23a` plus a dirty tree (the change described here).
 
 ## What is installed
@@ -195,9 +194,11 @@ Evidence:
   to `testchmb_a_00` with every module resolved through the bridge
   (`portal_boot.py`).
 - The shared `build-p2` tree builds in full.
-- Android: the binary with the probe and resolver builds for both ABIs. It has
-  not run on a device yet: the tablet's wireless adb session ended before the
-  rerun.
+- Android arm64 on the Galaxy Tab S8 Ultra: 2,752 checks, 0 failures, with
+  the logcat records. Android's SELinux policy refuses `mkfifo` to the shell
+  user, so the FIFO case is created only where allowed (the test prints a note
+  there), and `/dev/null` covers "another kind of file" on every POSIX
+  platform.
 
 Lesson from this slice: a Tier 1 build-graph change has to land in one step.
 For about ten minutes the shared tree could not configure: the `tier1/wscript`
