@@ -624,3 +624,8 @@ Evidence:
   presentation work of the legacy device facade slices (F2–F4) on this
   branch. It is left to that work's owner, and the `portal_boot` gate item
   stays open until a boot renders.
+- **User decision, 2026-10-07: the grey `portal_boot` capture is unrelated
+  to L1.** The L1 `portal_boot` gate item is judged on equivalence: the kiln
+  path and the legacy path give the same command and the same outcome with
+  the same binaries. The rendering failure stays with the device facade
+  work.
