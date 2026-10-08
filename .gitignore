@@ -54,7 +54,7 @@ dependencies/
 
 # Staged game runtimes and packaging output (./play, run.sh, product staging).
 # Built binaries and game content; never commit them.
-run/
+/run/
 myout/
 hammer/gtk/hammer_gtk
 # PBRT reference scenes from https://benedikt-bitterli.me/resources/, unpacked
