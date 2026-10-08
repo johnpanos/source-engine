@@ -868,3 +868,102 @@ class LayerContractTest(unittest.TestCase):
         # An adapter is portable for rule 5 unless allowed.
         self.write('render/device/vulkan/facts.cpp', 'bool b = facts.diagnosticBackend == "gl";\n')
         self.assertRule(5, 'render/device/vulkan/facts.cpp:1 (render.device.vulkan)')
+
+
+class KilnContractTest(unittest.TestCase):
+    """RFC 0027 L0: the real `product` and `kiln` layer contracts in
+    architecture/modules.json catch a core that names a provider (rule 3), a
+    thick application (rule 6) and a platform literal in kiln.core (rule 7),
+    each from one seeded violation over a copy of the real rows."""
+
+    MODULES = Path(__file__).resolve().parents[3] / 'architecture' / 'modules.json'
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        block = json.loads(self.MODULES.read_text())['capabilityModules']
+        self.contracts = [copy.deepcopy(c) for c in block['layerContracts'] if c['id'] in ('product', 'kiln')]
+        self.assertEqual(len(self.contracts), 2)
+        wanted = set()
+        for contract in self.contracts:
+            for layer in contract['layers']:
+                wanted.update(layer)
+            for adapters in contract.get('adapters', {}).values():
+                wanted.update(adapters)
+            wanted.update(contract.get('externalBases', []))
+            wanted.update(contract.get('adapterConsumers', []))
+        modules = [copy.deepcopy(m) for m in block['modules']
+                   if m['id'] in wanted or m['id'].startswith(('kiln.', 'product.'))]
+        self.block = {'modules': modules, 'standardHeaders': [], 'targets': {},
+                      'layerContracts': self.contracts}
+
+    def module(self, mid):
+        return next(m for m in self.block['modules'] if m['id'] == mid)
+
+    def errors(self):
+        return capabilities.layer_contract_errors(self.root, self.block, archlint.strip_comments_and_literals)
+
+    def write(self, name, text):
+        path = self.root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+
+    def test_real_contracts_pass(self):
+        self.write('product/kiln/core/session.cpp', 'const char *role = "engine";\n')
+        self.assertEqual(self.errors(), [])
+
+    def test_core_naming_a_provider_fails(self):
+        self.module('kiln.core')['allowedEdges'].append('product.stage.waf')
+        errors = self.errors()
+        self.assertTrue(any(e.startswith('CAP011 rule 3 kiln.core: edge to adapter product.stage.waf')
+                            for e in errors), errors)
+        self.assertTrue(any(e.startswith('CAP011 rule 6 kiln.core: edge to product.stage.waf')
+                            for e in errors), errors)
+
+    def test_core_naming_a_toolchain_fails(self):
+        self.module('kiln.core')['allowedEdges'].append('product.toolchain.linux')
+        self.assertTrue(any('CAP011 rule 3 kiln.core: edge to adapter product.toolchain.linux' in e
+                            for e in self.errors()))
+
+    def test_thick_application_fails(self):
+        self.module('kiln.app')['allowedEdges'].append('product.profile')
+        errors = self.errors()
+        self.assertEqual([e for e in errors if e.startswith('CAP011 rule 6')],
+                         ['CAP011 rule 6 kiln.app: edge to product.profile is above its ceiling '
+                          '(kiln.core, kiln.composition, foundation.json)'])
+
+    def test_application_naming_a_provider_fails(self):
+        self.module('kiln.app')['allowedEdges'].append('product.stage.waf')
+        errors = self.errors()
+        self.assertTrue(any(e.startswith('CAP011 rule 3 kiln.app') for e in errors), errors)
+        self.assertTrue(any(e.startswith('CAP011 rule 6 kiln.app') for e in errors), errors)
+
+    def test_platform_literal_in_core_fails(self):
+        self.write('product/kiln/core/session.cpp',
+                   '// android in a comment is fine\n'
+                   'const char c = \'"\';\n'
+                   'bool Mobile( const std::string &os ) { return os == "Android"; }\n')
+        errors = self.errors()
+        self.assertEqual(errors, ['CAP011 rule 7 product/kiln/core/session.cpp:3 (kiln.core): string literal names '
+                                  '"android"; ' + self.contracts[1]['forbiddenLiterals']['reason']])
+
+    def test_literal_scan_reads_only_strings(self):
+        self.write('product/kiln/core/session.cpp', '/* "ios" */ int windows = 0; // "linux"\n'
+                   'const char *s = "a\\"b";\n')
+        self.assertEqual(self.errors(), [])
+
+    def test_provider_may_name_its_platform(self):
+        self.write('product/toolchain/linux.cpp', 'const char *name = "linux-gcc";\n')
+        self.assertEqual(self.errors(), [])
+
+    def test_ceiling_shape_is_checked(self):
+        self.contracts[1]['edgeCeilings'] = {'kiln.app': 'kiln.core'}
+        self.assertTrue(any('edgeCeilings maps each module' in e for e in self.errors()))
+        self.contracts[1]['edgeCeilings'] = {'kiln.nowhere': []}
+        self.assertTrue(any('CAP011 rule 6 kiln.nowhere' in e for e in self.errors()))
+
+    def test_forbidden_literals_shape_is_checked(self):
+        del self.contracts[1]['forbiddenLiterals']['reason']
+        self.assertTrue(any('forbiddenLiterals needs modules, literals and a reason' in e
+                            for e in self.errors()))

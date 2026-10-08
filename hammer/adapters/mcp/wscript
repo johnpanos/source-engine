@@ -15,14 +15,14 @@ def configure(conf):
 def build(bld):
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
-		source    = [ 'json_value.cpp', 'mcp_server.cpp' ],
+		source    = [ 'mcp_server.cpp' ],
 		target    = 'hammer_mcp',
 		name      = 'hammer_mcp',
 		arch_module = 'hammer.adapters.mcp',
 		features  = 'cxx',
 		includes  = [ '../../../public', '../../..' ],
 		defines   = [],
-		use       = [],
+		use       = [ 'foundation_json' ],
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx       = bld.get_taskgen_count()
 	)

@@ -10,7 +10,7 @@
 //
 //=============================================================================//
 
-#include "hammer/adapters/mcp/json_value.h"
+#include "foundation/json.h"
 #include "hammer/adapters/mcp/mcp_server.h"
 #include "hammer/app/edit_session.h"
 #include "hammer/app/editor_settings.h"
@@ -26,9 +26,9 @@
 namespace
 {
 
-using hammer::adapters::mcp::JsonValue;
+using JsonValue = foundation::json::Value;
 using hammer::adapters::mcp::McpServer;
-using hammer::adapters::mcp::ParseJson;
+constexpr auto ParseJson = &foundation::json::Parse;
 using hammer::app::SessionCommands;
 using hammertest::InMemoryFileStore;
 

@@ -1,0 +1,27 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# RFC 0027: kiln.core (public as kiln.api), kiln.composition and the thin
+# `kiln` application. ./kiln builds the tools product's `kiln` target into
+# out/host-<os>-<arch>/.
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	strict = bld.strict_cpp20_env()
+	bld.stlib(env=strict, source=['core/session.cpp'], target='kiln_core', name='kiln_core',
+		arch_module='kiln.core', features='cxx', includes=['../../public'],
+		use=['product_contracts', 'product_profile', 'foundation_json', 'jobsystem'], install_path=None)
+	bld.stlib(env=strict, source=['composition/composition.cpp'], target='kiln_composition',
+		name='kiln_composition', arch_module='kiln.composition', features='cxx',
+		includes=['../../public'],
+		use=['kiln_core', 'product_toolchain_linux', 'product_stage_waf', 'platform_posix', 'jobsystem'],
+		install_path=None)
+	bld.program(env=strict, source=['app/kiln_main.cpp'], target='kiln', name='kiln',
+		arch_module='kiln.app', features='cxx cxxprogram', includes=['../../public'],
+		use=['kiln_composition', 'kiln_core', 'foundation_json'],
+		install_path=None, subsystem='CONSOLE')

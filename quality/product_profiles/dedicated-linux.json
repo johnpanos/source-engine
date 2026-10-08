@@ -1,0 +1,18 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "dedicated-linux-v2",
+  "description": "The Linux x86_64 dedicated server (Portal), the support matrix's dedicated row: no render or desktop dependencies.",
+  "extends": [
+    "fragments/linux-x86_64-desktop.json"
+  ],
+  "aliases": [
+    "dedicated@linux-x86_64"
+  ],
+  "target": {
+    "product": "dedicated-server"
+  },
+  "configure_options": {
+    "dedicated": true,
+    "build_games": "portal"
+  }
+}

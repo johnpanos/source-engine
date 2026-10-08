@@ -7,7 +7,7 @@ runtime provider selection, and required native checks. The `intent` and
 Passing dependency checks does not certify graphics, gameplay, other platforms,
 or release budgets.
 
-The exact SDL3 **3.4.16** pkg-config version is a reproduction pin for this
+The exact SDL3 **3.4.18** pkg-config version is a reproduction pin for this
 profile, not a claim that every earlier/later SDL3 version is incompatible.
 The same rule applies to the selected GCC and system dependency versions.
 Use the ordinary distribution package manager to provide these versions, or

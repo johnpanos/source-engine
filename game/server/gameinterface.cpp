@@ -158,6 +158,7 @@ IUploadGameStats *gamestatsuploader = NULL;
 
 #ifdef FSTOP
 #include "blob_networkbypass.h"
+#include "ispsharedmemory.h"
 #endif // FSTOP
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -665,7 +666,8 @@ bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,
 		return false;
 #ifdef FSTOP
 	// The blob NPCs share particle state with the client outside the network
-	if ( !BlobNetworkBypass_Connect( appSystemFactory ) )
+	if ( !BlobNetworkBypass_Connect( static_cast<ISPSharedMemoryManager *>(
+	         appSystemFactory( VENGINE_SPSHAREDMEMORY_INTERFACE_VERSION, nullptr ) ) ) )
 		return false;
 #endif // FSTOP
 #ifdef PORTAL2

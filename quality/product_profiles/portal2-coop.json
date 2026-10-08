@@ -1,0 +1,14 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal2-coop-v2",
+  "description": "Portal 2 co-op: two paired peers (./play_p2_coop). Builds the Portal 2 product in its own tree; the coop-pair run provider arrives in L1.",
+  "extends": [
+    "portal2-linux-native-vulkan.json"
+  ],
+  "aliases": [
+    "portal2-coop@linux-x86_64"
+  ],
+  "launch": {
+    "default_map": "mp_coop_lobby_3"
+  }
+}

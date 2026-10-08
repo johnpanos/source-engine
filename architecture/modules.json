@@ -74,6 +74,66 @@
         "allowedEdges": ["content.build-graph", "content.compile.material", "content.asset-identity"]
       },
       {
+        "id": "foundation.json",
+        "owns": "RFC 0027: the one JSON value, reader and writer (profiles, kiln --json, hammer_cli --mcp)",
+        "paths": ["public/foundation/json.h", "foundation/"],
+        "allowedEdges": ["foundation"]
+      },
+      {
+        "id": "product.profile",
+        "owns": "RFC 0027: product profile schema v2, the extends merge, validation and derived facts",
+        "paths": ["public/product/profile.h", "product/profile/"],
+        "allowedEdges": ["foundation", "foundation.json"]
+      },
+      {
+        "id": "product.contracts",
+        "owns": "RFC 0027: the product pipeline extension contracts and the typed ProviderCatalog",
+        "paths": ["public/product/contracts.h", "product/contracts/"],
+        "allowedEdges": ["foundation", "foundation.json", "platform.contracts", "product.profile"]
+      },
+      {
+        "id": "product.toolchain.linux",
+        "owns": "RFC 0027: the linux-gcc and linux-clang host toolchain providers",
+        "paths": ["public/product/toolchain_linux.h", "product/toolchain/"],
+        "allowedEdges": ["product.contracts"]
+      },
+      {
+        "id": "product.stage.waf",
+        "owns": "RFC 0027: the Waf engine build as the waf-engine stage provider",
+        "paths": ["public/product/stage_waf.h", "product/stage/"],
+        "allowedEdges": ["product.contracts"]
+      },
+      {
+        "id": "kiln.core",
+        "owns": "RFC 0027: the pipeline as a library (kiln.api): sessions, requests, the stage graph runner, evidence",
+        "paths": ["public/kiln/api.h", "product/kiln/core/"],
+        "allowedEdges": ["foundation", "foundation.json", "platform.contracts", "product.profile", "product.contracts", "jobs.graph"]
+      },
+      {
+        "id": "kiln.composition",
+        "owns": "RFC 0027: the default provider catalog (ComposeDefaultCatalog)",
+        "paths": ["public/kiln/composition.h", "product/kiln/composition/"],
+        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.stage.waf", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
+      },
+      {
+        "id": "kiln.app",
+        "owns": "RFC 0027: the thin kiln application (argument parsing and output only)",
+        "paths": ["product/kiln/app/"],
+        "allowedEdges": ["kiln.core", "kiln.composition", "foundation.json"]
+      },
+      {
+        "id": "kiln.fixture-platform",
+        "owns": "RFC 0027: the fixture platform, one provider per product contract, composed by a test root",
+        "paths": ["unittests/kilntest/fixture_platform/"],
+        "allowedEdges": ["product.contracts", "product.profile", "foundation", "foundation.json", "platform.contracts"]
+      },
+      {
+        "id": "kiln.tests",
+        "kind": "native-test",
+        "paths": ["unittests/kilntest/"],
+        "allowedEdges": ["kiln.core", "kiln.composition", "kiln.fixture-platform", "product.contracts", "product.profile", "product.toolchain.linux", "product.stage.waf", "platform.contracts", "platform.posix", "jobs.graph", "foundation", "foundation.json", "testing.contracts"]
+      },
+      {
         "id": "content.asset-tests",
         "kind": "native-test",
         "paths": ["unittests/contenttest/"],
@@ -1834,6 +1894,16 @@
     ],
     "targets": {
       "input_gamepad_slots_test": {"allowedUse": ["inputsystem", "appframework", "tier1", "tier0", "vstdlib", "SDL3"]},
+      "foundation_json": {"allowedUse": []},
+      "product_profile": {"allowedUse": ["foundation_json"]},
+      "product_contracts": {"allowedUse": ["product_profile", "foundation_json"]},
+      "product_toolchain_linux": {"allowedUse": ["product_contracts"]},
+      "product_stage_waf": {"allowedUse": ["product_contracts"]},
+      "kiln_core": {"allowedUse": ["product_contracts", "product_profile", "foundation_json", "jobsystem"]},
+      "kiln_composition": {"allowedUse": ["kiln_core", "product_toolchain_linux", "product_stage_waf", "platform_posix", "jobsystem"]},
+      "kiln": {"allowedUse": ["kiln_composition", "kiln_core", "foundation_json"]},
+      "kiln_fixture_platform": {"allowedUse": ["product_contracts", "product_profile", "foundation_json"]},
+      "kilntest": {"allowedUse": ["kiln_fixture_platform", "kiln_core", "product_toolchain_linux", "product_stage_waf", "product_contracts", "product_profile", "foundation_json", "platform_posix", "jobsystem"]},
       "content_hash": {"allowedUse": []},
       "asset_identity": {"allowedUse": ["content_hash"]},
       "asset_index": {"allowedUse": ["asset_identity", "content_hash"]},
@@ -2630,6 +2700,51 @@
             "render.core-tests"
           ]
         }
+      },
+      {
+        "id": "product",
+        "rfc": "0027",
+        "description": "RFC 0027 product pipeline libraries. Profiles under contracts; providers (toolchains, recipe builders, stages, packagers, transports) are adapters of product.contracts that only kiln.composition, the fixture platform and tests name. kiln.core therefore never depends on a provider (rule 3), so adding a platform needs no core change.",
+        "prefix": "product.",
+        "layers": [
+          ["foundation", "foundation.json", "platform.contracts"],
+          ["product.profile"],
+          ["product.contracts"]
+        ],
+        "adapters": {
+          "product.contracts": ["product.toolchain.*", "product.recipe.*", "product.stage.*", "product.package.*", "product.deploy.*", "product.display.*"]
+        },
+        "independent": [
+          ["product.toolchain.*", "product.recipe.*", "product.stage.*", "product.package.*", "product.deploy.*", "product.display.*"]
+        ],
+        "adapterConsumers": ["kiln.composition", "kiln.fixture-platform", "kiln.tests"]
+      },
+      {
+        "id": "kiln",
+        "rfc": "0027",
+        "description": "RFC 0027 kiln: the pipeline API (kiln.core, public as kiln.api) over the product contracts, the default composition above it, and the thin application on top. The application may use only the API, the composition and JSON (rule 6); kiln.core names no platform, SDK or package form in a string (rule 7).",
+        "prefix": "kiln.",
+        "layers": [
+          ["foundation", "foundation.json", "platform.contracts", "jobs.graph", "product.profile", "product.contracts"],
+          ["kiln.core"],
+          ["kiln.composition", "kiln.fixture-platform"],
+          ["kiln.app"],
+          ["kiln.tests"]
+        ],
+        "independent": [
+          ["kiln.composition", "kiln.fixture-platform"]
+        ],
+        "externalBases": ["platform.posix", "testing.contracts"],
+        "adapterConsumers": ["kiln.composition", "kiln.fixture-platform", "kiln.tests"],
+        "edgeCeilings": {
+          "kiln.app": ["kiln.core", "kiln.composition", "foundation.json"],
+          "kiln.core": ["foundation", "foundation.json", "platform.contracts", "product.profile", "product.contracts", "jobs.graph"]
+        },
+        "forbiddenLiterals": {
+          "modules": ["kiln.core"],
+          "literals": ["linux", "android", "ios", "tvos", "macos", "darwin", "apple", "windows", "win32", "mingw", "n3ds", "3ds", "freebsd", "ndk", "xcode", "devkitarm", "msvc", "apk", "aab", "cia", "cxi", "adb", "devicectl", "azahar", "wine", "waf", "gcc", "clang", "vulkan", "metal", "d3d12", "bc7", "astc", "etc1", "etc2", "ktx2", "vtf", "vmt", "mdl"],
+          "reason": "kiln.core names no OS, SDK, package form, transport, build tool, pixel format or asset kind; it asks the provider the profile names (RFC 0027 \"The rule\")"
+        }
       }
     ]
   },
@@ -3102,7 +3217,8 @@
         "allowedEdges": [
           "hammer.app",
           "hammer.ports",
-          "foundation"
+          "foundation",
+          "foundation.json"
         ]
       },
       {

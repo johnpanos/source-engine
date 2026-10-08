@@ -1,0 +1,16 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "hammer-v2",
+  "description": "The GTK4/libadwaita Hammer editor with its viewports on the render core's Vulkan adapter (hammer/gtk/build.sh, tree build-hammer-gtk). Pins and checks are the v1 profile's.",
+  "extends": [
+    "hammer-gtk-linux.json",
+    "fragments/linux-x86_64-desktop.json"
+  ],
+  "aliases": [
+    "hammer@linux-x86_64"
+  ],
+  "launch": {
+    "executable": "hammer_gtk",
+    "arguments": []
+  }
+}

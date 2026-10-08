@@ -1,0 +1,17 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# foundation.json (RFC 0027): the one JSON value, reader and writer, shared by
+# product profiles, kiln and the Hammer MCP adapter. Header-only foundation
+# vocabulary lives in public/foundation/ and needs no target.
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	bld.stlib(env=bld.strict_cpp20_env(), source=['json.cpp'], target='foundation_json',
+		name='foundation_json', arch_module='foundation.json', features='cxx',
+		includes=['../public'], install_path=None)

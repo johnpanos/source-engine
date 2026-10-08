@@ -2019,6 +2019,7 @@ void CStaticPropMgr::DrawStaticProps( IClientRenderable **pProps, int count, boo
 	if ( !r_drawstaticprops.GetBool() )
 		return;
 
+#ifndef SWDS
 	// Capture the client's visible list before either renderer takes it.
 	if ( !bShadowDepth && RenderCoreWorld_Capturing() )
 	{
@@ -2031,6 +2032,7 @@ void CStaticPropMgr::DrawStaticProps( IClientRenderable **pProps, int count, boo
 		}
 		RenderCoreWorld_OnStaticPropsDrawn( drawn.Base(), drawn.Count() );
 	}
+#endif
 
 	if ( IsUsingStaticPropDebugModes() || drawVCollideWireframe )
 	{

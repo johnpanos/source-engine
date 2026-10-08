@@ -1404,6 +1404,9 @@ unavailable device never certifies a gate.
 
 ### L0: The pipeline library, profiles and `kiln build`
 
+Status: implemented 2026-10-07; evidence and decisions in the
+[progress record](0027-progress.md#l0-the-pipeline-library-profile-schema-v2-and-kiln-build-2026-10-07).
+
 - `foundation.json`, `product.profile`, schema v2 and the shared fragments.
 - Profile files for every desktop product: Portal, Portal DXVK, Portal 2,
   Portal 2 FSR, Portal 2 High, coop, retail, F-Stop, the dedicated server,

@@ -236,7 +236,7 @@ class ProductProfileTests(unittest.TestCase):
              mock.patch.object(profile_tools.platform, "system", return_value="Linux"), \
              mock.patch.object(profile_tools.platform, "machine", return_value="x86_64"):
             observation = profile_tools.check_environment(self.profile)
-        self.assertEqual(observation["packages"]["sdl3"], "3.4.16")
+        self.assertEqual(observation["packages"]["sdl3"], "3.4.18")
         self.assertEqual(set(observation), {"os", "architecture", "compiler", "packages"})
 
     def test_wrong_architecture_is_rejected(self):

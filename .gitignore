@@ -31,6 +31,10 @@ game/client/*/client.lib
 game/server/*/server.lib
 .DS_Store
 build*/
+# RFC 0027: kiln's trees (out/<profile>/<flavor>, out/host-<os>-<arch>) and the
+# untracked workspace file (.kiln/local.json).
+/out/
+/.kiln/
 quality-results/
 run/runtime-p2/
 # Private runtime of tools/quality/portal2_scenarios.py.

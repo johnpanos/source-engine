@@ -6,13 +6,17 @@
 
 #include "hammer/adapters/mcp/mcp_server.h"
 
-#include "json_value.h"
+#include "foundation/json.h"
 
 #include <algorithm>
 #include <array>
 
 namespace hammer::adapters::mcp
 {
+
+using JsonValue = foundation::json::Value;
+using JsonError = foundation::json::ParseError;
+constexpr auto ParseJson = &foundation::json::Parse;
 
 namespace
 {

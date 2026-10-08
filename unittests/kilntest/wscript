@@ -1,0 +1,24 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# RFC 0027 L0: the product contract suites, the fixture platform and the
+# kiln.core end-to-end run (manifest row kiln.l0).
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	strict = bld.strict_cpp20_env()
+	bld.stlib(env=strict, source=['fixture_platform/fixture_platform.cpp'], target='kiln_fixture_platform',
+		name='kiln_fixture_platform', arch_module='kiln.fixture-platform', features='cxx',
+		includes=['../../public'], use=['product_contracts', 'product_profile', 'foundation_json'],
+		install_path=None)
+	bld.program(env=strict, source=['kilntest.cpp', 'suites.cpp', 'bad_providers.cpp'],
+		target='kilntest', name='kilntest', arch_module='kiln.tests',
+		features='cxx cxxprogram', includes=['../../public', '.'],
+		use=['kiln_fixture_platform', 'kiln_core', 'product_toolchain_linux', 'product_stage_waf',
+			'product_contracts', 'product_profile', 'foundation_json', 'platform_posix', 'jobsystem'],
+		install_path=bld.env.TESTDIR, subsystem=bld.env.MSVC_SUBSYSTEM)

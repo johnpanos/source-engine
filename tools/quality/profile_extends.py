@@ -26,14 +26,26 @@ def merge_profile(base, derived):
     return merged
 
 
-def load_profile(path):
-    """A product profile, with its "extends" chain (paths relative to it) resolved."""
+def load_profile(path, _chain=()):
+    """A product profile, with its "extends" chain (paths relative to it) resolved.
+
+    "extends" names one parent or (schema v2, RFC 0027) a list merged left to
+    right before the child. kiln's product.profile owns the same rule; this
+    module is its independent oracle until RFC 0027 L1 deletes it.
+    """
     path = Path(path).resolve()
+    if path in _chain:
+        raise ValueError("extends cycle: " + " -> ".join(str(p) for p in (*_chain, path)))
     profile = json.loads(path.read_text())
-    parent = profile.pop("extends", None)
-    if parent is None:
+    parents = profile.pop("extends", None)
+    if parents is None:
         return profile
-    return merge_profile(load_profile(path.parent / parent), profile)
+    if isinstance(parents, str):
+        parents = [parents]
+    merged = {}
+    for parent in parents:
+        merged = merge_profile(merged, load_profile(path.parent / parent, (*_chain, path)))
+    return merge_profile(merged, profile)
 
 
 def main(argv=None):

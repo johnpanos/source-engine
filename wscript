@@ -118,6 +118,10 @@ projects={
 		'video',
 	],
 	'tests': [
+		'foundation',
+		'product',
+		'product/kiln',
+		'unittests/kilntest',
 		'platform',
 		'content',
 		'unittests/contenttest',
@@ -152,6 +156,9 @@ projects={
 		'utils/unittest'
 	],
 	'tools': [
+		'foundation',
+		'product',
+		'product/kiln',
 		'fgdlib',
 		'content',
 		'render',
@@ -1244,7 +1251,8 @@ def build(bld):
 		# the engine, preserving its SONAME. No developer-checkout path is needed.
 		from pathlib import Path
 		for library in Path(bld.env.LIBPATH_DXVK[0]).glob('libdxvk_d3d9.so*'):
-			bld.install_files(bld.env.LIBDIR, [str(library)])
+			# A node: install_files reads a string as relative to the source tree.
+			bld.install_files(bld.env.LIBDIR, [bld.root.find_node(str(library))])
 
 	if bld.env.DEST_OS == 'win32' or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 		sdl_name = 'SDL2.dll' if bld.env.DEST_OS == 'win32' else 'libSDL2.so'

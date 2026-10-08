@@ -145,7 +145,9 @@ def check(root, block, strip):
 # --- Layer contracts (RFC 0016 "Layer contract and import rules") -----------
 
 LAYER_CONTRACT_KEYS = {'id', 'rfc', 'description', 'prefix', 'layers', 'externalBases', 'independent',
-                       'adapters', 'adapterConsumers', 'outside', 'backendIdentity', 'planned'}
+                       'adapters', 'adapterConsumers', 'outside', 'backendIdentity', 'planned',
+                       'edgeCeilings', 'forbiddenLiterals'}
+FORBIDDEN_LITERAL_KEYS = {'modules', 'literals', 'reason'}
 LAYER_CONTRACT_REQUIRED = ('id', 'prefix', 'layers')
 OUTSIDE_KEYS = {'modules', 'owner', 'reason'}
 BACKEND_IDENTITY_KEYS = {'identifier', 'allowedModules'}
@@ -214,6 +216,18 @@ def layer_contract_shape_errors(contract):
         else:
             errors += [f'{label}: backendIdentity unknown key {key}'
                        for key in sorted(set(identity) - BACKEND_IDENTITY_KEYS)]
+    ceilings = contract.get('edgeCeilings', {})
+    if not isinstance(ceilings, dict) or not all(is_string_list(v) for v in ceilings.values()):
+        errors.append(f'{label}: edgeCeilings maps each module to the list of edges it may have')
+    literals = contract.get('forbiddenLiterals')
+    if literals is not None:
+        if not isinstance(literals, dict) or not is_string_list(literals.get('modules')) \
+                or not literals.get('modules') or not is_string_list(literals.get('literals')) \
+                or not literals.get('literals') or not literals.get('reason'):
+            errors.append(f'{label}: forbiddenLiterals needs modules, literals and a reason')
+        else:
+            errors += [f'{label}: forbiddenLiterals unknown key {key}'
+                       for key in sorted(set(literals) - FORBIDDEN_LITERAL_KEYS)]
     return errors
 
 
@@ -388,6 +402,84 @@ def backend_identity_errors(root, block, contract, checked, strip):
     return errors
 
 
+def ceiling_errors(contract, modules):
+    """Rule 6: a module listed in edgeCeilings declares no edge beyond its
+    ceiling (for example a thin application that may use only the API and the
+    composition), so widening it is a reviewed change to the contract."""
+    errors = []
+    for mid, ceiling in sorted(contract.get('edgeCeilings', {}).items()):
+        if mid not in modules:
+            errors.append(f'CAP011 rule 6 {mid}: has an edge ceiling but is not a capability module')
+            continue
+        for dep in sorted(set(modules[mid]['allowedEdges']) - set(ceiling)):
+            errors.append(f'CAP011 rule 6 {mid}: edge to {dep} is above its ceiling '
+                          f'({", ".join(ceiling)})')
+    return errors
+
+
+def string_literals(text):
+    """(line, content) of each C/C++ string literal, skipping comments and
+    character literals. Raw strings are read as ordinary ones, which is enough
+    for a word scan."""
+    i, line, n = 0, 1, len(text)
+    while i < n:
+        c = text[i]
+        if c == '\n':
+            line += 1
+            i += 1
+        elif text.startswith('//', i):
+            end = text.find('\n', i)
+            i = n if end < 0 else end
+        elif text.startswith('/*', i):
+            end = text.find('*/', i + 2)
+            end = n if end < 0 else end + 2
+            line += text.count('\n', i, end)
+            i = end
+        elif c in '"\'':
+            start, i = i + 1, i + 1
+            while i < n and text[i] != c and text[i] != '\n':
+                i += 2 if text[i] == '\\' else 1
+            if c == '"':
+                yield line, text[start:i]
+            i += 1
+        else:
+            i += 1
+
+
+def forbidden_literal_errors(root, block, contract):
+    """Rule 7: the listed modules' sources carry none of the listed literals
+    inside a string (RFC 0027: kiln.core names no platform, SDK or package
+    form; it asks the provider the profile names). Case-insensitive, whole
+    words."""
+    literals = contract.get('forbiddenLiterals')
+    if not literals:
+        return []
+    words = [re.compile(rf'(?<![A-Za-z0-9_]){re.escape(word)}(?![A-Za-z0-9_])', re.IGNORECASE)
+             for word in literals['literals']]
+    modules = {m['id']: m for m in block['modules']}
+    root = Path(root).resolve()
+    errors = []
+    for mid in literals['modules']:
+        if mid not in modules:
+            errors.append(f'CAP011 rule 7 {mid}: listed in forbiddenLiterals but not a capability module')
+            continue
+        for prefix in modules[mid]['paths']:
+            base = root / prefix
+            for path in sorted(base.rglob('*') if base.is_dir() else [base]):
+                if not path.is_file() or path.suffix not in SOURCE:
+                    continue
+                relative = path.relative_to(root).as_posix()
+                if owner(relative, block) != mid:
+                    continue
+                text = path.read_text(encoding='utf-8', errors='replace')
+                for number, content in string_literals(text):
+                    for word, pattern in zip(literals['literals'], words):
+                        if pattern.search(content):
+                            errors.append(f'CAP011 rule 7 {relative}:{number} ({mid}): string literal '
+                                          f'names "{word}"; {literals["reason"]}')
+    return errors
+
+
 def layer_contract_errors(root, block, strip):
     """CAP011: the declared layer contracts (RFC 0016) over the module rows.
 
@@ -399,7 +491,9 @@ def layer_contract_errors(root, block, strip):
     4. every module with the family prefix has one place: a layer, an adapter
        column or a row-owned `outside` group; exact entries name modules;
     5. no layered module or adapter outside `backendIdentity.allowedModules`
-       compares the backend identifier in its sources.
+       compares the backend identifier in its sources;
+    6. a module in `edgeCeilings` declares no edge beyond its ceiling;
+    7. the `forbiddenLiterals` modules name none of the literals in a string.
     """
     contracts = block.get('layerContracts')
     if not isinstance(contracts, list):
@@ -415,6 +509,8 @@ def layer_contract_errors(root, block, strip):
         errors += placed + declared_entry_errors(contract, modules)
         errors += edge_errors(contract, modules, layer_of, port_of, outside)
         errors += backend_identity_errors(root, block, contract, set(layer_of) | set(port_of), strip)
+        errors += ceiling_errors(contract, modules)
+        errors += forbidden_literal_errors(root, block, contract)
     return sorted(set(errors))
 
 

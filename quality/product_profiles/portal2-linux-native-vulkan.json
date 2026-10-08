@@ -1,0 +1,57 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal2-linux-native-vulkan-v2",
+  "description": "Portal 2 on Linux x86_64, SDL3 and native Vulkan with the render core and the GL adapter: the product ./play_p2 builds today (tree build-p2).",
+  "extends": [
+    "fragments/linux-x86_64-desktop.json",
+    "fragments/desktop-launch.json",
+    "fragments/render-switches.json"
+  ],
+  "aliases": [
+    "portal2@linux-x86_64"
+  ],
+  "target": {
+    "product": "portal2-client"
+  },
+  "configure_options": {
+    "platform_provider": "sdl3",
+    "render_backend": "native-vulkan",
+    "build_games": "portal2",
+    "physics_backend": "both",
+    "render_core_gl": true
+  },
+  "launch": {
+    "game": "portal2",
+    "default_map": "sp_a1_intro1",
+    "executable": "hl2_launcher",
+    "arguments": [
+      "-physics",
+      "vphysics_box3d",
+      "-physics_shape_inertia",
+      "+cl_render_start_graph",
+      "2",
+      "+sv_querycache_job_graph",
+      "2",
+      "-vkemitparallel",
+      "1",
+      "+mat_colorcorrection",
+      "1",
+      "+mat_queue_mode",
+      "2",
+      "+sv_cheats",
+      "1",
+      "+r_core_world",
+      "1",
+      "+r_indirect_producer",
+      "baked",
+      "+r_core_runtime_direct",
+      "1",
+      "+r_core_area_lights",
+      "0"
+    ],
+    "environment": {
+      "SteamAppId": "620",
+      "SteamGameId": "620"
+    }
+  }
+}

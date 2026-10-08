@@ -143,6 +143,16 @@
     "material_compiler": {"dialect": "cxx20", "rfc": "0015"},
     "content_build": {"dialect": "cxx20", "rfc": "0015"},
     "contenttest": {"dialect": "cxx20", "rfc": "0015"},
+    "foundation_json": {"dialect": "cxx20", "rfc": "0027"},
+    "product_profile": {"dialect": "cxx20", "rfc": "0027"},
+    "product_contracts": {"dialect": "cxx20", "rfc": "0027"},
+    "product_toolchain_linux": {"dialect": "cxx20", "rfc": "0027"},
+    "product_stage_waf": {"dialect": "cxx20", "rfc": "0027"},
+    "kiln_core": {"dialect": "cxx20", "rfc": "0027"},
+    "kiln_composition": {"dialect": "cxx20", "rfc": "0027"},
+    "kiln": {"dialect": "cxx20", "rfc": "0027"},
+    "kilntest": {"dialect": "cxx20", "rfc": "0027"},
+    "kiln_fixture_platform": {"dialect": "cxx20", "rfc": "0027"},
     "jobsystem": {
       "dialect": "cxx20",
       "rfc": "0003"

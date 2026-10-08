@@ -1,0 +1,56 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal-linux-native-vulkan-v2",
+  "description": "Portal on Linux x86_64, SDL3 and native Vulkan with the render core: the product ./play and run.sh build today (tree build/). Pins and evidence are the v1 slice's (extends portal-linux-wayland-native-vulkan.json).",
+  "extends": [
+    "portal-linux-wayland-native-vulkan.json",
+    "fragments/linux-x86_64-desktop.json",
+    "fragments/desktop-launch.json",
+    "fragments/render-switches.json"
+  ],
+  "aliases": [
+    "portal@linux-x86_64"
+  ],
+  "launch": {
+    "game": "portal",
+    "default_map": "testchmb_a_01",
+    "executable": "hl2_launcher",
+    "arguments": [
+      "-renderer",
+      "native-vulkan",
+      "-physics",
+      "vphysics_box3d",
+      "-physics_shape_inertia",
+      "+cl_render_start_graph",
+      "2",
+      "+sv_querycache_job_graph",
+      "2",
+      "+portal_carve_job_graph",
+      "2",
+      "-vkemitparallel",
+      "1",
+      "+mat_bumpmap 1",
+      "+mat_picmip -1",
+      "+r_lod 0",
+      "+r_indirect_producer auto",
+      "-novid",
+      "-insecure",
+      "+mat_queue_mode",
+      "2",
+      "+sv_cheats",
+      "1",
+      "+r_core_world",
+      "1",
+      "+r_indirect_producer",
+      "baked",
+      "+r_core_runtime_direct",
+      "1",
+      "+r_core_area_lights",
+      "0"
+    ],
+    "environment": {
+      "SteamAppId": "400",
+      "SteamGameId": "400"
+    }
+  }
+}

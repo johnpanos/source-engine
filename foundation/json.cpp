@@ -1,60 +1,61 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: JSON value, reader and writer for the Hammer MCP adapter.
+// Purpose: foundation.json: the one JSON value, reader and writer (RFC 0027).
 //
 //=============================================================================//
 
-#include "json_value.h"
+#include "foundation/json.h"
 
 #include <cstdio>
+#include <cstdlib>
 
-namespace hammer::adapters::mcp
+namespace foundation::json
 {
 
-JsonValue JsonValue::Bool( bool value )
+Value Value::Bool( bool value )
 {
-	JsonValue v;
+	Value v;
 	v.m_kind = Kind::Bool;
 	v.m_bool = value;
 	return v;
 }
 
-JsonValue JsonValue::Number( std::string text )
+Value Value::Number( std::string text )
 {
-	JsonValue v;
+	Value v;
 	v.m_kind = Kind::Number;
 	v.m_text = std::move( text );
 	return v;
 }
 
-JsonValue JsonValue::Number( long long value )
+Value Value::Number( long long value )
 {
 	return Number( std::to_string( value ) );
 }
 
-JsonValue JsonValue::String( std::string value )
+Value Value::String( std::string value )
 {
-	JsonValue v;
+	Value v;
 	v.m_kind = Kind::String;
 	v.m_text = std::move( value );
 	return v;
 }
 
-JsonValue JsonValue::Array()
+Value Value::Array()
 {
-	JsonValue v;
+	Value v;
 	v.m_kind = Kind::Array;
 	return v;
 }
 
-JsonValue JsonValue::Object()
+Value Value::Object()
 {
-	JsonValue v;
+	Value v;
 	v.m_kind = Kind::Object;
 	return v;
 }
 
-const JsonValue *JsonValue::Find( std::string_view key ) const
+const Value *Value::Find( std::string_view key ) const
 {
 	if ( m_kind != Kind::Object )
 		return nullptr;
@@ -66,13 +67,37 @@ const JsonValue *JsonValue::Find( std::string_view key ) const
 	return nullptr;
 }
 
-JsonValue &JsonValue::Push( JsonValue value )
+Value *Value::Find( std::string_view key )
+{
+	return const_cast<Value *>( static_cast<const Value *>( this )->Find( key ) );
+}
+
+bool Value::Remove( std::string_view key )
+{
+	for ( auto it = m_members.begin(); it != m_members.end(); ++it )
+	{
+		if ( it->first == key )
+		{
+			m_members.erase( it );
+			return true;
+		}
+	}
+	return false;
+}
+
+const std::string *Value::FindString( std::string_view key ) const
+{
+	const Value *value = Find( key );
+	return value && value->IsString() ? &value->m_text : nullptr;
+}
+
+Value &Value::Push( Value value )
 {
 	m_items.push_back( std::move( value ) );
 	return m_items.back();
 }
 
-JsonValue &JsonValue::Set( std::string key, JsonValue value )
+Value &Value::Set( std::string key, Value value )
 {
 	for ( auto &member : m_members )
 	{
@@ -132,21 +157,21 @@ class Reader
 public:
 	explicit Reader( std::string_view text ) : m_text( text ) {}
 
-	foundation::Expected<JsonValue, JsonError> Document()
+	foundation::Expected<Value, ParseError> Document()
 	{
-		JsonValue value;
-		if ( !Value( value, 0 ) )
+		Value value;
+		if ( !ReadValue( value, 0 ) )
 			return foundation::MakeUnexpected( m_error );
 		SkipSpace();
 		if ( m_pos != m_text.size() )
-			return foundation::MakeUnexpected( JsonError{ m_pos, "trailing text" } );
+			return foundation::MakeUnexpected( ParseError{ m_pos, "trailing text" } );
 		return value;
 	}
 
 private:
 	bool Fail( std::string detail )
 	{
-		m_error = JsonError{ m_pos, std::move( detail ) };
+		m_error = ParseError{ m_pos, std::move( detail ) };
 		return false;
 	}
 
@@ -165,14 +190,14 @@ private:
 		return true;
 	}
 
-	bool Value( JsonValue &out, int depth )
+	bool ReadValue( Value &out, int depth )
 	{
 		SkipSpace();
 		if ( m_pos >= m_text.size() )
 			return Fail( "unexpected end of input" );
 		const char c = m_text[m_pos];
-		if ( ( c == '{' || c == '[' ) && depth >= kMaxJsonDepth )
-			return Fail( "more than " + std::to_string( kMaxJsonDepth ) + " nested containers" );
+		if ( ( c == '{' || c == '[' ) && depth >= kMaxDepth )
+			return Fail( "more than " + std::to_string( kMaxDepth ) + " nested containers" );
 		if ( c == '{' )
 			return ObjectValue( out, depth );
 		if ( c == '[' )
@@ -182,22 +207,22 @@ private:
 			std::string text;
 			if ( !StringValue( text ) )
 				return false;
-			out = JsonValue::String( std::move( text ) );
+			out = Value::String( std::move( text ) );
 			return true;
 		}
 		if ( c == 't' )
 		{
-			out = JsonValue::Bool( true );
+			out = Value::Bool( true );
 			return Literal( "true" );
 		}
 		if ( c == 'f' )
 		{
-			out = JsonValue::Bool( false );
+			out = Value::Bool( false );
 			return Literal( "false" );
 		}
 		if ( c == 'n' )
 		{
-			out = JsonValue();
+			out = Value();
 			return Literal( "null" );
 		}
 		return NumberValue( out );
@@ -211,7 +236,7 @@ private:
 		return m_pos > start;
 	}
 
-	bool NumberValue( JsonValue &out )
+	bool NumberValue( Value &out )
 	{
 		const size_t start = m_pos;
 		if ( m_text[m_pos] == '-' )
@@ -234,7 +259,7 @@ private:
 			if ( !Digits() )
 				return Fail( "invalid number" );
 		}
-		out = JsonValue::Number( std::string( m_text.substr( start, m_pos - start ) ) );
+		out = Value::Number( std::string( m_text.substr( start, m_pos - start ) ) );
 		return true;
 	}
 
@@ -355,10 +380,10 @@ private:
 		}
 	}
 
-	bool ArrayValue( JsonValue &out, int depth )
+	bool ArrayValue( Value &out, int depth )
 	{
 		++m_pos;
-		out = JsonValue::Array();
+		out = Value::Array();
 		SkipSpace();
 		if ( m_pos < m_text.size() && m_text[m_pos] == ']' )
 		{
@@ -367,8 +392,8 @@ private:
 		}
 		while ( true )
 		{
-			JsonValue item;
-			if ( !Value( item, depth + 1 ) )
+			Value item;
+			if ( !ReadValue( item, depth + 1 ) )
 				return false;
 			out.Push( std::move( item ) );
 			SkipSpace();
@@ -382,10 +407,10 @@ private:
 		}
 	}
 
-	bool ObjectValue( JsonValue &out, int depth )
+	bool ObjectValue( Value &out, int depth )
 	{
 		++m_pos;
-		out = JsonValue::Object();
+		out = Value::Object();
 		SkipSpace();
 		if ( m_pos < m_text.size() && m_text[m_pos] == '}' )
 		{
@@ -404,8 +429,8 @@ private:
 			if ( m_pos >= m_text.size() || m_text[m_pos] != ':' )
 				return Fail( "expected ':'" );
 			++m_pos;
-			JsonValue value;
-			if ( !Value( value, depth + 1 ) )
+			Value value;
+			if ( !ReadValue( value, depth + 1 ) )
 				return false;
 			if ( out.Find( key ) )
 				return Fail( "duplicate member \"" + key + "\"" );
@@ -423,12 +448,23 @@ private:
 
 	std::string_view m_text;
 	size_t m_pos = 0;
-	JsonError m_error;
+	ParseError m_error;
 };
 
 } // namespace
 
-void JsonValue::WriteTo( std::string &out ) const
+namespace
+{
+void NewLine( std::string &out, int indent, int level )
+{
+	if ( indent <= 0 )
+		return;
+	out += '\n';
+	out.append( static_cast<size_t>( indent * level ), ' ' );
+}
+} // namespace
+
+void Value::WriteTo( std::string &out, int indent, int level ) const
 {
 	switch ( m_kind )
 	{
@@ -450,8 +486,11 @@ void JsonValue::WriteTo( std::string &out ) const
 		{
 			if ( i )
 				out += ',';
-			m_items[i].WriteTo( out );
+			NewLine( out, indent, level + 1 );
+			m_items[i].WriteTo( out, indent, level + 1 );
 		}
+		if ( !m_items.empty() )
+			NewLine( out, indent, level );
 		out += ']';
 		break;
 	case Kind::Object:
@@ -460,25 +499,66 @@ void JsonValue::WriteTo( std::string &out ) const
 		{
 			if ( i )
 				out += ',';
+			NewLine( out, indent, level + 1 );
 			WriteString( out, m_members[i].first );
-			out += ':';
-			m_members[i].second.WriteTo( out );
+			out += indent > 0 ? ": " : ":";
+			m_members[i].second.WriteTo( out, indent, level + 1 );
 		}
+		if ( !m_members.empty() )
+			NewLine( out, indent, level );
 		out += '}';
 		break;
 	}
 }
 
-std::string JsonValue::Write() const
+std::string Value::Write() const
 {
 	std::string out;
-	WriteTo( out );
+	WriteTo( out, 0, 0 );
 	return out;
 }
 
-foundation::Expected<JsonValue, JsonError> ParseJson( std::string_view text )
+std::string Value::WritePretty( int indent ) const
+{
+	std::string out;
+	WriteTo( out, indent < 1 ? 1 : indent, 0 );
+	return out;
+}
+
+bool operator==( const Value &a, const Value &b )
+{
+	if ( a.m_kind != b.m_kind )
+		return false;
+	switch ( a.m_kind )
+	{
+	case Value::Kind::Null:
+		return true;
+	case Value::Kind::Bool:
+		return a.m_bool == b.m_bool;
+	case Value::Kind::Number:
+		return a.m_text == b.m_text ||
+		       std::strtod( a.m_text.c_str(), nullptr ) == std::strtod( b.m_text.c_str(), nullptr );
+	case Value::Kind::String:
+		return a.m_text == b.m_text;
+	case Value::Kind::Array:
+		return a.m_items == b.m_items;
+	case Value::Kind::Object:
+		if ( a.m_members.size() != b.m_members.size() )
+			return false;
+		for ( const auto &member : a.m_members )
+		{
+			const Value *other = b.Find( member.first );
+			if ( !other || !( member.second == *other ) )
+				return false;
+		}
+		return true;
+	}
+	return false;
+}
+
+foundation::Expected<Value, ParseError> Parse( std::string_view text )
 {
 	return Reader( text ).Document();
 }
 
-} // namespace hammer::adapters::mcp
+} // namespace foundation::json

@@ -1,0 +1,12 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal2-high-v2",
+  "description": "Portal 2 High qualification (RFC 0016 hard render budgets): the Portal 2 desktop product with the v1 High profile's quality intent, video provider and required checks.",
+  "extends": [
+    "portal2-linux-native-vulkan.json",
+    "portal2-linux-native-vulkan-high.json"
+  ],
+  "aliases": [
+    "portal2-high@linux-x86_64"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "fstop-linux-native-vulkan-v2",
+  "description": "F-Stop on Linux x86_64 (Portal 1 plus Valve's F-Stop content, ./play_fstop, tree build-fstop).",
+  "extends": [
+    "fragments/linux-x86_64-desktop.json",
+    "fragments/desktop-launch.json",
+    "fragments/render-switches.json"
+  ],
+  "aliases": [
+    "fstop@linux-x86_64"
+  ],
+  "target": {
+    "product": "fstop-client"
+  },
+  "configure_options": {
+    "platform_provider": "sdl3",
+    "render_backend": "native-vulkan",
+    "build_games": "fstop"
+  },
+  "launch": {
+    "game": "fstop",
+    "default_map": "testchmb_a_00",
+    "executable": "hl2_launcher",
+    "arguments": [
+      "-renderer",
+      "native-vulkan",
+      "-physics",
+      "vphysics_box3d",
+      "-physics_shape_inertia",
+      "-windowed"
+    ],
+    "environment": {
+      "SteamAppId": "400",
+      "SteamGameId": "400"
+    }
+  }
+}

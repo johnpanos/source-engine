@@ -1,0 +1,58 @@
+{
+  "schema": "source-product-fragment/v2",
+  "id": "linux-x86_64-desktop-v2",
+  "description": "Shared build facts of the Linux x86_64 desktop products (RFC 0027 L0): the target, the pinned host GCC and pkg-config dependencies, the linux-gcc toolchain provider, the dev and release flavors (RFC 0023) and the waf-engine stage. The pins equal the v1 desktop profiles' (portal-linux-wayland-native-vulkan.json); those v1 files fold into this fragment when L1 moves their Python readers to product.profile.",
+  "target": {
+    "os": "linux",
+    "architecture": "x86_64"
+  },
+  "toolchain": {
+    "cc": "gcc",
+    "cxx": "g++",
+    "family": "gcc",
+    "version": "16.2.1",
+    "standard_library": "libstdc++",
+    "dialect_policy": "quality/toolchain/policy.json",
+    "glibcxx_cxx11_abi": 0,
+    "build_type": "release"
+  },
+  "dependencies": {
+    "pkg_config": {
+      "sdl3": "3.4.18",
+      "vulkan": "1.4.341",
+      "freetype2": "26.6.20",
+      "fontconfig": "2.17.0",
+      "openal": "1.24.2",
+      "libjpeg": "3.1.3",
+      "libpng": "1.6.58",
+      "libcurl": "8.18.0",
+      "zlib": "1.3.1.zlib-ng"
+    }
+  },
+  "configure_options": {
+    "build_type": "release",
+    "disable_warns": true
+  },
+  "build": {
+    "toolchain": "linux-gcc",
+    "default_flavor": "dev",
+    "flavors": {
+      "dev": {
+        "description": "Development instrumentation kept (the trees ./play and ./play_p2 build today)",
+        "configure_options": {}
+      },
+      "release": {
+        "description": "RFC 0023 release play build: release flavor flags and link-time optimization",
+        "configure_options": {
+          "product_flavor": "release",
+          "enable_lto": true
+        }
+      }
+    }
+  },
+  "pipeline": {
+    "stages": [
+      "waf-engine"
+    ]
+  }
+}

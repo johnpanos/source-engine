@@ -1,0 +1,18 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "tools-linux-v2",
+  "description": "The Linux x86_64 tools product: compile tools, content_build, hammer_cli and kiln itself (the render core without its Vulkan adapter).",
+  "extends": [
+    "fragments/linux-x86_64-desktop.json"
+  ],
+  "aliases": [
+    "tools@linux-x86_64"
+  ],
+  "target": {
+    "product": "tools"
+  },
+  "configure_options": {
+    "tools": true,
+    "render_core_vulkan": "off"
+  }
+}

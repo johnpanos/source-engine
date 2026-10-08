@@ -1,0 +1,52 @@
+#!/bin/sh
+# kiln: the one bootstrap of the product pipeline (RFC 0027), like ./waf.
+#
+# Builds the host `kiln` binary with Waf into out/host-<os>-<arch>/ the first
+# time and again when its sources change, then execs it with the repository
+# root. Everything else is kiln's: ./kiln --help.
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+host=$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)
+tree="$root/out/host-$host"
+bin="$tree/product/kiln/kiln"
+log="$tree/kiln-bootstrap.log"
+
+# The tree keeps its own Waf lock, as every kiln tree does.
+export WAFLOCK=.lock-waf-kiln NO_LOCK_IN_TOP=1 NO_LOCK_IN_RUN=1
+
+# What the host binary is built from, and what configures its tree.
+sources="foundation product jobsystem platform public/foundation public/product public/kiln
+	public/jobsystem public/platform"
+config="wscript scripts/waifulib quality/toolchain"
+
+# newer <file> <paths...>: is any of the paths newer than <file>?
+newer()
+{
+	stamp=$1
+	shift
+	[ -n "$(cd "$root" && find "$@" -newer "$stamp" -print 2>/dev/null | head -n 1)" ]
+}
+
+mkdir -p "$tree"
+# shellcheck disable=SC2086  # the path lists are intentionally word-split
+if [ ! -f "$tree/c4che/_cache.py" ] || newer "$tree/c4che/_cache.py" $config; then
+	echo "kiln: configuring the host tree $tree" >&2
+	if ! (cd "$root" && python3 ./waf configure --tools --render-core-vulkan=off -T release \
+		--disable-warns -o "$tree") >"$log" 2>&1; then
+		tail -n 20 "$log" >&2
+		echo "kiln: configuring the host tree failed; the full log is $log" >&2
+		exit 1
+	fi
+fi
+# shellcheck disable=SC2086
+if [ ! -x "$bin" ] || newer "$bin" $sources; then
+	echo "kiln: building the host kiln" >&2
+	if ! (cd "$tree" && python3 "$root/waf" build --targets=kiln) >"$log" 2>&1; then
+		grep -E 'error|Error' "$log" | head -n 20 >&2 || true
+		echo "kiln: building the host kiln failed; the full log is $log" >&2
+		exit 1
+	fi
+	touch "$bin"
+fi
+exec "$bin" --root "$root" "$@"

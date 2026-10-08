@@ -1,0 +1,23 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+# RFC 0027 product pipeline libraries: profiles (schema v2), the extension
+# contracts and the first providers (the Linux toolchains, the Waf engine
+# stage). Host-tool code: built for the tools and tests products only.
+
+def options(opt):
+	return
+
+def configure(conf):
+	conf.load('strict_cpp20', tooldir='scripts/waifulib')
+
+def build(bld):
+	strict = bld.strict_cpp20_env()
+	for target, source, module, use in (
+		('product_profile', 'profile/profile.cpp', 'product.profile', ['foundation_json']),
+		('product_contracts', 'contracts/contracts.cpp', 'product.contracts', ['product_profile', 'foundation_json']),
+		('product_toolchain_linux', 'toolchain/linux.cpp', 'product.toolchain.linux', ['product_contracts']),
+		('product_stage_waf', 'stage/waf_engine.cpp', 'product.stage.waf', ['product_contracts'])):
+		bld.stlib(env=strict, source=[source], target=target, name=target,
+			arch_module=module, features='cxx', includes=['../public'], use=use,
+			install_path=None)

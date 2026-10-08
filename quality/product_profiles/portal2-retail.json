@@ -1,0 +1,22 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal2-retail-v2",
+  "description": "The installed retail Portal 2, for comparisons (./play_p2 --retail). Nothing is built: the external-install run provider arrives in L1.",
+  "extends": [
+    "fragments/desktop-launch.json"
+  ],
+  "aliases": [
+    "portal2-retail@linux-x86_64"
+  ],
+  "target": {
+    "product": "portal2-retail",
+    "os": "linux",
+    "architecture": "x86_64"
+  },
+  "launch": {
+    "game": "portal2",
+    "default_map": "sp_a1_intro1",
+    "executable": "portal2.sh",
+    "arguments": []
+  }
+}

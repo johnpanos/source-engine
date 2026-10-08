@@ -483,7 +483,7 @@
         "tools/quality/hammer_ui_test.py",
         "tools/quality/vmf_map_build.py",
         "hammer/adapters/mcp/mcp_server.cpp",
-        "hammer/adapters/mcp/json_value.cpp",
+        "foundation/json.cpp",
         "hammer/cli/hammer_cli.cpp"
       ],
       "expect": "pass"
@@ -3484,7 +3484,7 @@
       "description": "MCP server over the Hammer command layer (RFC/0002-progress.md, R08-MCP; SessionCommands with the strict VMF codec since R08-DOMAIN): the JSON reader and writer (escapes, surrogate pairs, the nesting bound, 13 malformed inputs), every JSON-RPC error class with ids echoed verbatim, the initialize handshake and version negotiation, one tool per catalog command with matching schemas, command failures as isError results, a room authored through tool calls that saves byte-identically to the same room authored by script, protocol faults that change nothing, and undo through the shared history.",
       "result_protocol": "checks-v1",
       "sources": [
-        "hammer/adapters/mcp/json_value.cpp",
+        "foundation/json.cpp",
         "hammer/adapters/mcp/mcp_server.cpp",
         "hammer/core/scene/map_objects.cpp",
         "hammer/core/scene/map_document.cpp",
@@ -20697,6 +20697,114 @@
         "--seed-overlap"
       ],
       "expect": "fail"
+    },
+    {
+      "id": "kiln.l0",
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L0",
+      "contract": "public/product/contracts.h",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "RFC 0027 L0 (RFC/0027-progress.md): foundation.json; product.profile schema v2 with the extends merge equal to profile_extends.py's rule, provenance, aliases, flavors and derived Waf arguments, and its seeded faults refused by name (extends cycle, unknown key, unknown provider, missing pin, three conflicting configure options, workspace values that would change a build fact); the shared suites of ITargetToolchain (linux-gcc, linux-clang, the fixture host), IRecipeBuilder (fake), IProductStage (fixture stages; waf-engine descriptor and cancellation), IPackager, IDeployTransport and IDisplaySession, each rejecting its deliberately bad providers by the clause they break (25 bad providers); the ProviderCatalog; and the fixture platform run build -> content -> package -> deploy -> run through an unchanged kiln.core, with an unchanged second run rebuilding and resending nothing, a missing capability refused before the device is touched, and an undeclared read failing the run with nothing published.",
+      "command": [
+        "out/host-tests/unittests/kilntest/kilntest"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 108,
+      "timeout_seconds": 300,
+      "requires": [
+        "path:out/host-tests/unittests/kilntest/kilntest"
+      ],
+      "sources": [
+        "foundation/json.cpp",
+        "product/profile/profile.cpp",
+        "product/contracts/contracts.cpp",
+        "product/toolchain/linux.cpp",
+        "product/stage/waf_engine.cpp",
+        "product/kiln/core/session.cpp",
+        "unittests/kilntest/fixture_platform/fixture_platform.cpp",
+        "unittests/kilntest/suites.cpp",
+        "unittests/kilntest/bad_providers.cpp",
+        "unittests/kilntest/kilntest.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "kiln.profiles.parity",
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L0",
+      "contract": "public/product/profile.h",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0027 L0 gate: `kiln profiles resolve` equals tools/quality/profile_extends.py, values and member order, on every file in quality/product_profiles (the pre-RFC profiles, the schema v2 desktop profiles and the fragments).",
+      "command": [
+        "{python}",
+        "tools/kiln/kiln_gate.py",
+        "parity"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 17,
+      "timeout_seconds": 600,
+      "requires": [
+        "path:out/host-linux-x86_64/product/kiln/kiln"
+      ],
+      "sources": [
+        "tools/kiln/kiln_gate.py",
+        "tools/quality/profile_extends.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "kiln.profiles.parity.sensitivity",
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L0",
+      "contract": "public/product/profile.h",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "description": "The parity and rebuild comparators of tools/kiln/kiln_gate.py catch seeded divergence: member order, nested order, array order, a value, a dropped and an extra member.",
+      "command": [
+        "{python}",
+        "tools/kiln/kiln_gate.py",
+        "selftest"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 9,
+      "timeout_seconds": 60,
+      "sources": [
+        "tools/kiln/kiln_gate.py"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "kiln.rebuild.portal2",
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L0",
+      "contract": "public/product/stage_waf.h",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0027 L0 gate on a real desktop profile: `kiln build portal2` twice; the second build neither reconfigures nor runs a Waf task nor installs a file, and the build writes its evidence record (revision, dirty digest, profile digest, toolchain identity, reproduction).",
+      "command": [
+        "{python}",
+        "tools/kiln/kiln_gate.py",
+        "rebuild",
+        "portal2"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 10,
+      "timeout_seconds": 7200,
+      "requires": [
+        "path:out/host-linux-x86_64/product/kiln/kiln"
+      ],
+      "sources": [
+        "tools/kiln/kiln_gate.py",
+        "product/stage/waf_engine.cpp",
+        "product/kiln/core/session.cpp"
+      ],
+      "expect": "pass"
     }
   ]
 }

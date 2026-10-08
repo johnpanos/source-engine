@@ -38,7 +38,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0024](RFC/0024-direct3d12-device-adapter.md) | Direct3D 12 adapter for `render.device.v2`: fences as completion tokens, bind groups as root-signature tables, HLSL artifacts compiled by the pinned DXC, SDL3–D3D12 bridge; Linux lane and X5 under MinGW + Wine/vkd3d-proton (proposed, user direction 2026-10-07; X0–X5 implemented: device suite 1,563/0, pixel families against Vulkan, render graph, SDL3–D3D12 presentation 64/0, resolution sweep on bazzite; no ranked row) |
 | [0025](RFC/0025-metal-device-adapter.md) | Metal device adapter for the render core: `render.device.metal` (Objective-C++), `kMsl` MSL 3.0 artifacts from the pinned SPIRV-Cross, bind groups as argument buffers, Metal 3 floor (proposed, user direction 2026-10-07; M0 partial, no device run) |
 | [0026](RFC/0026-box3d-beyond-ivp.md) | Box3D beyond IVP with IVP as the fallback: the IVP fallback guarantee (F1–F7), a measured "surpasses IVP" scoreboard, Box3D-only capabilities in order (B1 continuous collision, B2 capsules, B3 rolling resistance and surface velocity, B4 contact events, then joint drive, sensors, explosions, recording, runtime collision) through RFC 0013's mechanism, per-phase done checklist, six ratchets, published scenario maps (proposed, user direction 2026-10-07; scenario maps installed, no phase gate passed; row R98) |
-| [0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md) | One product pipeline in C++, libraries first: standalone public libraries (codecs, IRs, readers/writers, lowerings, graph, resolver, profiles, `kiln.api`) that tools, Hammer, bakers and Python (`sepipe`) use directly, with `kiln` as a thin CLI and an exported SDK; a breaking workflow change (`./kiln play <profile>` replaces `./play*`, `run.sh`, `run.conf` and the platform and CI scripts with no wrappers; trees move to `out/<profile>/<flavor>`); shared concerns lifted to one owner each; canonical texture encoders/decoders; texture, material and model IRs lowered per target as RFC 0015 compilers; streamable package units; extension by substitution (providers selected by name, shared suites with bad providers, a fixture platform through an unchanged core) (proposed, user direction 2026-10-07; nothing implemented, rows R98–R101 unranked) |
+| [0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md) | One product pipeline in C++, libraries first: standalone public libraries (codecs, IRs, readers/writers, lowerings, graph, resolver, profiles, `kiln.api`) that tools, Hammer, bakers and Python (`sepipe`) use directly, with `kiln` as a thin CLI and an exported SDK; a breaking workflow change (`./kiln play <profile>` replaces `./play*`, `run.sh`, `run.conf` and the platform and CI scripts with no wrappers; trees move to `out/<profile>/<flavor>`); shared concerns lifted to one owner each; canonical texture encoders/decoders; texture, material and model IRs lowered per target as RFC 0015 compilers; streamable package units; extension by substitution (providers selected by name, shared suites with bad providers, a fixture platform through an unchanged core) (proposed, user direction 2026-10-07; [L0 implemented](RFC/0027-progress.md) 2026-10-07: `foundation.json`, `product.profile` schema v2, the product contracts with shared suites and bad providers, `kiln.core`/`kiln.api`, `kiln.composition`, the `./kiln` bootstrap and `kiln profiles|doctor|build` on the ten buildable desktop profiles (eleven declared); nothing deleted, L1 cutover not started; rows R98–R101 unranked) |
 | [0028](RFC/0028-direct3d9-device-adapter.md) | Direct3D 9 adapter for `render.device.v2`: D3D9Ex/SM3 floor, `kD3d9Bytecode` artifacts via SPIRV-Cross SM30 and the pinned FXC, graphics-only capability set with named refusals, mod `ShaderDLL004` bytecode on the core through the legacy frontend, `shaderapidx9` deleted once matched; DXVK Native and Wine lanes (proposed, user direction 2026-10-07, lifting RFC 0016's exclusion; nothing implemented, no ranked row) |
 
 RFC status and implementation status are separate. A proposed interface, tool,
@@ -718,6 +718,19 @@ can still proceed. For `done`, link the current revision/profile evidence and
 confirm every required child and exit criterion. Reopen affected gates when a
 contract/provider/comparator/consumer changes; do not preserve stale completion.
 Keep the table concise and link details below or from the domain progress file.
+
+- RFC 0027 L0 (2026-10-07, user goal "complete L0 ... on the desktop
+  profiles. Nothing gets deleted until L1's equivalence check passes"):
+  `./kiln profiles list|resolve|explain`, `./kiln doctor` and
+  `./kiln build <profile> [--flavor dev|release]` build the desktop
+  products into `out/<profile>/<flavor>/`; the existing launchers and
+  scripts are unchanged and remain the everyday workflow until L1. Gate:
+  resolve parity with `profile_extends.py` on every profile, seeded profile
+  faults, 25 bad providers rejected, the fixture platform end to end through
+  `kiln.core`, archlint CAP011 rules for the core, the thin application and
+  platform literals, and a no-op second build per desktop profile
+  ([record](RFC/0027-progress.md)). The RFC's roadmap names this row R98,
+  which RFC 0026 also uses; the user decides its id and rank.
 
 - R67 (RFC 0013): added 2026-09-24 at the user's direction, `active`. The
   `box3d-optin` branch is merged (2026-09-25), and work continues on the
