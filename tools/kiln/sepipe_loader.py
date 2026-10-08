@@ -93,6 +93,22 @@ def packaged_runtime(profile, flavor="dev"):
         raise LoadError("kiln package %s --flavor %s: %s" % (profile, flavor, error)) from error
 
 
+def package_into(profile, runtime, flavor="dev"):
+    """The profile built and packaged into a caller's private `runtime`
+    directory (a harness's own stage, never the profile's runtime). Returns
+    the packaged paths relative to it."""
+    runtime = Path(runtime)
+    try:
+        session().build(profile, flavor=flavor, up_to="package", runtime=str(runtime))
+    except LoadError:
+        raise
+    except Exception as error:  # sepipe.KilnError
+        raise LoadError("kiln package %s --flavor %s into %s: %s"
+                        % (profile, flavor, runtime, error)) from error
+    return sorted(path.relative_to(runtime).as_posix()
+                  for path in runtime.rglob("*") if path.is_file() or path.is_symlink())
+
+
 def add_arguments(parser, profile):
     """The --profile/--flavor pair a portal_boot caller takes in place of
     the legacy --runtime/--build."""

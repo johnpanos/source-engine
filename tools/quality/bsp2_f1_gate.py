@@ -27,11 +27,11 @@ def run_gate(args):
     output = Path(args.out).resolve()
     portal = Path(args.portal_runtime).resolve()
     portal2 = Path(args.portal2_runtime).resolve()
-    dedicated = Path(args.dedicated_build).resolve()
-    client = Path(args.client_build).resolve()
+    dedicated = args.dedicated_profile
+    client = args.client_profile
     tool = Path(args.tool).resolve()
     if any(source == output or source in output.parents for source in
-           (portal, portal2, dedicated, client)):
+           (portal, portal2)):
         print("BSP2 F1 gate: fail (output must be outside source runtimes and builds)")
         return 1
     if output.exists() and not output.is_dir():
@@ -41,7 +41,7 @@ def run_gate(args):
                 "scope": "Q-CONTENT and Linux native map-container slice; not full RFC 0008 acceptance",
                 "source": conformance.source_identity(root),
                 "inputs": {"portal_runtime": str(portal), "portal2_runtime": str(portal2),
-                           "dedicated_build": str(dedicated), "client_build": str(client),
+                           "dedicated_profile": dedicated, "client_profile": client,
                            "tool": str(tool)}, "steps": [], "failures": []}
     existing_output = output.exists() and any(output.iterdir())
     output.mkdir(parents=True, exist_ok=True)
@@ -49,7 +49,6 @@ def run_gate(args):
         evidence["failures"].append("output directory is not empty; use a fresh evidence directory")
     required = ((portal / "portal/gameinfo.txt", "Portal runtime"),
                 (portal2 / "portal2/gameinfo.txt", "Portal 2 runtime"),
-                (dedicated, "dedicated build"), (client, "client build"),
                 (tool, "bsp2tool"))
     for path, label in required:
         if not path.exists():
@@ -97,7 +96,7 @@ def run_gate(args):
 
         def native(name, product, source_maps, inventory, cases, build):
             path = output / name / "evidence.json"
-            command = ["--runtime", str(portal), "--build", str(build), "--tool", str(tool),
+            command = ["--runtime", str(portal), "--profile", build, "--tool", str(tool),
                        "--source-inventory", str(inventory), "--cases", str(cases),
                        "--product", product, "--out", str(path.parent)]
             if source_maps != portal / "portal/maps":
@@ -141,8 +140,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--portal-runtime", required=True)
     parser.add_argument("--portal2-runtime", required=True)
-    parser.add_argument("--dedicated-build", required=True)
-    parser.add_argument("--client-build", required=True)
+    parser.add_argument("--dedicated-profile", default="dedicated-linux",
+                        help="kiln profile of the dedicated server")
+    parser.add_argument("--client-profile", default="portal", help="kiln profile of the client")
     parser.add_argument("--tool", required=True)
     parser.add_argument("--out", required=True)
     return run_gate(parser.parse_args(argv))

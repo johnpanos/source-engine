@@ -14,5 +14,87 @@
   "configure_options": {
     "dedicated": true,
     "build_games": "portal"
+  },
+  "package": {
+    "form": "linux-dir",
+    "directory": "runtime",
+    "steps": [
+      {
+        "op": "seed",
+        "from": "portal-base",
+        "marker": "portal/gameinfo.txt",
+        "game": "portal",
+        "shared_suffixes": [
+          ".vpk",
+          ".bsp",
+          ".vtf",
+          ".vmt",
+          ".mdl",
+          ".vvd",
+          ".vtx",
+          ".phy",
+          ".wav",
+          ".mp3",
+          ".ogg",
+          ".webm",
+          ".bik"
+        ],
+        "skip_directories": [
+          "screenshots",
+          "save",
+          "logs",
+          "dumps"
+        ],
+        "skip_suffixes": [
+          ".log",
+          ".dmp"
+        ]
+      },
+      {
+        "op": "overlay",
+        "artifact": "engine-install",
+        "include": [
+          "dedicated_launcher",
+          "bin/*.so",
+          "portal/bin/*.so"
+        ]
+      },
+      {
+        "op": "remove-elf32",
+        "directories": [
+          "bin",
+          "portal/bin"
+        ]
+      }
+    ]
+  },
+  "content": {
+    "locators": {
+      "portal-base": {
+        "default": "{root}/run/runtime",
+        "description": "A runnable Portal tree (retail content and its third-party libraries) to seed the runtime from once, as run.sh's BASE_RUNTIME"
+      }
+    }
+  },
+  "launch": {
+    "game": "portal",
+    "default_map": "testchmb_a_00",
+    "executable": "dedicated_launcher",
+    "arguments": [
+      "-game",
+      "portal",
+      "-defaultgamedir",
+      "portal",
+      "-console",
+      "-insecure",
+      "+map",
+      "{map}",
+      "{args}"
+    ],
+    "environment": {
+      "SteamAppId": "400",
+      "SteamGameId": "400",
+      "LD_LIBRARY_PATH": "{runtime}/bin:{inherit}"
+    }
   }
 }
