@@ -2375,10 +2375,30 @@ public:
 		// intro4 demo's opening).
 		static std::uint64_t s_streamEpoch = 0;
 		target.streamEpoch = ++s_streamEpoch;
+#if defined( PLATFORM_3DS )
 		// LDR, gamma space: the reduced model reads the pages as they are.
 		target.lightmapScale = 1.0f;
 		target.outputScale = 1.0f;
 		target.specular = false;
+#else
+		// The full model's LDR terms, as shaderapivulkan's LDR path passes
+		// them (this shader API reports HDR_TYPE_NONE): gamma-encoded pages
+		// scaled by 2^2.2, no tone-mapping scale, the eye (c10), env maps at
+		// 1, and specular unless mat_fastspecular is off or mat_fullbright 2.
+		target.lightmapScale = 1.0f;
+		target.outputScale = 1.0f;
+		{
+			float eye[4];
+			g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
+			for ( int i = 0; i < 3; ++i )
+				target.eye[i] = eye[i];
+		}
+		target.envmapScale = 1.0f;
+		static ConVarRef fastSpecular( "mat_fastspecular" );
+		static ConVarRef fullbright( "mat_fullbright" );
+		target.specular = ( !fastSpecular.IsValid() || fastSpecular.GetBool() ) &&
+		                  ( !fullbright.IsValid() || fullbright.GetInt() != 2 );
+#endif
 		// The wind and foliage time ($treesway's inputs; the reduced model
 		// drops the sway, but the pass reads them).
 		const Vector wind = g_ShaderAPIEmpty.GetVectorRenderingParameter( VECTOR_RENDERPARM_WIND_DIRECTION );
@@ -5647,6 +5667,11 @@ double CShaderAPIEmpty::CurrentTime() const
 // Get the current camera position in world space.
 void CShaderAPIEmpty::GetWorldSpaceCameraPosition( float * pPos ) const
 {
+	// The view matrix's inverse translation (row vectors, D3D), as
+	// shaderapivulkan computes it: the eye in world space.
+	const float *view = Top( kStackView );
+	for ( int i = 0; i < 3; ++i )
+		pPos[i] = -( view[12] * view[i * 4] + view[13] * view[i * 4 + 1] + view[14] * view[i * 4 + 2] );
 }
 
 void CShaderAPIEmpty::ForceHardwareSync( void )
