@@ -48,8 +48,10 @@ def main():
                                            "selftest", "--lib", lib, "--platform", args.platform])))
     with tempfile.TemporaryDirectory() as scratch:
         host = os.path.join(scratch, "modhost")
-        build = subprocess.run(["g++", "-std=c++17", os.path.join(FIXTURE, "host.cpp"), "-ldl", "-o", host],
-                               capture_output=True, text=True)
+        build = subprocess.run(["g++", "-std=c++20", "-I", os.path.join(ROOT, "public"), "-I", ROOT,
+                                os.path.join(FIXTURE, "host.cpp"),
+                                os.path.join(ROOT, "platform/posix/dynamic_library_provider.cpp"),
+                                "-ldl", "-o", host], capture_output=True, text=True)
         if build.returncode != 0:
             parts.append(("mod-fixture", (1, 1, build.stderr)))
         else:

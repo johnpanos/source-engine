@@ -1,0 +1,40 @@
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// Purpose: Tier 0's private instances of the RFC 0001 foundation providers
+//			(R103, "Tier 0 facade over the foundation providers"). Tier 0's
+//			exports answer through these; each mechanism has this one owner.
+//			There is no setter and no registry: new code takes the contracts by
+//			injection from its composition root, and this facade exists only for
+//			Tier 0's legacy callers and mods.
+//
+//=============================================================================//
+
+#ifndef TIER0_FOUNDATION_FACADE_H
+#define TIER0_FOUNDATION_FACADE_H
+
+#include "platform/contracts/clock.h"
+#include "platform/contracts/thread.h"
+#include "platform/contracts/wall_clock.h"
+
+namespace tier0_facade
+{
+
+// The process's monotonic clock. Created on first use; never destroyed (Tier 0
+// answers until the process ends, including from static destructors).
+const platform::IMonotonicClock &MonotonicClock();
+
+// Seconds since Tier 0 first asked the clock: the time base of Plat_FloatTime.
+double SecondsSinceStart();
+
+// The monotonic clock's reading in nanoseconds (Plat_MonotonicNanoseconds).
+std::uint64_t MonotonicNanoseconds();
+
+// The process's wall clock (civil time, deadlines for CLOCK_REALTIME waits).
+const platform::IWallClock &WallClock();
+
+// The process's thread provider (sleep, names, priorities, ids).
+platform::IThreads &Threads();
+
+} // namespace tier0_facade
+
+#endif // TIER0_FOUNDATION_FACADE_H

@@ -519,6 +519,12 @@
    ],
    "kind": "T"
   },
+  "Plat_MonotonicNanoseconds": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE uint64 Plat_MonotonicNanoseconds()"
+   ],
+   "kind": "T"
+  },
   "Plat_SetBenchmarkMode": {
    "declarations": [
     "platform.h: PLATFORM_INTERFACE void Plat_SetBenchmarkMode( bool bBenchmarkMode )"

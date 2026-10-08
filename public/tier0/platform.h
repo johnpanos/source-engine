@@ -1085,12 +1085,15 @@ PLATFORM_INTERFACE struct tm *		Plat_localtime( const time_t *timep, struct tm *
 	#pragma intrinsic(__rdtsc)
 #endif
 
+// Nanoseconds of Tier 0's monotonic clock (R103). Where there is no cycle
+// counter, Plat_Rdtsc counts these. Added export; the legacy inline read the
+// wall clock, which can jump.
+PLATFORM_INTERFACE uint64 Plat_MonotonicNanoseconds();
+
 inline uint64 Plat_Rdtsc()
 {
 #if ((defined(__arm__) || defined(__wasm__)) || defined( __aarch64__ )) && defined (POSIX)
-	struct timespec t;
-	clock_gettime( CLOCK_REALTIME, &t);
-	return t.tv_sec * 1000000000ULL + t.tv_nsec;
+	return Plat_MonotonicNanoseconds();
 #elif defined( _WIN64 )
 	return ( uint64 )__rdtsc();
 #elif defined( _WIN32 )

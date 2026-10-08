@@ -22,26 +22,11 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <tier0/platform.h>
+#include "foundation_facade.h"
 #include <errno.h>
 
 #define rdtsc(x) \
 	__asm__ __volatile__ ("rdtsc" : "=A" (x))
-
-class TimeVal
-{
-public:
-	TimeVal() {}
-	TimeVal& operator=(const TimeVal &val) { m_TimeVal = val.m_TimeVal; return *this; } 
-	inline double operator-(const TimeVal &left)
-	{
-		uint64 left_us = (uint64) left.m_TimeVal.tv_sec * 1000000 + left.m_TimeVal.tv_usec;
-		uint64 right_us = (uint64) m_TimeVal.tv_sec * 1000000 + m_TimeVal.tv_usec;
-		uint64 diff_us = right_us - left_us;
-		return diff_us * ( 1.0 / 1000000.0 );
-	}
-
-	timeval m_TimeVal;
-};
 
 // Compute the positive difference between two 64 bit numbers.
 static inline uint64 diff(uint64 v1, uint64 v2)
@@ -138,17 +123,19 @@ uint64 CalculateCPUFreq()
 
 	for (count = 0; count < max_iterations; count++)
 	{
-		TimeVal start_time, end_time;
 		uint64 start_tsc, end_tsc;
 
-		gettimeofday( &start_time.m_TimeVal, 0 );
+		// R103: the interval comes from Tier 0's monotonic clock, the sleep
+		// from its thread provider.
+		const platform::IMonotonicClock &clock = tier0_facade::MonotonicClock();
+		const platform::MonotonicTimestamp start_time = clock.Now();
 		rdtsc( start_tsc );
-		usleep( 5000 ); // sleep for 5 msec
-		gettimeofday( &end_time.m_TimeVal, 0 );
+		tier0_facade::Threads().SleepFor( 5000000 ); // 5 msec
+		const platform::MonotonicTimestamp end_time = clock.Now();
 		rdtsc( end_tsc );
 
-		// end_time - start_time calls into the overloaded TimeVal operator- way above, and returns a double.
-		period3 = ( end_tsc - start_tsc ) / ( end_time - start_time );
+		const double seconds = clock.ElapsedNanoseconds( start_time, end_time ) * 1e-9;
+		period3 = ( end_tsc - start_tsc ) / seconds;
 
 		if (diff ( period1, period2 ) <= error &&
 			diff ( period2, period3 ) <= error &&

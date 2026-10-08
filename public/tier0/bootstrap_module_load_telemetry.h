@@ -9,6 +9,7 @@
 #ifndef TIER0_BOOTSTRAP_MODULE_LOAD_TELEMETRY_H
 #define TIER0_BOOTSTRAP_MODULE_LOAD_TELEMETRY_H
 
+#include <chrono>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -48,21 +49,13 @@ static void BootstrapModuleLoadCopy(
 	pDestination[nDestinationSize - 1] = '\0';
 }
 
+// Microseconds of a monotonic clock. This runs before Tier 0 is loaded, so it
+// cannot ask Tier 0's clock; the standard library's steady clock is the same
+// kind of source (R103).
 static unsigned long long BootstrapModuleLoadTime()
 {
-#if defined( _WIN32 )
-	LARGE_INTEGER counter;
-	LARGE_INTEGER frequency;
-	QueryPerformanceCounter( &counter );
-	QueryPerformanceFrequency( &frequency );
-	return (unsigned long long)(
-		counter.QuadPart * 1000000ULL / frequency.QuadPart );
-#else
-	timespec value;
-	clock_gettime( CLOCK_MONOTONIC, &value );
-	return (unsigned long long)value.tv_sec * 1000000ULL +
-		(unsigned long long)value.tv_nsec / 1000ULL;
-#endif
+	return (unsigned long long)std::chrono::duration_cast<std::chrono::microseconds>(
+		std::chrono::steady_clock::now().time_since_epoch() ).count();
 }
 
 static void BootstrapModuleLoadEmit(

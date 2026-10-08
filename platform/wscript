@@ -81,6 +81,42 @@ def build(bld):
 			subsystem = bld.env.MSVC_SUBSYSTEM,
 			idx       = bld.get_taskgen_count()
 		)
+	# Tier 0's foundation providers (R103): the POSIX set on every non-Windows
+	# target and the Win32 set on Windows, built for Tier 0's libstdc++ ABI.
+	if bld.env.DEST_OS == 'win32':
+		bld.stlib(
+			env       = bld.strict_cpp20_env(),
+			source    = [ 'win32/clock_providers.cpp', 'win32/thread_provider.cpp',
+			              'win32/virtual_memory_provider.cpp',
+			              'win32/process_environment_provider.cpp', 'win32/paths_provider.cpp',
+			              'win32/diagnostics_provider.cpp' ],
+			target    = 'platform_foundation_win32',
+			name      = 'platform_foundation_win32',
+			arch_module = 'platform.win32',
+			features  = 'cxx capability_strict',
+			includes  = [ '../public' ],
+			defines   = [],
+			use       = [],
+			subsystem = bld.env.MSVC_SUBSYSTEM,
+			idx       = bld.get_taskgen_count()
+		)
+	else:
+		bld.stlib(
+			env       = bld.strict_cpp20_env(),
+			source    = [ 'posix/clock_providers.cpp', 'posix/thread_provider.cpp',
+			              'posix/virtual_memory_provider.cpp',
+			              'posix/process_environment_provider.cpp', 'posix/paths_provider.cpp',
+			              'posix/diagnostics_provider.cpp' ],
+			target    = 'platform_foundation_legacyabi',
+			name      = 'platform_foundation_legacyabi',
+			arch_module = 'platform.posix',
+			features  = 'cxx capability_strict',
+			includes  = [ '../public' ],
+			defines   = legacy_abi,
+			use       = [],
+			subsystem = bld.env.MSVC_SUBSYSTEM,
+			idx       = bld.get_taskgen_count()
+		)
 	# Module resolution (RFC 0001 rank 5, R11): the portable resolver, and the
 	# POSIX file probe on its own so products without a dynamic loader (the
 	# 3DS) still get it. Tier 1's Sys_LoadModule search uses the _legacyabi

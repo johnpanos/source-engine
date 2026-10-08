@@ -52,6 +52,7 @@
 
 
 #include <map>
+#include "foundation_facade.h"
 
 // Must be last header...
 #include "tier0/memdbgon.h"
@@ -741,8 +742,9 @@ bool CThreadSyncObject::Wait( uint32 dwTimeout )
 
 		while ( !m_bWakeForEvent && ret != ETIMEDOUT )
 		{
-			struct timeval tv;
-			gettimeofday( &tv, NULL );
+			// pthread_cond_timedwait takes a CLOCK_REALTIME deadline: Tier 0's
+			// wall clock (R103), whole seconds and the nanosecond remainder.
+			const std::int64_t nowNs = tier0_facade::WallClock().Now().unixNanoseconds;
 			volatile struct timespec tm;
 			
 			uint64 actualTimeout = dwTimeout;
@@ -750,8 +752,8 @@ bool CThreadSyncObject::Wait( uint32 dwTimeout )
 			if ( dwTimeout == TT_INFINITE && m_bManualReset )
 				actualTimeout = 10; // just wait 10 msec at most for manual reset events and loop instead
 				
-			volatile uint64 nNanoSec = (uint64)tv.tv_usec*1000 + (uint64)actualTimeout*1000000;
-			tm.tv_sec = tv.tv_sec + nNanoSec /1000000000;
+			volatile uint64 nNanoSec = (uint64)( nowNs % 1000000000 ) + (uint64)actualTimeout*1000000;
+			tm.tv_sec = (time_t)( nowNs / 1000000000 ) + nNanoSec /1000000000;
 			tm.tv_nsec = nNanoSec % 1000000000;
 
 			do

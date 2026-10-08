@@ -16,6 +16,7 @@
 #include "tier0/minidump.h"
 #include "tier0/native_module_load_telemetry.h"
 #include "tier0/vcrmode.h"
+#include "foundation_facade.h"
 #if !defined(STEAM) && !defined(NO_MALLOC_OVERRIDE)
 #include "tier0/memalloc.h"
 
@@ -29,30 +30,11 @@
 static ExitProcessWithErrorCBFn g_pfnExitProcessWithErrorCB; //= NULL
 
 extern VCRMode_t g_VCRMode;
-static LARGE_INTEGER g_PerformanceFrequency;
-static double g_PerformanceCounterToS;
-static double g_PerformanceCounterToMS;
-static double g_PerformanceCounterToUS;
-static LARGE_INTEGER g_ClockStart;
-static bool s_bTimeInitted;
 
 // Benchmark mode uses this heavy-handed method 
 static bool g_bBenchmarkMode = false;
 static double g_FakeBenchmarkTime = 0;
 static double g_FakeBenchmarkTimeInc = 1.0 / 66.0;
-
-static void InitTime()
-{
-	if( !s_bTimeInitted )
-	{
-		s_bTimeInitted = true;
-		QueryPerformanceFrequency(&g_PerformanceFrequency);
-		g_PerformanceCounterToS = 1.0 / g_PerformanceFrequency.QuadPart;
-		g_PerformanceCounterToMS = 1e3 / g_PerformanceFrequency.QuadPart;
-		g_PerformanceCounterToUS = 1e6 / g_PerformanceFrequency.QuadPart;
-		QueryPerformanceCounter(&g_ClockStart);
-	}
-}
 
 bool Plat_IsInBenchmarkMode()
 {
@@ -64,57 +46,41 @@ void Plat_SetBenchmarkMode( bool bBenchmark )
 	g_bBenchmarkMode = bBenchmark;
 }
 
+// Tier 0's time base is the facade's monotonic clock (R103 T1); as before, it
+// starts at 0 on the first call.
 double Plat_FloatTime()
 {
-	if (! s_bTimeInitted )
-		InitTime();
 	if ( g_bBenchmarkMode )
 	{
 		g_FakeBenchmarkTime += g_FakeBenchmarkTimeInc;
 		return g_FakeBenchmarkTime;
 	}
-
-	LARGE_INTEGER CurrentTime;
-
-	QueryPerformanceCounter( &CurrentTime );
-
-	double fRawSeconds = (double)( CurrentTime.QuadPart - g_ClockStart.QuadPart ) * g_PerformanceCounterToS;
-
-	return fRawSeconds;
+	return tier0_facade::SecondsSinceStart();
 }
 
 uint32 Plat_MSTime()
 {
-	if (! s_bTimeInitted )
-		InitTime();
 	if ( g_bBenchmarkMode )
 	{
 		g_FakeBenchmarkTime += g_FakeBenchmarkTimeInc;
 		return (uint32)(g_FakeBenchmarkTime * 1000.0);
 	}
-
-	LARGE_INTEGER CurrentTime;
-
-	QueryPerformanceCounter( &CurrentTime );
-
-	return (uint32) ( ( CurrentTime.QuadPart - g_ClockStart.QuadPart ) * g_PerformanceCounterToMS );
+	return (uint32)( Plat_FloatTime() * 1000.0 );
 }
 
 uint64 Plat_USTime()
 {
-	if (! s_bTimeInitted )
-		InitTime();
 	if ( g_bBenchmarkMode )
 	{
 		g_FakeBenchmarkTime += g_FakeBenchmarkTimeInc;
 		return (uint64)(g_FakeBenchmarkTime * 1e6);
 	}
+	return (uint64)( Plat_FloatTime() * 1e6 );
+}
 
-	LARGE_INTEGER CurrentTime;
-
-	QueryPerformanceCounter( &CurrentTime );
-
-	return (uint64) ( ( CurrentTime.QuadPart - g_ClockStart.QuadPart ) * g_PerformanceCounterToUS );
+uint64 Plat_MonotonicNanoseconds()
+{
+	return tier0_facade::MonotonicNanoseconds();
 }
 
 void GetCurrentDate( int *pDay, int *pMonth, int *pYear )

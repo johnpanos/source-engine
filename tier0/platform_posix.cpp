@@ -9,6 +9,7 @@
 #include "tier0/vcrmode.h"
 #include "tier0/memalloc.h"
 #include "tier0/dbg.h"
+#include "foundation_facade.h"
 #include <algorithm>
 #include <vector>
 
@@ -39,34 +40,12 @@
 
 #include "tier0/memdbgon.h"
 // Benchmark mode uses this heavy-handed method 
-
-// *** WARNING ***. On Linux gettimeofday returns the system's best guess at
-// actual wall clock time and this can go backwards. You need to use
-// clock_gettime( CLOCK_MONOTONIC ... ) if this isn't what you want.
-
-// If you want to try using rdtsc for Plat_FloatTime(), enable USE_RDTSC_FOR_FLOATTIME:
-// 
-// Make sure you know what you're doing. This was disabled due to the long startup time, and
-//  in our testing, even though constant_tsc was set, we couldn't rely on the
-//  max frequency result returned from CalculateCPUFreq() (ie /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq).
-// 
-// #define USE_RDTSC_FOR_FLOATTIME
-
 extern VCRMode_t g_VCRMode;
 
 static bool g_bBenchmarkMode = false;
 static double g_FakeBenchmarkTime = 0;
 static double g_FakeBenchmarkTimeInc = 1.0 / 66.0;
 
-#ifdef USE_RDTSC_FOR_FLOATTIME
-
-static bool s_bTimeInitted;
-static bool s_bUseRDTSC;
-static uint64 s_nRDTSCBase;
-static float s_flRDTSCToMicroSeconds;
-static double s_flRDTSCScale;
-
-#endif // USE_RDTSC_FOR_FLOATTIME
 
 bool Plat_IsInBenchmarkMode()
 {
@@ -77,10 +56,6 @@ void Plat_SetBenchmarkMode( bool bBenchmark )
 {
 	g_bBenchmarkMode = bBenchmark;
 }
-
-
-#define N_ITERATIONS_OF_RDTSC_TEST_TO_RUN 5					// should be odd
-#define TEST_RDTSC_FLOATTIME 0
 
 size_t ApproximateProcessMemoryUsage( void )
 {
@@ -116,128 +91,9 @@ From http://man7.org/linux/man-pages/man5/proc.5.html:
 	return nRet;
 }
 
-#ifdef USE_RDTSC_FOR_FLOATTIME
-
-static void InitTimeSystem( void )
-{
-	s_bTimeInitted = true;
-
-	// now, see if we can use rdtsc instead. If this is one of the chips with a separate constant clock for rdtsc, we can
-	FILE *pCpuInfo = fopen( "/proc/cpuinfo", "r" );
-	if ( pCpuInfo )
-	{
-		bool bAnyBadCores = false;
-		char lbuf[2048];
-		while( fgets( lbuf, sizeof( lbuf ), pCpuInfo ) )
-		{
-			if ( memcmp( lbuf, "flags", 4 ) == 0 )
-			{
-				if ( ! strstr( lbuf, "constant_tsc" ) )
-				{
-					bAnyBadCores = true;
-					break;
-				}
-			}
-		}
-		fclose( pCpuInfo );
-		if ( ! bAnyBadCores )
-		{
-			// this system appears to have the proper cpu setup to use rdtsc from reliable timing. Let's either read the cpu frequency from an
-			// environment variable, or time it ourselves
-			char const *pEnv = getenv( "RDTSC_FREQUENCY" );
-			if ( pEnv )
-			{
-				// the environment variable is allowed to hold either a benchmark result, or a string such as "disable"
-				if ( pEnv && ( ( pEnv[0] > '9' ) || ( pEnv[0] < '0' ) ) )
-					return;									// leave rdtsc disabled
-				// the variable holds the number of ticks per microsecond
-				s_flRDTSCToMicroSeconds = atof( pEnv );
-				// sanity check
-				if ( s_flRDTSCToMicroSeconds > 1.0 )
-				{
-					s_bUseRDTSC = true;
-					s_flRDTSCScale = 1.0  / ( 1000.0 * 1000.0 * s_flRDTSCToMicroSeconds );
-					s_nRDTSCBase = Plat_Rdtsc();
-					return;
-				}
-			}
-			else
-			{
-				printf( "Running a benchmark to measure system clock frequency...\n" );
-				// run n iterations and use the median
-				double flRDTSCToMicroSeconds[N_ITERATIONS_OF_RDTSC_TEST_TO_RUN];
-				for( int i = 0; i < ARRAYSIZE( flRDTSCToMicroSeconds ) ; i++ )
-				{
-					uint64 stime = Plat_Rdtsc();
-					struct timeval stimeval;
-					gettimeofday( &stimeval, NULL );
-					sleep( 1 );
-					uint64 etime = Plat_Rdtsc() - stime;
-					struct timeval etimeval;
-					gettimeofday( &etimeval, NULL );
-					// subtract timevals to get elapsed microseconds
-					struct timeval elapsedtimeval;
-					timersub( &etimeval, &stimeval, &elapsedtimeval );
-					uint64 nUs = 1000000 * elapsedtimeval.tv_sec + elapsedtimeval.tv_usec;
-					flRDTSCToMicroSeconds[ i ] = ( etime / nUs );
-				}
-				std::make_heap( flRDTSCToMicroSeconds, flRDTSCToMicroSeconds + ARRAYSIZE( flRDTSCToMicroSeconds ) - 1 );
-				std::sort_heap( flRDTSCToMicroSeconds, flRDTSCToMicroSeconds + ARRAYSIZE( flRDTSCToMicroSeconds ) - 1 );
-				s_flRDTSCToMicroSeconds = flRDTSCToMicroSeconds[ARRAYSIZE( flRDTSCToMicroSeconds ) / 2 ];
-				s_flRDTSCScale = 1.0  / ( 1000.0 * 1000.0 * s_flRDTSCToMicroSeconds );
-				printf( "Finished RDTSC test. To prevent the startup delay from this benchmark, set the environment variable RDTSC_FREQUENCY to %f on this system."
-						" This value is dependent upon the CPU clock speed and architecture and should be determined separately for each server. The use of this mechanism"
-						" for timing can be disabled by setting RDTSC_FREQUENCY to 'disabled'.\n",
-						s_flRDTSCToMicroSeconds );
-				s_nRDTSCBase = Plat_Rdtsc();
-				s_bUseRDTSC = true;
-#if TEST_RDTSC_FLOATTIME
-				printf( "RDTSC test results:\n" );
-				for( int i = 0; i < ARRAYSIZE( flRDTSCToMicroSeconds ); i++ )
-					printf(" [%d] = %f\n", i, flRDTSCToMicroSeconds[i] );
-				printf( "scale factor = %f\n", s_flRDTSCScale );
-				uint64 srdtsc_time = Plat_Rdtsc();
-				for( int i = 0; i < 1000 * 1000 * 10; i++ )
-				{
-					float p = Plat_FloatTime();
-				}
-				printf( "slow = %lld\n", Plat_Rdtsc() - srdtsc_time );
-				// now, run a benchmark to see how much this optimization buys us
-				srdtsc_time = Plat_Rdtsc();
-				for( int i = 0; i < 1000 * 1000 * 10; i++ )
-				{
-					float p = Plat_FloatTime();
-				}
-				printf( "sfast = %lld\n", Plat_Rdtsc() - srdtsc_time );
-#endif
-			}
-		}
-	}
-}
-
-static FORCEINLINE void TestTimeSystem( void )
-{
-#if TEST_RDTSC_FLOATTIME
-	// now, test that plat_float time actually works
-	for( int t = 0 ; t < 5; t++ )
-	{
-		float flStartT = Plat_FloatTime();
-		struct timeval stime;
-		gettimeofday( &stime, NULL );
-		sleep( 5 );
-		float flElapsedT = Plat_FloatTime() - flStartT;
-		struct timeval etime;
-		gettimeofday( &etime, NULL );
-		struct timeval dtime;
-		timersub( &etime, &stime, &dtime );
-		printf( " plat_float time says %f elapsed. gettimeofday says %f\n",
-				flElapsedT, dtime.tv_sec + dtime.tv_usec / 1000000.0 );
-	}
-#endif
-}
-
-#endif // USE_RDTSC_FOR_FLOATTIME
-
+// Tier 0's time base is the facade's monotonic clock (R103 T1). The legacy
+// version added the current nanoseconds without subtracting the start's, so it
+// began anywhere in [0, 1) s; this one begins at 0 on the first call.
 double Plat_FloatTime()
 {
 	if ( g_bBenchmarkMode )
@@ -245,63 +101,7 @@ double Plat_FloatTime()
 		g_FakeBenchmarkTime += g_FakeBenchmarkTimeInc;
 		return g_FakeBenchmarkTime;
 	}
-	
-#ifdef OSX
-	// OSX
-	static uint64 start_time = 0;
-	static mach_timebase_info_data_t    sTimebaseInfo;
-	static double conversion = 0.0;
-	
-	if ( !start_time )
-	{
-		start_time = mach_absolute_time();
-		mach_timebase_info(&sTimebaseInfo);
-		conversion = 1e-9 * (double) sTimebaseInfo.numer / (double) sTimebaseInfo.denom;
-	}
-	
-	uint64 now = mach_absolute_time();
-	
-	return ( now - start_time ) * conversion;
-#else
-	// Linux
-	static struct timespec start_time = { 0, 0 };
-	static bool bInitialized = false;	
-
-	if ( !bInitialized )
-	{
-		bInitialized = true;
-		clock_gettime( CLOCK_MONOTONIC, &start_time );
-	}
-
-	struct timespec now;
-	clock_gettime( CLOCK_MONOTONIC, &now );
-	
-	return ( now.tv_sec - start_time.tv_sec ) + ( now.tv_nsec * 1e-9 );
-
-#ifdef USE_RDTSC_FOR_FLOATTIME
-	if ( ! s_bTimeInitted )
-	{
-		InitTimeSystem();
-		TestTimeSystem();
-	}
-	if ( s_bUseRDTSC )
-	{
-		uint64 nTicks = Plat_Rdtsc() - s_nRDTSCBase;
-		return ( (double) nTicks) * s_flRDTSCScale;
-	}
-	else
-	{
-		struct timeval  tp;
-	        gettimeofday( &tp, NULL );
-
-		if (VCRGetMode() == VCR_Disabled)
-			return (( tp.tv_sec - s_nSecBase ) + tp.tv_usec / 1000000.0 );
-		
-		return VCRHook_Sys_FloatTime( ( tp.tv_sec - s_nSecBase ) + tp.tv_usec / 1000000.0 );
-	}
-#endif // USE_RDTSC_FOR_FLOATTIME
-
-#endif
+	return tier0_facade::SecondsSinceStart();
 }
 
 unsigned int Plat_MSTime()
@@ -311,23 +111,12 @@ unsigned int Plat_MSTime()
 		g_FakeBenchmarkTime += g_FakeBenchmarkTimeInc;
 		return (unsigned int)(g_FakeBenchmarkTime * 1000.0);
 	}
+	return ( uint )( Plat_FloatTime() * 1000 );
+}
 
-#ifdef USE_RDTSC_FOR_FLOATTIME
-	if ( ! s_bTimeInitted )
-	{
-		InitTimeSystem();
-		TestTimeSystem();
-	}
-	if ( s_bUseRDTSC )
-	{
-		uint64 nTicks = Plat_Rdtsc() - s_nRDTSCBase;
-		return 1000.0 * nTicks * s_flRDTSCScale;
-	}
-	else
-#endif // USE_RDTSC_FOR_FLOATTIME
-	{
-		return ( uint )( Plat_FloatTime() * 1000 );
-	}
+uint64 Plat_MonotonicNanoseconds()
+{
+	return tier0_facade::MonotonicNanoseconds();
 }
 
 uint64 Plat_USTime()
@@ -337,23 +126,7 @@ uint64 Plat_USTime()
 		g_FakeBenchmarkTime += g_FakeBenchmarkTimeInc;
 		return (unsigned int)(g_FakeBenchmarkTime * 1000000.0);
 	}
-
-#ifdef USE_RDTSC_FOR_FLOATTIME
-	if ( ! s_bTimeInitted )
-	{
-		InitTimeSystem();
-		TestTimeSystem();
-	}
-	if ( s_bUseRDTSC )
-	{
-		uint64 nTicks = Plat_Rdtsc() - s_nRDTSCBase;
-		return 1000000.0 * nTicks * s_flRDTSCScale;
-	}
-	else
-#endif // USE_RDTSC_FOR_FLOATTIME
-	{
-		return ( uint64 )( Plat_FloatTime() * 1000000 );
-	}
+	return ( uint64 )( Plat_FloatTime() * 1000000 );
 }
 
 // Wraps the thread-safe versions of ctime. buf must be at least 26 bytes 

@@ -2256,6 +2256,12 @@
       "platform_file_probe_legacyabi": {
         "allowedUse": []
       },
+      "platform_foundation_legacyabi": {
+        "allowedUse": []
+      },
+      "platform_foundation_win32": {
+        "allowedUse": []
+      },
       "mapgeometry": {
         "allowedUse": []
       },

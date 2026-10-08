@@ -1,8 +1,30 @@
 // R103 mod-fixture host: loads a Tier 0 build, sets its command line, loads the
-// kept mod binary and reports its result as checks-v1. No Tier 0 headers.
-#include <dlfcn.h>
+// kept mod binary and reports its result as checks-v1. It uses no Tier 0
+// headers, and loads through the platform's instrumented POSIX loader.
+#include "platform/contracts/dynamic_library.h"
+#include "platform/posix/dynamic_library_provider.h"
+
 #include <stdio.h>
-#include <string>
+#include <stdlib.h>
+
+namespace
+{
+
+class CQuietObserver final : public platform::IDynamicLibraryObserver
+{
+public:
+	void OnLoad( const char *, const char *, const platform::IDynamicLibrary *,
+		const platform::DynamicLibraryError & ) override
+	{
+	}
+	void OnFindSymbol( const platform::IDynamicLibrary *, const char *, const void *,
+		const platform::DynamicLibraryError & ) override
+	{
+	}
+	void OnUnload( const platform::IDynamicLibrary * ) override {}
+};
+
+} // namespace
 
 int main( int argc, char **argv )
 {
@@ -11,16 +33,18 @@ int main( int argc, char **argv )
 		printf( "usage: host <libtier0.so> <libmod_fixture.so>\nCONFORMANCE 1 1\n" );
 		return 1;
 	}
-	void *tier0 = dlopen( argv[1], RTLD_NOW | RTLD_GLOBAL );
+	CQuietObserver observer;
+	auto loader = platform::CreatePosixDynamicLibraryLoader( observer );
+	platform::IDynamicLibrary *tier0 = loader->Load( argv[1], nullptr );
 	if ( tier0 == nullptr )
 	{
-		printf( "FAIL dlopen tier0: %s\nCONFORMANCE 1 1\n", dlerror() );
+		printf( "FAIL load tier0\nCONFORMANCE 1 1\n" );
 		return 1;
 	}
 	typedef void ( *SetCommandLine )( const char * );
-	auto set = reinterpret_cast<SetCommandLine>( dlsym( tier0, "Plat_SetCommandLine" ) );
 	typedef void *( *GetCommandLine )();
-	auto get = reinterpret_cast<GetCommandLine>( dlsym( tier0, "CommandLine_Tier0" ) );
+	auto set = reinterpret_cast<SetCommandLine>( tier0->FindSymbol( "Plat_SetCommandLine", nullptr ) );
+	auto get = reinterpret_cast<GetCommandLine>( tier0->FindSymbol( "CommandLine_Tier0", nullptr ) );
 	if ( set == nullptr || get == nullptr )
 	{
 		printf( "FAIL missing command-line exports\nCONFORMANCE 1 1\n" );
@@ -33,14 +57,14 @@ int main( int argc, char **argv )
 	typedef void ( *CreateCmdLine )( void *, const char * );
 	reinterpret_cast<CreateCmdLine>( ( *reinterpret_cast<void ***>( object ) )[0] )( object, line );
 
-	void *mod = dlopen( argv[2], RTLD_NOW );
+	platform::IDynamicLibrary *mod = loader->Load( argv[2], nullptr );
 	if ( mod == nullptr )
 	{
-		printf( "FAIL dlopen mod: %s\nCONFORMANCE 1 1\n", dlerror() );
+		printf( "FAIL load mod\nCONFORMANCE 1 1\n" );
 		return 1;
 	}
 	typedef int ( *Run )( char *, int );
-	auto run = reinterpret_cast<Run>( dlsym( mod, "ModFixture_Run" ) );
+	auto run = reinterpret_cast<Run>( mod->FindSymbol( "ModFixture_Run", nullptr ) );
 	if ( run == nullptr )
 	{
 		printf( "FAIL ModFixture_Run missing\nCONFORMANCE 1 1\n" );
@@ -53,5 +77,7 @@ int main( int argc, char **argv )
 	fputs( report, stdout );
 	printf( "%s mod fixture: %d checks, %d failures\nCONFORMANCE %d %d\n", failures ? "FAIL" : "ok", checks,
 	    failures, checks, failures );
-	return failures ? 1 : 0;
+	// Tier 0 and the mod stay loaded until exit, as in a game process.
+	fflush( stdout );
+	_Exit( failures ? 1 : 0 );
 }

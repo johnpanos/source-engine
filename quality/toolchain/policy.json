@@ -299,6 +299,14 @@
       "dialect": "cxx20",
       "rfc": "0001"
     },
+    "platform_foundation_legacyabi": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
+    "platform_foundation_win32": {
+      "dialect": "cxx20",
+      "rfc": "0001"
+    },
     "unittest": {
       "dialect": "cxx20",
       "rfc": "0001"

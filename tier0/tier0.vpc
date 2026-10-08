@@ -119,7 +119,6 @@ $Project "tier0"
 		$File	"cpu_usage.cpp"
 		$File	"dbg.cpp"
 		$File	"dynfunction.cpp"
-		$File	"etwprof.cpp"			[$WINDOWS]
 		$File	"fasttimer.cpp"
 		$File "InterlockedCompareExchange128.masm" [$WIN64]
 		{

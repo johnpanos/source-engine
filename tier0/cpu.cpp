@@ -15,6 +15,8 @@
 #include <sys/sysctl.h>
 #endif
 
+#include "foundation_facade.h"
+
 // NOTE: This has to be the last file included!
 #include "tier0/memdbgon.h"
 
@@ -429,21 +431,18 @@ uint64 CalculateCPUFreq(); // from cpu_linux.cpp
 static int64 CalculateClockSpeed()
 {
 #if defined( _WIN32 )
-	LARGE_INTEGER waitTime, startCount, curCount;
 	CCycleCount start, end;
 
-	// Take 1/32 of a second for the measurement.
-	QueryPerformanceFrequency( &waitTime );
-	int scale = 5;
-	waitTime.QuadPart >>= scale;
-
-	QueryPerformanceCounter( &startCount );
+	// Take 1/32 of a second for the measurement, timed by Tier 0's monotonic
+	// clock (R103).
+	const int scale = 5;
+	const uint64 waitNs = 1000000000ULL >> scale;
+	const platform::IMonotonicClock &clock = tier0_facade::MonotonicClock();
+	const platform::MonotonicTimestamp startCount = clock.Now();
 	start.Sample();
-	do
+	while ( clock.ElapsedNanoseconds( startCount, clock.Now() ) < waitNs )
 	{
-		QueryPerformanceCounter( &curCount );
 	}
-	while ( curCount.QuadPart - startCount.QuadPart < waitTime.QuadPart );
 	end.Sample();
 
 	int64 freq = (end.m_Int64 - start.m_Int64) << scale;

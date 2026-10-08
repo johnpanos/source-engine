@@ -19,6 +19,7 @@ def configure(conf):
 
 def build(bld):
 	source = [
+		'foundation_facade.cpp', # R103: Tier 0's private foundation providers
 		'assert_dialog.cpp',
 		'commandline.cpp',
 		'cpu.cpp',
@@ -53,7 +54,6 @@ def build(bld):
 	if bld.env.DEST_OS == 'win32':
 		source += [
 			'assert_dialog.rc',
-			#'etwprof.cpp',			[$WINDOWS]
 			'platform.cpp',
 			'pme.cpp',
 			'vcrmode.cpp',
@@ -85,9 +85,9 @@ def build(bld):
 	defines = [ 'GIT_COMMIT_HASH="%s"' % bld.env.GIT_VERSION ] if bld.env.GIT_VERSION else []
 
 	if bld.env.DEST_OS == 'win32':
-		libs = ['ADVAPI32', 'WS2_32']
+		libs = ['ADVAPI32', 'WS2_32', 'platform_foundation_win32']
 	else:
-		libs = ['DL', 'M', 'LOG']
+		libs = ['DL', 'M', 'LOG', 'platform_foundation_legacyabi']
 	if bld.env.SDL3:
 		libs += ['SDL3']
 

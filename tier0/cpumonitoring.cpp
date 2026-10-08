@@ -22,6 +22,7 @@
 
 #include "pch_tier0.h"
 #include "tier0/cpumonitoring.h"
+#include "foundation_facade.h"
 
 #ifdef PLATFORM_WINDOWS_PC32
 #include "tier0/threadtools.h"
@@ -122,23 +123,18 @@ start:
 	}
 }
 
-static LARGE_INTEGER s_QPCfrequency;
-static LARGE_INTEGER s_QPCbase;
+// Seconds since monitoring started, on Tier 0's monotonic clock (R103).
+static platform::MonotonicTimestamp s_timeBase;
 
 static void InitializeGetTime()
 {
-	QueryPerformanceFrequency( &s_QPCfrequency );
-	QueryPerformanceCounter( &s_QPCbase );
+	s_timeBase = tier0_facade::MonotonicClock().Now();
 }
 
 static double GetTime()
 {
-	LARGE_INTEGER value;
-	QueryPerformanceCounter( &value );
-
-	// Subtracting off the base time gives us a zero point at application start up and
-	// gives us more precision.
-	return ( value.QuadPart - s_QPCbase.QuadPart ) / double( s_QPCfrequency.QuadPart );
+	const platform::IMonotonicClock &clock = tier0_facade::MonotonicClock();
+	return clock.ElapsedNanoseconds( s_timeBase, clock.Now() ) * 1e-9;
 }
 
 static float GetFrequency()

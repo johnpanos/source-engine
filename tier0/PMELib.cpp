@@ -21,6 +21,8 @@
 
 #include "tier0/ioctlcodes.h"
 
+#include "foundation_facade.h"
+
 // NOTE: This has to be the last file included!
 #include "tier0/memdbgon.h"
 
@@ -377,28 +379,19 @@ HRESULT PME::WriteMSR(uint32 dw_reg, const uint64 & i64_value)
 
 double PME::GetCPUClockSpeedFast(void)
 {
-	int64	i64_perf_start, i64_perf_freq, i64_perf_end;
 	int64	i64_clock_start,i64_clock_end;
-	double d_loop_period, d_clock_freq;
+	double d_clock_freq;
 
 	//-----------------------------------------------------------------------
-	// Query the performance of the Windows high resolution timer.
+	// Time a 25 ms spin with RDTSC on Tier 0's monotonic clock (R103; the
+	// legacy loop spun 250,000 ticks of the Windows high resolution timer).
 	//-----------------------------------------------------------------------
-	QueryPerformanceFrequency((LARGE_INTEGER*)&i64_perf_freq);
-
-	//-----------------------------------------------------------------------
-	// Query the current value of the Windows high resolution timer.
-	//-----------------------------------------------------------------------
-	QueryPerformanceCounter((LARGE_INTEGER*)&i64_perf_start);
-	i64_perf_end = 0;
-
-	//-----------------------------------------------------------------------
-	// Time of loop of 250000 windows cycles with RDTSC
-	//-----------------------------------------------------------------------
+	const platform::IMonotonicClock &clock = tier0_facade::MonotonicClock();
+	const platform::MonotonicTimestamp perf_start = clock.Now();
+	uint64 elapsed_ns = 0;
 	RDTSC(i64_clock_start);
-	while(i64_perf_end<i64_perf_start+250000)
+	while ( ( elapsed_ns = clock.ElapsedNanoseconds( perf_start, clock.Now() ) ) < 25000000ULL )
 	{
-		QueryPerformanceCounter((LARGE_INTEGER*)&i64_perf_end);
 	}
 	RDTSC(i64_clock_end);
 
@@ -408,8 +401,7 @@ double PME::GetCPUClockSpeedFast(void)
 	//-----------------------------------------------------------------------
 	i64_clock_end -= i64_clock_start;
 
-	d_loop_period = ((double)(i64_perf_freq)) / 250000.0;
-	d_clock_freq = ((double)(i64_clock_end & 0xffffffff))*d_loop_period;
+	d_clock_freq = ((double)(i64_clock_end & 0xffffffff)) / ( elapsed_ns * 1e-9 );
 
 	return (float)d_clock_freq;
 }
