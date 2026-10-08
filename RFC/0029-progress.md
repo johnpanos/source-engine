@@ -3,7 +3,15 @@
 Design: [RFC 0029](0029-webassembly-and-webgpu-platform.md). No ranked
 roadmap row; ranking it is the user's decision.
 
-## W3, first slice: the WebGPU adapter on the native Dawn lane (2026-10-08)
+## W3: the WebGPU adapter on Dawn and in the browser (2026-10-08)
+
+W3 is done: the shared device suite passes on the adapter natively on the
+pinned Dawn, and compiled to WebAssembly in headless Chrome, both on the host
+GPU and on SwiftShader. The first slice below installed the adapter and the
+native lane; [the browser lane](#the-browser-lane-w3-second-slice-2026-10-08)
+completed the gate.
+
+### W3, first slice: the WebGPU adapter on the native Dawn lane (2026-10-08)
 
 User direction: "start the wasm backend but do not add anymore legacy at
 all". This slice adds the render core's WebGPU device adapter and its WGSL
@@ -14,7 +22,7 @@ legacy render path: no file under `materialsystem/`, `stdshaders` or any
 The browser half of W3 (headless Chromium) needs W0's Emscripten build and is
 open.
 
-### What is installed
+#### What is installed
 
 | Piece | Where | What it does |
 | --- | --- | --- |
@@ -29,7 +37,7 @@ open.
 | Native lane | `tools/render/webgpu_lane.py` (`fetch`, `run`, `suite`) | Builds the adapter and a suite with the host compiler against the pinned Dawn and runs it on the host GPU |
 | Suite | `unittests/rendertest/core/device/test_device_webgpu.cpp`, manifest `render.device.v2.webgpu` | The shared suite plainly and with WebGPU validation errors counted, adapter clauses and two bad configurations |
 
-### The WGSL artifacts
+#### The WGSL artifacts
 
 SPIRV-Cross has no WGSL target and browsers take no SPIR-V, so tint is the
 one WGSL translator (RFC 0029 decision 5, no Naga by user decision). Tint's
@@ -58,7 +66,7 @@ fixtures). The one refused row is `cluster_assign_wgsl.h:kClusterBuildCompute`
 GLSL has a barrier in non-uniform control flow, which WGSL forbids; its
 pipelines are refused on a WebGPU device by name.
 
-### The adapter
+#### The adapter
 
 The model is the Metal adapter's: encoders record the port's shared command
 lists (`render/device/recording.h`), Submit validates them and replays them
@@ -104,7 +112,7 @@ into one command buffer. What differs, and why:
   commands, exact occlusion counts, line fill, ETC1 and RGBA4. `kD24UnormS8`
   is refused (WebGPU's depth24plus copies to no buffer).
 
-### Evidence
+#### Evidence
 
 Host: Fedora 44, AMD Radeon 8060S (RADV STRIX_HALO), Dawn picked its Vulkan
 backend. g++ 16.
@@ -123,10 +131,9 @@ backend. g++ 16.
 Reproduce: `python3 tools/render/webgpu_lane.py fetch`, then
 `python3 tools/render/webgpu_lane.py run --out /tmp/claude-1000/webgpu-lane`.
 
-### Open
+#### Open after the first slice
 
-- W3's browser half: the same suite in headless Chromium needs W0
-  (Emscripten pinned, the adapter built against `emdawnwebgpu`).
+- W3's browser half: done in the second slice, below.
 - WGSL that Firefox rejects is caught only by W4's Firefox runs (no second
   validator, user decision).
 - `kClusterBuildCompute` has no WGSL artifact (above).
@@ -136,3 +143,62 @@ Reproduce: `python3 tools/render/webgpu_lane.py fetch`, then
   by name at submission.
 - W4 (the render graph and the core pixel families on the adapter) and every
   other gate are open.
+
+### The browser lane (W3, second slice, 2026-10-08)
+
+`python3 tools/render/webgpu_lane.py browser [--adapter gpu|swiftshader]`
+compiles the adapter and the same suite to WebAssembly and runs it in
+headless Chrome:
+
+- **Emscripten pinned:** `quality/toolchain/emscripten.json` pins emsdk
+  6.0.10 (release `666337b5`, emcc `d6c521a7`), the newest release older than
+  two weeks, by its archive's sha256. The lane installs and activates exactly
+  that version under `dependencies/` and refuses an emcc that reports
+  anything else. The browser's `webgpu.h` is the pinned Dawn release's
+  emdawnwebgpu package, used as a local Emscripten port (the same
+  `webgpu.h` core the native lane compiles against).
+- **Threads and waits:** the build has pthreads with a preallocated pool of 8
+  Web Workers (`-sPTHREAD_POOL_SIZE=8`) and a fixed 512 MB heap (RFC 0029
+  decisions 6 and 9). It runs on the browser's main thread with JSPI
+  (`-sJSPI`), so the adapter's `wgpuInstanceWaitAny` waits (pipeline
+  creation's error scopes, `WaitIdle`, a readback copy still mapping) and the
+  suite's waits for a token (`emscripten_sleep`) yield to the event loop,
+  which delivers WebGPU's callbacks. The suite's encoder-thread clauses run
+  on the worker pool. The adapter needed no change for the browser other
+  than two fixes it found: a readback map was waited for by spinning (now its
+  future is waited for), and the depth-upload pass left webgpu.h's NaN
+  `depthClearValue`, which the browser refuses even when nothing is cleared.
+- **Serving:** the lane serves the build with
+  `Cross-Origin-Opener-Policy: same-origin` and
+  `Cross-Origin-Embedder-Policy: require-corp` (SharedArrayBuffer), takes the
+  page's output as it runs and its exit status at the end, and prints the
+  output, so the suite's `CONFORMANCE` record reaches the conformance runner.
+- **Adapters:** headless Chrome reaches the host GPU through ANGLE's Vulkan
+  backend (`--use-angle=vulkan`); without it, it falls back to SwiftShader.
+  A GPU run that reports SwiftShader fails (exit 3).
+  `--adapter swiftshader` runs on SwiftShader on purpose
+  (`--use-webgpu-adapter=swiftshader`), a lane that needs no GPU.
+
+Evidence (Google Chrome 157.0.8089.0 canary, host software, not pinned):
+
+| Run | Adapter | Claimed capabilities | Result |
+| --- | --- | --- | --- |
+| `webgpu_lane.py run` (native Dawn, Vulkan) | AMD Radeon 8060S (RADV STRIX_HALO) | compute, storage-buffers, texture-compression-bc, multi-draw-indirect, indirect-first-instance, cube-arrays, float-targets | `CONFORMANCE 792 0` |
+| `webgpu_lane.py browser --adapter gpu` | Chrome: `amd rdna-3` | the same | `CONFORMANCE 792 0`, exit 0 |
+| `webgpu_lane.py browser --adapter swiftshader` | Chrome: `google swiftshader` | the same | `CONFORMANCE 792 0`, exit 0 |
+
+Manifest: `render.device.v2.webgpu.browser` (GPU) and
+`render.device.v2.webgpu.swiftshader` (no GPU).
+
+### Open after W3
+
+- W0: the product profile `portal-wasm32-webgpu.json`, `--emscripten` in
+  Waf, statically linked products as `.wasm`, and `static_composition.py`
+  reading wasm. The pinned Emscripten and the browser harness exist now.
+- W1–W2: the Node lane (foundation, jobs, physics), and Portal's headless
+  boot in the engine worker with the null device.
+- W4: the render graph and the core pixel families on the adapter, and
+  Firefox (whose WGSL compiler is Naga; JSPI support there is unverified).
+- The browser is not pinned; a pinned Chromium build would make the browser
+  lane reproducible.
+- `kClusterBuildCompute` still has no WGSL artifact.

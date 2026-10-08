@@ -189,6 +189,7 @@ struct BufferRecord
 	Buffer readback;
 	std::vector<std::byte> shadow;
 	bool mapPending = false;
+	WGPUFuture mapFuture{}; // the pending map's, waited for before the copy is reused
 	ResourceUsage usage = ResourceUsage::kUndefined;
 	bool released = false;
 };

@@ -268,9 +268,13 @@ DeviceResult<void> WebGpuDevice::OpenDevice()
 	WGPUAdapterInfo info = WGPU_ADAPTER_INFO_INIT;
 	if ( wgpuAdapterGetInfo( m_Adapter, &info ) == WGPUStatus_Success )
 	{
+		// A browser may report only the vendor and architecture.
 		m_AdapterName = std::string( Text( info.device ) );
 		if ( m_AdapterName.empty() )
 			m_AdapterName = std::string( Text( info.description ) );
+		if ( m_AdapterName.empty() && info.vendor.length > 0 )
+			m_AdapterName =
+			    std::string( Text( info.vendor ) ) + " " + std::string( Text( info.architecture ) );
 		wgpuAdapterInfoFreeMembers( info );
 	}
 	if ( m_AdapterName.empty() )
@@ -1180,10 +1184,10 @@ void WebGpuDevice::SubmitNative( std::unique_ptr<Submission> submission, Command
 	// for: the queue may not copy into a buffer being mapped.
 	for ( std::uint64_t id : submission->readbacks )
 	{
-		while ( BufferRecord *b = ExistingBuffer( id ) )
+		BufferRecord *b = ExistingBuffer( id );
+		if ( b && b->mapPending )
 		{
-			if ( !b->mapPending )
-				break;
+			(void)WaitFor( b->mapFuture );
 			ProcessEvents();
 		}
 	}
@@ -1215,7 +1219,7 @@ void WebGpuDevice::SubmitNative( std::unique_ptr<Submission> submission, Command
 			    status == WGPUMapAsyncStatus_Success );
 		};
 		mapped.userdata1 = new CallbackTarget{ this, m_Epoch, s.value, id };
-		(void)wgpuBufferMapAsync( b->readback.Get(), WGPUMapMode_Read, 0,
+		b->mapFuture = wgpuBufferMapAsync( b->readback.Get(), WGPUMapMode_Read, 0,
 		    static_cast<std::size_t>( b->allocated ), mapped );
 	}
 }

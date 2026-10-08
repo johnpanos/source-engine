@@ -8,8 +8,8 @@
 //			configurations (sensitivity).
 //
 //			Built against the pinned Dawn (quality/toolchain/webgpu.json) and
-//			run natively by tools/render/webgpu_lane.py; the same sources are
-//			the browser lane's (RFC 0029 W4).
+//			run natively, or with the pinned Emscripten against emdawnwebgpu
+//			and run in a headless browser, by tools/render/webgpu_lane.py.
 //
 //=============================================================================//
 
@@ -21,6 +21,10 @@
 #include <cstdio>
 #include <string>
 #include <thread>
+
+#if defined( __EMSCRIPTEN__ )
+#include <emscripten/emscripten.h>
+#endif
 
 namespace
 {
@@ -75,7 +79,13 @@ rendertest::DeviceDriver Driver( std::string name, webgpu::WebGpuAdapterOptions 
 		{
 			if ( std::chrono::steady_clock::now() > deadline )
 				return false;
+#if defined( __EMSCRIPTEN__ )
+			// The browser delivers WebGPU's callbacks from its event loop:
+			// yield to it (JSPI) instead of sleeping.
+			emscripten_sleep( 1 );
+#else
 			std::this_thread::sleep_for( std::chrono::microseconds( 200 ) );
+#endif
 		}
 		(void)device.Poll();
 		return true;
@@ -103,6 +113,14 @@ void AdapterClauses( testing::Checks &checks )
 	const DeviceFacts &facts = created.Value()->Facts();
 	std::printf(
 	    "webgpu adapter: %.*s\n", int( facts.adapterName.size() ), facts.adapterName.data() );
+	std::string claimed;
+	for ( std::uint32_t bit = 0; bit < std::uint32_t( Capability::kCount ); ++bit )
+	{
+		if ( facts.capabilities.Has( Capability( bit ) ) )
+			claimed +=
+			    std::string( claimed.empty() ? "" : ", " ) + CapabilityName( Capability( bit ) );
+	}
+	std::printf( "webgpu capabilities: %s\n", claimed.c_str() );
 	checks.That( facts.artifactFormat == ArtifactFormat::kWgsl, "webgpu.facts.wgsl" );
 	checks.That( facts.diagnosticBackend == "webgpu", "webgpu.facts.backend" );
 	checks.That( facts.capabilities.Has( Capability::kCompute ) &&

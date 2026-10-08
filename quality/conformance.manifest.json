@@ -9512,6 +9512,83 @@
       "expect": "pass"
     },
     {
+      "id": "render.device.v2.webgpu.browser",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0029",
+      "migration": "R92",
+      "contract": "unittests/rendertest/contracts/render.device.v2.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "render.device.v2 on render.device.webgpu in headless Chrome on the host GPU (RFC 0029 W3, browser lane). The suite is compiled to WebAssembly with the pinned Emscripten (quality/toolchain/emscripten.json) against the pinned emdawnwebgpu package of the Dawn release (quality/toolchain/webgpu.json), served cross-origin isolated (encoder threads are Web Workers from a preallocated pool) and run on the browser's main thread with JSPI, so the adapter's waits and the suite's waits for tokens yield to the browser's event loop. The same checks as render.device.v2.webgpu (shared suite plainly and with validation errors counted, adapter clauses, two bad configurations). The browser is host software: its version is printed with every run. Chrome reaches the GPU through ANGLE's Vulkan backend; a run that falls back to SwiftShader fails (exit 3).",
+      "command": [
+        "{python}",
+        "tools/render/webgpu_lane.py",
+        "browser",
+        "--adapter",
+        "gpu",
+        "--out",
+        "/tmp/claude-1000/webgpu-lane-browser"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 780,
+      "timeout_seconds": 900,
+      "memory_limit_mb": 0,
+      "requires": [
+        "executable:google-chrome",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "render/device/webgpu/device.cpp",
+        "render/device/webgpu/execute.cpp",
+        "render/device/webgpu/pipelines.cpp",
+        "render/device/webgpu/webgpu_device.h",
+        "public/render/device/webgpu/provider.h",
+        "unittests/rendertest/core/device/test_device_webgpu.cpp",
+        "unittests/rendertest/core/device/device_conformance.h",
+        "tools/render/webgpu_lane.py",
+        "quality/toolchain/emscripten.json"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "render.device.v2.webgpu.swiftshader",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0029",
+      "migration": "R92",
+      "contract": "unittests/rendertest/contracts/render.device.v2.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "render.device.v2 on render.device.webgpu in headless Chrome on SwiftShader, Chrome's CPU Vulkan (RFC 0029 W3, browser lane without a GPU). The suite is compiled to WebAssembly with the pinned Emscripten (quality/toolchain/emscripten.json) against the pinned emdawnwebgpu package of the Dawn release (quality/toolchain/webgpu.json), served cross-origin isolated (encoder threads are Web Workers from a preallocated pool) and run on the browser's main thread with JSPI, so the adapter's waits and the suite's waits for tokens yield to the browser's event loop. The same checks as render.device.v2.webgpu (shared suite plainly and with validation errors counted, adapter clauses, two bad configurations). The browser is host software: its version is printed with every run.",
+      "command": [
+        "{python}",
+        "tools/render/webgpu_lane.py",
+        "browser",
+        "--adapter",
+        "swiftshader",
+        "--out",
+        "/tmp/claude-1000/webgpu-lane-swiftshader"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 780,
+      "timeout_seconds": 1200,
+      "memory_limit_mb": 0,
+      "requires": [
+        "executable:google-chrome"
+      ],
+      "sources": [
+        "render/device/webgpu/device.cpp",
+        "render/device/webgpu/execute.cpp",
+        "render/device/webgpu/pipelines.cpp",
+        "render/device/webgpu/webgpu_device.h",
+        "public/render/device/webgpu/provider.h",
+        "unittests/rendertest/core/device/test_device_webgpu.cpp",
+        "unittests/rendertest/core/device/device_conformance.h",
+        "tools/render/webgpu_lane.py",
+        "quality/toolchain/emscripten.json"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.family.unlit.d3d12",
       "domain": "Q-PRESENTATION",
       "rfc": "0024",

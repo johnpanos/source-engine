@@ -537,6 +537,7 @@ void Replay::UploadDepth( TextureRecord &t, BufferRecord &b, const TextureBuffer
 	depth.view = m_D.AttachmentView( t, copy.mip, copy.layer );
 	depth.depthLoadOp = WGPULoadOp_Load;
 	depth.depthStoreOp = WGPUStoreOp_Store;
+	depth.depthClearValue = 0.0f; // unused, but a browser refuses webgpu.h's NaN default
 	if ( HasStencil( t.desc.format ) )
 	{
 		depth.stencilLoadOp = WGPULoadOp_Load;
