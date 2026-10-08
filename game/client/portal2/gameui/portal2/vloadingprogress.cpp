@@ -15,7 +15,7 @@
 #include "vgui_controls/Image.h"
 #include "vgui_controls/ImagePanel.h"
 #include "gameui_util.h"
-#include "keyvalues.h"
+#include "KeyValues.h"
 #include "fmtstr.h"
 #include "filesystem.h"
 

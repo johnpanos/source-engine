@@ -14,7 +14,7 @@
 #include <vgui/ISurface.h>
 #include <vgui/IVGui.h>
 #include <vgui/Cursor.h>
-#include <keyvalues.h>
+#include <KeyValues.h>
 #include "vgui_controls/Label.h"
 #include "vgui_controls/ScrollBar.h"
 

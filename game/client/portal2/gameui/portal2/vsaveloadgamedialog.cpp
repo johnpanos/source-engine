@@ -20,7 +20,7 @@
 #endif
 #include "vgui_controls/ScrollBar.h"
 
-#include "cegclientwrapper.h"
+#include "CegClientWrapper.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "portal2_engine_compat.h"

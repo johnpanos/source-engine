@@ -55,7 +55,7 @@
 #include "materialsystem/imaterialsystem.h"
 #include "materialsystem/imaterialproxyfactory.h"
 #include "filesystem.h"
-#include <keyvalues.h>
+#include <KeyValues.h>
 #include "materialsystem/imesh.h"
 #include "materialsystem/IMaterialSystemHardwareConfig.h"
 #include "materialsystem/itexture.h"

@@ -52,7 +52,7 @@
 #endif
 
 #include "netmessages.h"
-#include "cegclientwrapper.h"
+#include "CegClientWrapper.h"
 
 #ifndef NO_STEAM
 #include "steam/steam_api.h"

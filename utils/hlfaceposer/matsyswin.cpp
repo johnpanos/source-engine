@@ -22,7 +22,7 @@
 #include "materialsystem/imaterialsystem.h"
 #include "materialsystem/imaterialproxyfactory.h"
 #include "filesystem.h"
-#include <keyvalues.h>
+#include <KeyValues.h>
 #include "materialsystem/imesh.h"
 #include "expressions.h"
 #include "hlfaceposer.h"

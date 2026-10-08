@@ -5,7 +5,7 @@
 //=====================================================================================//
 
 #include "vpvplobby.h"
-#include "keyvalues.h"
+#include "KeyValues.h"
 #include "vgenericconfirmation.h"
 #include "vgenericpanellist.h"
 #include "vfooterpanel.h"
@@ -27,7 +27,7 @@
 #include "fmtstr.h"
 #include "smartptr.h"
 
-#include "cegclientwrapper.h"
+#include "CegClientWrapper.h"
 
 #include "globalvars_base.h"
 extern CGlobalVarsBase *gpGlobals;

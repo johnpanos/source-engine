@@ -14,7 +14,7 @@
 #include "tier1/utlvector.h"
 #include "tier1/utlsortvector.h"
 #include "tier1/utlmap.h"
-#include "tier1/keyvalues.h"
+#include "tier1/KeyValues.h"
 #include "gamecoordinator/igamecoordinator.h"
 
 namespace GCSDK

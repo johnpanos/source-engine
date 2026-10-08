@@ -828,3 +828,50 @@ Evidence:
   not launcher-driven. Retail captures were not rerun (no Steam client
   here); hosted CI has not run.
 
+
+### Windows build and launch target on Linux: MSVC under Wine (2026-10-08, user direction)
+
+User direction: "we should provide a wine toolchain that pulls in MSVC",
+"like its a windows build target + launch target on linux", and "we should
+also use it to build and test the dx12 backend".
+
+- **Toolchain.** `tools/windows/msvc_wine.py provision|check|path` installs
+  the pinned toolchain into `dependencies/windows-msvc-wine/14.44-10.0.26100/`
+  from `fragments/windows-x86_64-msvc-wine.json`: the mstorsjo/msvc-wine
+  commit and archive sha256, the Visual Studio 17.14.41 installer manifest
+  by versioned URL and sha256 (vsdownload checks every payload against it),
+  MSVC 17.14 (toolset 14.44, `cl` 19.44.35229, the hosted windows-2022
+  runner's) and Windows SDK 10.0.26100, x64 and x86. Staged, stamped,
+  renamed; a second run does nothing. It accepts the Build Tools licence on
+  this machine and redistributes nothing.
+- **Provider.** `product.toolchain.msvc-wine` (`windows-msvc-wine`) checks
+  the install's stamp and `cl`'s banner against the pins, reports compiler,
+  target (`x86_64-pc-windows-msvc`), SDK and runner, gives Waf
+  `--msvc-wine=<install>` and downloads nothing. It passes the shared
+  toolchain suite against a fixture install; the contract gains
+  `ToolchainEnvironment::compilerProbe` (MSVC has no `--version`), and
+  waf-engine now passes a toolchain's `wafOptions` to configure.
+- **Waf.** `xcompile --msvc-wine` drives Waf's msvc tool without registry
+  detection (the wrappers by absolute path, `/Z7` instead of `/Zi /FS`, which
+  needs mspdbsrv); `masm` honours `AS`.
+- **Profile and launch.** `dedicated-windows` builds the Portal dedicated
+  server and packages a `windows-dir` runtime (the directory packager under
+  its own form) that links only immutable assets; `launch.runner` (a new
+  schema key, the host program found on PATH) runs it under Wine with the
+  prefix in the tree and Wine's display drivers off.
+- **Evidence.** `./kiln build dedicated-windows` (1,547 Waf tasks from
+  scratch); `./kiln play dedicated-windows testchmb_a_00 -- +quit` exits 0
+  and opens the map (24 opens of `testchmb_a_00.bsp` in a file trace);
+  nothing is written into `run/runtime`. kilntest 146/0. The Windows
+  defects the local build found are in the commit record (`b4439ef50`):
+  C2375 declaration/definition linkage, case-sensitive source names, a
+  static-initialization order crash in `CommandLine()`, the debug
+  allocator's 8-byte blocks on 64-bit, and the redirected-stdin console.
+  Hosted CI's Windows checkout also collided `iappsystem.h`/`IAppSystem.h`,
+  `keyvalues.h`/`KeyValues.h` and `cegclientwrapper.h`/`CegClientWrapper.h`
+  (lowercase forwarding shims overwrote their real headers); the shims are
+  deleted, 70 files include the real names, and
+  `tools/stylelint/case_collisions.py` (style workflow) refuses such pairs.
+- **Open.** A client profile under Wine (it needs a display session and
+  the D3D12 or Vulkan client path), x86 builds, a CI lane for the MSVC-Wine
+  toolchain (a 3.5 GB install per run), and a Windows-native run.

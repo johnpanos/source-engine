@@ -9,7 +9,7 @@
 //=============================================================================//
 
 #include "cbase.h"
-#include <keyvalues.h>
+#include <KeyValues.h>
 #include "vgui/ISurface.h"
 #include "c_portal_player.h"
 #include "c_keyvalue_saver.h"
