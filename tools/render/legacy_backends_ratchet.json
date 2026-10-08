@@ -13,8 +13,8 @@
       "lines": 23496
     },
     "materialsystem/stdshaders": {
-      "files": 657,
-      "lines": 91155
+      "files": 144,
+      "lines": 24193
     }
   },
   "note": "Legacy backend retirement ratchet (user decision 2026-10-07, RFC 0028): files and lines per legacy backend directory. Exact and shrink-only; record deletions with `retirement_scans.py legacy-backends --write`. The goal is an empty map.",
