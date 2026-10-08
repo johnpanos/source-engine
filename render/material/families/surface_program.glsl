@@ -2468,6 +2468,132 @@ void PortalRefractSurface( bool refract )
 	outColor = Output( flame, min( transparency, 1.0 ) );
 }
 
+// EyeRefract (eye_refract_vs20 and eye_refract_ps2x with RAYTRACESPHERE,
+// evaluated per pixel; material.eyes rows: see ClaimEyeRefract). The legacy
+// per-vertex terms (the bent-normal vertex light) are evaluated at the pixel;
+// the lights' attenuation is the vertex stage's (lightAtten), as legacy.
+vec3 EyeLightVector( int i, vec3 position )
+{
+	const ModelLight light = lighting.lights[i];
+	return light.color.w > 0.5 ? -light.direction.xyz : normalize( light.position.xyz - position );
+}
+
+void EyeRefractSurface()
+{
+	const vec3 eyeOrigin = material.eyes[0].xyz;
+	const float dilation = material.eyes[1].x, glossiness = material.eyes[1].y;
+	const float corneaBump = material.eyes[1].z, radius = material.eyes[1].w;
+	const vec4 irisU = material.eyes[2], irisV = material.eyes[3];
+	const bool halfLambert = material.eyes[4].y > 0.5;
+	const int lights = int( lighting.eye.w );
+	// The vertex stage: the eyeball's normal, the socket's tangent frame.
+	const vec3 normal = normalize( worldPosition - eyeOrigin );
+	const vec3 up = normalize( -irisV.xyz ), left = normalize( -irisU.xyz );
+	const vec3 tangent = normalize( cross( up, normal ) );
+	const vec3 binormal = normalize( cross( normal, tangent ) );
+	const vec3 camera = frame.eye.xyz;
+	const vec3 viewVector = normalize( worldPosition - camera );
+	const vec3 tangentView = normalize(
+	    vec3( dot( viewVector, tangent ), dot( viewVector, binormal ), dot( viewVector, normal ) ) );
+	const vec3 bent = normalize( -dot( normal, left ) * 0.5 * left + normal );
+	// DoLightingUnrolled at the bent normal: the lights and the ambient cube.
+	vec3 vertexLight = ModelAmbientCube( bent );
+	for ( int i = 0; i < 4; ++i )
+	{
+		if ( i >= lights )
+			break;
+		const float nDotL = dot( bent, EyeLightVector( i, worldPosition ) );
+		const float cosine = halfLambert ? ( nDotL * 0.5 + 0.5 ) * ( nDotL * 0.5 + 0.5 ) : max( nDotL, 0.0 );
+		vertexLight += lighting.lights[i].color.rgb * cosine * lightAtten[i];
+	}
+	// The ray cast onto the eyeball sphere.
+	vec3 position = worldPosition;
+	if ( material.eyes[4].z > 0.5 )
+	{
+		const vec3 toCamera = camera - eyeOrigin;
+		const float b = dot( toCamera, viewVector );
+		const float c = dot( toCamera, toCamera ) - radius * radius;
+		const float d = b * b - c;
+		const float t = d > 0.0 ? -b - sqrt( d ) : 0.0;
+		position = camera + viewVector * t;
+		if ( t == 0.0 )
+		{
+			if ( material.eyes[4].w > 0.5 )
+				discard;
+			position = eyeOrigin + normal * radius;
+		}
+	}
+	const vec2 corneaUv = vec2( dot( irisU, vec4( position, 1.0 ) ), dot( irisV, vec4( position, 1.0 ) ) );
+	const vec2 sphereUv = corneaUv * 0.5 + 0.25;
+	const vec4 cornea = texture( sampler2D( bumpTexture, bumpSampler ), corneaUv );
+	vec2 parallax = tangentView.xy * cornea.b * material.eyes[4].x / ( 1.0 - tangentView.z );
+	parallax.x = -parallax.x;
+	vec2 irisUv = sphereUv - parallax;
+	const float corneaNoise =
+	    texture( sampler2D( emissionTexture, emissionSampler ), sphereUv + parallax * 0.5 ).a;
+	vec3 corneaNormal = vec3( ( cornea.rg - 0.5 ) * corneaBump + corneaNoise * 0.1, 1.0 );
+	corneaNormal = normalize( corneaNormal );
+	const vec3 corneaWorld =
+	    normalize( corneaNormal.x * tangent + corneaNormal.y * binormal + corneaNormal.z * normal );
+	// The pupil's dilation.
+	irisUv -= 0.5;
+	const float border = clamp( length( irisUv ) / 0.2, 0.0, 1.0 );
+	irisUv *= mix( 1.0, border, clamp( dilation, 0.0, 1.0 ) * 2.5 - 1.25 );
+	irisUv += 0.5;
+	const vec4 iris = texture( sampler2D( emissionTexture, emissionSampler ), irisUv );
+	// The iris highlight from each light, and the ambient's.
+	const float highlightMask = cornea.a;
+	vec3 irisNormal = corneaNormal;
+	irisNormal.xy *= -2.5;
+	vec3 irisLighting = vec3( 0.0 );
+	vec3 specular = vec3( 0.0 );
+	const vec3 reflection = reflect( viewVector, corneaWorld );
+	for ( int i = 0; i < 4; ++i )
+	{
+		if ( i >= lights )
+			break;
+		const vec3 lightVector = EyeLightVector( i, worldPosition );
+		const vec3 tangentLight = vec3(
+		    dot( lightVector, tangent ), dot( lightVector, binormal ), dot( lightVector, normal ) );
+		vec3 flattened = -tangentLight;
+		flattened.xy *= -0.5;
+		flattened.z = max( flattened.z, 0.5 );
+		flattened = normalize( flattened );
+		const float facing = pow( abs( dot( irisNormal, flattened ) ), 6.0 ) * 0.5;
+		const float darkness = pow( 1.0 - clamp( ( -tangentLight.z - 0.25 ) / 0.75, 0.0, 1.0 ), 4.0 );
+		const vec3 color = lighting.lights[i].color.rgb * lightAtten[i];
+		irisLighting += facing * highlightMask * darkness * color;
+		specular += pow( clamp( dot( reflection, lightVector ), 0.0, 1.0 ), 128.0 ) * color;
+	}
+	// g_flAverageAmbient: the ambient cube's mean luminance, saturated.
+	float ambient = 0.0;
+	for ( int axis = 0; axis < 3; ++axis )
+	{
+		vec3 direction = vec3( 0.0 );
+		direction[axis] = 1.0;
+		ambient += dot( ModelAmbientCube( direction ), vec3( 0.3, 0.59, 0.11 ) ) +
+		           dot( ModelAmbientCube( -direction ), vec3( 0.3, 0.59, 0.11 ) );
+	}
+	ambient = clamp( ambient / 6.0, 0.0, 1.0 );
+	irisLighting += clamp( dot( irisNormal, -tangentView ), 0.0, 1.0 ) * ambient * highlightMask * 0.5;
+	// Ambient occlusion colors the vertex light.
+#if defined( SEEDED_EYE_REFRACT_AO_IGNORED )
+	const vec3 occlusion = vec3( 1.0 );
+#else
+	const vec3 occlusion = texture( sampler2D( detailTexture, detailSampler ), baseUv ).rgb;
+#endif
+	vertexLight *= mix( material.eyes[5].rgb, vec3( 1.0 ), occlusion );
+	const vec3 cube = material.surfaceControls.y > 0.5
+	                      ? glossiness *
+	                            texture( samplerCube( envmapTexture, envmapSampler ), reflection ).rgb
+	                      : vec3( 0.0 );
+	vec3 result = iris.rgb + corneaNoise * 0.1;
+	result *= vertexLight + irisLighting;
+	result += cube * vertexLight;
+	result += specular;
+	outColor = Output( result, 1.0 );
+}
+
 void main()
 {
 	if ( kPortalMask )
@@ -2488,6 +2614,11 @@ void main()
 	// Points without image specular leave the SSR targets empty (weight 0:
 	// render.pass.ssr leaves their pixels unchanged).
 	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );
+	if ( kDecalModulate && material.baseDecode.y > 6.5 )
+	{
+		EyeRefractSurface();
+		return;
+	}
 	if ( kDecalModulate && material.baseDecode.y > 5.5 )
 	{
 		// PortalStaticOverlay's ghost (portalstaticoverlay_vs20, _ps2x).

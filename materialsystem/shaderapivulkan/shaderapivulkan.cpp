@@ -4686,7 +4686,8 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 		// Frozen-path: core progress (RFC 0016 surface model) - P2:CE's PBR
 		// model surfaces (a Workshop view model, props) to the core's pbr point.
 		if ( !V_stricmp( shader, "VertexLitGeneric" ) ||
-		     !V_stricmp( shader, "VertexLitGeneric_DX9" ) || !V_stricmp( shader, "PBR" ) )
+		     !V_stricmp( shader, "VertexLitGeneric_DX9" ) || !V_stricmp( shader, "PBR" ) ||
+		     !V_stricmp( shader, "EyeRefract" ) || !V_stricmp( shader, "EyeRefract_dx9" ) )
 			return CoreMeshKind::kModelSurface;
 		if ( !V_stricmp( shader, "PortalRefract" ) || !V_stricmp( shader, "PortalRefract_dx9" ) )
 		{
@@ -5139,7 +5140,8 @@ bool CEmptyMesh::EmitToCoreQueue()
 	            !V_stricmp( draw.shader, "Refract" ) || !V_stricmp( draw.shader, "Refract_DX90" ) ||
 	            !V_stricmp( draw.shader, "PBR" ) || !V_stricmp( draw.shader, "Teeth" ) ||
 	            !V_stricmp( draw.shader, "Teeth_DX9" ) || !V_stricmp( draw.shader, "Eyes" ) ||
-	            !V_stricmp( draw.shader, "Eyes_dx9" );
+	            !V_stricmp( draw.shader, "Eyes_dx9" ) || !V_stricmp( draw.shader, "EyeRefract" ) ||
+	            !V_stricmp( draw.shader, "EyeRefract_dx9" );
 	// Frozen-path: hand a mesh point Source's model lighting at the draw (the
 	// ambient cube and enabled lights studiorender set), as values.
 	if ( draw.mesh )

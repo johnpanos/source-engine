@@ -547,6 +547,79 @@ UnlitClaim ClaimPortalOverlay( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimEyeRefract( const ParameterBlock &block )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "eye-refract" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	// The cloak's factor, tint and refraction are read only with
+	// $cloakpassenabled; $entityorigin and $warpparam only with $intro.
+	constexpr std::string_view keys[] = { "iris", "irisframe", "corneatexture",
+	    "ambientoccltexture", "envmap", "eyeorigin", "irisu", "irisv", "dilation", "glossiness",
+	    "spheretexkillcombo", "raytracesphere", "parallaxstrength", "corneabumpstrength",
+	    "ambientocclcolor", "eyeballradius", "halflambert", "cloakfactor", "cloakcolortint",
+	    "refractamount", "entityorigin", "warpparam", "model", "nocull", "nofog" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the eye refract point does not draw " + *unread;
+		return claim;
+	}
+	for ( const char *pass : { "intro", "cloakpassenabled", "emissiveblendenabled" } )
+		if ( ReadFlag( block, pass ) )
+		{
+			claim.reason = std::string( "the eye refract point does not draw $" ) + pass;
+			return claim;
+		}
+	if ( detail::TextureBound( block, "lightwarptexture" ) )
+	{
+		claim.reason = "the eye refract point does not draw $lightwarptexture";
+		return claim;
+	}
+	for ( const char *texture : { "iris", "corneatexture", "ambientoccltexture" } )
+		if ( !detail::TextureBound( block, texture ) )
+		{
+			claim.reason = std::string( "EyeRefract needs $" ) + texture;
+			return claim;
+		}
+	claim.blend = device::BlendMode::kOpaque;
+	claim.decalModulate = true;
+	SurfaceConstants &constants = claim.constants;
+	constants.baseDecode[1] = 7.0f; // the eye refract point
+	claim.detailMode = 1;           // the ambient occlusion texture is sRGB
+	// eyes rows: 0 $eyeorigin (w 0: the vertexlit Eyes terms stay off), 1
+	// $dilation, $glossiness, $corneabumpstrength, $eyeballradius, 2 and 3
+	// $irisu and $irisv, 4 $parallaxstrength, $halflambert, $raytracesphere,
+	// $spheretexkillcombo, 5 $ambientocclcolor.
+	for ( int c = 0; c < 3; ++c )
+	{
+		constants.eyes[0][c] = ReadParameter( block, "eyeorigin", c );
+		constants.eyes[5][c] = ReadParameter( block, "ambientocclcolor", c );
+	}
+	for ( int c = 0; c < 4; ++c )
+	{
+		constants.eyes[2][c] = ReadParameter( block, "irisu", c );
+		constants.eyes[3][c] = ReadParameter( block, "irisv", c );
+	}
+	constants.eyes[1][0] = ReadParameter( block, "dilation" );
+	constants.eyes[1][1] = ReadParameter( block, "glossiness" );
+	constants.eyes[1][2] = ReadParameter( block, "corneabumpstrength" );
+	constants.eyes[1][3] = ReadParameter( block, "eyeballradius" );
+	constants.eyes[4][0] = ReadParameter( block, "parallaxstrength" );
+	constants.eyes[4][1] = ReadFlag( block, "halflambert" ) ? 1.0f : 0.0f;
+	constants.eyes[4][2] = ReadFlag( block, "raytracesphere" ) ? 1.0f : 0.0f;
+	constants.eyes[4][3] = ReadFlag( block, "spheretexkillcombo" ) ? 1.0f : 0.0f;
+	constants.surfaceControls[0] = ReadFlag( block, "nofog" ) ? 1.0f : 0.0f;
+	// surfaceControls.y: the reflection cube is bound. Unbound, the
+	// reflection is zero (the legacy shader would read its default test
+	// cube; Portal 2's eye materials all name one).
+	constants.surfaceControls[1] = detail::TextureBound( block, "envmap" ) ? 1.0f : 0.0f;
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimModulate( const ParameterBlock &block )
 {
 	UnlitClaim claim;

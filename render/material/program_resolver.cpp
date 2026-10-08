@@ -228,14 +228,18 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 	// UnlitTwoTexture declares the same cloak pass (unlittwotexture_dx9.cpp,
 	// SetupVarsCloakBlendedPass), read only with $cloakpassenabled set: the
 	// sprite copies Portal 2's lasers draw hold $refractamount 0 inertly.
+	// EyeRefract declares the cloak and emissive blend passes too
+	// (eye_refract.cpp), each read only with its enable flag.
 	const auto dormant = [&]( std::string_view key )
 	{
 		const bool unlit = material.family == "unlit";
-		if ( material.family != "vertexlit" && !unlit )
+		const bool eyeRefract = material.family == "eye-refract";
+		if ( material.family != "vertexlit" && !unlit && !eyeRefract )
 			return false;
 		for ( const DormantPass &pass : kVertexLitPasses )
 		{
-			if ( unlit && &pass != &kVertexLitPasses[0] )
+			if ( ( unlit && &pass != &kVertexLitPasses[0] ) ||
+			     ( eyeRefract && &pass > &kVertexLitPasses[1] ) )
 				break;
 			if ( enabled( pass.enable ) )
 				continue;
@@ -562,7 +566,8 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 	if ( material.family == "unlit" || material.family == "cable" ||
 	     material.family == "decal-modulate" || material.family == "energy" ||
 	     material.family == "modulate" || material.family == "blob-shadow" ||
-	     material.family == "shadow-build" || material.family == "portal-overlay" )
+	     material.family == "shadow-build" || material.family == "portal-overlay" ||
+	     material.family == "eye-refract" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
@@ -571,6 +576,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		    : material.family == "blob-shadow"    ? ClaimBlobShadow( *block )
 		    : material.family == "shadow-build"   ? ClaimShadowBuild( *block )
 		    : material.family == "portal-overlay" ? ClaimPortalOverlay( *block )
+		    : material.family == "eye-refract"    ? ClaimEyeRefract( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -709,6 +715,13 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 			return foundation::MakeUnexpected( teeth.reason );
 		return ClaimForMesh( AsVertexLit( material ), nativeReflectionProbes,
 		    sceneColorAvailable );
+	}
+	if ( material.family == "eye-refract" )
+	{
+		const UnlitClaim claim = ClaimEyeRefract( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return claim.blend;
 	}
 	if ( material.family == "portal-overlay" )
 	{
@@ -850,7 +863,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	if ( material.family == "unlit" || material.family == "cable" ||
 	     material.family == "decal-modulate" || material.family == "energy" ||
 	     material.family == "modulate" || material.family == "blob-shadow" ||
-	     material.family == "shadow-build" || material.family == "portal-overlay" )
+	     material.family == "shadow-build" || material.family == "portal-overlay" ||
+	     material.family == "eye-refract" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
@@ -859,6 +873,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		    : material.family == "blob-shadow"    ? ClaimBlobShadow( *block )
 		    : material.family == "shadow-build"   ? ClaimShadowBuild( *block )
 		    : material.family == "portal-overlay" ? ClaimPortalOverlay( *block )
+		    : material.family == "eye-refract"    ? ClaimEyeRefract( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -897,6 +912,13 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			textures.emission = TextureOf( material, "texture2" );
 		if ( material.family == "portal-overlay" )
 			textures.emission = TextureOf( material, "staticblendtexture" );
+		if ( material.family == "eye-refract" )
+		{
+			textures.emission = TextureOf( material, "iris" );
+			textures.detail = TextureOf( material, "ambientoccltexture" );
+			textures.bump = TextureOf( material, "corneatexture" );
+			textures.envmap = TextureOf( material, "envmap" );
+		}
 		if ( s.mesh && s.worldPbr && !claim.twoTexture && !claim.cable && !claim.decalModulate &&
 		     !claim.energy && !claim.wireframe &&
 		     !IsBlack( material ) )

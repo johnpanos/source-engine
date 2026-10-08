@@ -67,6 +67,14 @@ constexpr int kBaseHandle = 1;
 constexpr int kMaskHandle = 2;
 // The eyes fixture's iris: two texels, left opaque black, right transparent.
 constexpr int kIrisHandle = 3;
+// The EyeRefract fixture: a uniform iris (sRGB 200 150 100, alpha 0: no
+// cornea noise), a flat cornea (rg 0.5, no parallax offset or highlight) and
+// an ambient occlusion texture black on the left texel, white on the right.
+constexpr int kEyeIrisHandle = 4;
+constexpr int kCorneaHandle = 5;
+constexpr int kOcclusionHandle = 6;
+constexpr unsigned kEyeIris[] = { 200, 150, 100 };
+constexpr float kOcclusionColor[] = { 0.5f, 0.25f, 0.75f };
 // Sample points inside the quad (pixels 16 to 47): the emitting and the
 // unmasked half.
 constexpr std::uint32_t kEmitX = 22, kPlainX = 41, kRow = 32;
@@ -77,8 +85,15 @@ public:
 	TextureId base;
 	TextureId mask;
 	TextureId iris;
+	TextureId eyeIris, cornea, occlusion;
 	TextureId Import( int handle, bool ) override
 	{
+		if ( handle == kEyeIrisHandle )
+			return eyeIris;
+		if ( handle == kCorneaHandle )
+			return cornea;
+		if ( handle == kOcclusionHandle )
+			return occlusion;
 		if ( handle == kBaseHandle )
 			return base;
 		if ( handle == kMaskHandle )
@@ -126,9 +141,13 @@ WorldMaterial Material(
 	material.name = "selfillum-fixture";
 	material.shader = shader;
 	material.mesh = true;
-	material.variables = { { "$basetexture", "selfillum/two_texels" } };
+	const bool eyeRefract = std::string_view( shader ) == "EyeRefract";
+	if ( !eyeRefract )
+	{
+		material.variables = { { "$basetexture", "selfillum/two_texels" } };
+		material.textures = { { "$basetexture", kBaseHandle } };
+	}
 	material.variables.insert( material.variables.end(), variables.begin(), variables.end() );
-	material.textures = { { "$basetexture", kBaseHandle } };
 	// The detail fixtures reuse the base texture: rgb 1 on both texels.
 	for ( const auto &[key, value] : variables )
 	{
@@ -146,6 +165,12 @@ WorldMaterial Material(
 			material.textures.push_back( { "$glint", kBaseHandle } );
 		if ( key == "$envmapmask" )
 			material.textures.push_back( { "$envmapmask", kMaskHandle } );
+		if ( eyeRefract && key == "$iris" )
+			material.textures.back() = { "$iris", kEyeIrisHandle };
+		if ( key == "$corneatexture" )
+			material.textures.push_back( { "$corneatexture", kCorneaHandle } );
+		if ( key == "$ambientoccltexture" )
+			material.textures.push_back( { "$ambientoccltexture", kOcclusionHandle } );
 	}
 	return material;
 }
@@ -302,6 +327,35 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 	if ( !iris )
 		return "the two-texel iris fixture could not be staged";
 	fixture.iris = iris.Value().texture;
+	{
+		TextureDesc eyeDesc;
+		eyeDesc.format = Format::kRGBA8Srgb;
+		eyeDesc.width = 1;
+		eyeDesc.height = 1;
+		eyeDesc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+		const std::array<std::byte, 4> eyeIris = { std::byte( kEyeIris[0] ),
+		    std::byte( kEyeIris[1] ), std::byte( kEyeIris[2] ), std::byte{ 0 } };
+		auto staged = textures.Stage( "selfillum/eye-iris", eyeDesc, eyeIris );
+		if ( !staged )
+			return "the eye iris fixture could not be staged";
+		fixture.eyeIris = staged.Value().texture;
+		eyeDesc.format = Format::kRGBA8Unorm;
+		const std::array<std::byte, 4> cornea = {
+		    std::byte{ 128 }, std::byte{ 128 }, std::byte{ 0 }, std::byte{ 0 } };
+		auto corneaStaged = textures.Stage( "selfillum/cornea", eyeDesc, cornea );
+		if ( !corneaStaged )
+			return "the cornea fixture could not be staged";
+		fixture.cornea = corneaStaged.Value().texture;
+		eyeDesc.format = Format::kRGBA8Srgb;
+		eyeDesc.width = 2;
+		const std::array<std::byte, 8> occlusion = { std::byte{ 0 }, std::byte{ 0 }, std::byte{ 0 },
+		    std::byte{ 255 }, std::byte{ 255 }, std::byte{ 255 }, std::byte{ 255 },
+		    std::byte{ 255 } };
+		auto occlusionStaged = textures.Stage( "selfillum/eye-occlusion", eyeDesc, occlusion );
+		if ( !occlusionStaged )
+			return "the eye occlusion fixture could not be staged";
+		fixture.occlusion = occlusionStaged.Value().texture;
+	}
 
 	// A white two-layer cookie array for the projected-light fixtures,
 	// uploaded in the first frame that draws a projector.
@@ -697,6 +751,52 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		        darkClear.At( kPlainX, kRow )[0] ) );
 	}
 
+	// EyeRefract (eye_refract_ps2x) under an ambient cube lit only from +z,
+	// no lights: the eyeball's normal (origin far behind) and the bent normal
+	// face +z, so the vertex light is 1; the flat cornea adds no highlight or
+	// parallax. The lit iris is the iris; where the occlusion texture is black
+	// $ambientocclcolor tints it.
+	{
+		material::ModelLighting front;
+		front.cube[4][0] = front.cube[4][1] = front.cube[4][2] = 1.0f; // +z
+		const Variables eye = { { "$iris", "selfillum/eye-iris" },
+		    { "$corneatexture", "selfillum/cornea" },
+		    { "$ambientoccltexture", "selfillum/eye-occlusion" }, { "$eyeorigin", "[0 0 -1e6]" },
+		    { "$irisu", "[1 0 0 0.5]" }, { "$irisv", "[0 -1 0 0.5]" },
+		    { "$ambientocclcolor", "[0.5 0.25 0.75]" }, { "$halflambert", "1" } };
+		CanvasImage eyeImage;
+		if ( auto why = render( eye, 0.0f, false, eyeImage, true, false, 0, "EyeRefract", &front ) )
+			return why;
+		const float *open = eyeImage.At( kPlainX, kRow );
+		const float *occluded = eyeImage.At( kEmitX, kRow );
+		bool lit = true, tinted = true;
+		std::string detail;
+		for ( int c = 0; c < 3; ++c )
+		{
+			const float linear = kEyeIris[c] / 255.0f <= 0.04045f
+			                         ? kEyeIris[c] / 255.0f / 12.92f
+			                         : std::pow( ( kEyeIris[c] / 255.0f + 0.055f ) / 1.055f, 2.4f );
+			lit = lit && Near( open[c], linear, 0.01f );
+			tinted = tinted && Near( occluded[c], linear * kOcclusionColor[c], 0.01f );
+			detail += std::to_string( open[c] ) + "/" + std::to_string( linear ) + " " +
+			          std::to_string( occluded[c] ) + " ";
+		}
+		results.That( lit, "selfillum.eye-refract.lit-iris-is-the-iris", detail );
+		results.That( tinted, "selfillum.eye-refract.ambient-occlusion-tints-the-light", detail );
+		std::vector<material::VmtPair> intro;
+		for ( const auto &[key, value] : eye )
+			intro.push_back( { key, value } );
+		intro.push_back( { "$intro", "1" } );
+		auto mapped = material::MapVariables( "EyeRefract", std::move( intro ), {} );
+		const auto introClaim = mapped
+		                            ? material::ClaimForMesh( mapped.Value(), true )
+		                            : foundation::Expected<device::BlendMode, std::string>(
+		                                  foundation::MakeUnexpected( std::string( "no map" ) ) );
+		const std::string refused = introClaim ? std::string() : introClaim.Error();
+		results.That( refused.find( "$intro" ) != std::string::npos,
+		    "selfillum.eye-refract.refuse-intro", refused );
+	}
+
 	// $selfillum_envmapmask_alpha: the envmap mask's alpha x 8 replaces the
 	// surface with the albedo (the mask fixture: alpha 0 on the left, 1 on
 	// the right). Dark: the left half black, the right 8 x the white albedo.
@@ -777,6 +877,8 @@ const Seeded kSeeded[] = {
     { "teeth-ignored", spirv::kSurfaceTeethIgnored, "selfillum.teeth" },
     { "eyes-iris-ignored", spirv::kSurfaceEyesIrisIgnored, "selfillum.eyes.iris" },
     { "eyes-glint-ignored", spirv::kSurfaceEyesGlintIgnored, "selfillum.eyes.glint" },
+    { "eye-refract-ao-ignored", spirv::kEyeRefractAoIgnored,
+        "selfillum.eye-refract.ambient-occlusion" },
     { "envmapmask-alpha-ignored", spirv::kSurfaceSelfIllumEnvmapMaskAlphaIgnored,
         "selfillum.envmapmask-alpha.weight" },
     { "nolambert-ignored", spirv::kSurfaceFlashlightNoLambertIgnored,

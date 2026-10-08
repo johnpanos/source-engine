@@ -13214,3 +13214,28 @@ portal's far view reads dark against legacy: to be compared next.
     view render target, as `_rt_WaterReflection` is water's.
   - The core draws the live camera image through its scanlines; 0 legacy
     stream draws and 0 core refusals on the view.
+- **Chell's eyes** (EyeRefract, `models/player/chell/gambler_eyeball_*`)
+  were the last dropped effect on the census. They now draw on a new
+  `eye-refract` family, a decal-modulate mode of the model vertex:
+  - `eye_refract_vs20`/`ps2x` are evaluated per pixel: the eyeball normal
+    from `$eyeorigin`, the socket's tangent frame from `$irisv`, the
+    ray-cast sphere, the parallaxed and dilated iris, the cornea bump, and
+    Source's model lighting (the draw's ambient cube and lights at the bent
+    normal, attenuation from the vertex stage).
+  - Then the iris highlight, the reflection cube times `$glossiness`,
+    per-light specular, and `$ambientocclcolor` through the AO texture.
+  - The frozen backend hands EyeRefract over as a mesh point with model
+    lighting. Its dormant cloak and emissive passes are inert, as on
+    VertexLitGeneric.
+  - Refused by name: the light warp, the cloak and emissive passes, and
+    `$intro`.
+  - One deviation: an unbound `$envmap` reflects nothing rather than the
+    legacy default test cube. Portal 2's eye materials all name one.
+  - `render.lab.selfillum` 44/0: under a +z ambient cube, the lit iris is
+    the iris and the AO texture tints it by `$ambientocclcolor`. The
+    AO-ignored seeded program is caught (sensitivity 10/0).
+  - `portal-walk`: 0 core refusals. The eyes are too small on that frame to
+    review.
+  - Found on the same frame: Chell and the view model are drawn flat and
+    pale on this BSP2 fixture map, while the legacy renderer lights and
+    textures them. This is the open model defect noted earlier.

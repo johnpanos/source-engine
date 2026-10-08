@@ -526,6 +526,8 @@ GENERATED = {
     "selfillum_defects_spv.h": ("render::lab::spirv",
         "render_lab's self-illumination suite's seeded programs (render.lab.selfillum "
         "sensitivity, RFC 0016 surface model emission term)", (
+        ("kEyeRefractAoIgnored", FAMILIES + "/surface.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_EYE_REFRACT_AO_IGNORED",)),
         ("kSurfaceSelfIllumFresnelIgnored", FAMILIES + "/surface.frag",
          DEVICE_OPTIONS + ("-DSEEDED_SELFILLUM_FRESNEL_IGNORED",)),
         ("kSurfaceSelfIllumBrightnessIgnored", FAMILIES + "/surface.frag",

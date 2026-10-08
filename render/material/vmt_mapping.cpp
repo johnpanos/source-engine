@@ -73,6 +73,11 @@ constexpr VmtShaderRow kShaders[] = {
         "added into the shadow page; the decal-modulate point (unlit_family.h "
         "ClaimShadowBuild)" },
     { "shadowbuild_dx9", "shadow-build", "ShadowBuild's DirectX 9 implementation" },
+    { "eyerefract", "eye-refract",
+        "EyeRefract (eye_refract.cpp, eye_refract_ps2x): Portal 2's eyes, a ray-cast eyeball "
+        "with a parallax iris, cornea bump, reflection cube and Source's model lighting; the "
+        "decal-modulate point (unlit_family.h ClaimEyeRefract)" },
+    { "eyerefract_dx9", "eye-refract", "EyeRefract's DirectX 9 implementation" },
     { "portalstaticoverlay", "portal-overlay",
         "PortalStaticOverlay (portalstaticoverlay.cpp, portalstaticoverlay_ps2x): Portal 2's "
         "ghost, the portal seen through walls (reverse depth test), on the decal-modulate "
@@ -125,7 +130,7 @@ constexpr std::string_view kLegacyReason =
 // kLegacyDerivedFamilies a copy.
 constexpr std::string_view kLegacyDerivedFamilies[] = { "lightmapped", "vertexlit", "unlit",
     "depth", "portal-mask", "cable", "decal-modulate", "energy", "modulate", "teeth", "eyes",
-    "blob-shadow", "shadow-build", "portal-overlay" };
+    "blob-shadow", "shadow-build", "portal-overlay", "eye-refract" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$one", "one", ValueKind::kFloat, "1" },
@@ -171,6 +176,34 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     // ShadowBuild's caster material: the frontend binds its $basetexture,
     // $frame and $basetexturetransform in this material's place.
     { "shadow-build", "$translucent_material", "translucent_material", ValueKind::kMaterial, "" },
+    // EyeRefract (eye_refract.cpp's parameters; eye_refract_helper.h's
+    // InitParams defaults where the shader replaces an undefined value).
+    { "eye-refract", "$iris", "iris", ValueKind::kTexture, "" },
+    { "eye-refract", "$irisframe", "irisframe", ValueKind::kInt, "0" },
+    { "eye-refract", "$corneatexture", "corneatexture", ValueKind::kTexture, "" },
+    { "eye-refract", "$ambientoccltexture", "ambientoccltexture", ValueKind::kTexture, "" },
+    { "eye-refract", "$eyeorigin", "eyeorigin", ValueKind::kFloat3, "[0 0 0]" },
+    { "eye-refract", "$irisu", "irisu", ValueKind::kFloat4, "[0 1 0 0]" },
+    { "eye-refract", "$irisv", "irisv", ValueKind::kFloat4, "[0 0 1 0]" },
+    { "eye-refract", "$dilation", "dilation", ValueKind::kFloat, "0.5" },
+    { "eye-refract", "$glossiness", "glossiness", ValueKind::kFloat, "1" },
+    { "eye-refract", "$spheretexkillcombo", "spheretexkillcombo", ValueKind::kBool, "0" },
+    { "eye-refract", "$raytracesphere", "raytracesphere", ValueKind::kBool, "0" },
+    { "eye-refract", "$parallaxstrength", "parallaxstrength", ValueKind::kFloat, "0.25" },
+    { "eye-refract", "$corneabumpstrength", "corneabumpstrength", ValueKind::kFloat, "1" },
+    { "eye-refract", "$ambientocclcolor", "ambientocclcolor", ValueKind::kFloat3,
+        "[0.33 0.33 0.33]" },
+    { "eye-refract", "$eyeballradius", "eyeballradius", ValueKind::kFloat, "0.5" },
+    { "eye-refract", "$intro", "intro", ValueKind::kBool, "0" },
+    { "eye-refract", "$entityorigin", "entityorigin", ValueKind::kFloat3, "[0 0 0]" },
+    { "eye-refract", "$warpparam", "warpparam", ValueKind::kFloat, "0" },
+    { "eye-refract", "$lightwarptexture", "lightwarptexture", ValueKind::kTexture, "" },
+    { "eye-refract", "$halflambert", "halflambert", ValueKind::kBool, "0" },
+    { "eye-refract", "$cloakpassenabled", "cloakpassenabled", ValueKind::kBool, "0" },
+    { "eye-refract", "$cloakfactor", "cloakfactor", ValueKind::kFloat, "0" },
+    { "eye-refract", "$cloakcolortint", "cloakcolortint", ValueKind::kFloat3, "[1 1 1]" },
+    { "eye-refract", "$refractamount", "refractamount", ValueKind::kFloat, "2" },
+    { "eye-refract", "$emissiveblendenabled", "emissiveblendenabled", ValueKind::kBool, "0" },
     // PortalStaticOverlay (portalstaticoverlay.cpp's parameters and defaults).
     { "portal-overlay", "$staticamount", "staticamount", ValueKind::kFloat, "0" },
     { "portal-overlay", "$staticblendtexture", "staticblendtexture", ValueKind::kTexture, "" },

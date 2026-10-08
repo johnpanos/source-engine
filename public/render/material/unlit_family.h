@@ -63,6 +63,9 @@ struct UnlitClaim
 	bool cable = false; // expanded ribbon: normal UV0, color UV1, linear vertex lighting
 	bool energy = false; // SolidEnergy (energy_family.h)
 	bool wireframe = false; // Wireframe: triangle edges as lines (device clause D38)
+	// SurfaceVariant::detailMode: 1 decodes the detail binding as sRGB (the
+	// eye refract point's ambient occlusion texture).
+	std::uint32_t detailMode = 0;
 	bool ignoreDepth = false;
 	bool depthBlend = false; // requires the view's copied scene depth in alpha
 	bool baseSrgb = true;
@@ -82,6 +85,7 @@ struct UnlitClaim
 		variant.energy = energy;
 		variant.wireframe = wireframe;
 		variant.decalModulate = decalModulate;
+		variant.detailMode = detailMode;
 		return variant;
 	}
 };
@@ -131,6 +135,18 @@ UnlitClaim ClaimPortalRefract( const ParameterBlock &block, bool sceneColorAvail
 // their normals; the depth test (FARTHER) is the captured draw state's. The
 // unghosted overlay is refused by name.
 UnlitClaim ClaimPortalOverlay( const ParameterBlock &block );
+// EyeRefract (eye_refract_vs20 and _ps2x, evaluated per pixel) on the
+// decal-modulate point of the model vertex: the eyeball's normal from
+// $eyeorigin, the socket's tangent frame from $irisv, the iris parallaxed by
+// the cornea's offset and dilated, the cornea's bump, Source's model lighting
+// (the draw's ambient cube and lights, at the bent normal), the iris
+// highlight, the reflection cube times $glossiness and per-light specular,
+// darkened by $ambientocclcolor through the AO texture. Textures: iris at the
+// emission binding (sRGB), the AO texture at the detail binding (sRGB), the
+// cornea at the bump binding, the cube at the env map's (none: no
+// reflection). The light warp, the cloak and emissive passes and $intro are
+// refused by name.
+UnlitClaim ClaimEyeRefract( const ParameterBlock &block );
 // Modulate (modulate_dx9.cpp, modulate_ps2x): the decal-modulate point with
 // saturate( base x $color/$alpha x vertex color ), its color lerped from the
 // neutral 0.5 by its alpha, fog to the neutral grey. $mod2x blends
