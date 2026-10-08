@@ -183,7 +183,7 @@ const std::set<std::string> kBuildKeys = {
     "toolchain", "flavors", "default_flavor", "compiler_cache", "host_tool_profile" };
 const std::set<std::string> kFlavorKeys = { "description", "configure_options" };
 const std::set<std::string> kPipelineKeys = { "stages" };
-const std::set<std::string> kPackageKeys = { "form" };
+const std::set<std::string> kPackageKeys = { "form", "directory", "steps" };
 const std::set<std::string> kDeployKeys = { "transport", "content_root", "capabilities" };
 const std::set<std::string> kLaunchKeys = { "game", "default_map", "executable", "arguments",
     "environment", "display_session", "run", "switches", "variables", "map_arguments" };

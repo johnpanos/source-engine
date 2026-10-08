@@ -245,7 +245,7 @@ equivalence gate (argv, environment and staged-runtime manifest) passes.
 | Slice | Scope | State |
 | --- | --- | --- |
 | L1a | launch model, `.kiln/local.json` bindings, `kiln play`/`run --dry-run`, `kiln switches`, argv/environment equivalence | done (below) |
-| L1b | `linux-dir` packager, mount sets and content locators, `video.av1`, manifest equivalence, real `kiln play` | next |
+| L1b | `linux-dir` packager, mount sets and content locators, `video.av1`, manifest equivalence, real `kiln play` | in progress: Portal, Portal 2 and FSR equal; F-Stop, Workshop and `video.av1` open |
 | L1c | `coop-pair` and `external-install` run providers, `user`/`private`/`none` display sessions | planned |
 | L1d | `sepipe` and `play_embedded`; the 35 harness modules and the CI workflows | planned |
 | L1e | AGENTS.md and memory notes, the deletions, the root allowlist | planned |
@@ -298,3 +298,38 @@ runtimes under `out/launch-equivalence/`; nothing in `run/` changes.
 Not yet covered: `./play_p2 --release` (the release trees are not built
 yet), `--workshop`, `--retail`, `./play_p2_coop`, and every manifest
 comparison (L1b, L1c).
+
+### L1b (in progress): the `linux-dir` packager
+
+- **`product.package.linux-dir`** (`public/product/package_linux_dir.h`):
+  the runtime is `out/<profile>/<flavor>/runtime`, a persistent directory
+  the game also writes into. The packager owns only the entries it places
+  (recorded in `.kiln-package.json`), replacing each through a temporary
+  name and a rename; the game's own files are never touched. Steps are
+  profile data: `seed` (once, from a located base: immutable asset suffixes
+  linked, the rest private copies), `overlay` (an artifact's files by
+  glob), `remove-elf32`, `mount-each` (published maps), `link` (located
+  directories; optional links are removed when their content is absent),
+  `search-paths` (the gameinfo block, written with LF newlines as the
+  Python staging did) and `extract` (one VPK entry).
+- **Content locators** (`content.locators`): named directories with
+  defaults over `{root}` and `{home}`, overridden by `.kiln/local.json`'s
+  `content_locations`. A missing optional locator removes what it mounted.
+- **`content.vpk`**: the dependency-free VPK reader moved out of
+  `hammer.formats` (history kept) behind a small `IByteSource`; Hammer's
+  `hammer::formats::VpkArchive` is now an adapter over it with the same API.
+  `hammer.formats.vpk_archive` (30 checks), its sensitivity row (12) and
+  `hammer.adapters.mcp` (90) pass unchanged.
+- **Commands:** `kiln package <profile>` (build, then lay out the runtime)
+  and a real `kiln play` (package, then exec the plan through the new POSIX
+  process entry `platform::ExecReplacingProcess`); `kiln run` execs what is
+  staged.
+- **Evidence:** `kiln.launch-equivalence` now also compares the old and the
+  kiln runtimes entry by entry (files by SHA-256, links by resolved target):
+  Portal (1,686 entries), Portal 2 and Portal 2 FSR are equal, and a changed
+  byte in a runtime file is caught. 10 modes, 39 checks, 0 failures.
+
+Open in L1b: F-Stop's staging assembles content (its gameinfo from Portal's,
+merged sound, particle, HUD and localization files, Portal 2 models copied
+through a search-path resolver); it becomes a C++ content stage provider.
+Then the P2:CE Workshop mount set and the `video.av1` compiler.

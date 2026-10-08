@@ -372,6 +372,12 @@ struct PackageRequest
 	std::filesystem::path output; // the package to publish (must not exist yet or is replaced)
 	std::map<std::string, std::string> credentials; // never persisted
 	const ICancellation *cancel = nullptr;
+	// The build artifacts by name, for forms that lay out a whole tree.
+	std::map<std::string, Artifact> artifacts;
+	// Resolved content locators (content.locators, overridden by the
+	// workspace's content_locations): name -> directory. A locator the host
+	// lacks is absent; the form decides whether that is fatal.
+	std::map<std::string, std::filesystem::path> locations;
 };
 
 struct ManifestEntry

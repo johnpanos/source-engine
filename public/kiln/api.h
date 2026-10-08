@@ -27,6 +27,7 @@
 #include "product/profile.h"
 
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -57,6 +58,7 @@ struct SessionConfig
 	std::filesystem::path outRoot;            // out/
 	std::filesystem::path dependencyRoot;     // dependencies/
 	std::string hostTag;                      // "linux-x86_64", for aliases
+	std::filesystem::path homeDirectory;      // "{home}" in content locator defaults
 	std::optional<std::string> workspaceText; // .kiln/local.json, read by the caller
 	std::string workspaceFile = ".kiln/local.json";
 };
@@ -175,6 +177,8 @@ public:
 private:
 	foundation::Expected<std::string, Error> Locate( const std::string &nameOrAlias ) const;
 	foundation::Expected<product::Workspace, Error> LoadWorkspace() const;
+	foundation::Expected<std::map<std::string, std::filesystem::path>, Error> ResolveLocations(
+	    const product::ResolvedProfile &profile ) const;
 
 	const product::ProviderCatalog &m_Catalog;
 	platform::IToolProcessProvider &m_Processes;

@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+#include "../../../platform/posix/process_exec.h"
+
 namespace
 {
 
@@ -32,6 +34,7 @@ constexpr const char *kUsage =
     "  profiles explain <profile>     provenance and derived facts\n"
     "  doctor <profile>               host prerequisites, present or unavailable\n"
     "  build <profile> [--flavor <f>] Waf configure (when changed), build and install\n"
+    "  package <profile> [--flavor <f>] build, then lay out the platform package (the runtime)\n"
     "  switches <profile>             the profile's launch switches\n"
     "  play <profile> [map] [--set <switch>]... [--flavor <f>] [--dry-run] [-- args]\n"
     "  run <profile> [map] [--set <switch>]... [--flavor <f>] [--dry-run] [-- args]\n";
@@ -82,6 +85,17 @@ std::optional<std::string> ReadText( const fs::path &path )
 	return text.str();
 }
 
+// Become the planned program (kiln play/run on this host).
+int Exec( const kiln::LaunchPlan &plan )
+{
+	std::cout.flush();
+	std::cerr.flush();
+	std::string error;
+	platform::ExecReplacingProcess( plan.argv, plan.environment, plan.workingDirectory.string(), error );
+	std::cerr << "kiln: " << error << " (kiln play builds and packages first)\n";
+	return 127;
+}
+
 } // namespace
 
 int main( int argc, char **argv )
@@ -124,6 +138,8 @@ int main( int argc, char **argv )
 	config.outRoot = root / "out";
 	config.dependencyRoot = root / "dependencies";
 	config.hostTag = composition.Value().hostTag;
+	if ( const char *home = std::getenv( "HOME" ) )
+		config.homeDirectory = home;
 	config.workspaceText = ReadText( root / ".kiln" / "local.json" );
 	StderrSink sink( json );
 	kiln::Session session( composition.Value().catalog, *composition.Value().processes,
@@ -194,11 +210,12 @@ int main( int argc, char **argv )
 		}
 		return ok ? 0 : 1;
 	}
-	if ( command == "build" && args.size() >= 2 )
+	if ( ( command == "build" || command == "package" ) && args.size() >= 2 )
 	{
 		kiln::PipelineRequest request;
 		request.profile = args[1];
-		request.upTo = product::StageRole::kEngine;
+		request.upTo =
+		    command == "build" ? product::StageRole::kEngine : product::StageRole::kPackage;
 		for ( size_t i = 2; i < args.size(); ++i )
 		{
 			if ( args[i] == "--flavor" && i + 1 < args.size() )
@@ -277,9 +294,19 @@ int main( int argc, char **argv )
 			std::cout << kiln::ToJson( plan.Value() ).WritePretty() << '\n';
 			return 0;
 		}
-		return Failure( json,
-		    kiln::Error{ "unavailable", "launching needs the linux-dir packager (RFC 0027 L1b); "
-		                                "use --dry-run for the launch plan" } );
+		if ( command == "play" )
+		{
+			kiln::PipelineRequest build;
+			build.profile = request.profile;
+			build.flavor = request.flavor;
+			build.upTo = product::StageRole::kPackage;
+			auto built = session.Run( build );
+			if ( !built )
+				return Failure( json, built.Error() );
+			for ( const auto &stage : built.Value().stages )
+				std::cerr << "kiln: " << stage.name << ": " << stage.summary << '\n';
+		}
+		return Exec( plan.Value() );
 	}
 	return Usage();
 }

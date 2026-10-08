@@ -44,6 +44,12 @@
         "allowedEdges": []
       },
       {
+        "id": "content.vpk",
+        "owns": "The dependency-free VPK archive reader (extracted from hammer.formats; RFC 0027)",
+        "paths": ["public/content/vpk_archive.h", "content/vpk_archive.cpp"],
+        "allowedEdges": []
+      },
+      {
         "id": "content.asset-identity",
         "paths": ["public/content/asset_identity.h", "content/asset_identity.cpp"],
         "allowedEdges": ["content.block-container"]
@@ -104,6 +110,12 @@
         "allowedEdges": ["product.contracts"]
       },
       {
+        "id": "product.package.linux-dir",
+        "owns": "RFC 0027: the linux-dir packager: a persistent runnable directory from profile steps",
+        "paths": ["public/product/package_linux_dir.h", "product/package/"],
+        "allowedEdges": ["product.contracts", "content.vpk"]
+      },
+      {
         "id": "kiln.core",
         "owns": "RFC 0027: the pipeline as a library (kiln.api): sessions, requests, the stage graph runner, evidence",
         "paths": ["public/kiln/api.h", "product/kiln/core/"],
@@ -113,13 +125,13 @@
         "id": "kiln.composition",
         "owns": "RFC 0027: the default provider catalog (ComposeDefaultCatalog)",
         "paths": ["public/kiln/composition.h", "product/kiln/composition/"],
-        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.stage.waf", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
+        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.stage.waf", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
       },
       {
         "id": "kiln.app",
         "owns": "RFC 0027: the thin kiln application (argument parsing and output only)",
         "paths": ["product/kiln/app/"],
-        "allowedEdges": ["kiln.core", "kiln.composition", "foundation.json"]
+        "allowedEdges": ["kiln.core", "kiln.composition", "foundation.json", "platform.posix"]
       },
       {
         "id": "kiln.fixture-platform",
@@ -131,7 +143,7 @@
         "id": "kiln.tests",
         "kind": "native-test",
         "paths": ["unittests/kilntest/"],
-        "allowedEdges": ["kiln.core", "kiln.composition", "kiln.fixture-platform", "product.contracts", "product.profile", "product.toolchain.linux", "product.stage.waf", "platform.contracts", "platform.posix", "jobs.graph", "foundation", "foundation.json", "testing.contracts"]
+        "allowedEdges": ["kiln.core", "kiln.composition", "kiln.fixture-platform", "product.contracts", "product.profile", "product.toolchain.linux", "product.stage.waf", "product.package.linux-dir", "platform.contracts", "platform.posix", "jobs.graph", "foundation", "foundation.json", "testing.contracts"]
       },
       {
         "id": "content.asset-tests",
@@ -1899,15 +1911,17 @@
       "product_contracts": {"allowedUse": ["product_profile", "foundation_json"]},
       "product_toolchain_linux": {"allowedUse": ["product_contracts"]},
       "product_stage_waf": {"allowedUse": ["product_contracts"]},
+      "product_package_linux_dir": {"allowedUse": ["product_contracts", "content_vpk"]},
       "kiln_core": {"allowedUse": ["product_contracts", "product_profile", "foundation_json", "jobsystem"]},
-      "kiln_composition": {"allowedUse": ["kiln_core", "product_toolchain_linux", "product_stage_waf", "platform_posix", "jobsystem"]},
-      "kiln": {"allowedUse": ["kiln_composition", "kiln_core", "foundation_json"]},
+      "kiln_composition": {"allowedUse": ["kiln_core", "product_toolchain_linux", "product_stage_waf", "product_package_linux_dir", "platform_posix", "jobsystem"]},
+      "kiln": {"allowedUse": ["kiln_composition", "kiln_core", "foundation_json", "platform_posix"]},
       "kiln_fixture_platform": {"allowedUse": ["product_contracts", "product_profile", "foundation_json"]},
       "kilntest": {"allowedUse": ["kiln_fixture_platform", "kiln_core", "product_toolchain_linux", "product_stage_waf", "product_contracts", "product_profile", "foundation_json", "platform_posix", "jobsystem"]},
       "content_hash": {"allowedUse": []},
       "asset_identity": {"allowedUse": ["content_hash"]},
       "asset_index": {"allowedUse": ["asset_identity", "content_hash"]},
       "asset_resolver": {"allowedUse": ["asset_index"]},
+      "content_vpk": {"allowedUse": []},
       "content_graph": {"allowedUse": ["asset_index", "asset_identity", "content_hash"]},
       "material_compiler": {"allowedUse": ["content_graph", "kvtext"]},
       "content_build": {"allowedUse": ["content_graph", "material_compiler"]},
@@ -2724,7 +2738,7 @@
         "externalBases": ["platform.posix", "testing.contracts"],
         "adapterConsumers": ["kiln.composition", "kiln.fixture-platform", "kiln.tests"],
         "edgeCeilings": {
-          "kiln.app": ["kiln.core", "kiln.composition", "foundation.json"],
+          "kiln.app": ["kiln.core", "kiln.composition", "foundation.json", "platform.posix"],
           "kiln.core": ["foundation", "foundation.json", "platform.contracts", "product.profile", "product.contracts", "jobs.graph"]
         },
         "forbiddenLiterals": {
@@ -3122,7 +3136,8 @@
           "content.vmf",
           "foundation",
           "content.texture-contract",
-          "content.vtf-container"
+          "content.vtf-container",
+          "content.vpk"
         ]
       },
       {

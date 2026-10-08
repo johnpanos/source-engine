@@ -1,7 +1,8 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: Dependency-free reader for Valve Pack (VPK) archives (RFC 0002,
-//			hammer.formats). A .vpk "directory" file (xxx_dir.vpk) holds a tree of
+// Purpose: Hammer's VPK asset source (RFC 0002, hammer.formats): the
+//			content.vpk reader (public/content/vpk_archive.h) behind Hammer's
+//			IByteStore and IAssetSource ports. Format notes: A .vpk "directory" file (xxx_dir.vpk) holds a tree of
 //			extension -> path -> file records; each record's payload is a short
 //			"preload" run stored inline in the directory plus a chunk stored either
 //			in the directory's own data section or in a sibling data archive
@@ -24,6 +25,7 @@
 #ifndef HAMMER_FORMATS_VPK_ARCHIVE_H
 #define HAMMER_FORMATS_VPK_ARCHIVE_H
 
+#include "content/vpk_archive.h"
 #include "hammer/ports/asset_source.h"
 #include "hammer/ports/byte_store.h"
 
@@ -36,30 +38,14 @@
 namespace hammer::formats
 {
 
-// One resolved directory record. 'preloadBytes' precede the chunk and live in the
-// directory file at 'preloadOffset'. The chunk (length 'chunkLength') lives in a
-// data archive named by 'archiveIndex', at 'chunkOffset', except when
-// 'archiveIndex' is kInlineArchiveIndex, where it lives in the directory file's
-// own data section.
-struct VpkEntry
-{
-	std::string path; // canonical: lower-case, forward-slash, extension included
-	std::uint32_t crc = 0;
-	std::uint16_t archiveIndex = 0;
-	std::uint16_t preloadBytes = 0;
-	std::uint64_t preloadOffset = 0; // absolute offset in the directory file
-	std::uint32_t chunkOffset = 0;
-	std::uint32_t chunkLength = 0;
-
-	// Total logical file size the caller sees (preload + chunk).
-	std::uint64_t TotalSize() const { return std::uint64_t( preloadBytes ) + chunkLength; }
-};
+// The record type is content.vpk's; Hammer adapts its byte store.
+using VpkEntry = content::VpkEntry;
 
 class VpkArchive final : public hammer::ports::IAssetSource
 {
 public:
 	// The sentinel archiveIndex meaning "the chunk is in the _dir.vpk data section".
-	static constexpr std::uint16_t kInlineArchiveIndex = 0x7fff;
+	static constexpr std::uint16_t kInlineArchiveIndex = content::VpkArchive::kInlineArchiveIndex;
 
 	// Parses the directory tree of the VPK whose _dir.vpk file is 'dirVpkPath',
 	// reading through 'store'. 'dirVpkPath' should be the path of the directory
@@ -69,9 +55,9 @@ public:
 	static std::unique_ptr<VpkArchive> Open(
 	    const hammer::ports::IByteStore &store, const std::string &dirVpkPath, std::string &error );
 
-	std::uint32_t Version() const { return m_version; }
-	const std::vector<VpkEntry> &Entries() const { return m_entries; }
-	const VpkEntry *Find( const std::string &path ) const;
+	std::uint32_t Version() const { return m_archive->Version(); }
+	const std::vector<VpkEntry> &Entries() const { return m_archive->Entries(); }
+	const VpkEntry *Find( const std::string &path ) const { return m_archive->Find( path ); }
 
 	// IAssetSource.
 	bool HasAsset( const std::string &path ) const override;
@@ -80,18 +66,29 @@ public:
 	    std::vector<std::string> &out ) const override;
 
 private:
-	VpkArchive( const hammer::ports::IByteStore &store, std::string dirVpkPath );
+	// content.vpk reads through IByteSource; this forwards to Hammer's store.
+	class StoreSource final : public content::IByteSource
+	{
+	public:
+		explicit StoreSource( const hammer::ports::IByteStore &store ) : m_store( store ) {}
+		bool Size( const std::string &path, std::uint64_t &outSize ) const override
+		{
+			return m_store.Size( path, outSize );
+		}
+		bool ReadRange( const std::string &path, std::uint64_t offset, std::size_t length,
+		    std::string &out ) const override
+		{
+			return m_store.ReadRange( path, offset, length, out );
+		}
 
-	// Builds "<base>_NNN.vpk" for a data-archive index.
-	std::string DataArchivePath( std::uint16_t archiveIndex ) const;
+	private:
+		const hammer::ports::IByteStore &m_store;
+	};
 
-	const hammer::ports::IByteStore &m_store;
-	std::string m_dirVpkPath;
-	std::string m_baseName; // dir path with the "_dir.vpk"/".vpk" suffix removed
-	std::uint32_t m_version = 0;
-	std::uint64_t m_dataSectionOffset = 0; // where inline chunk data begins in _dir.vpk
-	std::vector<VpkEntry> m_entries;
-	std::map<std::string, std::size_t> m_index; // canonical path -> index into m_entries
+	explicit VpkArchive( const hammer::ports::IByteStore &store ) : m_source( store ) {}
+
+	StoreSource m_source;
+	std::unique_ptr<content::VpkArchive> m_archive;
 };
 
 } // namespace hammer::formats

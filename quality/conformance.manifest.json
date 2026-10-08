@@ -4363,6 +4363,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vpk_archive.cpp",
+        "content/vpk_archive.cpp",
         "unittests/hammertest/formats/test_vpk_archive.cpp"
       ],
       "expect": "pass"
@@ -4378,6 +4379,7 @@
       "result_protocol": "checks-v1",
       "sources": [
         "hammer/core/formats/vpk_archive.cpp",
+        "content/vpk_archive.cpp",
         "unittests/hammertest/formats/test_vpk_archive_negative.cpp"
       ],
       "expect": "pass"
@@ -6258,6 +6260,7 @@
       "sources": [
         "mdl/studio_model.cpp",
         "hammer/core/formats/vpk_archive.cpp",
+        "content/vpk_archive.cpp",
         "hammer/adapters/platform/disk_byte_store.cpp",
         "unittests/mdltest/test_studio_model_corpus.cpp"
       ],

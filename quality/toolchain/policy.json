@@ -139,6 +139,7 @@
     "asset_identity": {"dialect": "cxx20", "rfc": "0015"},
     "asset_index": {"dialect": "cxx20", "rfc": "0015"},
     "asset_resolver": {"dialect": "cxx20", "rfc": "0015"},
+    "content_vpk": {"dialect": "cxx20", "rfc": "0027"},
     "content_graph": {"dialect": "cxx20", "rfc": "0015"},
     "material_compiler": {"dialect": "cxx20", "rfc": "0015"},
     "content_build": {"dialect": "cxx20", "rfc": "0015"},
@@ -151,6 +152,7 @@
     "kiln_core": {"dialect": "cxx20", "rfc": "0027"},
     "kiln_composition": {"dialect": "cxx20", "rfc": "0027"},
     "kiln": {"dialect": "cxx20", "rfc": "0027"},
+    "product_package_linux_dir": {"dialect": "cxx20", "rfc": "0027"},
     "kilntest": {"dialect": "cxx20", "rfc": "0027"},
     "kiln_fixture_platform": {"dialect": "cxx20", "rfc": "0027"},
     "jobsystem": {

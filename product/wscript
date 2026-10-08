@@ -17,7 +17,8 @@ def build(bld):
 		('product_profile', 'profile/profile.cpp', 'product.profile', ['foundation_json']),
 		('product_contracts', 'contracts/contracts.cpp', 'product.contracts', ['product_profile', 'foundation_json']),
 		('product_toolchain_linux', 'toolchain/linux.cpp', 'product.toolchain.linux', ['product_contracts']),
-		('product_stage_waf', 'stage/waf_engine.cpp', 'product.stage.waf', ['product_contracts'])):
+		('product_stage_waf', 'stage/waf_engine.cpp', 'product.stage.waf', ['product_contracts']),
+		('product_package_linux_dir', 'package/linux_dir.cpp', 'product.package.linux-dir', ['product_contracts', 'content_vpk'])):
 		bld.stlib(env=strict, source=[source], target=target, name=target,
 			arch_module=module, features='cxx', includes=['../public'], use=use,
 			install_path=None)

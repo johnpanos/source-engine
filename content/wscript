@@ -16,7 +16,8 @@ def build(bld):
 		('content_hash', 'hash.cpp', 'content.block-container', []),
 		('asset_identity', 'asset_identity.cpp', 'content.asset-identity', ['content_hash']),
 		('asset_index', 'asset_index.cpp', 'content.asset-index', ['asset_identity', 'content_hash']),
-		('asset_resolver', 'asset_resolver.cpp', 'content.asset-resolver', ['asset_index'])):
+		('asset_resolver', 'asset_resolver.cpp', 'content.asset-resolver', ['asset_index']),
+		('content_vpk', 'vpk_archive.cpp', 'content.vpk', [])):
 		bld.stlib(env=strict, source=[source], target=target, name=target,
 			arch_module=module, features='cxx', includes=['../public'], use=use,
 			install_path=None)

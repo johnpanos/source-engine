@@ -76,6 +76,7 @@ struct RunState
 	std::vector<std::string> extraArguments;
 	std::optional<product::PackageManifest> manifest;
 	std::optional<product::LaunchResult> launch;
+	std::map<std::string, fs::path> locations;
 };
 
 std::vector<std::string> StringList( const Value *value )
@@ -133,12 +134,19 @@ public:
 		product::PackageRequest request;
 		request.profile = m_State.profile;
 		request.cancel = inputs.Cancel();
-		request.output = m_State.tree / "package";
+		const Value *packageSection = m_State.profile->document.Find( "package" );
+		const std::string *directory =
+		    packageSection ? packageSection->FindString( "directory" ) : nullptr;
+		request.output = m_State.tree / ( directory ? *directory : std::string( "package" ) );
+		request.locations = m_State.locations;
 		for ( const std::string &name : m_Consumes )
 		{
 			if ( const Artifact *artifact = inputs.Get( name ) )
+			{
 				AddFiles( *artifact, artifact->type == "install" ? "install" : "content",
 				    request.inputs );
+				request.artifacts[name] = *artifact;
+			}
 		}
 		std::sort( request.inputs.begin(), request.inputs.end(),
 		    []( const auto &a, const auto &b )
@@ -415,6 +423,40 @@ foundation::Expected<DoctorResult, Error> Session::Doctor( const std::string &na
 	return result;
 }
 
+foundation::Expected<std::map<std::string, fs::path>, Error> Session::ResolveLocations(
+    const product::ResolvedProfile &profile ) const
+{
+	std::map<std::string, fs::path> locations;
+	auto workspace = LoadWorkspace();
+	if ( !workspace )
+		return foundation::MakeUnexpected( workspace.Error() );
+	const Value *personal = workspace.Value().document.Find( "content_locations" );
+	const Value *content = profile.document.Find( "content" );
+	const Value *locators = content ? content->Find( "locators" ) : nullptr;
+	if ( !locators )
+		return locations;
+	for ( const auto &member : locators->Members() )
+	{
+		std::string path;
+		if ( const std::string *chosen = personal ? personal->FindString( member.first ) : nullptr )
+			path = *chosen;
+		else if ( const std::string *fallback = member.second.FindString( "default" ) )
+			path = *fallback;
+		for ( const auto &[token, value] :
+		    { std::pair<std::string, std::string>{ "{root}", m_Config.sourceRoot.string() },
+		        std::pair<std::string, std::string>{ "{home}", m_Config.homeDirectory.string() } } )
+		{
+			for ( size_t at = path.find( token ); at != std::string::npos;
+			    at = path.find( token, at + value.size() ) )
+				path.replace( at, token.size(), value );
+		}
+		std::error_code ec;
+		if ( !path.empty() && fs::exists( path, ec ) )
+			locations[member.first] = path;
+	}
+	return locations;
+}
+
 foundation::Expected<PipelineResult, Error> Session::Run( const PipelineRequest &request )
 {
 	auto resolved = ResolveForLaunch( request.profile );
@@ -473,6 +515,10 @@ foundation::Expected<PipelineResult, Error> Session::Run( const PipelineRequest 
 		}
 		step.effectiveRole = role;
 	}
+	auto locations = ResolveLocations( profile );
+	if ( !locations )
+		return foundation::MakeUnexpected( locations.Error() );
+	state.locations = std::move( locations ).Value();
 	std::vector<std::unique_ptr<product::IProductStage>> contractSteps;
 	const Value *package = profile.document.Find( "package" );
 	const std::string *form = package ? package->FindString( "form" ) : nullptr;

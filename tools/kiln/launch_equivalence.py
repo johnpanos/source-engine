@@ -164,6 +164,15 @@ def lock_aliases(build, name):
     return made
 
 
+def align_published_maps():
+    """The old staging reads run/maps beside its own scripts; give a linked
+    worktree the same store kiln's workspace names (both see one store)."""
+    local = ROOT / "run" / "maps"
+    if MAIN_RUN != ROOT / "run" and not local.exists():
+        local.parent.mkdir(parents=True, exist_ok=True)
+        local.symlink_to(MAIN_RUN / "maps", target_is_directory=True)
+
+
 def old_launch(mode, argv, profile, kind, extra_env):
     capture = SCRATCH / ("capture-%s.bin" % mode)
     capture.unlink(missing_ok=True)
@@ -251,13 +260,57 @@ def compare(mode, record, old_runtime, base, kiln_args, record_out):
     return same_argv, same_env, same_cwd, detail.strip()
 
 
+def runtime_manifest(root):
+    """Every entry of a runtime: files by content hash, links by resolved
+    target, directories by name. kiln's own record is not content."""
+    import hashlib
+    root = Path(root)
+    out = {}
+    for directory, directories, files in os.walk(root, followlinks=False):
+        for name in directories + files:
+            path = Path(directory) / name
+            relative = path.relative_to(root).as_posix()
+            if name == ".kiln-package.json":
+                continue
+            if path.is_symlink():
+                out[relative] = ("link", os.path.realpath(path))
+            elif path.is_dir():
+                out[relative] = ("dir",)
+            else:
+                digest = hashlib.sha256()
+                with path.open("rb") as stream:
+                    for chunk in iter(lambda: stream.read(1 << 20), b""):
+                        digest.update(chunk)
+                out[relative] = ("file", digest.hexdigest())
+    return out
+
+
+# Entries that may differ between the runtimes, with the reason.
+RECORDED_MANIFEST_DIFFERENCES = {}
+
+
+def compare_manifests(old_root, new_root):
+    old, new = runtime_manifest(old_root), runtime_manifest(new_root)
+    problems = []
+    for key in sorted(set(old) | set(new)):
+        if key in RECORDED_MANIFEST_DIFFERENCES:
+            continue
+        if old.get(key) != new.get(key):
+            problems.append("%s: old %s, kiln %s" % (key, old.get(key, ("absent",))[0],
+                                                     new.get(key, ("absent",))[0]))
+    return len(old), len(new), problems
+
+
 def check(selected, keep):
     record = Record()
     SCRATCH.mkdir(parents=True, exist_ok=True)
+    align_published_maps()
     evidence = {"schema": "kiln-launch-equivalence/v1", "recorded_env_differences":
                 {k: v for k, v in RECORDED_ENV_DIFFERENCES.items() if v}, "modes": {}, "seeded": {}}
     built = set()
+    packaged = {}
     captures = {}
+    evidence["manifests"] = {}
     for mode in selected:
         argv, kiln_args, profile, kind, *rest = MODES[mode]
         extra_env = rest[0] if rest else {}
@@ -274,6 +327,24 @@ def check(selected, keep):
         record.check(same_argv, mode + ": kiln play --dry-run gives the old launcher's argv", detail)
         record.check(same_env, mode + ": and its environment", detail)
         record.check(same_cwd, mode + ": and its working directory")
+        if profile not in packaged:
+            kiln("package", kiln_args[0])
+            packaged[profile] = Path(json.loads(kiln("play", kiln_args[0], "--dry-run"))["runtime"])
+            old_count, new_count, problems = compare_manifests(runtime, packaged[profile])
+            evidence["manifests"][profile] = {"old_entries": old_count, "kiln_entries": new_count,
+                                              "differences": problems[:50]}
+            record.check(not problems, mode + ": the kiln runtime has the old runtime's manifest (%d entries)"
+                         % old_count, "; ".join(problems[:5]))
+            if not problems:
+                # Seeded: one changed byte in a copied file must be caught.
+                victim = next((p for p in sorted(Path(packaged[profile]).rglob("*.txt"))
+                               if p.is_file() and not p.is_symlink()), None)
+                if victim:
+                    saved = victim.read_bytes()
+                    victim.write_bytes(saved + b" ")
+                    _, _, seeded = compare_manifests(runtime, packaged[profile])
+                    victim.write_bytes(saved)
+                    record.check(bool(seeded), mode + ": seeded difference caught: a changed runtime file")
     for name, (mode, kiln_args) in SEEDED.items():
         if mode not in captures:
             continue

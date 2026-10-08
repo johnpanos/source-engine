@@ -96,5 +96,166 @@
         }
       }
     }
+  },
+  "package": {
+    "form": "linux-dir",
+    "directory": "runtime",
+    "steps": [
+      {
+        "op": "seed",
+        "from": "steam-portal2",
+        "marker": "portal2/gameinfo.txt",
+        "game": "portal2",
+        "content_only": true,
+        "shared_suffixes": [
+          ".vpk",
+          ".bsp",
+          ".vtf",
+          ".vmt",
+          ".mdl",
+          ".vvd",
+          ".vtx",
+          ".phy",
+          ".wav",
+          ".mp3",
+          ".ogg",
+          ".webm",
+          ".bik"
+        ],
+        "skip_directories": [
+          "screenshots",
+          "save",
+          "logs",
+          "dumps"
+        ],
+        "skip_suffixes": [
+          ".log",
+          ".dmp"
+        ]
+      },
+      {
+        "op": "link",
+        "path": "update",
+        "from": "steam-portal2",
+        "source": "update",
+        "check": "pak01_dir.vpk"
+      },
+      {
+        "op": "link",
+        "path": "portal2_dlc2",
+        "from": "steam-portal2",
+        "source": "portal2_dlc2",
+        "check": "pak01_dir.vpk"
+      },
+      {
+        "op": "link",
+        "path": "portal2_dlc1",
+        "from": "steam-portal2",
+        "source": "portal2_dlc1",
+        "check": "pak01_dir.vpk"
+      },
+      {
+        "op": "link",
+        "path": "retail_platform",
+        "from": "steam-portal2",
+        "source": "platform",
+        "check": "resource"
+      },
+      {
+        "op": "link",
+        "path": "media_av1",
+        "from": "av1-media",
+        "check": "manifest.json",
+        "optional": true
+      },
+      {
+        "op": "search-paths",
+        "file": "portal2/gameinfo.txt",
+        "lines": [
+          "game+mod\t\t\t|gameinfo_path|custom/*",
+          {
+            "each_directory": "workshop",
+            "line": "game+mod\t\t\t|gameinfo_path|../workshop/{item}",
+            "when_exists": "workshop"
+          },
+          {
+            "when_exists": "media_av1/update/media",
+            "line": "game+mod\t\t\t|gameinfo_path|../media_av1/update"
+          },
+          "game+mod\t\t\t|gameinfo_path|../update/pak01_dir.vpk",
+          "game+mod\t\t\t|gameinfo_path|../update",
+          {
+            "when_exists": "media_av1/portal2_dlc2/media",
+            "line": "game+mod\t\t\t|gameinfo_path|../media_av1/portal2_dlc2"
+          },
+          "game+mod\t\t\t|gameinfo_path|../portal2_dlc2/pak01_dir.vpk",
+          "game+mod\t\t\t|gameinfo_path|../portal2_dlc2",
+          {
+            "when_exists": "media_av1/portal2_dlc1/media",
+            "line": "game+mod\t\t\t|gameinfo_path|../media_av1/portal2_dlc1"
+          },
+          "game+mod\t\t\t|gameinfo_path|../portal2_dlc1/pak01_dir.vpk",
+          "game+mod\t\t\t|gameinfo_path|../portal2_dlc1",
+          {
+            "when_exists": "media_av1/portal2/media",
+            "line": "game+mod\t\t\t|gameinfo_path|../media_av1/portal2"
+          },
+          "game+mod\t\t\t|gameinfo_path|pak01_dir.vpk",
+          "game+mod+mod_write+game_write+default_write_path\t|gameinfo_path|.",
+          "gamebin\t\t\t\t|gameinfo_path|bin",
+          "platform\t\t\t|gameinfo_path|../platform",
+          "platform\t\t\t|gameinfo_path|../retail_platform"
+        ]
+      },
+      {
+        "op": "extract",
+        "from": "steam-portal2",
+        "archive": "portal2/pak01_dir.vpk",
+        "entry": "materials/console/portal2_product_1_widescreen.vtf",
+        "path": "portal2/materials/console/background_menu_widescreen.vtf"
+      },
+      {
+        "op": "extract",
+        "from": "steam-portal2",
+        "archive": "portal2/pak01_dir.vpk",
+        "entry": "materials/console/portal2_product_1.vtf",
+        "path": "portal2/materials/console/background_menu.vtf"
+      },
+      {
+        "op": "mount-each",
+        "from": "published-maps",
+        "into": "portal2/custom",
+        "prefix": "pbrt-",
+        "record": "published.json",
+        "require": "maps/{name}.bsp",
+        "skip_if_exists": "portal2/maps/{name}.bsp",
+        "optional": true
+      },
+      {
+        "op": "overlay",
+        "artifact": "engine-install",
+        "include": [
+          "hl2_launcher",
+          "bin/*.so",
+          "portal2/bin/*.so"
+        ]
+      }
+    ]
+  },
+  "content": {
+    "locators": {
+      "steam-portal2": {
+        "default": "{home}/.local/share/Steam/steamapps/common/Portal 2",
+        "description": "The installed retail Portal 2 (P2_STEAM_ROOT)"
+      },
+      "av1-media": {
+        "default": "{root}/run/media-av1",
+        "description": "AV1 transcodes of the retail movies (tools/video/transcode_av1.py, P2_AV1_MEDIA); absent means no AV1 movies are mounted"
+      },
+      "published-maps": {
+        "default": "{root}/run/maps",
+        "description": "Maps published by the map pipeline, mounted as portal2/custom/pbrt-<map>"
+      }
+    }
   }
 }
