@@ -82,6 +82,19 @@ struct LegacyShaderServices
 		bool ( *describe )( void *context, int adapter, RenderAdapterInfo *info ) = nullptr;
 	} coreAdapter;
 
+	// Optional (RFC 0016 legacy device facade, F2): the render core's owner
+	// of the backend's device. The material system's device facade has it
+	// create the device for the engine's window before the backend sets a
+	// video mode (prepare: false with the reason, the mode then fails), and
+	// release it after the backend shut down. A backend without a device
+	// (the null one) leaves it empty.
+	struct CoreDeviceSource
+	{
+		void *context = nullptr;
+		bool ( *prepare )( void *context, void *window, char *error, size_t errorSize ) = nullptr;
+		void ( *release )( void *context ) = nullptr;
+	} coreDevice;
+
 	bool IsComplete() const
 	{
 		return manager && api && device && shadow && hardware;

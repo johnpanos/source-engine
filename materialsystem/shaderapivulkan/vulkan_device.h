@@ -89,9 +89,12 @@ using VulkanMemory = render::device::vulkan::HostAllocation;
 // satisfied fails Init() with a diagnostic instead of silently degrading.
 struct VulkanContextConfig
 {
-	// The Vulkan adapter that creates the device (the composition root binds
-	// it: NativeVulkanShaderBackend_BindDeviceFactory). Init fails without it.
-	const render::device::vulkan::IHostDeviceFactory *deviceFactory = nullptr;
+	// The owner of the device this context borrows (the composition root
+	// binds it: NativeVulkanShaderBackend_BindDeviceOwner; RFC 0016 legacy
+	// device facade F2). Init adopts the owner's device when the root created
+	// it, else has the owner create it from this context's request; Init
+	// fails without an owner. The owner, never the context, destroys it.
+	render::device::vulkan::IHostDeviceOwner *deviceOwner = nullptr;
 	// Reports an error the frame cannot continue after (the shader API's
 	// Error). Without one the context logs the message and aborts.
 	void ( *fatalError )( const char *message ) = nullptr;
@@ -138,6 +141,11 @@ public:
 	// *outError with a specific reason, and leaves the context fully torn down
 	// (safe to destroy, never partially live).
 	bool Init( IVulkanSurfaceHost &host, const VulkanContextConfig &config, std::string *outError );
+	// What this context needs of the device, for its owner to create it
+	// ahead of Init (the owner's requester). Borrows the host and keeps the
+	// request's arrays alive until Init.
+	bool PrepareDeviceRequest( IVulkanSurfaceHost &host, const VulkanContextConfig &config,
+	    render::device::vulkan::HostDeviceRequest *request, std::string *outError );
 
 	// Idempotent teardown. Waits for the device to go idle first.
 	void Shutdown();
@@ -1715,8 +1723,13 @@ private:
 
 	// The device this context borrows (render.device.vulkan's host interop);
 	// the handles below are its, cached.
-	std::unique_ptr<render::device::vulkan::IHostDevice> m_hostDevice;
-	std::vector<const char *> m_deviceExtensions; // DescribeDevice's, until creation
+	render::device::vulkan::IHostDevice *m_hostDevice = nullptr;
+	// This context had the owner create the device (no root created it ahead
+	// of Init: a GPU suite's host), so it releases it at Shutdown; otherwise
+	// the root releases it after this context shut down.
+	bool m_releaseDevice = false;
+	std::vector<const char *> m_deviceExtensions;   // DescribeDevice's, until creation
+	std::vector<const char *> m_instanceExtensions; // the host's, until creation
 	bool m_toolingInfo = false;
 	std::string m_createError;
 	uint64_t m_adapterAllocations = 0; // the adapter's own (its upload ring)

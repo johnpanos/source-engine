@@ -12,21 +12,6 @@
 
 namespace render_vulkan
 {
-int ScorePhysicalDeviceType( VkPhysicalDeviceType type )
-{
-	switch ( type )
-	{
-	case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
-		return 1000;
-	case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
-		return 500;
-	case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
-		return 100;
-	default:
-		return 0;
-	}
-}
-
 VkFormat SelectDepthStencilFormat( VkPhysicalDevice device )
 {
 	for ( VkFormat candidate : { VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT } )
@@ -94,74 +79,5 @@ void QueryVulkanAdapterCaps(
 		caps.depthSampleable = ( fp.optimalTilingFeatures & needed ) == needed;
 	}
 	*outCaps = caps;
-}
-
-static bool HasGraphicsQueueAndSwapchain( VkPhysicalDevice device )
-{
-	uint32_t count = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties( device, &count, nullptr );
-	std::vector<VkQueueFamilyProperties> families( count );
-	vkGetPhysicalDeviceQueueFamilyProperties( device, &count, families.data() );
-	const bool graphics = std::any_of( families.begin(), families.end(),
-	    []( const VkQueueFamilyProperties &f )
-	    {
-		    return ( f.queueFlags & VK_QUEUE_GRAPHICS_BIT ) != 0;
-	    } );
-	uint32_t extCount = 0;
-	vkEnumerateDeviceExtensionProperties( device, nullptr, &extCount, nullptr );
-	std::vector<VkExtensionProperties> extensions( extCount );
-	vkEnumerateDeviceExtensionProperties( device, nullptr, &extCount, extensions.data() );
-	const bool swapchain = std::any_of( extensions.begin(), extensions.end(),
-	    []( const VkExtensionProperties &e )
-	    {
-		    return std::strcmp( e.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME ) == 0;
-	    } );
-	return graphics && swapchain;
-}
-
-bool ProbeVulkanAdapter( VulkanAdapterCaps *outCaps, std::string *outError )
-{
-	*outCaps = VulkanAdapterCaps();
-	VkApplicationInfo app = {};
-	app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	app.pApplicationName = "Source Native Vulkan adapter probe";
-	app.pEngineName = "Source";
-	app.apiVersion = VK_API_VERSION_1_1;
-	VkInstanceCreateInfo info = {};
-	info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-	info.pApplicationInfo = &app;
-	VkInstance instance = VK_NULL_HANDLE;
-	const VkResult r = vkCreateInstance( &info, nullptr, &instance );
-	if ( r != VK_SUCCESS )
-	{
-		if ( outError )
-			*outError = "adapter probe: vkCreateInstance failed (" + std::to_string( r ) + ")";
-		return false;
-	}
-	uint32_t count = 0;
-	vkEnumeratePhysicalDevices( instance, &count, nullptr );
-	std::vector<VkPhysicalDevice> devices( count );
-	vkEnumeratePhysicalDevices( instance, &count, devices.data() );
-	VkPhysicalDevice best = VK_NULL_HANDLE;
-	int bestScore = -1;
-	for ( VkPhysicalDevice device : devices )
-	{
-		if ( !HasGraphicsQueueAndSwapchain( device ) )
-			continue;
-		VkPhysicalDeviceProperties properties = {};
-		vkGetPhysicalDeviceProperties( device, &properties );
-		const int score = ScorePhysicalDeviceType( properties.deviceType );
-		if ( score > bestScore )
-		{
-			bestScore = score;
-			best = device;
-		}
-	}
-	if ( best != VK_NULL_HANDLE )
-		QueryVulkanAdapterCaps( best, VK_FORMAT_B8G8R8A8_UNORM, outCaps );
-	vkDestroyInstance( instance, nullptr );
-	if ( best == VK_NULL_HANDLE && outError )
-		*outError = "adapter probe: no device with a graphics queue and swapchain support";
-	return best != VK_NULL_HANDLE;
 }
 } // namespace render_vulkan

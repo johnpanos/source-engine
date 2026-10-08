@@ -12,7 +12,8 @@
 //			Memory Allocator) and completion (one timeline semaphore). A host
 //			borrows them:
 //
-//			- IHostDeviceFactory::Create builds the device. The host names its
+//			- HostDeviceOwner (the composition root's) creates the device
+//			  through IHostDeviceFactory::Create and destroys it. The host names its
 //			  instance extensions (its surface's), creates its surface between
 //			  instance and device creation, and describes the device features
 //			  and extensions it needs; the adapter adds its own requirements
@@ -43,8 +44,9 @@
 #ifndef RENDER_DEVICE_VULKAN_HOST_DEVICE_H
 #define RENDER_DEVICE_VULKAN_HOST_DEVICE_H
 
-// HostDeviceFactory(): the composition root hands it to the host
-// (NativeVulkanShaderBackend_BindDeviceFactory); GPU suites call it directly.
+// HostDeviceFactory(): the composition root's HostDeviceOwner creates the
+// host's device through it (NativeVulkanShaderBackend_BindDeviceOwner); GPU
+// suites call it directly.
 #include "render/device/resources.h"
 #include "render/device/vulkan/host_binding.h"
 
@@ -302,11 +304,68 @@ public:
 	// An instance with request's instance extensions, validation and messenger.
 	virtual std::unique_ptr<IHostInstance> CreateInstance(
 	    const HostDeviceRequest &request, char *error, std::size_t errorSize ) const = 0;
-	// See DescribeHostAdapter (host_binding.h).
+	// The adapter it would select without a surface (probed once).
 	virtual bool DescribeAdapter( HostAdapterIdentity *out ) const = 0;
 
 protected:
 	~IHostDeviceFactory() = default;
+};
+
+// The one host device, owned by the composition root (RFC 0016 legacy device
+// facade, F2). The host that borrows it registers what it needs of the
+// device (a requester); the root creates the device for its window before
+// the host sets a video mode and releases it after the host shut down. The
+// host never creates or destroys the device. Thread: the render sequence.
+// The host reaches the owner through this interface only: the adapter's code
+// is linked into the root, not into the host's module.
+class IHostDeviceOwner
+{
+public:
+	// Fills `request` for `window` (the host's surface, extensions and
+	// features); false with the reason in error.
+	using Requester = bool ( * )(
+	    void *user, void *window, HostDeviceRequest *request, char *error, std::size_t errorSize );
+
+	virtual void SetRequester( Requester requester, void *user ) = 0;
+	// The device for `window` through the registered requester: created on
+	// the first call, the same device afterwards. Null with the reason.
+	virtual IHostDevice *CreateFor( void *window, char *error, std::size_t errorSize ) = 0;
+	// The device for an explicit request (a host without a requester: GPU
+	// suites); the same device when one exists.
+	virtual IHostDevice *Create(
+	    const HostDeviceRequest &request, char *error, std::size_t errorSize ) = 0;
+	virtual IHostDevice *Device() const = 0;
+	// Destroys the device; its borrowers have released everything they made.
+	virtual void Release() = 0;
+	// The adapter of the device, or before one exists the factory's probe.
+	virtual bool DescribeAdapter( HostAdapterIdentity *out ) const = 0;
+
+protected:
+	~IHostDeviceOwner() = default;
+};
+
+class HostDeviceOwner final : public IHostDeviceOwner
+{
+public:
+	explicit HostDeviceOwner( const IHostDeviceFactory &factory ) : m_Factory( factory ) {}
+	~HostDeviceOwner() { Release(); }
+	HostDeviceOwner( const HostDeviceOwner & ) = delete;
+	HostDeviceOwner &operator=( const HostDeviceOwner & ) = delete;
+
+	void SetRequester( Requester requester, void *user ) override;
+	IHostDevice *CreateFor( void *window, char *error, std::size_t errorSize ) override;
+	IHostDevice *Create(
+	    const HostDeviceRequest &request, char *error, std::size_t errorSize ) override;
+	IHostDevice *Device() const override { return m_Device.get(); }
+	void Release() override;
+	bool DescribeAdapter( HostAdapterIdentity *out ) const override;
+
+private:
+	const IHostDeviceFactory &m_Factory;
+	std::unique_ptr<IHostDevice> m_Device;
+	HostAdapterIdentity m_Identity;
+	Requester m_Requester = nullptr;
+	void *m_RequesterUser = nullptr;
 };
 
 } // namespace render::device::vulkan

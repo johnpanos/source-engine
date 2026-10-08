@@ -55,6 +55,11 @@ public:
 	void GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int nMode ) const override;
 	void GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const override;
 
+	// Has the render core create the device for the engine's window, before
+	// the backend sets a video mode (CMaterialSystem::SetMode calls it ahead
+	// of IShaderAPI::SetMode). True without a core device source.
+	bool PrepareDevice( void *hWnd );
+
 	// Methods of IShaderDeviceMgr the backend's device bring-up still owns.
 	bool SetAdapter( int nAdapter, int nFlags ) override;
 	CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode ) override;

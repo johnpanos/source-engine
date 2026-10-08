@@ -36,10 +36,6 @@ struct VulkanAdapterCaps
 	bool depthSampleable = false;
 };
 
-// Device-type ranking shared by device selection and the probe: discrete,
-// then integrated, then virtual GPUs; the first-listed device wins a tie.
-int ScorePhysicalDeviceType( VkPhysicalDeviceType type );
-
 // The depth/stencil format depth buffers use: D24S8 as D3D9 creates, else D32S8.
 // VK_FORMAT_UNDEFINED when neither is a depth/stencil attachment format.
 VkFormat SelectDepthStencilFormat( VkPhysicalDevice device );
@@ -47,13 +43,6 @@ VkFormat SelectDepthStencilFormat( VkPhysicalDevice device );
 // The caps of `device` for back buffers of `colorFormat`.
 void QueryVulkanAdapterCaps(
     VkPhysicalDevice device, VkFormat colorFormat, VulkanAdapterCaps *outCaps );
-
-// Before a window exists (the material system asks at Init, before SetMode):
-// a surface-less instance picks the best-ranked device with a graphics queue
-// and the swapchain extension, reports its caps for B8G8R8A8_UNORM back
-// buffers, and is destroyed. The live device can differ where a device cannot
-// present to the window; callers then prefer the live device's caps.
-bool ProbeVulkanAdapter( VulkanAdapterCaps *outCaps, std::string *outError );
 } // namespace render_vulkan
 
 #endif // VULKAN_ADAPTER_H

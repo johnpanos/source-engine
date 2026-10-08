@@ -1660,6 +1660,10 @@ bool CMaterialSystem::SetMode( void* hwnd, const MaterialSystem_Config_t &config
 		m_nAdapter = config.m_nVRModeAdapter;
 	}
 
+	// RFC 0016 legacy device facade F2: the core creates the device the
+	// backend borrows, before the backend sets the mode.
+	if ( !m_DeviceFacade.PrepareDevice( hwnd ) )
+		return false;
 	bool bOk = g_pShaderAPI->SetMode( hwnd, m_nAdapter, info );
 	if ( !bOk )
 		return false;

@@ -1501,7 +1501,7 @@ copy deleted in the change that replaces it:
 | Slice | Moves | State |
 | --- | --- | --- |
 | F1 | One `IShaderDeviceMgr` (`materialsystem/shader_device_facade.*`, `CShaderDeviceFacade`) answers adapter enumeration and identity, the recommended configuration (dxsupport policy) and video modes; identity comes from the core's adapter (`render::device::vulkan::DescribeHostAdapter`, the adapter the host-device factory selects or created the device on) through `LegacyShaderServices::coreAdapter`, set by the root through the legacy frontend (`RenderCore_SetLegacyAdapterSource`); the backends' adapter/mode/config code is deleted | done 2026-10-07 |
-| F2 | The root creates the device through the core's adapter before the material system sets a mode, and the backend borrows it; the backend's own pre-device adapter probe (`ProbeVulkanAdapter`, a second selection rule) is deleted | open |
+| F2 | The root creates the device through the core's adapter before the material system sets a mode, and the backend borrows it; the backend's own pre-device adapter probe (`ProbeVulkanAdapter`, a second selection rule) is deleted | done 2026-10-07: `render::device::vulkan::IHostDeviceOwner` (the root's, `CreateHostDeviceOwner`) creates, holds and destroys the device; the backend registers a requester (its surface, extensions and features) and borrows the device (`NativeVulkanShaderBackend_BindDeviceOwner` replaces `_BindDeviceFactory`); `CMaterialSystem::SetMode` has the facade create it (`LegacyShaderServices::coreDevice.prepare`) before `IShaderAPI::SetMode`, and the facade releases it after the backend's `Shutdown`; a context that had to create its own device (GPU suites) releases it at its `Shutdown`. Pre-device answers (MSAA modes, texture memory) come from the owner's description; `ProbeVulkanAdapter` and `ScorePhysicalDeviceType` are deleted |
 | F3 | Back buffer size, vsync, sample count, gamma ramp and mode-change callbacks through the SDL3 presentation bridge (`render.presentation.v1`); `SetMode`/`Present` on `IShaderDevice` become calls on the bridge | open |
 | F4 | `IShaderDevice`'s remaining device answers (back-buffer format, stencil bits, window size, views) from the core device and bridge; the backends implement neither interface | open |
 
@@ -1520,6 +1520,18 @@ its own manager did: no display modes and no maximum DX level. The suite runs as
 `render.legacy-provider` (`conformance.py check --suite render.legacy-provider
 --runner gpu`): `tools/quality/waf_tree_suite.py` builds it in the native
 Vulkan client tree and runs it with that tree's modules.
+
+F2 evidence (2026-10-07): `render.legacy-provider` 167/0 (the facade creates
+the device before the backend's mode, a refused creation fails the mode
+without reaching the backend, and the device is released after the
+backend's shutdown); a `testchmb_a_01` boot logs `device borrowed from the
+root's owner` and exits 0; `testchmb_a_00`, `testchmb_a_01` and `null` boots
+pass; the ten source-built native Vulkan GPU suites pass with an owner
+(their source lists gained `texturecontainer/block_decode.cpp`, missing since
+`f347f6155`); `native_vulkan_bringup_conformance` passes 157/0. Not run:
+`material_equivalence_vulkan_conformance` and
+`material_facing_vulkan_conformance`, which are outside the manifest and
+crash before F2 (an unconnected ConVar in their host).
 
 ### The surface model: legacy definitions in the modern core (plan, 2026-09-28; amended 2026-10-03)
 

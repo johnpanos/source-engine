@@ -98,35 +98,34 @@ static int NativeCapsDxLevel()
 	return s_nLevel;
 }
 
+// The owner of the device (render.device.vulkan) the composition root bound:
+// it creates the device the context borrows, before the material system sets
+// a video mode, and destroys it after this backend shut down (RFC 0016 legacy
+// device facade F2). The adapter's code lives in the root's module.
+static render::device::vulkan::IHostDeviceOwner *g_HostDeviceOwner = nullptr;
+
 // The adapter's identity and caps (vulkan_adapter.h): the live device once
-// SetMode brought it up; before that, a probe (the material system asks at
-// Init, before any window exists). The probe runs once.
+// SetMode brought it up; before that, the owner's description of the adapter
+// it will create the device on (the material system asks at Init, before any
+// window exists).
 static const render_vulkan::VulkanAdapterCaps &CurrentAdapterCaps()
 {
-	static render_vulkan::VulkanAdapterCaps s_Probe;
-	static bool s_bProbed = false;
 	if ( g_VulkanContext.IsValid() )
+		return g_VulkanContext.AdapterCaps();
+	static render_vulkan::VulkanAdapterCaps s_Described;
+	render::device::vulkan::HostAdapterIdentity identity;
+	if ( !s_Described.valid && g_HostDeviceOwner &&
+	     g_HostDeviceOwner->DescribeAdapter( &identity ) )
 	{
-		// A probe that chose another device (one that cannot present to the
-		// window) described a different adapter to dxsupport.cfg.
-		const render_vulkan::VulkanAdapterCaps &live = g_VulkanContext.AdapterCaps();
-		static bool s_bCompared = false;
-		if ( s_bProbed && !s_bCompared && s_Probe.valid &&
-		     ( s_Probe.vendorId != live.vendorId || s_Probe.deviceId != live.deviceId ) )
-			Warning( "[NativeVulkan] the pre-window adapter probe chose '%s', the device is '%s'; "
-			         "recommended settings described the probed adapter\n",
-			    s_Probe.name.c_str(), live.name.c_str() );
-		s_bCompared = true;
-		return live;
+		s_Described.valid = true;
+		s_Described.name = identity.name;
+		s_Described.vendorId = identity.vendorId;
+		s_Described.deviceId = identity.deviceId;
+		s_Described.driverVersion = identity.driverVersion;
+		s_Described.largestDeviceLocalHeapBytes = identity.deviceLocalBytes;
+		s_Described.backBufferSampleMask = identity.sampleCounts;
 	}
-	if ( !s_bProbed )
-	{
-		s_bProbed = true;
-		std::string error;
-		if ( !render_vulkan::ProbeVulkanAdapter( &s_Probe, &error ) )
-			Warning( "[NativeVulkan] %s\n", error.c_str() );
-	}
-	return s_Probe;
+	return s_Described;
 }
 
 // PIXEventLevel (public/materialsystem/imaterialsystem.h): which of the
@@ -179,11 +178,6 @@ static uint32_t EmitParallelMinVertices()
 	const int value = s_forced >= 0 ? s_forced : mat_vk_emit_parallel_min_vertices.GetInt();
 	return static_cast<uint32_t>( std::max( 1, value ) );
 }
-
-// The Vulkan adapter (render.device.vulkan) the composition root bound: it
-// creates the device the context borrows (RFC 0016 K1, one Vulkan stack). The
-// adapter's code lives in the root's module, so this one holds no copy.
-static const render::device::vulkan::IHostDeviceFactory *g_DeviceFactory = nullptr;
 
 // RFC 0016 K3: the frame runs in the render core's frame graph. The
 // composition root binds the legacy frontend's executor
@@ -313,30 +307,61 @@ static bool RunVulkanFrame( std::string *outError )
 	return ok;
 }
 
+// The context's configuration for a bring-up: the shader API's settings and
+// the capture-tool support (tools/renderdoc/README.md): object names and
+// command labels (-vkdebuglabels, -novkdebuglabels; by default on under
+// validation or a capture tool) and debug shader variants (the directory
+// shaders/regen_material_spv.py --debug-out wrote, in SOURCE_VK_SHADER_DIR: an
+// environment variable, since the launcher's command line is limited to 512
+// characters and harness boots already come close).
+static render_vulkan::VulkanContextConfig MakeContextConfig( bool vsync )
+{
+	render_vulkan::VulkanContextConfig config;
+	config.appName = "Source Engine Native Vulkan";
+	config.enableValidation = ( CommandLine()->FindParm( "-vkvalidate" ) != 0 );
+	config.framesInFlight = 2;
+	config.vsync = vsync;
+	if ( CommandLine()->FindParm( "-vkdebuglabels" ) )
+		config.debugLabels = render_vulkan::DebugLabelPolicy::On;
+	else if ( CommandLine()->FindParm( "-novkdebuglabels" ) )
+		config.debugLabels = render_vulkan::DebugLabelPolicy::Off;
+	if ( const char *shaderDir = getenv( "SOURCE_VK_SHADER_DIR" ) )
+		config.shaderDebugDirectory = shaderDir;
+	config.deviceOwner = g_HostDeviceOwner;
+	config.hdrScene = g_VulkanContext.HasCorePassRecorder();
+	return config;
+}
+
+// The owner's requester: what this backend needs of the device for the
+// engine's window (its surface through the pair-specific bridge, its
+// extensions and features). The surface host it makes is the one Init uses.
+static bool RequestDeviceForWindow( void *, void *legacyWindowRef,
+    render::device::vulkan::HostDeviceRequest *request, char *error, std::size_t errorSize )
+{
+	std::string reason;
+	std::unique_ptr<render_vulkan::IVulkanSurfaceHost> host =
+	    render_vulkan::MakeSdl3LegacySurfaceHost( legacyWindowRef, &reason );
+	if ( host && g_VulkanContext.PrepareDeviceRequest(
+	                 *host, MakeContextConfig( false ), request, &reason ) )
+	{
+		g_VulkanSurfaceHost = std::move( host );
+		return true;
+	}
+	Q_strncpy( error, reason.c_str(), static_cast<int>( errorSize ) );
+	return false;
+}
+
 // Brings the context up against the engine's window. The window reference is
 // handed to the pair-specific bridge untouched; nothing here interprets it.
-static bool InitVulkanContext(
-    void *legacyWindowRef, const render_vulkan::VulkanContextConfig &config, std::string *outError )
+// The surface host the owner's requester made for the window is reused.
+static bool InitVulkanContext( void *legacyWindowRef, bool vsync, std::string *outError )
 {
-	std::unique_ptr<render_vulkan::IVulkanSurfaceHost> host =
-	    render_vulkan::MakeSdl3LegacySurfaceHost( legacyWindowRef, outError );
+	std::unique_ptr<render_vulkan::IVulkanSurfaceHost> host = std::move( g_VulkanSurfaceHost );
+	if ( !host )
+		host = render_vulkan::MakeSdl3LegacySurfaceHost( legacyWindowRef, outError );
 	if ( !host )
 		return false;
-	// Capture-tool support (tools/renderdoc/README.md): object names and command
-	// labels (-vkdebuglabels, -novkdebuglabels; by default on under validation
-	// or a capture tool) and debug shader variants (the directory
-	// shaders/regen_material_spv.py --debug-out wrote, in SOURCE_VK_SHADER_DIR:
-	// an environment variable, since the launcher's command line is limited to
-	// 512 characters and harness boots already come close).
-	render_vulkan::VulkanContextConfig withTools = config;
-	if ( CommandLine()->FindParm( "-vkdebuglabels" ) )
-		withTools.debugLabels = render_vulkan::DebugLabelPolicy::On;
-	else if ( CommandLine()->FindParm( "-novkdebuglabels" ) )
-		withTools.debugLabels = render_vulkan::DebugLabelPolicy::Off;
-	if ( const char *shaderDir = getenv( "SOURCE_VK_SHADER_DIR" ) )
-		withTools.shaderDebugDirectory = shaderDir;
-	withTools.deviceFactory = g_DeviceFactory;
-	withTools.hdrScene = g_VulkanContext.HasCorePassRecorder();
+	const render_vulkan::VulkanContextConfig withTools = MakeContextConfig( vsync );
 	g_VulkanContext.RequestExtendedOutput( mat_hdr_output.GetBool() );
 	if ( !g_VulkanContext.Init( *host, withTools, outError ) )
 		return false;
@@ -2091,13 +2116,7 @@ public:
 		if ( g_VulkanContext.IsValid() )
 			return true;
 
-		render_vulkan::VulkanContextConfig config;
-		config.appName = "Source Engine Native Vulkan";
-		config.enableValidation = ( CommandLine()->FindParm( "-vkvalidate" ) != 0 );
-		config.framesInFlight = 2;
-		config.vsync = info.m_bWaitForVSync;
-
-		if ( !InitVulkanContext( hwnd, config, &error ) )
+		if ( !InitVulkanContext( hwnd, info.m_bWaitForVSync, &error ) )
 		{
 			Warning( "[NativeVulkan] IShaderAPI::SetMode bring-up failed: %s\n", error.c_str() );
 			return false;
@@ -3454,6 +3473,22 @@ static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *servi
 	services->gpuCompute = &g_GpuCompute;
 	services->corePassSlots = &g_CorePassSlots;
 	services->describeAdapter = DescribeNativeVulkanAdapter;
+	// The device belongs to the root's owner (RFC 0016 legacy device facade
+	// F2): the material system has it created before SetMode and released
+	// after Shutdown; this backend only borrows it.
+	if ( g_HostDeviceOwner )
+	{
+		services->coreDevice.context = g_HostDeviceOwner;
+		services->coreDevice.prepare = []( void *owner, void *window, char *error, size_t size )
+		{
+			return static_cast<render::device::vulkan::IHostDeviceOwner *>( owner )->CreateFor(
+			           window, error, size ) != nullptr;
+		};
+		services->coreDevice.release = []( void *owner )
+		{
+			static_cast<render::device::vulkan::IHostDeviceOwner *>( owner )->Release();
+		};
+	}
 	return true;
 }
 
@@ -3463,10 +3498,14 @@ extern "C" DLL_EXPORT bool NativeVulkanShaderBackend_Create(
 	return CreateNativeVulkanShaderBackend( services );
 }
 
-extern "C" DLL_EXPORT void NativeVulkanShaderBackend_BindDeviceFactory(
-    const render::device::vulkan::IHostDeviceFactory *factory )
+extern "C" DLL_EXPORT void NativeVulkanShaderBackend_BindDeviceOwner(
+    render::device::vulkan::IHostDeviceOwner *owner )
 {
-	g_DeviceFactory = factory;
+	if ( g_HostDeviceOwner && g_HostDeviceOwner != owner )
+		g_HostDeviceOwner->SetRequester( nullptr, nullptr );
+	g_HostDeviceOwner = owner;
+	if ( owner )
+		owner->SetRequester( RequestDeviceForWindow, nullptr );
 }
 
 extern "C" DLL_EXPORT void NativeVulkanShaderBackend_BindFrameExecutor(
@@ -3647,14 +3686,8 @@ CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
 	g_VulkanContext.RequestSampleCount( mode.m_nAASamples );
 	if ( !g_VulkanContext.IsValid() )
 	{
-		render_vulkan::VulkanContextConfig config;
-		config.appName = "Source Engine Native Vulkan";
-		config.enableValidation = ( CommandLine()->FindParm( "-vkvalidate" ) != 0 );
-		config.framesInFlight = 2;
-		config.vsync = mode.m_bWaitForVSync;
-
 		std::string error;
-		if ( InitVulkanContext( hWnd, config, &error ) )
+		if ( InitVulkanContext( hWnd, mode.m_bWaitForVSync, &error ) )
 		{
 			int w = 0, h = 0;
 			g_VulkanContext.GetSwapchainExtent( w, h );

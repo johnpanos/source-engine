@@ -632,6 +632,12 @@ private:
 	// The process compute pool lent to the core; destroyed after it.
 	jobsystem::IWorkerBackend *m_pRenderCoreWorkers = nullptr;
 #endif
+#if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
+	// RFC 0016 legacy device facade F2: the owner of the native Vulkan
+	// backend's device; the backend borrows it, and the material system has
+	// it created before SetMode and released after Shutdown.
+	render::device::vulkan::IHostDeviceOwner *m_pDeviceOwner = nullptr;
+#endif
 };
 
 
@@ -724,7 +730,7 @@ static bool DescribeCoreVulkanAdapter( void *context, int adapter, render::Rende
 {
 	render::device::vulkan::HostAdapterIdentity identity;
 	if ( !render::device::vulkan::DescribeHostAdapter(
-	         *static_cast<const render::device::vulkan::IHostDeviceFactory *>( context ), adapter,
+	         *static_cast<const render::device::vulkan::IHostDeviceOwner *>( context ), adapter,
 	         &identity ) )
 		return false;
 	*info = render::RenderAdapterInfo();
@@ -942,10 +948,13 @@ bool CSourceAppSystemGroup::Create()
 		return false;
 	}
 #if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
-	// RFC 0016 K1: the native Vulkan backend borrows its device from the
-	// Vulkan adapter (render.device.vulkan), linked once, here.
-	NativeVulkanShaderBackend_BindDeviceFactory(
-	    &render::device::vulkan::HostDeviceFactory( CommandLine()->FindParm( "-fsr" ) != 0 ) );
+	// RFC 0016 K1 and legacy device facade F2: the native Vulkan backend
+	// borrows the device this root's owner (render.device.vulkan, linked once,
+	// here) creates and destroys.
+	if ( !m_pDeviceOwner )
+		m_pDeviceOwner =
+		    render::device::vulkan::CreateHostDeviceOwner( CommandLine()->FindParm( "-fsr" ) != 0 );
+	NativeVulkanShaderBackend_BindDeviceOwner( m_pDeviceOwner );
 	// RFC 0016 K3: its frames run in the render core's frame graph.
 	NativeVulkanShaderBackend_BindFrameExecutor( &render::legacy::LegacyFrameExecutor() );
 #endif
@@ -1033,9 +1042,7 @@ bool CSourceAppSystemGroup::Create()
 		if ( !Q_stricmp( selected->id, "native-vulkan" ) )
 		{
 			render::LegacyShaderServices::CoreAdapterSource source;
-			source.context = const_cast<render::device::vulkan::IHostDeviceFactory *>(
-			    &render::device::vulkan::HostDeviceFactory(
-			        CommandLine()->FindParm( "-fsr" ) != 0 ) );
+			source.context = m_pDeviceOwner;
 			source.describe = DescribeCoreVulkanAdapter;
 			RenderCore_SetLegacyAdapterSource( m_pRenderCore, &source );
 		}
@@ -1209,6 +1216,13 @@ void CSourceAppSystemGroup::Destroy()
 	m_pRenderCore = nullptr;
 	DestroyComputePoolWorkerBackend( m_pRenderCoreWorkers );
 	m_pRenderCoreWorkers = nullptr;
+#endif
+#if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
+	// The material system released the device at its Shutdown; the owner
+	// goes after the backend that borrowed it.
+	NativeVulkanShaderBackend_BindDeviceOwner( nullptr );
+	render::device::vulkan::DestroyHostDeviceOwner( m_pDeviceOwner );
+	m_pDeviceOwner = nullptr;
 #endif
 
 #ifdef WIN32

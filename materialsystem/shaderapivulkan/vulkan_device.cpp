@@ -336,15 +336,20 @@ void CVulkanContext::DescribeDevice( VkPhysicalDevice physical, uint32_t graphic
 	out->extensionCount = static_cast<uint32_t>( deviceExts.size() );
 }
 
-bool CVulkanContext::CreateDevice( std::string *outError )
+bool CVulkanContext::PrepareDeviceRequest( IVulkanSurfaceHost &host,
+    const VulkanContextConfig &config, render::device::vulkan::HostDeviceRequest *outRequest,
+    std::string *outError )
 {
-	std::vector<const char *> extensions;
-	if ( !m_host->GetInstanceExtensions( &extensions, outError ) )
+	m_host = &host;
+	m_config = config;
+	m_instanceExtensions.clear();
+	if ( !m_host->GetInstanceExtensions( &m_instanceExtensions, outError ) )
 		return false;
-	render::device::vulkan::HostDeviceRequest request;
+	render::device::vulkan::HostDeviceRequest &request = *outRequest;
+	request = render::device::vulkan::HostDeviceRequest();
 	request.applicationName = m_config.appName ? m_config.appName : "Source Native Vulkan";
-	request.instanceExtensions = extensions.data();
-	request.instanceExtensionCount = static_cast<uint32_t>( extensions.size() );
+	request.instanceExtensions = m_instanceExtensions.data();
+	request.instanceExtensionCount = static_cast<uint32_t>( m_instanceExtensions.size() );
 	request.validation = m_config.enableValidation || m_config.requireValidation;
 	request.requireValidation = m_config.requireValidation;
 	request.debugUtils = m_config.debugLabels != DebugLabelPolicy::Off;
@@ -366,16 +371,35 @@ bool CVulkanContext::CreateDevice( std::string *outError )
 	{
 		static_cast<CVulkanContext *>( user )->DescribeDevice( physical, graphicsFamily, out );
 	};
-	if ( !m_config.deviceFactory )
+	m_createError.clear();
+	return true;
+}
+
+bool CVulkanContext::CreateDevice( std::string *outError )
+{
+	render::device::vulkan::IHostDeviceOwner *owner = m_config.deviceOwner;
+	if ( !owner )
 	{
 		SetError( outError,
-		    "no Vulkan device adapter is bound (render.device.vulkan: the "
-		    "composition root binds it with NativeVulkanShaderBackend_BindDeviceFactory)" );
+		    "no Vulkan device owner is bound (render.device.vulkan: the composition "
+		    "root binds it with NativeVulkanShaderBackend_BindDeviceOwner)" );
 		return false;
 	}
 	char error[512] = {};
-	m_createError.clear();
-	m_hostDevice = m_config.deviceFactory->Create( request, error, sizeof( error ) );
+	// The root created the device for this window (CreateHostDeviceFor) from
+	// this context's own request; otherwise the owner creates it now.
+	m_hostDevice = owner->Device();
+	if ( !m_hostDevice )
+	{
+		render::device::vulkan::HostDeviceRequest request;
+		if ( !PrepareDeviceRequest( *m_host, m_config, &request, outError ) )
+			return false;
+		m_hostDevice = owner->Create( request, error, sizeof( error ) );
+		m_releaseDevice = m_hostDevice != nullptr;
+	}
+	if ( m_hostDevice )
+		Log( "device %s\n", m_releaseDevice ? "created by its owner for this context"
+		                                    : "borrowed from the root's owner" );
 	if ( !m_hostDevice )
 	{
 		// The adapter destroyed the surface with the instance.
@@ -11120,8 +11144,13 @@ void CVulkanContext::Shutdown()
 		m_host->DestroySurface( m_instance, m_surface );
 		m_surface = VK_NULL_HANDLE;
 	}
-	// The adapter destroys the device, its allocator and the instance.
-	m_hostDevice.reset();
+	// The owner destroys the device, its allocator and the instance after
+	// every borrower shut down: the root (ReleaseHostDevice), or this context
+	// when it had the owner create the device.
+	m_hostDevice = nullptr;
+	if ( m_releaseDevice && m_config.deviceOwner )
+		m_config.deviceOwner->Release();
+	m_releaseDevice = false;
 	m_device = VK_NULL_HANDLE;
 	m_instance = VK_NULL_HANDLE;
 

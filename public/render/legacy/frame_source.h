@@ -115,7 +115,7 @@ ILegacyFrameExecutor &LegacyFrameExecutor();
 } // namespace render::legacy
 
 // The composition root binds the executor into the native Vulkan backend
-// (next to NativeVulkanShaderBackend_BindDeviceFactory). Without one the
+// (next to NativeVulkanShaderBackend_BindDeviceOwner). Without one the
 // backend runs each frame on an encoder of its own.
 extern "C" void NativeVulkanShaderBackend_BindFrameExecutor(
     render::legacy::ILegacyFrameExecutor *executor );

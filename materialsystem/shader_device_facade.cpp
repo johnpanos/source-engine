@@ -104,6 +104,10 @@ void CShaderDeviceFacade::Shutdown()
 {
 	if ( m_pBackend )
 		m_pBackend->Shutdown();
+	// The core's owner destroys the device once the backend shut down.
+	const render::LegacyShaderServices::CoreDeviceSource &device = m_Services.coreDevice;
+	if ( device.release )
+		device.release( device.context );
 }
 
 // Identity (name, vendor, device, driver, memory) comes from the render
@@ -318,10 +322,26 @@ bool CShaderDeviceFacade::SetAdapter( int nAdapter, int nFlags )
 	return m_pBackend && m_pBackend->SetAdapter( nAdapter, nFlags );
 }
 
+// The core creates the device for the window before the backend sets the
+// mode; the backend borrows it (RFC 0016 legacy device facade, F2).
 CreateInterfaceFn CShaderDeviceFacade::SetMode(
     void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode )
 {
-	return m_pBackend ? m_pBackend->SetMode( hWnd, nAdapter, mode ) : NULL;
+	if ( !m_pBackend || !PrepareDevice( hWnd ) )
+		return NULL;
+	return m_pBackend->SetMode( hWnd, nAdapter, mode );
+}
+
+bool CShaderDeviceFacade::PrepareDevice( void *hWnd )
+{
+	const render::LegacyShaderServices::CoreDeviceSource &device = m_Services.coreDevice;
+	char error[512] = {};
+	if ( device.prepare && !device.prepare( device.context, hWnd, error, sizeof( error ) ) )
+	{
+		Warning( "[ShaderDevice] the render core could not create the device: %s\n", error );
+		return false;
+	}
+	return true;
 }
 
 void CShaderDeviceFacade::AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func )

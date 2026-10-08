@@ -66,7 +66,7 @@ int main()
 	// Obtain the material-facing services exactly as composition does.
 	render::LegacyShaderServices services;
 	// The root's job in a product (RFC 0016 K1): lend the Vulkan adapter.
-	NativeVulkanShaderBackend_BindDeviceFactory( &render::device::vulkan::HostDeviceFactory() );
+	NativeVulkanShaderBackend_BindDeviceOwner( render::device::vulkan::CreateHostDeviceOwner() );
 	if ( !NativeVulkanShaderBackend_Create( &services ) || !services.IsComplete() )
 	{
 		std::fprintf(

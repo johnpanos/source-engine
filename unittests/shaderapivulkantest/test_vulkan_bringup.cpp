@@ -345,7 +345,9 @@ int main( int argc, char **argv )
 
 	VulkanContextConfig config;
 
-	config.deviceFactory = &render::device::vulkan::HostDeviceFactory();
+	static render::device::vulkan::HostDeviceOwner s_DeviceOwner(
+	    render::device::vulkan::HostDeviceFactory() );
+	config.deviceOwner = &s_DeviceOwner;
 	config.appName = "native-vulkan-bringup";
 	config.enableValidation = true; // opportunistic when the layer exists
 	config.requireValidation = requireValidation;

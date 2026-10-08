@@ -56,7 +56,8 @@
   legacy-backends  Legacy backend retirement (user decision, 2026-10-07: the
                  legacy backends are deleted completely; RFC 0028). Each
                  legacy backend directory (shaderapidx9, shaderapivulkan,
-                 shaderapiempty, stdshaders, togl, togles) has its files and
+                 shaderapiempty, stdshaders, togl, togles, and any other
+                 materialsystem/shaderapi*/ directory) has its files and
                  total lines recorded exactly in
                  tools/render/legacy_backends_ratchet.json. A new file or
                  more lines fails; fewer must be recorded with --write in
@@ -410,10 +411,24 @@ def _check_freeze_against(path, current, checks):
     compare_set("switches", current["switches"], recorded.get("switches", []), "launch switch")
 
 
+def legacy_backend_dirs(files):
+    """The named legacy backends, plus every materialsystem/shaderapi*/
+    directory, so a new legacy shader API is counted (and fails the ratchet)
+    rather than missed."""
+    found = set(LEGACY_BACKENDS)
+    for path in files:
+        parts = path.split("/")
+        if len(parts) > 2 and parts[0] == "materialsystem" and parts[1].startswith("shaderapi"):
+            found.add("materialsystem/%s/" % parts[1])
+    return sorted(found)
+
+
 def backends_snapshot(root):
     out = {}
-    for path in all_files(root):
-        for backend in LEGACY_BACKENDS:
+    files = all_files(root)
+    backends = legacy_backend_dirs(files)
+    for path in files:
+        for backend in backends:
             if path.startswith(backend):
                 entry = out.setdefault(backend.rstrip("/"), {"files": 0, "lines": 0})
                 entry["files"] += 1
@@ -424,7 +439,11 @@ def backends_snapshot(root):
 def check_legacy_backends(root, checks, write=False, rev=None):
     if rev:
         with tempfile.TemporaryDirectory() as tmp:
-            wanted = [p for p in LEGACY_BACKENDS + (BACKENDS_RATCHET,)
+            listed = subprocess.run(["git", "-C", str(root), "ls-tree", "--name-only", rev,
+                                     "materialsystem/"], capture_output=True, text=True).stdout
+            discovered = tuple(line + "/" for line in listed.splitlines()
+                               if line.split("/")[-1].startswith("shaderapi"))
+            wanted = [p for p in LEGACY_BACKENDS + discovered + (BACKENDS_RATCHET,)
                       if subprocess.run(["git", "-C", str(root), "cat-file", "-e",
                                          "%s:%s" % (rev, p.rstrip("/"))],
                                         capture_output=True).returncode == 0]
@@ -582,6 +601,9 @@ def sensitivity():
                .write_text("\n\n\n"))
         seeded("backends-new-backend", "legacy-backends",
                lambda t: ((t / "togl").mkdir(), (t / "togl" / "x.cpp").write_text("\n")))
+        seeded("backends-new-shaderapi", "legacy-backends",
+               lambda t: ((t / "materialsystem" / "shaderapinew").mkdir(),
+                          (t / "materialsystem" / "shaderapinew" / "api.cpp").write_text("\n")))
         seeded("backends-unrecorded-deletion", "legacy-backends",
                lambda t: (t / "materialsystem" / "stdshaders" / "lightmappedgeneric_dx9.cpp")
                .unlink())

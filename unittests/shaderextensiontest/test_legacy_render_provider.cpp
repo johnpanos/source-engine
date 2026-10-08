@@ -399,6 +399,7 @@ public:
 	static void *ForwardedFactory( const char *, int * ) { return NULL; }
 
 	int m_nConnects = 0, m_nDisconnects = 0, m_nShutdowns = 0, m_nSetModes = 0, m_nCallbacks = 0;
+	int m_nPrepares = 0, m_nPreparedAtSetMode = -1, m_nReleases = 0, m_nReleasedAfterShutdowns = -1;
 };
 
 bool g_bBackendSoftware = false;
@@ -553,6 +554,45 @@ void CheckDeviceFacade()
 	CHECK( !facade.GetRecommendedConfigurationInfo( 1, 0, config ) );
 	config->deleteThis();
 	g_bBackendSoftware = false;
+
+	// The core's device: created before the backend sets the mode, released
+	// after it shut down; a refused creation fails the mode.
+	render::LegacyShaderServices withDevice = services;
+	withDevice.coreDevice.context = &backend;
+	withDevice.coreDevice.prepare = []( void *context, void *window, char *error, size_t size )
+	{
+		CForwardingMgr *mgr = static_cast<CForwardingMgr *>( context );
+		mgr->m_nPreparedAtSetMode = mgr->m_nSetModes;
+		++mgr->m_nPrepares;
+		if ( window == reinterpret_cast<void *>( 1 ) )
+		{
+			strcpy( error, "refused" );
+			return false;
+		}
+		return true;
+	};
+	withDevice.coreDevice.release = []( void *context )
+	{
+		CForwardingMgr *mgr = static_cast<CForwardingMgr *>( context );
+		mgr->m_nReleasedAfterShutdowns = mgr->m_nShutdowns;
+		++mgr->m_nReleases;
+	};
+	{
+		CShaderDeviceFacade device;
+		device.Bind( withDevice );
+		const int setModes = backend.m_nSetModes;
+		CHECK(
+		    device.SetMode( NULL, 0, ShaderDeviceInfo_t() ) == CForwardingMgr::ForwardedFactory );
+		CHECK( backend.m_nPrepares == 1 && backend.m_nPreparedAtSetMode == setModes );
+		CHECK( backend.m_nSetModes == setModes + 1 );
+		CHECK( device.SetMode( reinterpret_cast<void *>( 1 ), 0, ShaderDeviceInfo_t() ) == NULL );
+		CHECK( backend.m_nSetModes == setModes + 1 ); // the backend never saw the refused mode
+		const int shutdowns = backend.m_nShutdowns;
+		device.Shutdown();
+		CHECK( backend.m_nReleases == 1 && backend.m_nReleasedAfterShutdowns == shutdowns + 1 );
+		backend.m_nSetModes = setModes;
+		backend.m_nShutdowns = shutdowns;
+	}
 
 	// The device bring-up and lifecycle still belong to the backend.
 	CHECK( facade.Connect( CForwardingMgr::ForwardedFactory ) && backend.m_nConnects == 1 );

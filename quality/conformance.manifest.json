@@ -8472,6 +8472,7 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "texturecontainer/block_decode.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
         "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
         "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
@@ -8491,6 +8492,7 @@
         "render/device/vulkan/upload_ring.cpp"
       ],
       "extra_flags": [
+        "-isystemexternal/bcdec",
         "-pthread",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
@@ -8503,6 +8505,7 @@
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
       "extra_flags": [
+        "-isystemexternal/bcdec",
         "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
@@ -8522,6 +8525,7 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "texturecontainer/block_decode.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
         "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
         "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
@@ -8562,6 +8566,7 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "texturecontainer/block_decode.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
         "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
@@ -8583,6 +8588,7 @@
         "render/device/vulkan/upload_ring.cpp"
       ],
       "extra_flags": [
+        "-isystemexternal/bcdec",
         "-pthread",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
@@ -8595,6 +8601,7 @@
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
       "extra_flags": [
+        "-isystemexternal/bcdec",
         "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
@@ -8612,6 +8619,7 @@
         "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
         "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "texturecontainer/block_decode.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
         "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
@@ -8730,6 +8738,7 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "texturecontainer/block_decode.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
         "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
@@ -8753,6 +8762,7 @@
         "render/device/vulkan/upload_ring.cpp"
       ],
       "extra_flags": [
+        "-isystemexternal/bcdec",
         "-pthread",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
@@ -8766,6 +8776,7 @@
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
       "extra_flags": [
+        "-isystemexternal/bcdec",
         "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
@@ -8783,6 +8794,7 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "texturecontainer/block_decode.cpp",
         "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
         "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
@@ -8827,6 +8839,7 @@
         "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
         "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "texturecontainer/block_decode.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
         "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
         "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
@@ -8846,6 +8859,7 @@
         "render/device/vulkan/upload_ring.cpp"
       ],
       "extra_flags": [
+        "-isystemexternal/bcdec",
         "-pthread",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
@@ -8940,6 +8954,7 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "texturecontainer/block_decode.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
         "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
         "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
@@ -8959,6 +8974,7 @@
         "render/device/vulkan/upload_ring.cpp"
       ],
       "extra_flags": [
+        "-isystemexternal/bcdec",
         "-pthread",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
@@ -8971,6 +8987,7 @@
       "kind": "positive",
       "profile": "linux-native-vulkan-gpu",
       "extra_flags": [
+        "-isystemexternal/bcdec",
         "-DVULKAN_TEST_DESCRIPTOR_SET_LIMIT=4",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],
@@ -8988,6 +9005,7 @@
         "materialsystem/shaderapivulkan/vulkan_legacy_pipeline.cpp",
         "materialsystem/shaderapivulkan/vulkan_legacy_programs.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "texturecontainer/block_decode.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
         "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
         "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
@@ -9027,6 +9045,7 @@
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_model_pbr.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
+        "texturecontainer/block_decode.cpp",
         "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
         "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
         "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
@@ -9046,6 +9065,7 @@
         "render/device/vulkan/upload_ring.cpp"
       ],
       "extra_flags": [
+        "-isystemexternal/bcdec",
         "-pthread",
         "-isystemdependencies/vulkan-memory-allocator/include"
       ],

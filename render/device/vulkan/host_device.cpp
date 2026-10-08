@@ -256,6 +256,10 @@ HostAdapterIdentity Identify( VkPhysicalDevice physical )
 	identity.vendorId = properties.vendorID;
 	identity.deviceId = properties.deviceID;
 	identity.driverVersion = properties.driverVersion;
+	identity.sampleCounts = properties.limits.framebufferColorSampleCounts &
+	                        properties.limits.framebufferDepthSampleCounts &
+	                        properties.limits.framebufferStencilSampleCounts;
+	identity.sampleCounts |= 1u;
 	VkPhysicalDeviceMemoryProperties memory{};
 	vkGetPhysicalDeviceMemoryProperties( physical, &memory );
 	for ( std::uint32_t i = 0; i < memory.memoryHeapCount; ++i )
@@ -270,12 +274,9 @@ HostAdapterIdentity Identify( VkPhysicalDevice physical )
 class Factory final : public IHostDeviceFactory
 {
 	bool m_Fsr;
-	// The adapter the factory creates devices on (DescribeHostAdapter):
-	// the last created device's, else the probe's. Guarded by m_Mutex, as
-	// devices may be created on any thread.
+	// The probe's adapter, once (devices may be described from any thread).
 	mutable std::mutex m_Mutex;
-	mutable HostAdapterIdentity m_Identity;
-	mutable bool m_HasDevice = false;
+	mutable HostAdapterIdentity m_Probe;
 	mutable bool m_Probed = false;
 
 public:
@@ -285,21 +286,13 @@ public:
 	{
 		auto selected = request;
 		selected.fsr411 = m_Fsr;
-		std::unique_ptr<IHostDevice> device = MakeDevice( selected, nullptr, error, errorSize );
-		if ( device )
-		{
-			const HostAdapterIdentity identity = Identify( device->Info().physical );
-			std::lock_guard<std::mutex> lock( m_Mutex );
-			m_Identity = identity;
-			m_HasDevice = true;
-		}
-		return device;
+		return MakeDevice( selected, nullptr, error, errorSize );
 	}
 
 	bool DescribeAdapter( HostAdapterIdentity *out ) const override
 	{
 		std::lock_guard<std::mutex> lock( m_Mutex );
-		if ( !m_HasDevice && !m_Probed )
+		if ( !m_Probed )
 		{
 			m_Probed = true;
 			std::uint32_t apiVersion = 0;
@@ -309,15 +302,11 @@ public:
 				const DeviceResult<AdapterChoice> choice =
 				    SelectAdapter( instance.Value()->instance, -1 );
 				if ( choice )
-				{
-					m_Identity = Identify( choice.Value().physical );
-					m_HasDevice = false;
-					m_Probed = true;
-				}
+					m_Probe = Identify( choice.Value().physical );
 			}
 		}
-		*out = m_Identity;
-		return m_Identity.name[0] != '\0';
+		*out = m_Probe;
+		return m_Probe.name[0] != '\0';
 	}
 
 	std::unique_ptr<IHostInstance> CreateInstance(
@@ -345,10 +334,82 @@ const IHostDeviceFactory &HostDeviceFactory( bool fsr411 )
 	return fsr411 ? temporal : normal;
 }
 
-bool DescribeHostAdapter( const IHostDeviceFactory &factory, int adapter, HostAdapterIdentity *out )
+void HostDeviceOwner::SetRequester( Requester requester, void *user )
+{
+	m_Requester = requester;
+	m_RequesterUser = user;
+}
+
+IHostDevice *HostDeviceOwner::CreateFor( void *window, char *error, std::size_t errorSize )
+{
+	Copy( error, errorSize, "" );
+	if ( m_Device )
+		return m_Device.get();
+	if ( !m_Requester )
+	{
+		Copy( error, errorSize,
+		    "render.device.vulkan: no host registered what it needs of the device" );
+		return nullptr;
+	}
+	HostDeviceRequest request;
+	if ( !m_Requester( m_RequesterUser, window, &request, error, errorSize ) )
+		return nullptr;
+	return Create( request, error, errorSize );
+}
+
+IHostDevice *HostDeviceOwner::Create(
+    const HostDeviceRequest &request, char *error, std::size_t errorSize )
+{
+	Copy( error, errorSize, "" );
+	if ( m_Device )
+		return m_Device.get();
+	m_Device = m_Factory.Create( request, error, errorSize );
+	if ( m_Device )
+		m_Identity = Identify( m_Device->Info().physical );
+	return m_Device.get();
+}
+
+void HostDeviceOwner::Release()
+{
+	m_Device.reset();
+	m_Identity = HostAdapterIdentity();
+}
+
+bool HostDeviceOwner::DescribeAdapter( HostAdapterIdentity *out ) const
+{
+	if ( m_Device )
+	{
+		*out = m_Identity;
+		return true;
+	}
+	return m_Factory.DescribeAdapter( out );
+}
+
+IHostDeviceOwner *CreateHostDeviceOwner( bool fsr411 )
+{
+	return new HostDeviceOwner( HostDeviceFactory( fsr411 ) );
+}
+
+void DestroyHostDeviceOwner( IHostDeviceOwner *owner )
+{
+	delete static_cast<HostDeviceOwner *>( owner );
+}
+
+bool CreateHostDeviceFor(
+    IHostDeviceOwner &owner, void *window, char *error, std::size_t errorSize )
+{
+	return owner.CreateFor( window, error, errorSize ) != nullptr;
+}
+
+void ReleaseHostDevice( IHostDeviceOwner &owner )
+{
+	owner.Release();
+}
+
+bool DescribeHostAdapter( const IHostDeviceOwner &owner, int adapter, HostAdapterIdentity *out )
 {
 	*out = HostAdapterIdentity();
-	return adapter == 0 && factory.DescribeAdapter( out );
+	return adapter == 0 && owner.DescribeAdapter( out );
 }
 
 } // namespace render::device::vulkan

@@ -38,7 +38,9 @@ int main()
 	    render_vulkan::MakeSdl3LegacySurfaceHost( window, &error );
 	render_vulkan::CVulkanContext context;
 	render_vulkan::VulkanContextConfig config;
-	config.deviceFactory = &render::device::vulkan::HostDeviceFactory();
+	static render::device::vulkan::HostDeviceOwner s_DeviceOwner(
+	    render::device::vulkan::HostDeviceFactory() );
+	config.deviceOwner = &s_DeviceOwner;
 	config.appName = "gpu-zero-checks";
 	if ( !host || !context.Init( *host, config, &error ) )
 	{

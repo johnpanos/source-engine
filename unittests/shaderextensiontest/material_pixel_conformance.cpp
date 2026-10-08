@@ -299,7 +299,7 @@ bool CMaterialPixelApp::Create()
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 	// As the product's root does (RFC 0016 K1): the native backend borrows its
 	// device from the Vulkan adapter.
-	NativeVulkanShaderBackend_BindDeviceFactory( &render::device::vulkan::HostDeviceFactory() );
+	NativeVulkanShaderBackend_BindDeviceOwner( render::device::vulkan::CreateHostDeviceOwner() );
 #endif
 	const char *requested = CommandLine()->ParmValue( "-renderer", "" );
 	const render::LegacyShaderProvider *selected = NULL;
