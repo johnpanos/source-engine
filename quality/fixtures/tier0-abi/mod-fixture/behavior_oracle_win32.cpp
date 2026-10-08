@@ -9,11 +9,14 @@
 //   T6: Plat_GetModuleFilename is the executable's path, and
 //       Plat_GetModuleFileNameOf finds the module of an address.
 //
-//   behavior_oracle_win32.exe <tier0.dll>
+//   behavior_oracle_win32.exe      (linked against tier0.dll, beside it)
 #include <windows.h>
 
 #include <stdio.h>
 #include <string.h>
+
+// One import links tier0.dll; every other export is found by name.
+extern "C" __declspec( dllimport ) double Plat_FloatTime();
 
 namespace
 {
@@ -40,15 +43,12 @@ volatile LONG g_fired = 0;
 
 int main( int argc, char **argv )
 {
-	if ( argc != 2 )
+	(void)argc;
+	(void)argv;
+	HMODULE tier0 = GetModuleHandleA( "tier0.dll" );
+	if ( tier0 == nullptr || Plat_FloatTime() < 0.0 )
 	{
-		printf( "usage: behavior_oracle_win32 <tier0.dll>\nCONFORMANCE 1 1\n" );
-		return 1;
-	}
-	HMODULE tier0 = LoadLibraryA( argv[1] );
-	if ( tier0 == nullptr )
-	{
-		printf( "FAIL load tier0 (%lu)\nCONFORMANCE 1 1\n", GetLastError() );
+		printf( "FAIL tier0 not loaded\nCONFORMANCE 1 1\n" );
 		return 1;
 	}
 

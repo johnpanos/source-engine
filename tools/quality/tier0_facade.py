@@ -9,7 +9,7 @@ and the OS-call ratchet, reported as one checks-v1 record.
 
 windows-x86_64 checks tier0.dll: the export table, then the kept MSVC mod DLL
 (host_win32.cpp) and the Win32 behavior oracle (behavior_oracle_win32.cpp),
-both built with MinGW and run under Wine.
+both built with MinGW against the DLLs and run under Wine.
 """
 
 from __future__ import annotations
@@ -59,16 +59,19 @@ def check_windows(tier0_dir, wineprefix):
     with tempfile.TemporaryDirectory() as scratch:
         shutil.copy(lib, scratch)
         shutil.copy(os.path.join(FIXTURE, "windows-x86_64", "mod_fixture.dll"), scratch)
-        for name, label, argv in (("host_win32", "mod-fixture", ["tier0.dll", "mod_fixture.dll"]),
+        # Both programs link the DLLs (MinGW links a DLL directly), so the
+        # Windows loader loads them with the process: no explicit loader call.
+        for name, label, dlls in (("host_win32", "mod-fixture", ["tier0.dll", "mod_fixture.dll"]),
                                   ("behavior_oracle_win32", "behavior-oracle", ["tier0.dll"])):
             exe = os.path.join(scratch, name + ".exe")
             build = subprocess.run(["x86_64-w64-mingw32-g++", "-std=c++20", "-O2", "-static",
-                                    os.path.join(FIXTURE, name + ".cpp"), "-o", exe],
+                                    os.path.join(FIXTURE, name + ".cpp"),
+                                    *[os.path.join(scratch, dll) for dll in dlls], "-o", exe],
                                    capture_output=True, text=True)
             if build.returncode != 0:
                 parts.append((label, (1, 1, build.stderr)))
                 continue
-            result = subprocess.run(["wine", exe] + argv, capture_output=True, text=True, env=env, cwd=scratch,
+            result = subprocess.run(["wine", exe], capture_output=True, text=True, env=env, cwd=scratch,
                                     timeout=300)
             output = result.stdout
             match = RESULT.search(output)

@@ -81,3 +81,4 @@ vkd3d-proton.cache*
 
 # R103: the kept mod-fixture binaries are fixtures, never rebuilt.
 !quality/fixtures/tier0-abi/mod-fixture/*/libmod_fixture.so
+!quality/fixtures/tier0-abi/mod-fixture/*/mod_fixture.dll
