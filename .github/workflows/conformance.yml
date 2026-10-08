@@ -70,7 +70,7 @@ jobs:
     - name: Build the host kiln tree and kilntest
       run: |
         ./kiln profiles list > /dev/null
-        cd out/host-linux-x86_64 && python3 ../../waf build --targets=kilntest
+        cd out/host-linux-x86_64 && python3 "$GITHUB_WORKSPACE/waf" build --targets=kilntest
     - name: Enumerate selected suites and providers
       run: python3 tools/quality/conformance.py plan
     - name: Build, run and evidence every manifest suite

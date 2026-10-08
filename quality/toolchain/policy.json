@@ -130,6 +130,15 @@
           "-funsafe-math-optimizations"
         ]
       },
+      "msvc": {
+        "std": "/std:c17",
+        "required": [
+          "/fp:precise"
+        ],
+        "forbidden": [
+          "/fp:fast"
+        ]
+      },
       "probe": "quality/toolchain/probes/box3d_c17.c"
     }
   },
