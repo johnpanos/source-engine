@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -936,6 +937,37 @@ Value ExplainJson( const product::ResolvedProfile &profile )
 		for ( const std::string &stage : profile.stages )
 			stages.Push( Value::String( stage ) );
 	}
+	return value;
+}
+
+SessionConfig DefaultSessionConfig( const std::filesystem::path &root, std::string hostTag )
+{
+	SessionConfig config;
+	config.sourceRoot = std::filesystem::absolute( root ).lexically_normal();
+	config.profileRoot = config.sourceRoot / "quality" / "product_profiles";
+	config.outRoot = config.sourceRoot / "out";
+	config.dependencyRoot = config.sourceRoot / "dependencies";
+	config.hostTag = std::move( hostTag );
+	if ( const char *home = std::getenv( "HOME" ) )
+		config.homeDirectory = home;
+	if ( std::ifstream stream{ config.sourceRoot / config.workspaceFile, std::ios::binary } )
+	{
+		std::ostringstream text;
+		text << stream.rdbuf();
+		config.workspaceText = text.str();
+	}
+	return config;
+}
+
+foundation::json::Value ToJson( const std::vector<ProfileSummary> &profiles )
+{
+	using foundation::json::Value;
+	Value list = Value::Array();
+	for ( const auto &profile : profiles )
+		list.Push( ToJson( profile ) );
+	Value value = Value::Object();
+	value.Set( "schema", Value::String( std::string( kJsonSchema ) ) );
+	value.Set( "profiles", std::move( list ) );
 	return value;
 }
 

@@ -158,6 +158,8 @@ projects={
 		'foundation',
 		'product',
 		'product/kiln',
+		'product/kiln/python',
+		'tools/samples',
 		'fgdlib',
 		'content',
 		'render',
@@ -511,6 +513,8 @@ def options(opt):
 		help='build the OpenGL 4.5 device adapter of the render core (RFC 0016 K10; needs EGL) [default: %default]')
 	grp.add_option('--render-fsr411', action='store_true', default=False, dest='RENDER_FSR411',
 		help='Build the experimental pinned FSR 4.1.1 Vulkan provider (lab only)')
+	grp.add_option('--sepipe-python', dest='sepipe_python', default='', metavar='MAJOR.MINOR',
+		help='tools product: build sepipe (RFC 0027) for this host Python; the tools profile pins it')
 	grp.add_option('--render-core-vulkan', choices=['auto', 'on', 'off'], default='auto',
 		dest='RENDER_CORE_VULKAN',
 		help='RFC 0016 render core: build the Vulkan device adapter for the tools product (the '

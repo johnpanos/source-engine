@@ -20865,6 +20865,36 @@
       ],
       "expect": "pass",
       "min_checks": 4
+    },
+    {
+      "id": "kiln.sepipe",
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L1",
+      "contract": "public/kiln/api.h",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0027 L1d gate: sepipe (the nanobind module over kiln.api, built in the tools tree for the pinned host Python) returns the documents `kiln --json` prints for profiles, switches and five launch plans, and raises KilnError for an unknown profile and switch; play_embedded, a play request from a catalog the sample composes itself, spawns exactly the planned argv. Seeded map and switch changes are caught.",
+      "command": [
+        "{python}",
+        "tools/kiln/sepipe_gate.py"
+      ],
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 1800,
+      "requires": [
+        "path:out/host-linux-x86_64/product/kiln/kiln",
+        "path:out/tools-linux/dev/build/product/kiln/python",
+        "path:out/tools-linux/dev/build/tools/samples/play_embedded/play_embedded_sample"
+      ],
+      "sources": [
+        "product/kiln/python/sepipe_module.cpp",
+        "tools/samples/play_embedded/play_embedded.cpp",
+        "product/kiln/core/session.cpp",
+        "product/kiln/core/launch.cpp",
+        "tools/kiln/sepipe_gate.py"
+      ],
+      "expect": "pass",
+      "min_checks": 15
     }
   ]
 }

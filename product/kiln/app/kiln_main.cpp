@@ -77,16 +77,6 @@ int Failure( bool json, const kiln::Error &error )
 	return 1;
 }
 
-std::optional<std::string> ReadText( const fs::path &path )
-{
-	std::ifstream stream( path, std::ios::binary );
-	if ( !stream )
-		return std::nullopt;
-	std::ostringstream text;
-	text << stream.rdbuf();
-	return text.str();
-}
-
 // Become the planned program (kiln play/run on this host).
 int Exec( const kiln::LaunchPlan &plan )
 {
@@ -142,15 +132,8 @@ int main( int argc, char **argv )
 	auto composition = kiln::ComposeDefault();
 	if ( !composition )
 		return Failure( json, composition.Error() );
-	kiln::SessionConfig config;
-	config.sourceRoot = root;
-	config.profileRoot = root / "quality" / "product_profiles";
-	config.outRoot = root / "out";
-	config.dependencyRoot = root / "dependencies";
-	config.hostTag = composition.Value().hostTag;
-	if ( const char *home = std::getenv( "HOME" ) )
-		config.homeDirectory = home;
-	config.workspaceText = ReadText( root / ".kiln" / "local.json" );
+	const kiln::SessionConfig config =
+	    kiln::DefaultSessionConfig( root, composition.Value().hostTag );
 	StderrSink sink( json );
 	kiln::Session session( composition.Value().catalog, *composition.Value().processes,
 	    *composition.Value().executor, sink, config );
@@ -161,13 +144,7 @@ int main( int argc, char **argv )
 		const auto profiles = session.ListProfiles();
 		if ( json )
 		{
-			Value list = Value::Array();
-			for ( const auto &profile : profiles )
-				list.Push( kiln::ToJson( profile ) );
-			Value value = Value::Object();
-			value.Set( "schema", Value::String( std::string( kiln::kJsonSchema ) ) );
-			value.Set( "profiles", std::move( list ) );
-			std::cout << value.WritePretty() << '\n';
+			std::cout << kiln::ToJson( profiles ).WritePretty() << '\n';
 		}
 		else
 		{
@@ -314,12 +291,7 @@ int main( int argc, char **argv )
 		}
 		if ( command == "play" )
 		{
-			kiln::PipelineRequest build;
-			build.profile = request.profile;
-			build.flavor = request.flavor;
-			build.upTo = product::StageRole::kPackage;
-			build.mountSets = request.mountSets;
-			auto built = session.Run( build );
+			auto built = session.BuildForPlay( request );
 			if ( !built )
 				return Failure( json, built.Error() );
 			for ( const auto &stage : built.Value().stages )

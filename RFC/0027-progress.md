@@ -445,3 +445,58 @@ Evidence:
   environment, cancellation, refusal) for `single` and `external-install`,
   and two bad run providers (returns before its program ends; ignores
   cancellation) rejected by their clauses.
+
+### L1d (first slice): `sepipe` and the `play_embedded` sample
+
+- **Pin.** nanobind 2.9.2 is pinned by source archive in
+  `quality/toolchain/nanobind.json`: the PyPI sdist, sha256 `e7608472…`,
+  which bundles `robin_map`. There are 84 files, each with its own digest.
+  - `tools/quality/source_pin.py` is now the one owner of pinned source
+    archives (fetch, verify, HTTPS only, bounded by the pinned size).
+  - `tools/render/vma_pin.py` delegates to it, and its `check` still passes.
+- **Build.**
+  - The tools profile pins the host Python with `sepipe_python: "3.14"`, which
+    becomes `--sepipe-python=3.14`.
+  - `product/kiln/python/wscript` finds `python3.14`, checks its version and
+    `Python.h`, and verifies the pin. It fails configure by name otherwise.
+  - It builds `nanobind` (`nb_combined.cpp`) and
+    `sepipe.cpython-314-x86_64-linux-gnu.so` in the tools tree only.
+  - Only this one link drops `--no-undefined`, because the Python C API
+    resolves against the importing interpreter.
+- **Module.** `kiln.python` is a backend-kind module, so it may include the
+  Python and nanobind headers.
+  - `sepipe.Session(root, diagnostics=None)` offers `profiles`, `resolve`,
+    `switches`, `doctor`, `build(up_to=engine|content|package)`, `plan`, `play`
+    and `run`.
+  - Results are the `kiln --json` documents.
+  - Failures raise `sepipe.KilnError("<code>: <detail>")`.
+  - The GIL is released during builds and launches.
+- **Policy lifted out of the app, so `kiln` and `sepipe` share one owner each:**
+  - `kiln::DefaultSessionConfig` (in `kiln.core`; it names no provider);
+  - `Session::BuildForPlay` (play builds through the package stage);
+  - `ToJson(std::vector<ProfileSummary>)` (the `profiles list` document).
+- **Sample.** `tools/samples/play_embedded` (`kiln.samples`, an adapter
+  consumer of the product and kiln contracts) composes its own catalog:
+  - the gcc toolchain, the Waf stage, the linux-dir packager, user and
+    headless displays, and the single run provider;
+  - no kiln app and no default composition;
+  - it launches through `kiln.api` with a recording spawner (`--start` runs
+    the program).
+  - Its catalog is validated against the profile: Portal 2, which needs the
+    AV1 stage, is refused by name.
+- **Evidence.** `kiln.sepipe` (`tools/kiln/sepipe_gate.py`) passes 15/0
+  through the runner. It checks:
+  - `profiles`, `switches` and five plans equal to `kiln --json`;
+  - `KilnError` for an unknown profile and an unknown switch;
+  - seeded map and switch changes caught;
+  - `play_embedded` spawning exactly the planned argv.
+- **Rerun.** `kiln.coop-live` 4/0 through the runner (the L1c live pair).
+- **Other checks.**
+  - `kilntest` 132/0 on gcc and clang.
+  - archlint self-tests 176 OK; no archlint finding from this change.
+  - stylelint clean.
+- **Pre-existing, not from L1.** `archlint check --all` reports 211 ARCH105
+  findings, all in the tracked `games/csgo` and
+  `external/portal2_steam2_decompiled` trees.
+- **Release trees.** The release-flavor trees of `portal`, `portal2` and
+  `portal2-fsr` build. Their equivalence modes are next.

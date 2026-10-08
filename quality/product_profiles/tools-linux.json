@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "tools-linux-v2",
-  "description": "The Linux x86_64 tools product: compile tools, content_build, hammer_cli and kiln itself (the render core without its Vulkan adapter).",
+  "description": "The Linux x86_64 tools product: compile tools, content_build, hammer_cli and kiln itself (the render core without its Vulkan adapter). sepipe is built for the pinned host Python (sepipe_python).",
   "extends": [
     "fragments/linux-x86_64-desktop.json"
   ],
@@ -13,6 +13,7 @@
   },
   "configure_options": {
     "tools": true,
-    "render_core_vulkan": "off"
+    "render_core_vulkan": "off",
+    "sepipe_python": "3.14"
   }
 }

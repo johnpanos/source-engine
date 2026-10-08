@@ -160,6 +160,19 @@
         "allowedEdges": ["kiln.core", "kiln.composition", "foundation.json", "platform.posix"]
       },
       {
+        "id": "kiln.samples",
+        "owns": "RFC 0027: sample tools on the public libraries (play_embedded composes its own catalog)",
+        "paths": ["tools/samples/"],
+        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.stage.waf", "product.package.linux-dir", "product.display.desktop", "product.run.desktop", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
+      },
+      {
+        "id": "kiln.python",
+        "kind": "backend",
+        "owns": "RFC 0027: sepipe, the nanobind module over kiln.api (host tools only); the Python and nanobind headers stay here",
+        "paths": ["product/kiln/python/"],
+        "allowedEdges": ["kiln.core", "kiln.composition", "foundation.json", "foundation"]
+      },
+      {
         "id": "kiln.fixture-platform",
         "owns": "RFC 0027: the fixture platform, one provider per product contract, composed by a test root",
         "paths": ["unittests/kilntest/fixture_platform/"],
@@ -2748,7 +2761,7 @@
         "independent": [
           ["product.toolchain.*", "product.recipe.*", "product.stage.*", "product.package.*", "product.deploy.*", "product.display.*", "product.run.*"]
         ],
-        "adapterConsumers": ["kiln.composition", "kiln.fixture-platform", "kiln.tests"]
+        "adapterConsumers": ["kiln.composition", "kiln.fixture-platform", "kiln.tests", "kiln.samples"]
       },
       {
         "id": "kiln",
@@ -2759,16 +2772,17 @@
           ["foundation", "foundation.json", "platform.contracts", "jobs.graph", "product.profile", "product.contracts"],
           ["kiln.core"],
           ["kiln.composition", "kiln.fixture-platform"],
-          ["kiln.app"],
+          ["kiln.app", "kiln.python", "kiln.samples"],
           ["kiln.tests"]
         ],
         "independent": [
           ["kiln.composition", "kiln.fixture-platform"]
         ],
         "externalBases": ["platform.posix", "testing.contracts"],
-        "adapterConsumers": ["kiln.composition", "kiln.fixture-platform", "kiln.tests"],
+        "adapterConsumers": ["kiln.composition", "kiln.fixture-platform", "kiln.tests", "kiln.samples"],
         "edgeCeilings": {
           "kiln.app": ["kiln.core", "kiln.composition", "foundation.json", "platform.posix"],
+          "kiln.python": ["kiln.core", "kiln.composition", "foundation.json", "foundation"],
           "kiln.core": ["foundation", "foundation.json", "platform.contracts", "product.profile", "product.contracts", "jobs.graph"]
         },
         "forbiddenLiterals": {

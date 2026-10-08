@@ -183,6 +183,10 @@ public:
 	// Runs a planned launch on this host: opens the profile's display session
 	// and hands the launches to its run provider, which starts them through
 	// `spawner` (borrowed for the call). Returns the run's exit status.
+	// What `kiln play` runs before launching: the pipeline through the
+	// package stage for the request's profile, flavor and mount sets.
+	[[nodiscard]] foundation::Expected<PipelineResult, Error> BuildForPlay(
+	    const PlayRequest &request );
 	[[nodiscard]] foundation::Expected<int, Error> Launch(
 	    const PlayRequest &request, platform::IProcessSpawner &spawner ) const;
 	// The profile's launch switches (`kiln switches`).
@@ -206,7 +210,16 @@ private:
 };
 
 // Results as versioned JSON (`kiln --json`, sepipe).
+// The session configuration of a checkout at `root`: its profile, out and
+// dependency directories, HOME for content-locator defaults, and the
+// workspace file (.kiln/local.json) when present. The kiln app and sepipe
+// both use it.
+[[nodiscard]] SessionConfig DefaultSessionConfig(
+    const std::filesystem::path &root, std::string hostTag );
+
 foundation::json::Value ToJson( const ProfileSummary &summary );
+// `kiln profiles list`: {"schema": kJsonSchema, "profiles": [...]}.
+foundation::json::Value ToJson( const std::vector<ProfileSummary> &profiles );
 foundation::json::Value ToJson( const PipelineResult &result );
 foundation::json::Value ToJson( const DoctorResult &result );
 foundation::json::Value ExplainJson( const product::ResolvedProfile &profile );

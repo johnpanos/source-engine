@@ -358,6 +358,18 @@ foundation::Expected<LaunchPlan, Error> Session::PlanLaunch( const PlayRequest &
 	return plan;
 }
 
+foundation::Expected<PipelineResult, Error> Session::BuildForPlay( const PlayRequest &request )
+{
+	PipelineRequest build;
+	build.profile = request.profile;
+	build.flavor = request.flavor;
+	build.upTo = product::StageRole::kPackage;
+	build.device = request.device;
+	build.mountSets = request.mountSets;
+	build.cancel = request.cancel;
+	return Run( build );
+}
+
 foundation::Expected<int, Error> Session::Launch(
     const PlayRequest &request, platform::IProcessSpawner &spawner ) const
 {
