@@ -79,6 +79,7 @@
       "msvc": {
         "std": "/std:c++20",
         "required": [
+          "/permissive",
           "/Zc:__cplusplus"
         ],
         "forbidden": []

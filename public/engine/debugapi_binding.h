@@ -38,13 +38,22 @@ struct DebugApiSelection
 	size_t providerCount = 0;
 };
 
-extern "C" const debugapi::TransportProvider *DebugApi_UnixSocketTransport();
-extern "C" const debugapi::FramingProvider *DebugApi_NewlineFraming();
-extern "C" const debugapi::FramingProvider *DebugApi_ContentLengthFraming();
+// The definitions export these from their module (DLL_EXPORT); MSVC requires
+// the declarations to agree (C2375).
+#if defined( _MSC_VER )
+#define DEBUGAPI_BINDING_EXPORT __declspec( dllexport )
+#else
+#define DEBUGAPI_BINDING_EXPORT
+#endif
+
+extern "C" DEBUGAPI_BINDING_EXPORT const debugapi::TransportProvider *
+DebugApi_UnixSocketTransport();
+extern "C" DEBUGAPI_BINDING_EXPORT const debugapi::FramingProvider *DebugApi_NewlineFraming();
+extern "C" DEBUGAPI_BINDING_EXPORT const debugapi::FramingProvider *DebugApi_ContentLengthFraming();
 
 // Copies the selection (strings included). Fails without changing anything
 // when it is incomplete, already bound, or the engine has started the server.
 // A bound server that cannot start fails engine Load.
-extern "C" bool Engine_BindDebugApi( const DebugApiSelection *selection );
+extern "C" DEBUGAPI_BINDING_EXPORT bool Engine_BindDebugApi( const DebugApiSelection *selection );
 
 #endif // ENGINE_DEBUGAPI_BINDING_H

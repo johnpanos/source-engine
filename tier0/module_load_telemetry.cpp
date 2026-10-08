@@ -222,7 +222,7 @@ CScopedModuleLoadRequest::CScopedModuleLoadRequest(
 
 CScopedModuleLoadRequest::~CScopedModuleLoadRequest()
 {
-	Assert( g_pModuleLoadRequest == this );
+	Assert( static_cast<CScopedModuleLoadRequest *>( g_pModuleLoadRequest ) == this );
 	g_pModuleLoadRequest = m_pPrevious;
 }
 

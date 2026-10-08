@@ -12,6 +12,14 @@ struct InputProviderDescriptor
 	IInputSystem *( *create )();
 };
 
-extern "C" const InputProviderDescriptor *InputSystem_Describe();
+// The definitions export these from their module (DLL_EXPORT); MSVC requires
+// the declarations to agree (C2375).
+#if defined( _MSC_VER )
+#define INPUT_PROVIDER_CATALOG_EXPORT __declspec( dllexport )
+#else
+#define INPUT_PROVIDER_CATALOG_EXPORT
+#endif
+
+extern "C" INPUT_PROVIDER_CATALOG_EXPORT const InputProviderDescriptor *InputSystem_Describe();
 
 #endif // INPUTSYSTEM_PROVIDER_CATALOG_H

@@ -83,7 +83,16 @@ protected:
 
 } // namespace render::legacy
 
+// The definitions export these from their module (DLL_EXPORT); MSVC requires
+// the declarations to agree (C2375).
+#if defined( _MSC_VER )
+#define LEGACY_CAPABILITIES_EXPORT __declspec( dllexport )
+#else
+#define LEGACY_CAPABILITIES_EXPORT
+#endif
+
 // The material system's render call queue (exported by the material system).
-extern "C" const render::legacy::RenderCallQueueHost *MaterialSystem_RenderCallQueueHost();
+extern "C" LEGACY_CAPABILITIES_EXPORT const render::legacy::RenderCallQueueHost *
+MaterialSystem_RenderCallQueueHost();
 
 #endif // RENDER_LEGACY_CAPABILITIES_H

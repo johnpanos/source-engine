@@ -43,14 +43,22 @@ struct DeviceSelection
 
 } // namespace audio
 
-extern "C" const audio::DeviceProvider *Audio_SDLProvider();
-extern "C" const audio::DeviceProvider *Audio_DirectSoundProvider();
-extern "C" const audio::DeviceProvider *Audio_WaveProvider();
-extern "C" const audio::DeviceProvider *Audio_NullProvider();
+// The definitions export these from their module (DLL_EXPORT); MSVC requires
+// the declarations to agree (C2375).
+#if defined( _MSC_VER )
+#define DEVICE_PROVIDER_EXPORT __declspec( dllexport )
+#else
+#define DEVICE_PROVIDER_EXPORT
+#endif
+
+extern "C" DEVICE_PROVIDER_EXPORT const audio::DeviceProvider *Audio_SDLProvider();
+extern "C" DEVICE_PROVIDER_EXPORT const audio::DeviceProvider *Audio_DirectSoundProvider();
+extern "C" DEVICE_PROVIDER_EXPORT const audio::DeviceProvider *Audio_WaveProvider();
+extern "C" DEVICE_PROVIDER_EXPORT const audio::DeviceProvider *Audio_NullProvider();
 
 // Copies the plan before Connect. Invalid plans and replacement while connected
 // fail without changing the current selection. Providers remain root-owned.
-extern "C" bool Engine_BindAudioProviders(
+extern "C" DEVICE_PROVIDER_EXPORT bool Engine_BindAudioProviders(
     IEngineAPI *engine, const audio::DeviceSelection *selection );
 
 #endif // ENGINE_AUDIO_DEVICE_PROVIDER_H

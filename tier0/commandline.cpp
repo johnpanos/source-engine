@@ -91,10 +91,13 @@ private:
 //-----------------------------------------------------------------------------
 // Instance singleton and expose interface to rest of code
 //-----------------------------------------------------------------------------
-static CCommandLine g_CmdLine;
+// Constructed on first use: module loads during other DLLs' static
+// initialization reach it (module-load telemetry) before a namespace-scope
+// object would be constructed under MSVC's initialization order.
 ICommandLine *CommandLine()
 {
-	return &g_CmdLine;
+	static CCommandLine s_CmdLine;
+	return &s_CmdLine;
 }
 
 

@@ -18,6 +18,9 @@ def build(bld):
 	if bld.env.DEST_OS == 'linux':
 		legacy_platform_defines = [ 'LINUX', '_LINUX', 'POSIX', 'GNUC', 'COMPILER_GCC',
 			'_GLIBCXX_USE_CXX11_ABI=0' ]
+	elif bld.env.DEST_OS == 'win32':
+		legacy_platform_defines = [ 'WIN32=1', '_WIN32=1', '_WINDOWS', 'COMPILER_MSVC',
+			'COMPILER_MSVC32' if bld.env.DEST_CPU == 'x86' else 'COMPILER_MSVC64' ]
 	bld.stlib(
 		env       = bld.strict_cpp20_env(),
 		source    = [ '../composition_bridge.cpp' ],

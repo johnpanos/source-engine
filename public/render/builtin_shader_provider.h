@@ -28,15 +28,24 @@ struct BuiltinShaderProvider
 	void ( *disconnect )();
 };
 
+// The definitions export these from their module (DLL_EXPORT); MSVC requires
+// the declarations to agree (C2375).
+#if defined( _MSC_VER )
+#define BUILTIN_SHADER_PROVIDER_EXPORT __declspec( dllexport )
+#else
+#define BUILTIN_SHADER_PROVIDER_EXPORT
+#endif
+
 // Validates the root's requested catalog entry without connecting or mutating it.
-extern "C" bool IsBuiltinShaderProviderSelected(
+extern "C" BUILTIN_SHADER_PROVIDER_EXPORT bool IsBuiltinShaderProviderSelected(
     const BuiltinShaderProvider *provider, const char *requested );
 
-extern "C" const BuiltinShaderProvider *StandardShaderLibrary_Describe();
+extern "C" BUILTIN_SHADER_PROVIDER_EXPORT const BuiltinShaderProvider *
+StandardShaderLibrary_Describe();
 
 // Copies the descriptor before Connect; its strings and linked code outlive the
 // material connection. Duplicate/replacement bindings fail without mutation.
-extern "C" bool MaterialSystem_BindBuiltinShaderProvider(
+extern "C" BUILTIN_SHADER_PROVIDER_EXPORT bool MaterialSystem_BindBuiltinShaderProvider(
     IMaterialSystem *materialSystem, const BuiltinShaderProvider *provider );
 
 #endif

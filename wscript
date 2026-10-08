@@ -743,6 +743,8 @@ def check_deps(conf):
 
 	if conf.env.DEST_OS == 'win32':
 		conf.check(lib='libz', uselib_store='ZLIB', define_name='USE_ZLIB')
+		# libz.lib's headers (zlib.h for texturecontainer's VTF decompression).
+		conf.env.INCLUDES_ZLIB = [conf.path.find_dir('public/zlib').abspath()]
 		# conf.check(lib='nvtc', uselib_store='NVTC')
 		# conf.check(lib='ati_compress_mt_vc10', uselib_store='ATI_COMPRESS_MT_VC10')
 		conf.check(lib='SDL2', uselib_store='SDL2')
@@ -796,7 +798,9 @@ def configure(conf):
 
 	if conf.env.DEST_OS == 'win32':
 		projects['game'] += ['utils/bzip2']
-		projects['dedicated'] += ['utils/bzip2']
+		# The Windows server's GUI console composes VGUI and the input system
+		# (dedicated/sys_windows.cpp).
+		projects['dedicated'] += ['utils/bzip2', 'inputsystem', 'vgui2/src', 'vgui2/vgui_surfacelib']
 	if conf.options.OPUS or (conf.env.DEST_OS == 'android' and not conf.env.ANDROID_SDL3):
 		projects['game'] += ['engine/voice_codecs/opus']
 	if conf.env.ANDROID_SDL3:
@@ -1225,7 +1229,9 @@ def build(bld):
 
 	if bld.env.DEST_OS == 'win32':
 		projects['game'] += ['utils/bzip2']
-		projects['dedicated'] += ['utils/bzip2']
+		# The Windows server's GUI console composes VGUI and the input system
+		# (dedicated/sys_windows.cpp).
+		projects['dedicated'] += ['utils/bzip2', 'inputsystem', 'vgui2/src', 'vgui2/vgui_surfacelib']
 
 	if bld.env.OPUS or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 		projects['game'] += ['engine/voice_codecs/opus']

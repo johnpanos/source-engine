@@ -384,6 +384,36 @@ def configure_apple(conf):
 	conf.msg('Selected %s SDK' % APPLE_PLATFORM_NAMES[platform], '%s (%s)' % (sdk, conf.env.APPLE_SDK_VERSION))
 	conf.msg('... target', triple)
 
+def configure_msvc_wine(conf):
+	"""--msvc-wine: cross-compile for Windows with the pinned MSVC under Wine
+	(tools/windows/msvc_wine.py provisions it from msvc-wine and the pinned
+	Visual Studio manifest). Waf's msvc tool detects Visual Studio from the
+	Windows registry; here the toolchain is given instead: its wrapper
+	scripts (cl, link, lib, mt, ml64) run the real MSVC binaries under Wine
+	and set INCLUDE and LIB themselves."""
+	root = os.path.abspath(conf.options.MSVC_WINE)
+	arch = 'x86' if conf.options.TARGET32 else 'x64'
+	bindir = os.path.join(root, 'bin', arch)
+	for tool in ('cl', 'link', 'lib', 'mt'):
+		if not os.path.isfile(os.path.join(bindir, tool)):
+			conf.fatal('%s has no %s; run python3 tools/windows/msvc_wine.py provision' % (bindir, tool))
+	conf.env.DEST_OS = 'win32'
+	conf.env.DEST_CPU = 'x86' if arch == 'x86' else 'amd64'
+	# Selected tools and versions for msvc.find_msvc (no registry autodetect).
+	conf.env.NO_MSVC_DETECT = 1
+	conf.env.MSVC_COMPILER = 'msvc'
+	conf.env.MSVC_VERSION = float(conf.options.MSVC_WINE_VERSION)
+	# Empty: the msvc tool would replace the host PATH with these (';'-joined,
+	# for Windows), and the wrappers need the host's to find wine.
+	conf.env.PATH = []
+	conf.env.MSVC_WINE = root
+	for var, tool in (('CC', 'cl'), ('CXX', 'cl'), ('LINK_CC', 'link'), ('LINK_CXX', 'link'),
+		('AR', 'lib'), ('MT', 'mt'), ('WINRC', 'rc'),
+		('AS', 'ml64' if arch == 'x64' else 'ml')):
+		conf.environ[var] = os.path.join(bindir, tool)
+	conf.options.check_c_compiler = conf.options.check_cxx_compiler = 'msvc'
+	conf.msg('Selected MSVC under Wine', '%s (%s)' % (root, arch))
+
 def options(opt):
 	apple = opt.add_option_group('Apple options')
 	apple.add_option('--apple-sdk', action='store', dest='APPLE_SDK', default=None,
@@ -393,11 +423,22 @@ def options(opt):
 		help='host toolchain built by tools/ios/build_toolchain.py [default: %default]')
 	apple.add_option('--apple-deployment-target', action='store', dest='APPLE_DEPLOYMENT_TARGET',
 		default=None, help='minimum OS version of the target platform (from the product profile)')
+	windows = opt.add_option_group('Windows (MSVC under Wine) options')
+	windows.add_option('--msvc-wine', action='store', dest='MSVC_WINE', default=None,
+		help='cross-compile for Windows with this msvc-wine install (tools/windows/msvc_wine.py)')
+	windows.add_option('--msvc-wine-version', action='store', dest='MSVC_WINE_VERSION', default='14.4',
+		help='the installed MSVC toolset as Waf compares it [default: %default]')
+	if not sys.platform.startswith('win32'): # the root wscript loads it on Windows
+		opt.load('msvc')
 	android = opt.add_option_group('Android options')
 	android.add_option('--android', action='store', dest='ANDROID_OPTS', default=None,
 		help='enable building for android, format: --android=<arch>,<toolchain>,<api>, example: --android=armeabi-v7a-hard,4.9,21')
 
 def configure(conf):
+	if getattr(conf.options, 'MSVC_WINE', None):
+		if conf.options.ANDROID_OPTS or getattr(conf.options, 'APPLE_SDK', None):
+			conf.fatal('--msvc-wine selects a Windows target')
+		configure_msvc_wine(conf)
 	if getattr(conf.options, 'APPLE_SDK', None):
 		if conf.options.ANDROID_OPTS:
 			conf.fatal('--apple-sdk and --android select different targets')

@@ -189,6 +189,12 @@ def get_optimization_flags(conf):
 
 	cflags = conf.get_flags_by_type(CFLAGS, conf.options.BUILD_TYPE, conf.env.COMPILER_CC, conf.env.CC_VERSION[0])
 
+	if conf.env.MSVC_WINE:
+		# MSVC under Wine: the shared compiler PDB (/Zi, /FS) needs mspdbsrv,
+		# which parallel cl runs under Wine cannot share; /Z7 keeps the debug
+		# information in each object.
+		cflags = ['/Z7' if flag == '/Zi' else flag for flag in cflags if flag != '/FS']
+
 	if conf.options.LTO:
 		linkflags+= conf.get_flags_by_compiler(LTO_LINKFLAGS, conf.env.COMPILER_CC)
 		cflags   += conf.get_flags_by_compiler(LTO_CFLAGS, conf.env.COMPILER_CC)

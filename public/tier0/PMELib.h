@@ -24,6 +24,10 @@
 #include <string>
 #include "tier0/valve_on.h"
 
+// tstring (wchartypes.h) names these; not all of std, whose std::byte
+// would collide with the engine's byte.
+using std::string;
+using std::wstring;
 
 // RDTSC Instruction macro
 #define RDTSC(var) var = __rdtsc()

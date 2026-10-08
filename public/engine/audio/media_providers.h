@@ -62,11 +62,20 @@ struct MediaProviders
 
 } // namespace audio
 
-extern "C" const audio::MP3Provider *Audio_MP3Provider();
-extern "C" const audio::VoiceCodecProvider *Audio_OpusVoiceProvider();
-extern "C" const audio::VoiceRecordProvider *VoiceRecord_SDLProvider();
-extern "C" const audio::VoiceRecordProvider *VoiceRecord_DirectSoundProvider();
-extern "C" bool Engine_BindAudioMediaProviders(
+// The definitions export these from their module (DLL_EXPORT); MSVC requires
+// the declarations to agree (C2375).
+#if defined( _MSC_VER )
+#define MEDIA_PROVIDERS_EXPORT __declspec( dllexport )
+#else
+#define MEDIA_PROVIDERS_EXPORT
+#endif
+
+extern "C" MEDIA_PROVIDERS_EXPORT const audio::MP3Provider *Audio_MP3Provider();
+extern "C" MEDIA_PROVIDERS_EXPORT const audio::VoiceCodecProvider *Audio_OpusVoiceProvider();
+extern "C" MEDIA_PROVIDERS_EXPORT const audio::VoiceRecordProvider *VoiceRecord_SDLProvider();
+extern "C" MEDIA_PROVIDERS_EXPORT const audio::VoiceRecordProvider *
+VoiceRecord_DirectSoundProvider();
+extern "C" MEDIA_PROVIDERS_EXPORT bool Engine_BindAudioMediaProviders(
     IEngineAPI *engine, const audio::MediaProviders *providers );
 
 #endif // ENGINE_AUDIO_MEDIA_PROVIDERS_H
