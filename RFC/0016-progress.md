@@ -13305,3 +13305,70 @@ portal's far view reads dark against legacy: to be compared next.
     failure aside).
   - Not new: Portal 1's `--map-after-start` capture is black on the legacy
     renderer too, so it is not caused by this change.
+
+## R91: the native draw path, pipelines and legacy ports deleted (2026-10-08, user goal "deleting as much of the legacy renderer as possible")
+
+Owner: this session. Frozen-path: core progress. Bounded scope: delete what
+the native Vulkan backend (`materialsystem/shaderapivulkan`) kept only for
+its own drawing, once every draw reaches the core, with parity checked by
+the legacy-stream census.
+
+Commits:
+
+- `c07765d6f`: `CEmptyMesh::EmitToNativeQueue` hands every draw to the core
+  or refuses it by name; its 947-line native conversion goes. Parity gap
+  found by the census and closed in the same change: Bik (the menu's
+  background video) is the core's video point (`unlit_family.h ClaimVideo`,
+  decal-modulate mode 9; `render.lab.selfillum` gains
+  `selfillum.video.planes-convert-to-rgb` and `.refuse-missing-planes`,
+  46/0). Draws under the material system's error material (seen only while
+  a map loads) are dropped by name.
+- `bd1400f01`: the per-draw replay of `RecordFrameScene` (821 lines) and the
+  R32 demo pipelines go; the replay keeps copies, clears, queries, scene
+  captures and core-pass sections. The Portal 2 menu's page flip reads
+  `_rt_DepthDoubler` through `console/rt_foreground`; the unlit point now
+  binds it. `legacy_stream_census.py` boots through kiln profiles.
+- `e32f58361`: the native pipelines (textured, WMSH and model PBR, glass,
+  PBR direct, skin, SolidEnergy, paint blob, lightmapped, lightmapped paint,
+  post, portal refract), the 84 stdshader_dx9 ports and their GLSL
+  (`shaders/legacy`, 157 files; 25 native stages), their selection in
+  `BeginPass`/`RenderPass`, uploads, prewarm, destroy code and 95 fields.
+  R96's "native world_pbr/model_pbr/probe copies deleted" holds.
+- `9615caad4`: the grouped descriptor sets of those stages.
+- Ratchets (`72a6b9de1`): legacy-backends shaderapivulkan 233 → 36 files,
+  48,640 → 24,337 lines (with `c07765d6f`'s record in `93718f1c1`);
+  legacy-freeze records the deleted sources and 13 retired `-vklegacy*`
+  switches.
+
+Evidence:
+
+- `legacy_stream_census.py run` (kiln `portal2` and `portal` profiles): 19
+  views on both games, 0 legacy draws per frame, nothing dropped, after
+  each commit.
+- `native_vulkan_bringup_conformance` 70/0 (device, clear, resize, scaled
+  present, vsync, gamma, world-mesh ownership, refused-submission recovery).
+- `shader.toolchain-pin` (342) and its sensitivity, `render.shader-artifacts`
+  (354; floor 1200 → 350 for the 21 remaining units) and its GL, GLES and
+  sensitivity rows, `render.vulkan-debug-tools` (64; floor 180 → 64),
+  `render.compute`, `render.pbr-brdf.glsl`, `render.indirect-light.sdf`,
+  and `test_pbr_shader_library.py` (retargeted to `surface.frag`) pass.
+
+Open, and failures found on the way:
+
+- `render.k0-views` (the K0 view and draw-state oracles) fails since
+  `0f1fe8e7c` made `r_core_world 1` the default: the core draws the world
+  without the material-system stream these frozen captures record.
+  `r_core_world 0` now renders a blank frame. Recorded in `baseline.json` as
+  a known failure owned by R91 (`3aa0e8cdf`); the references are not
+  regenerated.
+- `vulkan_scans idle-waits` reports the `vkDeviceWaitIdle` in
+  `CVulkanContext::FinishFrame` (`84c871510`, 2026-10-03) as unlisted;
+  it predates this work.
+- `legacy-backends` still fails `no-growth` on shaderapipica (the 3DS work).
+- The engine's legacy world chains still issue draws for views the core is
+  not eligible for (they reach the core through the hand-off), so the
+  `r_core_world` switch and the engine's frozen world path are not deleted.
+- Remaining in shaderapivulkan: the stream recording and replay of copies,
+  clears, queries and core-pass sections, texture management, presentation,
+  compute; stdshaders still run each material's shadow state and bindings
+  that the hand-off reads.
