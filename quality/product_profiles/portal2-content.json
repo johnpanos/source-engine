@@ -1,0 +1,153 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal2-content-v2",
+  "description": "Portal 2 game content staged for a device package (the iOS and Android Portal 2 builds): the portal2 profile's retail seed, links, search paths and menu images with custom/* mounted, and no engine build, published maps or Linux binaries.",
+  "extends": [
+    "portal2-linux-native-vulkan.json"
+  ],
+  "aliases": [
+    "portal2-content@any"
+  ],
+  "target": {
+    "product": "portal2-content"
+  },
+  "pipeline": {
+    "stages": [
+      "video-av1"
+    ]
+  },
+  "package": {
+    "form": "linux-dir",
+    "directory": "content",
+    "steps": [
+      {
+        "op": "seed",
+        "from": "steam-portal2",
+        "marker": "portal2/gameinfo.txt",
+        "game": "portal2",
+        "content_only": true,
+        "shared_suffixes": [
+          ".vpk",
+          ".bsp",
+          ".vtf",
+          ".vmt",
+          ".mdl",
+          ".vvd",
+          ".vtx",
+          ".phy",
+          ".wav",
+          ".mp3",
+          ".ogg",
+          ".webm",
+          ".bik"
+        ],
+        "skip_directories": [
+          "screenshots",
+          "save",
+          "logs",
+          "dumps"
+        ],
+        "skip_suffixes": [
+          ".log",
+          ".dmp"
+        ]
+      },
+      {
+        "op": "link",
+        "path": "update",
+        "from": "steam-portal2",
+        "source": "update",
+        "check": "pak01_dir.vpk"
+      },
+      {
+        "op": "link",
+        "path": "portal2_dlc2",
+        "from": "steam-portal2",
+        "source": "portal2_dlc2",
+        "check": "pak01_dir.vpk"
+      },
+      {
+        "op": "link",
+        "path": "portal2_dlc1",
+        "from": "steam-portal2",
+        "source": "portal2_dlc1",
+        "check": "pak01_dir.vpk"
+      },
+      {
+        "op": "link",
+        "path": "retail_platform",
+        "from": "steam-portal2",
+        "source": "platform",
+        "check": "resource"
+      },
+      {
+        "op": "link",
+        "path": "media_av1",
+        "from": "av1-media",
+        "check": "manifest.json",
+        "optional": true
+      },
+      {
+        "op": "extract-packs",
+        "mount_set": "p2ce-workshop",
+        "from": "steam-workshop",
+        "manifest": "quality/materials/p2ce-workshop-mounts.json",
+        "format": "p2ce-workshop-mounts/v1",
+        "into": "workshop"
+      },
+      {
+        "op": "search-paths",
+        "file": "portal2/gameinfo.txt",
+        "lines": [
+          "game+mod\t\t\t|gameinfo_path|custom/*",
+          {
+            "mount_set": "p2ce-workshop",
+            "each_record": "workshop/mounts.json",
+            "line": "game+mod\t\t\t|gameinfo_path|../workshop/{item}"
+          },
+          {
+            "when_exists": "media_av1/update/media",
+            "line": "game+mod\t\t\t|gameinfo_path|../media_av1/update"
+          },
+          "game+mod\t\t\t|gameinfo_path|../update/pak01_dir.vpk",
+          "game+mod\t\t\t|gameinfo_path|../update",
+          {
+            "when_exists": "media_av1/portal2_dlc2/media",
+            "line": "game+mod\t\t\t|gameinfo_path|../media_av1/portal2_dlc2"
+          },
+          "game+mod\t\t\t|gameinfo_path|../portal2_dlc2/pak01_dir.vpk",
+          "game+mod\t\t\t|gameinfo_path|../portal2_dlc2",
+          {
+            "when_exists": "media_av1/portal2_dlc1/media",
+            "line": "game+mod\t\t\t|gameinfo_path|../media_av1/portal2_dlc1"
+          },
+          "game+mod\t\t\t|gameinfo_path|../portal2_dlc1/pak01_dir.vpk",
+          "game+mod\t\t\t|gameinfo_path|../portal2_dlc1",
+          {
+            "when_exists": "media_av1/portal2/media",
+            "line": "game+mod\t\t\t|gameinfo_path|../media_av1/portal2"
+          },
+          "game+mod\t\t\t|gameinfo_path|pak01_dir.vpk",
+          "game+mod+mod_write+game_write+default_write_path\t|gameinfo_path|.",
+          "gamebin\t\t\t\t|gameinfo_path|bin",
+          "platform\t\t\t|gameinfo_path|../platform",
+          "platform\t\t\t|gameinfo_path|../retail_platform"
+        ]
+      },
+      {
+        "op": "extract",
+        "from": "steam-portal2",
+        "archive": "portal2/pak01_dir.vpk",
+        "entry": "materials/console/portal2_product_1_widescreen.vtf",
+        "path": "portal2/materials/console/background_menu_widescreen.vtf"
+      },
+      {
+        "op": "extract",
+        "from": "steam-portal2",
+        "archive": "portal2/pak01_dir.vpk",
+        "entry": "materials/console/portal2_product_1.vtf",
+        "path": "portal2/materials/console/background_menu.vtf"
+      }
+    ]
+  }
+}
