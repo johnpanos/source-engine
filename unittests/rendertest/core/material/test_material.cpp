@@ -142,8 +142,7 @@ void TestFamiliesFromMapping( testing::Checks &checks )
 		           pbr->desc.parameters[pbrGpu].name == name;
 		++pbrGpu;
 	}
-	checks.That( pbrLeads && pbr->IndexOf( "mraotexture" ) &&
-	                 pbr->IndexOf( "clearcoatroughness" ),
+	checks.That( pbrLeads && pbr->IndexOf( "mraotexture" ) && pbr->IndexOf( "clearcoatroughness" ),
 	    "F2.pbr-parameters-are-rfc-0007-s-schema" );
 	const FamilySchema *lit = registry.Find( "lightmapped" );
 	ParameterBlock defaults( *lit );
