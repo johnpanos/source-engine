@@ -1591,7 +1591,8 @@
           "render.contracts",
           "render.legacy-provider-contract",
           "render.material",
-          "render.legacy-pass-contract"
+          "render.legacy-pass-contract",
+          "render.shader-library"
         ],
         "kind": "legacy-interop",
         "legacyIncludes": [
@@ -2459,7 +2460,8 @@
         "allowedUse": [
           "render_frame",
           "render_graph",
-          "render_material"
+          "render_material",
+          "render_shaderlib"
         ]
       },
       "render_composition": {

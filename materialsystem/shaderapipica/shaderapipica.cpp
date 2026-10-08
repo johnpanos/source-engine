@@ -283,6 +283,9 @@ private:
 };
 
 
+// The frontend's recorder the root binds (defined with the core pass slots).
+extern render::legacy::ICorePassRecorder *g_CorePassRecorder;
+
 //-----------------------------------------------------------------------------
 // PICA state shared by the mesh, shadow and dynamic APIs.
 //-----------------------------------------------------------------------------
@@ -373,6 +376,9 @@ float g_CoreShadowBias = 0.0f;
 // Set by DecorateCoreDraw for the slot QueueCore marks next: a mesh slot takes
 // the bound snapshot's raster state; the frontend's own slots keep theirs.
 bool g_CoreMeshSlotPending = false;
+// D3D9's dest-alpha depth range without float HDR (m_DestAlphaDepthRange), as
+// shaderapivulkan holds it: the depth-alpha copy's encoding.
+constexpr float kCoreDestAlphaDepthRange = 192.0f;
 CUtlVector<PicaTexture *> g_Textures; // index = handle - 1
 ShaderAPITextureHandle_t g_ModifyTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
 ShaderAPITextureHandle_t g_BoundTextures[16];
@@ -1194,7 +1200,20 @@ public:
 		region.height = rect ? rect->height : texture->height;
 		region.x = rect ? rect->x : 0;
 		region.y = rect ? rect->y : 0;
-		if ( pica::CopyTargetRegion( texture->gpu, region ) == pica::CopyResult::kCopied )
+		// D3D9 PC keeps the opaque scene's depth in destination alpha, so a
+		// frame copy carries it (soft particles read _rt_FullFrameDepth); an
+		// orthographic capture (the UI) keeps its own alpha.
+		const float *projection = Top( kStackProjection );
+		pica::CopyDepthAlpha depthAlpha;
+		depthAlpha.projection[0] = projection[2 * 4 + 2];
+		depthAlpha.projection[1] = projection[3 * 4 + 2];
+		depthAlpha.projection[2] = projection[2 * 4 + 3];
+		depthAlpha.projection[3] = projection[3 * 4 + 3];
+		depthAlpha.range = kCoreDestAlphaDepthRange;
+		const bool perspective = projection[2 * 4 + 3] != 0.0f;
+		if ( pica::CopyTargetRegion( texture->gpu, region, perspective ? &depthAlpha : nullptr,
+				 g_CorePassRecorder ) ==
+			 pica::CopyResult::kCopied )
 			++g_Counters.targetCopies;
 		else
 			++g_Counters.copiesSkipped;
@@ -2183,8 +2202,21 @@ CPicaCoreTextures g_PicaCoreTextures;
 // consumed and is not queued.
 static bool DecorateCoreDraw( render::legacy::CoreMeshDraw &draw )
 {
-	(void)draw;
 	g_CoreMeshSlotPending = true;
+#if !defined( PLATFORM_3DS )
+	// $depthblend reads the frame copy's depth alpha (core_copies), as
+	// shaderapivulkan's draws read _rt_FullFrameDepth.
+	bool found = false;
+	IMaterialVar *depthBlend = g_pBoundMaterial ? g_pBoundMaterial->FindVar( "$depthblend", &found, false ) : nullptr;
+	if ( found && depthBlend && depthBlend->GetIntValue() != 0 )
+	{
+		const ShaderAPITextureHandle_t saved = g_BoundTextures[15];
+		g_ShaderAPIEmpty.BindStandardTexture( SHADER_SAMPLER15, TEXTURE_FRAME_BUFFER_FULL_DEPTH );
+		draw.depthAlphaHandle = int( g_BoundTextures[15] );
+		draw.depthAlphaRange = kCoreDestAlphaDepthRange;
+		g_BoundTextures[15] = saved;
+	}
+#endif
 	return false;
 }
 
@@ -3752,6 +3784,8 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		draw.takeVertices = &vertices;
 	if ( drawTriangles == &triangles )
 		draw.takeIndices16 = &triangles;
+	if ( DecorateCoreDraw( draw ) )
+		return true;
 	if ( !QueueCore( draw, geometryBytes ) )
 		return skip( 4, "QueueMesh refused it" );
 	static unsigned s_taken = 0;

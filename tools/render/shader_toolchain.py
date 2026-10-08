@@ -259,6 +259,13 @@ GENERATED = {
         "the output pass: exposure, tone map and output encoding (RFC 0016, render.output.v1)", (
         ("kOutputVertex", OUTPUT + "/output.vert", DEVICE_OPTIONS),
         ("kOutputFragment", OUTPUT + "/output.frag", DEVICE_OPTIONS))),
+    "legacy_depth_alpha_spv.h": ("render::legacy::spirv",
+        "render.legacy-frontend's depth-alpha copy (WRITE_DEPTH_TO_DESTALPHA, RFC 0016 K9)", (
+        ("kDepthAlphaFragment", "render/legacy/depth_alpha.frag", DEVICE_OPTIONS),)),
+    "legacy_depth_alpha_defects_spv.h": ("rendertest::legacy::spirv",
+        "the depth-alpha suite's seeded fragment program (render.legacy.depth-alpha)", (
+        ("kDepthAlphaIgnoresRange", "render/legacy/depth_alpha.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_IGNORES_RANGE",)),)),
     "post_spv.h": ("render::pass::post::spirv",
         "render.pass.post: the engine's bloom chain (RFC 0016 K8 \"Post and screen effects\")", (
         ("kPostFragment", POST + "/post.frag", DEVICE_OPTIONS),)),
@@ -581,7 +588,7 @@ CORE_PROGRAM_HEADERS = ("cluster_assign_spv.h", "cull_spv.h", "debug_spv.h", "fa
                         "output_spv.h", "temporal_spv.h", "shadow_spv.h", "skin_spv.h", "volumetric_spv.h",
                         "ssr_spv.h", "ao_spv.h", "bounce_spv.h", "indirect_spv.h",
                         "panels_spv.h", "post_spv.h", "luminance_spv.h",
-                        "visibility_spv.h")
+                        "visibility_spv.h", "legacy_depth_alpha_spv.h")
 for _header in CORE_PROGRAM_HEADERS:
     _namespace, _purpose, _rows = GENERATED[_header]
     GLSL_GENERATED[_header.replace("_spv.h", "_glsl.h")] = (

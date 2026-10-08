@@ -364,6 +364,8 @@ struct CoreMeshDraw
 	bool cardSplineNormals = false;
 };
 
+struct DepthAlphaCopy; // render/legacy/depth_alpha.h
+
 // What records a slot's pass (the frontend's, bound by the composition root).
 class ICorePassRecorder
 {
@@ -375,6 +377,13 @@ public:
 	// The render sequence, before marking its stream slot. 0 refuses the whole
 	// draw; a returned tag promises to draw it or record an explicit failure.
 	virtual std::uint32_t QueueMesh( const CoreMeshDraw & ) { return 0; }
+	// A frame copy's depth alpha (D3D9's WRITE_DEPTH_TO_DESTALPHA, which soft
+	// particles read), recorded into `encoder` outside rendering. False when
+	// this recorder cannot, or for an invalid copy (nothing recorded).
+	virtual bool RecordDepthAlpha( device::CommandEncoder &, const DepthAlphaCopy & )
+	{
+		return false;
+	}
 	// The stages (bit 1 << frame::Stage) at which the frontend queues a slot;
 	// none, no slot.
 	virtual std::uint32_t SlotStages() const = 0;

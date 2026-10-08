@@ -15892,6 +15892,44 @@
       "expect": "pass"
     },
     {
+      "id": "render.legacy.depth-alpha",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "public/render/legacy/depth_alpha.h",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "render.legacy-frontend's depth-alpha copy (RFC 0016 K9, D3D9's WRITE_DEPTH_TO_DESTALPHA, which soft particles read) on render.device.vulkan with real pixels: depths set by region clears (D44), a copy's rectangle takes the projected z over the dest-alpha range in alpha, judged against a C++ reference sharing no code with the GLSL (within one level, for two depths that differ); colour untouched everywhere and alpha untouched outside the rectangle; an invalid range, a rectangle past the target and a missing depth are refused without recording; the Khronos validation layer reports no message.",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "render/shaderlib/shaderlib.cpp",
+        "render/shaderlib/core_artifacts.cpp",
+        "render/device/port.cpp",
+        "render/device/encoder.cpp",
+        "render/device/validation.cpp",
+        "render/device/vulkan/device.cpp",
+        "render/device/vulkan/fsr_features.cpp",
+        "render/device/vulkan/encoder.cpp",
+        "render/device/vulkan/host_device.cpp",
+        "render/device/vulkan/instance.cpp",
+        "render/device/vulkan/memory.cpp",
+        "render/device/vulkan/pipelines.cpp",
+        "render/device/vulkan/resources.cpp",
+        "render/device/vulkan/transitions.cpp",
+        "render/device/vulkan/upload_ring.cpp",
+        "render/legacy/depth_alpha.cpp",
+        "unittests/rendertest/core/legacy/test_depth_alpha_vulkan.cpp"
+      ],
+      "min_checks": 9,
+      "extra_flags": [
+        "-O2",
+        "-pthread",
+        "-isystemdependencies/vulkan-memory-allocator/include"
+      ],
+      "timeout_seconds": 300,
+      "expect": "pass"
+    },
+    {
       "id": "render.output",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",

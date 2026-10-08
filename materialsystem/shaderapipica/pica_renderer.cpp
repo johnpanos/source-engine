@@ -172,7 +172,7 @@ Target Current()
 		desc.format = kDepthFormat;
 		desc.width = w;
 		desc.height = h;
-		desc.usages = { ResourceUsage::kDepthWrite };
+		desc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
 		auto made = Device().CreateTexture( desc );
 		if ( made )
 			depth.id = made.Value();
@@ -608,7 +608,7 @@ bool Init()
 	    ResourceUsage::kColorAttachment, ResourceUsage::kSampled, ResourceUsage::kCopySource };
 	auto color = Device().CreateTexture( desc );
 	desc.format = kDepthFormat;
-	desc.usages = { ResourceUsage::kDepthWrite };
+	desc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
 	auto depth = Device().CreateTexture( desc );
 	if ( !color || !depth )
 	{

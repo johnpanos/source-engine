@@ -12,6 +12,8 @@
 
 #include "render/device/device.h"
 #include "render/device/encoder.h"
+#include "render/legacy/core_passes.h"
+#include "render/legacy/depth_alpha.h"
 
 #include <algorithm>
 
@@ -23,7 +25,8 @@ using render::device::ResourceUsage;
 using render::device::TextureCopy;
 using render::device::TextureId;
 
-CopyResult CopyTargetRegion( Texture &destination, const CopyRect &region )
+CopyResult CopyTargetRegion( Texture &destination, const CopyRect &region,
+    const CopyDepthAlpha *depthAlpha, render::legacy::ICorePassRecorder *recorder )
 {
 	if ( !InFrame() || !destination.Valid() || !destination.IsTarget() )
 		return CopyResult::kRefused;
@@ -58,6 +61,29 @@ CopyResult CopyTargetRegion( Texture &destination, const CopyRect &region )
 	encoder->CopyTexture( source, copyTo, copy );
 	encoder->TransitionTexture(
 	    source, ResourceUsage::kCopySource, ResourceUsage::kColorAttachment );
+	if ( depthAlpha && recorder && target.depth )
+	{
+		{
+			render::legacy::DepthAlphaCopy request;
+			request.device = target.device;
+			request.submitted = render::device::CompletionToken{
+			    render::device::QueueKind::kGraphics, target.submittedEpoch, target.submittedValue };
+			request.target = copyTo;
+			request.targetFormat = render::device::Format::kRGBA8Unorm;
+			request.targetWidth = std::uint32_t( destination.Width() );
+			request.targetHeight = std::uint32_t( destination.Height() );
+			request.x = copy.x;
+			request.y = copy.y;
+			request.width = copy.width;
+			request.height = copy.height;
+			request.depth = TextureId{ target.depth };
+			request.depthUsage = ResourceUsage::kDepthWrite;
+			for ( int i = 0; i < 4; ++i )
+				request.projection[i] = depthAlpha->projection[i];
+			request.range = depthAlpha->range;
+			(void)recorder->RecordDepthAlpha( *encoder, request );
+		}
+	}
 	encoder->TransitionTexture( copyTo, ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
 	destination.SetUsage( std::uint8_t( ResourceUsage::kSampled ) );
 	EndCoreSection();

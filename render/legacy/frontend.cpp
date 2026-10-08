@@ -9,9 +9,11 @@
 #include "frontend_material_blocks.h"
 #include "queued_capabilities.h"
 #include "render/legacy/core_backend.h"
+#include "render/legacy/depth_alpha.h"
 #include "render/legacy/stage_markers.h"
 
 #include <atomic>
+#include <memory>
 #include <utility>
 
 namespace render::legacy
@@ -144,8 +146,30 @@ public:
 	}
 	void ReleaseDevice( device::IRenderDevice2 &device ) override
 	{
+		if ( m_DepthAlphaDevice == &device )
+		{
+			m_DepthAlpha.reset();
+			m_DepthAlphaDevice = nullptr;
+		}
 		if ( m_Forwarded )
 			m_Forwarded->ReleaseDevice( device );
+	}
+
+	// The frontend's own capability (depth_alpha.h): one pass per device, made
+	// on first use.
+	bool RecordDepthAlpha( device::CommandEncoder &encoder, const DepthAlphaCopy &copy ) override
+	{
+		if ( !copy.device )
+			return false;
+		if ( m_DepthAlphaDevice != copy.device )
+		{
+			m_DepthAlpha = DepthAlphaPass::Create( *copy.device );
+			m_DepthAlphaDevice = copy.device;
+		}
+		if ( !m_DepthAlpha )
+			return false;
+		m_DepthAlpha->Collect( copy.submitted );
+		return m_DepthAlpha->Record( encoder, copy );
 	}
 
 	std::uint64_t Recorded() const { return m_Recorded.load( std::memory_order_relaxed ); }
@@ -154,6 +178,8 @@ private:
 	CorePassProbe m_Probe = CorePassProbe::kNone;
 	ICorePassRecorder *m_Forwarded = nullptr;
 	std::atomic<std::uint64_t> m_Recorded{ 0 };
+	device::IRenderDevice2 *m_DepthAlphaDevice = nullptr;
+	std::unique_ptr<DepthAlphaPass> m_DepthAlpha;
 };
 
 // Queues a slot, in frame order, at each stage the recorder asks for.
