@@ -60,13 +60,28 @@ enum class Op
 	SkySrgbRead,    // EnableSRGBRead( SAMPLER0, base texture is not 16-bit-per-channel )
 	IntroSrgb,      // with $ENABLESRGB (extra a) or on OSX: sRGB read 0 and 1, sRGB write
 	OsxSrgbWrite,   // EnableSRGBWrite( OSX sRGB RTs )
+	DepthTest,      // EnableDepthTest( a )
+	BlendEnable,    // EnableBlending( a )
+	BlendFunc,      // BlendFunc( a, b )
+	AlphaTest,      // EnableAlphaTest( a )
+	AlphaFunc,      // AlphaFunc( ShaderAlphaFunc_t( a ), b )
+};
+
+// When a step runs.
+enum class When
+{
+	Always,
+	Flag,    // MATERIAL_VAR_* c is set
+	NotFlag, // MATERIAL_VAR_* c is clear
 };
 
 struct Step
 {
-	Op op;
-	int a;
-	int b;
+	Op op = Op::End;
+	int a = 0;
+	int b = 0;
+	When when = When::Always;
+	int c = 0;
 };
 
 // A parameter beyond the base set, in declaration order.
@@ -126,7 +141,7 @@ struct Load
 
 constexpr int kMaxParams = 12;
 constexpr int kMaxLoads = 3;
-constexpr int kMaxSteps = 10;
+constexpr int kMaxSteps = 16;
 
 struct FixedStateRow
 {
@@ -146,6 +161,10 @@ struct FixedStateRow
 	// alias (fallback above): the shader exists in its own right.
 	const char *shaderFallback = nullptr;
 };
+
+constexpr int kDistortMapFlags = TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD |
+    TEXTUREFLAGS_NODEBUGOVERRIDE | TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_CLAMPS |
+    TEXTUREFLAGS_CLAMPT;
 
 #define NO_PARAMS {}
 #define NO_LOADS { { false, -1, false } }
@@ -330,6 +349,37 @@ const FixedStateRow kRows[] = {
 	        { Op::Texture, SHADER_SAMPLER4, 0 }, { Op::Pos1, 0, 0 }, { Op::OsxSrgbWrite, 0, 0 } },
 	    0,
 	    { { 0, F, 1.0f }, { 1, F, 1.0f }, { 2, F, 1.0f }, { 3, F, 1.0f }, { 4, F, 1.0f } } },
+	{ "warp", nullptr, 0, 0, { { "$BASETEXTURE", T, "", "" } }, -1, 0,
+	    { { true, 0, false, TEXTUREFLAGS_SRGB } },
+	    { { Op::Initial }, { Op::DepthWrites, 0 }, { Op::DepthTest, 0 }, { Op::BlendEnable, 0 },
+	        { Op::Texture, SHADER_SAMPLER0 }, { Op::SrgbRead, SHADER_SAMPLER0, 1 },
+	        { Op::SrgbWrite, 1 }, { Op::AlphaWrites, 0 }, { Op::AlphaTest, 0 }, { Op::DefaultFog },
+	        { Op::Format, VERTEX_POSITION, 2 } } },
+	{ "vr_distort_texture", nullptr, 0, 0,
+	    { { "$BASETEXTURE", T, "", "" }, { "$DISTORTMAP", T, "vr_distort_map", "" },
+	        { "$USERENDERTARGET", I, "0", "" } },
+	    -1, 0, { { true, 0, false, TEXTUREFLAGS_SRGB }, { true, 1, false, kDistortMapFlags } },
+	    { { Op::Initial }, { Op::DepthWrites, 0 }, { Op::DepthTest, 0 }, { Op::BlendEnable, 0 },
+	        { Op::Texture, SHADER_SAMPLER0 }, { Op::SrgbRead, SHADER_SAMPLER0, 1 },
+	        { Op::Texture, SHADER_SAMPLER1 }, { Op::SrgbWrite, 1 }, { Op::AlphaWrites, 0 },
+	        { Op::AlphaTest, 0 }, { Op::DefaultFog }, { Op::Format, VERTEX_POSITION, 2 } } },
+	{ "vr_distort_hud", nullptr, 0, 0,
+	    { { "$BASETEXTURE", T, "_rt_gui", "" }, { "$DISTORTMAP", T, "vr_distort_map_left", "" },
+	        { "$DISTORTBOUNDS", V4, "[ 0 0 1 1 ]", "" }, { "$HUDTRANSLUCENT", I, "0", "" },
+	        { "$HUDUNDISTORT", I, "0", "" } },
+	    -1, 0, { { true, 0, false, TEXTUREFLAGS_SRGB }, { true, 1, false, kDistortMapFlags } },
+	    { { Op::Initial }, { Op::DepthWrites, 0 }, { Op::DepthTest, 0 },
+	        { Op::Texture, SHADER_SAMPLER0 }, { Op::SrgbRead, SHADER_SAMPLER0, 1 },
+	        { Op::Texture, SHADER_SAMPLER1 }, { Op::SrgbWrite, 1 }, { Op::AlphaWrites, 0 },
+	        { Op::AlphaFunc, SHADER_ALPHAFUNC_GREATER, 0 },
+	        { Op::AlphaTest, 1, 0, When::Flag, MATERIAL_VAR_TRANSLUCENT },
+	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA, When::Flag,
+	            MATERIAL_VAR_TRANSLUCENT },
+	        { Op::AlphaTest, 0, 0, When::NotFlag, MATERIAL_VAR_TRANSLUCENT },
+	        { Op::BlendEnable, 0, 0, When::NotFlag, MATERIAL_VAR_TRANSLUCENT },
+	        { Op::BlendFunc, SHADER_BLEND_ONE, SHADER_BLEND_ZERO, When::NotFlag,
+	            MATERIAL_VAR_TRANSLUCENT },
+	        { Op::DefaultFog }, { Op::Format, VERTEX_POSITION, 2 } } },
 	{ "EyeGlint", "EyeGlint_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
 	{ "EyeGlint_dx9", nullptr, 0, 0, NO_PARAMS, -1, 0, NO_LOADS,
 	    { { Op::DepthWrites, 0, 0 }, { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ONE },
@@ -460,6 +510,10 @@ protected:
 			{
 				if ( step.op == Op::End )
 					break;
+				if ( step.when == When::Flag && !IS_FLAG_SET( step.c ) )
+					continue;
+				if ( step.when == When::NotFlag && IS_FLAG_SET( step.c ) )
+					continue;
 				Apply( step, params, pShaderShadow );
 			}
 		}
@@ -511,6 +565,21 @@ private:
 			break;
 		case Op::SrgbWrite:
 			pShaderShadow->EnableSRGBWrite( step.a != 0 );
+			break;
+		case Op::DepthTest:
+			pShaderShadow->EnableDepthTest( step.a != 0 );
+			break;
+		case Op::BlendEnable:
+			pShaderShadow->EnableBlending( step.a != 0 );
+			break;
+		case Op::BlendFunc:
+			pShaderShadow->BlendFunc( ShaderBlendFactor_t( step.a ), ShaderBlendFactor_t( step.b ) );
+			break;
+		case Op::AlphaTest:
+			pShaderShadow->EnableAlphaTest( step.a != 0 );
+			break;
+		case Op::AlphaFunc:
+			pShaderShadow->AlphaFunc( ShaderAlphaFunc_t( step.a ), float( step.b ) );
 			break;
 		case Op::OsxSrgbWrite:
 			pShaderShadow->EnableSRGBWrite( IsOSX() && g_pHardwareConfig->CanDoSRGBReadFromRTs() );
