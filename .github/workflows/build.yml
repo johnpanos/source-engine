@@ -4,7 +4,10 @@ on: [push, pull_request]
 
 jobs:
   # Client lanes were removed with ToGL, ToGLES, DXVK Native and shaderapidx9
-  # (2026-10-07); clients render only through native Vulkan.
+  # (2026-10-07); clients render only through native Vulkan. The Linux lanes
+  # build kiln CI profiles (RFC 0027 L1; quality/product_profiles/ci-*.json
+  # pin the ubuntu-24.04 runner's compilers). The Windows lanes stay on
+  # waf.bat until kiln has a Windows host (MSVC runners are optional).
   build-dedicated-windows-i386:
     runs-on: windows-2019
 
@@ -30,19 +33,35 @@ jobs:
         ./waf.bat build
 
   build-dedicated-linux-i386:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Build dedicated linux-i386
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+    - name: Install build dependencies
       run: |
-        scripts/build-ubuntu-i386.sh -d
+        sudo dpkg --add-architecture i386
+        sudo apt-get update
+        sudo apt-get install -y g++ pkg-config g++-multilib gcc-multilib libopenal-dev:i386 \
+          libpng-dev:i386 libjpeg-dev:i386 libfreetype6-dev:i386 libfontconfig1-dev:i386 \
+          libcurl4-gnutls-dev:i386 libsdl2-dev:i386 zlib1g-dev:i386 libbz2-dev:i386 \
+          libedit-dev:i386 zlib1g-dev libbz2-dev
+    - name: Build dedicated linux-i386 (kiln profile ci-dedicated-linux-i386)
+      env:
+        PKG_CONFIG_PATH: /usr/lib/i386-linux-gnu/pkgconfig
+      run: ./kiln build ci-dedicated-linux-i386
 
   build-dedicated-linux-amd64:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Build dedicated linux-amd64
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+    - name: Install build dependencies
       run: |
-        scripts/build-ubuntu-amd64.sh -d
+        sudo apt-get update
+        sudo apt-get install -y g++ pkg-config libopenal-dev libpng-dev libjpeg-dev libfreetype6-dev libfontconfig1-dev libcurl4-gnutls-dev libsdl2-dev zlib1g-dev libbz2-dev libedit-dev libzstd-dev
+    - name: Build dedicated linux-amd64 (kiln profile ci-dedicated-linux)
+      run: ./kiln build ci-dedicated-linux

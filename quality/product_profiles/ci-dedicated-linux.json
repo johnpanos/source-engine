@@ -1,0 +1,18 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "ci-dedicated-linux-v2",
+  "description": "CI: the dedicated-server lane (build.yml linux-amd64, formerly scripts/build-ubuntu-amd64.sh -d): a debug dedicated build on the ubuntu-24.04 runner.",
+  "extends": [
+    "fragments/linux-ci-ubuntu-24.04.json"
+  ],
+  "aliases": [
+    "ci-dedicated@linux-x86_64"
+  ],
+  "target": {
+    "product": "dedicated-server"
+  },
+  "configure_options": {
+    "build_type": "debug",
+    "dedicated": true
+  }
+}

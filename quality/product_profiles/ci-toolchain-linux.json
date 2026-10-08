@@ -1,0 +1,18 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "ci-toolchain-linux-v2",
+  "description": "CI: the C++ toolchain boundary lane with GCC (toolchain.yml, formerly a direct waf configure --tests --use-sdl=0 into build-r03-ci): the test composition whose toolchain-invocations.json toolchain_boundary.py checks.",
+  "extends": [
+    "fragments/linux-ci-ubuntu-24.04.json"
+  ],
+  "aliases": [
+    "ci-toolchain@linux-x86_64"
+  ],
+  "target": {
+    "product": "tests"
+  },
+  "configure_options": {
+    "tests": true,
+    "use_sdl": 0
+  }
+}

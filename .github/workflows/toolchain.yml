@@ -15,21 +15,22 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++ clang libbz2-dev zlib1g-dev
+          sudo apt-get install -y g++ clang pkg-config cmake ninja-build libbz2-dev zlib1g-dev
+      # RFC 0016 K4: the test composition embeds SPIR-V built with the pinned
+      # shader tools.
+      - name: Build the pinned shader tools
+        run: python3 tools/render/shader_toolchain.py build
       - name: Check boundary sensitivity
         run: python3 -m unittest tools/quality/tests/test_toolchain_boundary.py -v
-      - name: Configure and build the real test composition
-        run: |
-          if [ "${{ matrix.compiler }}" = clang ]; then
-            export CC=clang CXX=clang++
-          fi
-          WAFLOCK=.lock-waf-r03-ci ./waf configure --tests --use-sdl=0 \
-            --disable-warns -T release -o build-r03-ci --prefix="$PWD/build-r03-ci/install"
-          WAFLOCK=.lock-waf-r03-ci ./waf build -j4
+      # kiln profiles ci-toolchain-linux and ci-toolchain-linux-clang pin the
+      # runner's GCC and Clang (RFC 0027 L1).
+      - name: Build the real test composition (kiln)
+        run: ./kiln build ci-toolchain-linux${{ matrix.compiler == 'clang' && '-clang' || '' }}
       - name: Verify final commands and frozen consumers
         run: |
+          tree=out/ci-toolchain-linux${{ matrix.compiler == 'clang' && '-clang' || '' }}/dev/build
           python3 tools/quality/toolchain_boundary.py check \
-            build-r03-ci/toolchain-invocations.json --artifacts build-r03-ci \
+            "$tree/toolchain-invocations.json" --artifacts "$tree" \
             --out quality-results/r03-${{ matrix.compiler }}.json
       - name: Exercise mixed ABI contracts and negative controls
         run: |
@@ -45,6 +46,6 @@ jobs:
         with:
           name: r03-${{ matrix.compiler }}
           path: |
-            build-r03-ci/toolchain-invocations.json
+            out/ci-toolchain-linux*/dev/build/toolchain-invocations.json
             quality-results/
           if-no-files-found: warn

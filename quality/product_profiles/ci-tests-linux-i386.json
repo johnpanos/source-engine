@@ -1,0 +1,17 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "ci-tests-linux-i386-v2",
+  "description": "CI: the 32-bit unit-test lane (tests.yml linux-i386, formerly scripts/tests-ubuntu-i386.sh): ci-tests-linux with --32bits; the job exports PKG_CONFIG_PATH for the i386 libraries.",
+  "extends": [
+    "ci-tests-linux.json"
+  ],
+  "aliases": [
+    "ci-tests@linux-i386"
+  ],
+  "target": {
+    "architecture": "i386"
+  },
+  "configure_options": {
+    "32bits": true
+  }
+}
