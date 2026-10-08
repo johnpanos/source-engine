@@ -102,8 +102,6 @@ def run_scenario(scenario, workload, args, out):
     shots = view_oracle.expand_shots(scenario)
     common = workload["common"]
     directory = out / scenario["id"]
-    runtime = view_oracle.prepare_runtime(scenario, args, out)
-    build = args.p2_build if scenario["game"] == "portal2" else args.build
     width, height = scenario.get("size", common["size"])
     engine_args = common.get("engine_args", []) + scenario.get("engine_args", [])
     startup = common.get("startup_commands", []) + scenario.get("startup_commands", [])
@@ -115,8 +113,8 @@ def run_scenario(scenario, workload, args, out):
         startup = common.get("startup_commands", []) + \
             list(view_oracle.legacy_ports_views.STARTUP_COMMANDS)
         physics = "vphysics_box3d"
-    command = [sys.executable, str(view_oracle.PORTAL_BOOT), "--game", scenario["game"],
-               "--runtime", str(runtime), "--build", str(build), "--out", str(directory),
+    command = [sys.executable, str(view_oracle.PORTAL_BOOT),
+               *view_oracle.boot_target(scenario, args), "--out", str(directory),
                "--headless", "--renderer", common["renderer"], "--map", scenario["map"],
                "--physics", physics, "--width", str(width), "--height", str(height),
                "--capture-wait", str(view_oracle.script_frames(scenario, shots)),
@@ -216,12 +214,7 @@ def main(argv=None):
     suite.add_argument("--out", type=Path, required=True)
     suite.add_argument("--workload", type=Path, default=view_oracle.WORKLOAD)
     suite.add_argument("--scenario", action="append", default=[])
-    suite.add_argument("--runtime", type=Path, default=ROOT.parent / "source-engine" / "run" /
-                       "runtime")
-    suite.add_argument("--build", type=Path, default=ROOT / "build-rc-client" / "install")
-    suite.add_argument("--p2-build", type=Path, default=ROOT / "build-rc-p2" / "install")
-    suite.add_argument("--p2-runtime", type=Path, default=ROOT / "build-rc-p2" / "p2content")
-    suite.add_argument("--steam-root", type=Path)
+    view_oracle.client_arguments(suite)
     suite.add_argument("--timeout", type=int, default=900)
     suite.set_defaults(run=command_suite)
     sub.add_parser("selftest").set_defaults(run=command_selftest)
