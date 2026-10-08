@@ -20,6 +20,9 @@ import conformance
 from conformance_result import Checks
 import portal_boot
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 
 def fixture(root, name, colors, size=16, codec="ffv1"):
     raw = root / (name + ".yuv")
@@ -39,8 +42,7 @@ def fixture(root, name, colors, size=16, codec="ffv1"):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     root = Path(conformance.repo_root())
-    parser.add_argument("--runtime", type=Path, default=root / "run/runtime-p2")
-    parser.add_argument("--build", type=Path, default=root / "build-p2")
+    sepipe_loader.add_arguments(parser, "portal2")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     output = args.out.resolve()
@@ -63,8 +65,8 @@ def main(argv=None):
                                             text=True, check=True).stdout.splitlines()[0]
         boot = output / "boot"
         result = portal_boot.main([
-            "--runtime", str(args.runtime), "--build", str(args.build), "--out", str(boot),
-            "--game", "portal2", "--map", "sp_a1_intro4_relit", "--headless",
+            *sepipe_loader.boot_arguments(args), "--out", str(boot),
+            "--map", "sp_a1_intro4_relit", "--headless",
             "--capture-wait", "30", "--startup-command", "r_core_world 1",
             "--console-command", "video_bink_cache_probe %s %s" % (positive, invalid),
             "--console-command", "video_bink_cache_probe %s %s" % (negative, invalid),

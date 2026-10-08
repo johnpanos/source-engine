@@ -23,6 +23,9 @@ import time
 
 import bsp2_reader
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 LAYERS = (("albedo", 1), ("baked", 8), ("direct", 9), ("specular", 10))
 
 
@@ -150,8 +153,8 @@ def main(argv=None):
                         help="p95 judges the layer's bright field without isolated hatch pixels")
     parser.add_argument("--yaw", type=float, default=20)
     parser.add_argument("--pitch", type=float, default=8)
-    parser.add_argument("--runtime", type=Path)
-    parser.add_argument("--build", type=Path)
+    parser.add_argument("--profile", help="kiln profile to boot the route in (else plan only)")
+    parser.add_argument("--flavor", default="dev", help="the profile's build flavor")
     parser.add_argument("--timeout", type=float, default=300)
     args = parser.parse_args(argv)
     if args.step <= 0 or args.clearance <= 0 or args.max_layer_change <= 0:
@@ -167,7 +170,7 @@ def main(argv=None):
                 "coverage": __doc__, "captures": []}
     receipt = args.out / "route.json"
     receipt.write_text(json.dumps(evidence, indent=2) + "\n")
-    if not args.runtime or not args.build:
+    if not args.profile:
         print("A* route:", " -> ".join(p["name"] for p in path), "(%d samples)" % len(points))
         return 0
     commands = ["host_framerate .015", "cmd noclip", "r_drawviewmodel 0",
@@ -181,8 +184,8 @@ def main(argv=None):
     commands += ["cl_render_debug_view 0", "wait 12"]
     boot = args.out / "boot"
     command = [sys.executable, str(Path(__file__).with_name("portal_boot.py")),
-               "--runtime", str(args.runtime), "--build", str(args.build),
-               "--content-root", str(args.map.parent.parent), "--game", "portal2",
+               *sepipe_loader.boot_arguments(args),
+               "--content-root", str(args.map.parent.parent),
                "--renderer", "native-vulkan", "--headless", "--require-vulkan",
                "--map", args.map.stem, "--out", str(boot), "--timeout", str(args.timeout),
                "--startup-command", "r_core_world 1", "--startup-command", "r_core_world_strict 1",

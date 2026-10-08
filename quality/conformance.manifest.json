@@ -2903,7 +2903,7 @@
       "min_checks": 14,
       "timeout_seconds": 1200,
       "requires": [
-        "env:PORTAL_DLIGHT_LAB_BUILD",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "path:quality-results/portal_dlight_lab/content/maps/portal_dlight_lab.bsp"
       ],
       "optional": true,
@@ -2935,7 +2935,7 @@
       "result_protocol": "checks-v1",
       "timeout_seconds": 1200,
       "requires": [
-        "env:PORTAL_DLIGHT_LAB_BUILD",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "path:quality-results/portal_dlight_lab/content/maps/portal_dlight_lab.bsp"
       ],
       "optional": true,
@@ -2955,12 +2955,8 @@
         "{python}",
         "tools/quality/portal_dlight_lab.py",
         "check",
-        "--game",
+        "--profile",
         "portal2",
-        "--build",
-        "build-p2",
-        "--runtime",
-        "run/runtime-p2",
         "--out",
         "{out}"
       ],
@@ -2997,12 +2993,8 @@
         "{python}",
         "tools/quality/portal_dlight_lab.py",
         "check",
-        "--game",
+        "--profile",
         "portal2",
-        "--build",
-        "build-p2",
-        "--runtime",
-        "run/runtime-p2",
         "--out",
         "{out}",
         "--seed",
@@ -14882,7 +14874,7 @@
       "timeout_seconds": 1200,
       "requires": [
         "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",
-        "env:PORTAL_DLIGHT_LAB_BUILD",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "vulkan-device:gpu"
       ],
       "sources": [
@@ -14920,7 +14912,7 @@
       "timeout_seconds": 1200,
       "requires": [
         "path:../source-engine/run/runtime/portal/portal_pak_dir.vpk",
-        "env:PORTAL_DLIGHT_LAB_BUILD",
+        "path:out/host-linux-x86_64/product/kiln/kiln",
         "vulkan-device:gpu"
       ],
       "sources": [
