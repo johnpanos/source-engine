@@ -1,4 +1,4 @@
-//========== Copyright © Valve Corporation, All rights reserved. ========
+//========== Copyright Â© Valve Corporation, All rights reserved. ========
 //
 // Dedicated server's object for managing UGC file subscriptions.
 //

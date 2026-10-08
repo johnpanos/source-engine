@@ -2065,6 +2065,176 @@ inline void TextureCopies( Suite &s )
 	(void)device->Release( out, done );
 }
 
+// D44 region clears: with kClearRegions, ClearRegion inside rendering clears
+// that rectangle of colour attachment 0 and of the depth attachment and
+// nothing else, clipped to the render area; outside rendering, or asking for
+// stencil of a depth attachment without it, is refused (kInvalidState). A
+// device that does not claim it refuses the call (kUnsupported).
+inline void RegionClears( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	const bool claimed = device->Facts().capabilities.Has( Capability::kClearRegions );
+	TextureDesc colorDesc;
+	colorDesc.format = Format::kRGBA8Unorm;
+	colorDesc.width = 8;
+	colorDesc.height = 8;
+	colorDesc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kCopySource };
+	TextureDesc depthDesc = colorDesc;
+	depthDesc.format = FixtureDepth( *device );
+	depthDesc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kCopySource };
+	TextureDesc plainDepthDesc = depthDesc;
+	plainDepthDesc.format = FloatTargets( *device ) ? Format::kD32Float : Format::kD24UnormS8;
+	auto color = device->CreateTexture( colorDesc );
+	auto depth = device->CreateTexture( depthDesc );
+	if ( !s.That( color.HasValue() && depth.HasValue(), "D44", "the clear targets are created" ) )
+		return;
+	// The colour rectangle runs past the right edge: it is clipped there.
+	ClearRegion red;
+	red.x = 5;
+	red.y = 2;
+	red.width = 9;
+	red.height = 3;
+	red.color = true;
+	red.colorValue = { 1.0f, 0.0f, 0.0f, 1.0f };
+	ClearRegion near;
+	near.x = 1;
+	near.y = 4;
+	near.width = 3;
+	near.height = 2;
+	near.depth = true;
+	near.depthValue = 0.25f;
+	auto record = [&]( CommandEncoder &e )
+	{
+		e.TransitionTexture( color.Value(), ResourceUsage::kUndefined,
+		    ResourceUsage::kColorAttachment );
+		e.TransitionTexture( depth.Value(), ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+		ColorAttachment attachment;
+		attachment.texture = color.Value();
+		attachment.clear = { 0.0f, 0.0f, 0.0f, 1.0f };
+		DepthAttachment depthAttachment;
+		depthAttachment.texture = depth.Value();
+		depthAttachment.clearDepth = 1.0f;
+		RenderingDesc rendering;
+		rendering.colors = { &attachment, 1 };
+		rendering.depth = depthAttachment;
+		rendering.width = 8;
+		rendering.height = 8;
+		e.BeginRendering( rendering );
+		e.ClearRegion( red );
+		e.ClearRegion( near );
+		e.EndRendering();
+	};
+	if ( !claimed )
+	{
+		auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+		if ( !encoder )
+			return;
+		record( encoder.Value() );
+		auto submitted = device->Submit( QueueKind::kGraphics, { &encoder.Value(), 1 }, {} );
+		s.That( !submitted && submitted.Error().status == DeviceStatus::kUnsupported, "D44",
+		    "a device without kClearRegions refuses a region clear" );
+		(void)device->Release( color.Value(), {} );
+		(void)device->Release( depth.Value(), {} );
+		return;
+	}
+	const BufferId colorOut = s.Buffer(
+	    *device, 8 * 8 * 4, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	const BufferId depthOut = s.Buffer(
+	    *device, 8 * 8 * 4, { ResourceUsage::kCopyDestination, ResourceUsage::kCopySource } );
+	auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	CommandEncoder &e = encoder.Value();
+	record( e );
+	e.TransitionTexture(
+	    color.Value(), ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
+	e.TransitionTexture( depth.Value(), ResourceUsage::kDepthWrite, ResourceUsage::kCopySource );
+	e.TransitionBuffer( colorOut, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.TransitionBuffer( depthOut, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	e.CopyTextureToBuffer( color.Value(), colorOut, { 0, 0, 0, 8, 8 } );
+	e.CopyTextureToBuffer( depth.Value(), depthOut, { 0, 0, 0, 8, 8 } );
+	e.TransitionBuffer( colorOut, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	e.TransitionBuffer( depthOut, ResourceUsage::kCopyDestination, ResourceUsage::kCopySource );
+	const std::optional<CompletionToken> token = s.Run( *device, e );
+	const bool finished = token && s.Finish( *device, *token );
+	const std::vector<std::byte> colors = s.ReadBack( *device, colorOut, 8 * 8 * 4 );
+	const std::vector<std::byte> depths = s.ReadBack( *device, depthOut, 8 * 8 * 4 );
+	bool colorPlaced = finished && colors.size() == 8 * 8 * 4;
+	bool depthPlaced = finished && depths.size() == 8 * 8 * 4;
+	for ( std::uint32_t y = 0; y < 8; ++y )
+		for ( std::uint32_t x = 0; x < 8; ++x )
+		{
+			const std::size_t at = ( y * 8 + x ) * 4;
+			if ( colorPlaced )
+			{
+				const bool inside = x >= 5 && y >= 2 && y < 5;
+				const std::uint8_t want[4] = { std::uint8_t( inside ? 255 : 0 ), 0, 0, 255 };
+				colorPlaced = std::memcmp( &colors[at], want, 4 ) == 0;
+			}
+			if ( depthPlaced )
+			{
+				const bool inside = x >= 1 && x < 4 && y >= 4 && y < 6;
+				float value = 0.0f;
+				std::memcpy( &value, &depths[at], 4 );
+				depthPlaced = std::fabs( value - ( inside ? 0.25f : 1.0f ) ) < 1e-5f;
+			}
+		}
+	s.That( colorPlaced, "D44",
+	    "a colour region clear writes that rectangle alone, clipped to the render area" );
+	s.That( depthPlaced, "D44", "a depth region clear writes that rectangle of depth alone" );
+	const CompletionToken done = token.value_or( CompletionToken{} );
+	auto refused = [&]( bool inside, const ClearRegion &region, TextureId depthTexture )
+	{
+		auto bad = device->BeginEncoder( QueueKind::kGraphics );
+		if ( !bad )
+			return false;
+		CommandEncoder &b = bad.Value();
+		b.TransitionTexture( color.Value(), ResourceUsage::kUndefined,
+		    ResourceUsage::kColorAttachment );
+		b.TransitionTexture( depthTexture, ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+		ColorAttachment attachment;
+		attachment.texture = color.Value();
+		DepthAttachment depthAttachment;
+		depthAttachment.texture = depthTexture;
+		RenderingDesc rendering;
+		rendering.colors = { &attachment, 1 };
+		rendering.depth = depthAttachment;
+		rendering.width = 8;
+		rendering.height = 8;
+		if ( !inside )
+			b.ClearRegion( region );
+		b.BeginRendering( rendering );
+		if ( inside )
+			b.ClearRegion( region );
+		b.EndRendering();
+		auto submitted = device->Submit( QueueKind::kGraphics, { &bad.Value(), 1 }, {} );
+		return !submitted && submitted.Error().status == DeviceStatus::kInvalidState;
+	};
+	s.That( refused( false, red, depth.Value() ), "D44",
+	    "a region clear outside rendering is refused" );
+	ClearRegion nothing = red;
+	nothing.color = false;
+	s.That( refused( true, nothing, depth.Value() ), "D44",
+	    "a region clear asking for no aspect is refused" );
+	if ( !HasStencil( plainDepthDesc.format ) )
+	{
+		auto plain = device->CreateTexture( plainDepthDesc );
+		ClearRegion stencil = near;
+		stencil.depth = false;
+		stencil.stencil = true;
+		s.That( plain.HasValue() && refused( true, stencil, plain.Value() ), "D44",
+		    "a stencil region clear of a depth attachment without stencil is refused" );
+		if ( plain )
+			(void)device->Release( plain.Value(), done );
+	}
+	(void)device->Release( color.Value(), done );
+	(void)device->Release( depth.Value(), done );
+	(void)device->Release( colorOut, done );
+	(void)device->Release( depthOut, done );
+}
+
 // D23 timestamps: with kTimestamps, timestamps around work (one inside
 // rendering) land in their readback buffer once the submission completes,
 // do not decrease in recording order, and a later submission's are no
@@ -3349,6 +3519,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::PackedFloatTargets( suite );
 	detail::RegionCopies( suite );
 	detail::TextureCopies( suite );
+	detail::RegionClears( suite );
 	detail::Timestamps( suite );
 	detail::OcclusionQueries( suite );
 	detail::IndirectDraws( suite );

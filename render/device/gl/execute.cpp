@@ -290,6 +290,9 @@ private:
 		case Op::kBeginOcclusionQuery:
 		case Op::kEndOcclusionQuery:
 			break; // D43 is unclaimed: refused at Submit
+		case Op::kClearRegion:
+			ClearRegion( command.region );
+			break;
 		case Op::kWriteTimestamp:
 		{
 			// The GPU writes the result into the buffer when it is available.
@@ -588,6 +591,43 @@ private:
 
 	// Clears and blits obey masks and the scissor: open them all, and apply
 	// the pipeline's state again at the next draw.
+	// D44: the clears scissored to the region (clipped to the render area),
+	// each aspect selected by its write mask, then the render area restored.
+	void ClearRegion( const render::device::ClearRegion &r )
+	{
+		const auto x1 = static_cast<std::uint32_t>(
+		    std::min<std::uint64_t>( std::uint64_t( r.x ) + r.width, m_Rendering->width ) );
+		const auto y1 = static_cast<std::uint32_t>(
+		    std::min<std::uint64_t>( std::uint64_t( r.y ) + r.height, m_Rendering->height ) );
+		if ( r.x >= x1 || r.y >= y1 )
+			return;
+		m_Gl.ScissorIndexed( 0, static_cast<GLint>( r.x ), static_cast<GLint>( r.y ),
+		    static_cast<GLsizei>( x1 - r.x ), static_cast<GLsizei>( y1 - r.y ) );
+		if ( r.color )
+		{
+			m_Gl.ColorMaski( 0, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE );
+			const GLfloat value[4] = {
+			    r.colorValue.r, r.colorValue.g, r.colorValue.b, r.colorValue.a };
+			m_Gl.ClearNamedFramebufferfv( m_Framebuffer, GL_COLOR, 0, value );
+		}
+		if ( r.depth || r.stencil )
+		{
+			const bool stencilFormat =
+			    HasStencil( m_D.ExistingTexture( m_Rendering->depth->texture.value )->desc.format );
+			m_Gl.DepthMask( r.depth ? GL_TRUE : GL_FALSE );
+			m_Gl.StencilMask( r.stencil ? 0xFFu : 0u );
+			if ( stencilFormat )
+				m_Gl.ClearNamedFramebufferfi(
+				    m_Framebuffer, GL_DEPTH_STENCIL, 0, r.depthValue, r.stencilValue );
+			else
+				m_Gl.ClearNamedFramebufferfv( m_Framebuffer, GL_DEPTH, 0, &r.depthValue );
+			m_Gl.StencilMask( 0xFFu );
+		}
+		m_StateDirty = true; // the pipeline's masks are reapplied at the next draw
+		m_Gl.ScissorIndexed( 0, 0, 0, static_cast<GLsizei>( m_Rendering->width ),
+		    static_cast<GLsizei>( m_Rendering->height ) );
+	}
+
 	void OpenMasks( std::size_t colors )
 	{
 		for ( std::size_t i = 0; i < colors; ++i )

@@ -280,8 +280,8 @@ void D3d12Device::QueryFacts()
 	// indirect record's firstInstance is not claimed: SV_InstanceID leaves it
 	// out, and the base-instance root constant is per call.
 	CapabilitySet have{ Capability::kTextureCompressionBC, Capability::kCubeArrays,
-		Capability::kCompute, Capability::kStorageBuffers, Capability::kMultiDrawIndirect,
-		Capability::kDrawIndirectCount, Capability::kFillModeLines };
+	    Capability::kCompute, Capability::kStorageBuffers, Capability::kMultiDrawIndirect,
+	    Capability::kDrawIndirectCount, Capability::kFillModeLines, Capability::kClearRegions };
 	UINT64 frequency = 0;
 	if ( m_TimestampSlots && SUCCEEDED( m_Queue->GetTimestampFrequency( &frequency ) ) &&
 	     frequency )

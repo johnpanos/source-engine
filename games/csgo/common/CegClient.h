@@ -1,4 +1,4 @@
-// Copyright © 2008-, Valve LLC, All rigStahts reserved. 
+// Copyright Â© 2008-, Valve LLC, All rigStahts reserved. 
 //
 //  cegclient.h
 //

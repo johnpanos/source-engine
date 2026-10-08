@@ -131,11 +131,11 @@ int main( int argc, char **argv )
 		return 2;
 	}
 
-	auto composition = kiln::ComposeDefault();
+	auto composition = kiln::ComposeDefault( argc, argv );
 	if ( !composition )
 		return Failure( json, composition.Error() );
-	const kiln::SessionConfig config =
-	    kiln::DefaultSessionConfig( root, composition.Value().hostTag );
+	const kiln::SessionConfig config = kiln::DefaultSessionConfig(
+	    root, composition.Value().hostTag, *composition.Value().environment );
 	StderrSink sink( json );
 	kiln::Session session( composition.Value().catalog, *composition.Value().processes,
 	    *composition.Value().executor, sink, config );

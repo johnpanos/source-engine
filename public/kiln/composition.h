@@ -17,10 +17,12 @@
 namespace kiln
 {
 
-// Owns the process provider, the executor and the catalog that borrows the
-// process provider; members are destroyed catalog first.
+// Owns the process environment, the process provider, the executor and the
+// catalog that borrows the process provider; members are destroyed catalog
+// first.
 struct DefaultComposition
 {
+	std::unique_ptr<platform::IProcessEnvironment> environment;
 	std::unique_ptr<platform::IToolProcessProvider> processes;
 	std::unique_ptr<platform::IProcessSpawner> spawner;
 	std::unique_ptr<jobsystem::IGraphExecutor> executor;
@@ -38,7 +40,10 @@ struct DefaultComposition
 [[nodiscard]] foundation::Expected<product::ProviderCatalog, Error> ComposeDefaultCatalog(
     platform::IToolProcessProvider &processes );
 
-[[nodiscard]] foundation::Expected<DefaultComposition, Error> ComposeDefault();
+// `argc`/`argv` are the process's arguments for its environment snapshot; an
+// embedding host (sepipe inside Python) that does not own them passes none.
+[[nodiscard]] foundation::Expected<DefaultComposition, Error> ComposeDefault(
+    int argc = 0, const char *const *argv = nullptr );
 
 } // namespace kiln
 

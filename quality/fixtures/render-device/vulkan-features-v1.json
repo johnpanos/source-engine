@@ -1,6 +1,6 @@
 {
   "schema": "render-device-vulkan-features/v1",
-  "description": "RFC 0016 K1 'Feature support recorded' (render.device.vulkan-features): support for the three features the Vulkan adapter (render/device/vulkan/) requires, timeline semaphores, synchronization2 and dynamic rendering, per declared profile. Each measured entry is the device render/device/vulkan/instance.cpp's SelectAdapter would choose, probed by tools/render/vulkan_features_probe.c (probe --platform linux|android --entry). 'core' means the device's API version includes the feature (1.2 for timeline semaphores, 1.3 for the others); 'extension' means the device lists the KHR extension; 'supported' is the feature bit from vkGetPhysicalDeviceFeatures2. Required profiles: linux-desktop and android-fold7; Apple rows are optional (AGENTS.md) and are unavailable until an Apple runner exists. Checked by 'python3 tools/render/vulkan_features.py check'.",
+  "description": "RFC 0016 K1 'Feature support recorded' (render.device.vulkan-features): support for the three features the Vulkan adapter (render/device/vulkan/) requires, timeline semaphores, synchronization2 and dynamic rendering, per declared profile. Each measured entry is the device render/device/vulkan/instance.cpp's SelectAdapter would choose, probed by tools/render/vulkan_features_probe.c (probe --platform linux|android --entry). 'core' means the device's API version includes the feature (1.2 for timeline semaphores, 1.3 for the others); 'extension' means the device lists the KHR extension; 'supported' is the feature bit from vkGetPhysicalDeviceFeatures2. Required profile: linux-desktop; android-fold7 (user decision 2026-10-08) and Apple rows are optional (AGENTS.md) and are unavailable until an Apple runner exists. Checked by 'python3 tools/render/vulkan_features.py check'.",
   "profiles": {
     "linux-desktop": {
       "required": true,
@@ -62,7 +62,7 @@
       }
     },
     "android-fold7": {
-      "required": true,
+      "required": false,
       "status": "measured",
       "device": {
         "name": "Adreno (TM) 840",

@@ -294,6 +294,9 @@ private:
 		case Op::kBeginOcclusionQuery:
 		case Op::kEndOcclusionQuery:
 			break; // D43 is unclaimed: refused at Submit
+		case Op::kClearRegion:
+			ClearRegion( command.region );
+			break;
 		case Op::kWriteTimestamp:
 		{
 			BufferRecord &b = B( command.a );
@@ -523,11 +526,38 @@ private:
 				    command.depth->clearDepth, 0, 0, nullptr );
 		}
 		m_L->OMSetRenderTargets( count, colors, FALSE, command.depth ? &depth : nullptr );
+		m_RenderWidth = command.width;
+		m_RenderHeight = command.height;
+		m_RenderDepthStencil =
+		    command.depth && HasStencil( T( command.depth->texture.value ).desc.format );
 		const D3D12_VIEWPORT viewport{ 0.0f, 0.0f, float( command.width ), float( command.height ),
 			0.0f, 1.0f };
 		const D3D12_RECT scissor{ 0, 0, LONG( command.width ), LONG( command.height ) };
 		m_L->RSSetViewports( 1, &viewport );
 		m_L->RSSetScissorRects( 1, &scissor );
+	}
+
+	// D44: the views' rectangle clears, clipped to the render area.
+	void ClearRegion( const render::device::ClearRegion &r )
+	{
+		const LONG x1 =
+		    LONG( std::min<std::uint64_t>( std::uint64_t( r.x ) + r.width, m_RenderWidth ) );
+		const LONG y1 =
+		    LONG( std::min<std::uint64_t>( std::uint64_t( r.y ) + r.height, m_RenderHeight ) );
+		if ( LONG( r.x ) >= x1 || LONG( r.y ) >= y1 )
+			return;
+		const D3D12_RECT rect{ LONG( r.x ), LONG( r.y ), x1, y1 };
+		if ( r.color )
+		{
+			const float value[4] = {
+			    r.colorValue.r, r.colorValue.g, r.colorValue.b, r.colorValue.a };
+			m_L->ClearRenderTargetView( Rtv( 0 ), value, 1, &rect );
+		}
+		const D3D12_CLEAR_FLAGS flags = D3D12_CLEAR_FLAGS(
+		    ( r.depth ? D3D12_CLEAR_FLAG_DEPTH : 0 ) |
+		    ( r.stencil && m_RenderDepthStencil ? D3D12_CLEAR_FLAG_STENCIL : 0 ) );
+		if ( flags )
+			m_L->ClearDepthStencilView( Dsv(), flags, r.depthValue, r.stencilValue, 1, &rect );
 	}
 
 	void EndRendering()
@@ -618,6 +648,9 @@ private:
 	bool m_GroupsDirty = true;
 	bool m_VertexDirty = true;
 	std::vector<Com<ID3D12Resource>> &m_Scratch;
+	std::uint32_t m_RenderWidth = 0; // the open rendering's extent (D44)
+	std::uint32_t m_RenderHeight = 0;
+	bool m_RenderDepthStencil = false; // its depth attachment has stencil
 	std::vector<std::pair<std::uint64_t, std::uint64_t>> m_Resolves;
 };
 

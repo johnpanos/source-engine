@@ -126,6 +126,12 @@ void CommandEncoder::EndRendering()
 		backend->EndRendering();
 }
 
+void CommandEncoder::ClearRegion( const render::device::ClearRegion &region )
+{
+	if ( IEncoderBackend *backend = Enter() )
+		backend->ClearRegion( region );
+}
+
 void CommandEncoder::SetPipeline( PipelineId pipeline )
 {
 	if ( IEncoderBackend *backend = Enter() )

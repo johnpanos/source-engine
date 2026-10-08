@@ -22,8 +22,19 @@ only, `-Wall -Wextra -Werror`, no tier0/tier1, no GPU, no display.
 | Dynamic library | `public/platform/contracts/dynamic_library.h` | `dynamic_library/dynamic_library_conformance.h` | `dynamic_library/fake_dynamic_library.h` | `platform.dynamic_library`, `.sensitivity` |
 | Monotonic clock | `public/platform/contracts/clock.h` | `clock/clock_conformance.h` | `clock/fake_clock.h` | `platform.clock`, `.sensitivity` |
 | Platform paths | `public/platform/contracts/paths.h` | `paths/paths_conformance.h` | `paths/fake_paths.h` | `platform.paths`, `.sensitivity` |
+| Wall clock | `public/platform/contracts/wall_clock.h` | `wall_clock/wall_clock_conformance.h` | `wall_clock/fake_wall_clock.h` | `platform.wall_clock`, `.sensitivity` |
+| Threads | `public/platform/contracts/thread.h` | `thread/thread_conformance.h` | `thread/fake_threads.h` | `platform.thread`, `.sensitivity` |
+| Virtual memory | `public/platform/contracts/virtual_memory.h` | `virtual_memory/virtual_memory_conformance.h` | `virtual_memory/fake_virtual_memory.h` | `platform.virtual_memory`, `.sensitivity` |
+| Process environment | `public/platform/contracts/process_environment.h` | `process_environment/process_environment_conformance.h` | `process_environment/fake_process_environment.h` | `platform.process_environment`, `.sensitivity` |
+| Diagnostics | `public/platform/contracts/diagnostics.h` | `diagnostics/diagnostics_conformance.h` | `diagnostics/fake_diagnostics.h` | `platform.diagnostics`, `.sensitivity` |
 | Player record store | `public/platform/contracts/record_store.h` | `record_store/record_store_conformance.h` | `record_store/fake_record_store.h` | `platform.record_store`, `.sensitivity`, `.user_defaults` (Apple devices) |
 | Achievement service | `public/platform/contracts/achievement_service.h` | `achievement_service/achievement_service_conformance.h` | `achievement_service/fake_achievement_platform.h` | `platform.achievement_service`, `.sensitivity`, `.game_center` (Apple devices) |
+
+Native foundation providers (R26) run the same suites in
+`foundation_posix/` (`platform.foundation.posix`, `.tsan`, `.asan`, `.i386`) and
+`foundation_win32/` (`platform.foundation.win32`, through `parity_wine.py
+--suite`); Android uses `tools/quality/android_foundation.py`. Evidence:
+`RFC/0001-foundation-providers-progress.md`.
 
 Contract docs: `unittests/platformtest/contracts/platform.<cap>.v1.md`.
 

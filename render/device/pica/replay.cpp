@@ -175,6 +175,7 @@ private:
 		case Op::kEndOcclusionQuery:
 		case Op::kDrawIndexedIndirect:
 		case Op::kDrawIndexedIndirectCount:
+		case Op::kClearRegion:
 			break;
 		}
 	}

@@ -48,6 +48,7 @@ enum class Capability : std::uint8_t
 	kTextureCompressionETC1, // the kETC1* formats (clause D40)
 	kPackedRGBA4,            // kRGBA4Unorm, sampled and copied (clause D42)
 	kOcclusionQueries,       // CommandEncoder::BeginOcclusionQuery, exact sample counts (D43)
+	kClearRegions,           // CommandEncoder::ClearRegion inside rendering (clause D44)
 	kCount
 };
 

@@ -1958,14 +1958,34 @@
           "fcntl.h",
           "csignal",
           "cerrno",
-          "dlfcn.h"
+          "dlfcn.h",
+          "sys/uio.h",
+          "unwind.h",
+          "android/log.h",
+          "sys/sysctl.h",
+          "pthread.h",
+          "sched.h",
+          "sys/resource.h",
+          "time.h",
+          "pthread/qos.h",
+          "sys/syscall.h",
+          "sys/mman.h"
         ]
+      },
+      {
+        "id": "platform.win32",
+        "kind": "backend",
+        "owns": "RFC 0001 R26: the Win32 providers of the foundation capabilities",
+        "paths": ["platform/win32/"],
+        "allowedEdges": ["foundation", "platform.contracts"],
+        "externalHeaders": ["windows.h", "process.h", "shellapi.h", "initguid.h", "knownfolders.h", "shlobj.h"]
       },
       {
         "id": "platform.posix.native-tests",
         "kind": "native-test",
         "paths": [
-          "unittests/platformtest/dynamic_library_posix/"
+          "unittests/platformtest/dynamic_library_posix/",
+          "unittests/platformtest/foundation_posix/"
         ],
         "allowedEdges": [
           "foundation",
@@ -1975,8 +1995,22 @@
           "testing.contracts"
         ],
         "externalHeaders": [
-          "unistd.h"
+          "unistd.h",
+          "csignal",
+          "dirent.h",
+          "limits.h",
+          "sys/mman.h",
+          "sys/socket.h",
+          "sys/stat.h",
+          "sys/wait.h"
         ]
+      },
+      {
+        "id": "platform.win32.native-tests",
+        "kind": "native-test",
+        "paths": ["unittests/platformtest/foundation_win32/"],
+        "allowedEdges": ["foundation", "platform.contracts", "platform.win32", "platform.tests", "testing.contracts"],
+        "externalHeaders": ["windows.h"]
       }
     ],
     "generatedHeaders": [

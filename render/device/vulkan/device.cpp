@@ -122,6 +122,8 @@ DeviceResult<void> VulkanDevice::Initialize()
 		m_Facts.capabilities.Add( Capability::kCubeArrays );
 	if ( m_Adapter.fillModeNonSolid )
 		m_Facts.capabilities.Add( Capability::kFillModeLines );
+	// D44: vkCmdClearAttachments, on either rendering path.
+	m_Facts.capabilities.Add( Capability::kClearRegions );
 	// D43: occlusion queries where they count exactly.
 	if ( m_Adapter.occlusionQueryPrecise )
 		m_Facts.capabilities.Add( Capability::kOcclusionQueries );

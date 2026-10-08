@@ -121,6 +121,15 @@ Build infrastructure MUST provide:
   optional` in `quality/baseline.json`, and are reported as unavailable when
   their runner is missing. No roadmap gate waits on them. An Apple or MSVC
   support claim still needs that platform's own evidence.
+- The Galaxy Z Fold7 and the Android x86_64 ABI are **optional** too (user
+  decision, 2026-10-08). Android's required device evidence is an arm64-v8a
+  hardware run on any declared device (the Galaxy Tab S8 Ultra qualifies).
+  Fold7 rows (`render-v1.json`'s frame-pacing row, the Vulkan feature record)
+  are validated when present and reported unavailable when not; x86_64 is its
+  own optional profile in `quality/baseline.json`. Earlier gate text that asks
+  for Fold7 measurements or "Fold7 rows recorded" is optional evidence, and no
+  roadmap gate waits on it. A Fold7 or x86_64 support claim still needs its
+  own evidence.
 - Shared conformance plus profile-specific integration, sanitizer/fuzz coverage
   where supported, performance/power/memory budgets, installed-package smoke
   tests, symbolized crash diagnostics, and documented rebuild/reproduction steps.
@@ -661,7 +670,7 @@ marks no implementation gate done.
 | 23 / R23 | Hammer application authority; 0002 H3 | R13, R22 | One selection/mutation/history owner; draft resolution, transform/cancel/undo/redo/save-position and generated sequences pass headlessly | partial ([0002 current state](RFC/0002-progress.md#current-state-2026-09-25)) |
 | 24 / R24 | Hammer tools and presenters; 0002 H4 | R23 | Normalized traces share policies across entry points; two-document and close/focus/capture tests pass; no widgets in tools/presenters | planned |
 | 25 / R25 | GTK editor workflow; 0002 H5 | R17, R22, R24 | Open/edit/undo/save/reopen/compile/run with multiple views, inspector and textures; declared fidelity and no hidden MFC runtime dependency | planned |
-| 26 / R26 | Remaining foundation providers; 0001 rank 12 | R10, R11 | Native clock/thread/memory/process/environment/paths/diagnostics suites pass for supported profiles, including failure and cleanup | planned |
+| 26 / R26 | Remaining foundation providers; 0001 rank 12 | R10, R11 | Native clock/thread/memory/process/environment/paths/diagnostics suites pass for supported profiles, including failure and cleanup | done (2026-10-08: contracts `platform.wall-clock.v1`, `platform.thread.v1`, `platform.virtual-memory.v1`, `platform.process-environment.v1`, `platform.diagnostics.v1` and amended `platform.paths.v1`, each with a shared suite and bad providers; POSIX and Win32 providers pass every suite plus fault, crash-handler, teardown and failure clauses on Linux x86_64 (g++, clang++, TSan, ASan/UBSan), i386 and Windows PE under Wine; `kiln` injects the process environment; Android passes on a Galaxy Tab S8 Ultra (arm64, Android 16) with its logcat records; Apple and MSVC optional and not run ([record](RFC/0001-foundation-providers-progress.md))) |
 | 27 / R27 | Vulkan compatibility waypoint; 0001 rank 13 | R10, R16, R18 | Deployment, shader artifacts, profile selection and SDL3 presentation proven by a measured compatibility experiment; limitations recorded | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 28 / R28 | Native Vulkan bootstrap; 0001 rank 14 | R10, R16, R18 | Native adapter/device/queues and SDL3 bridge present smoke frame; required-profile failure and validation diagnostics work | partial ([native Vulkan slice](RFC/0001-native-vulkan-progress.md)) |
 | 29 / R29 | Four-platform architecture proof; 0001 rank 15 expanded to Linux/macOS/iOS/Android | R12, R18, R26, R28 | Each target passes foundation and SDL3/Vulkan native lifecycle smoke; Apple portability, iOS static composition and mobile packaging demonstrated; headless roles tested where declared | partial (children R29-IOS-STATIC, R29-ANDROID-BUILD and R29-MACOS-APP: iOS static build and iPhone runs, Android APK on the Fold7, an unsigned macOS app built on Linux; no lifecycle gate, no macOS run) |

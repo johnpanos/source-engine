@@ -220,6 +220,14 @@ void VulkanEncoder::BeginRendering( const RenderingDesc &desc )
 	Push( command );
 }
 
+void VulkanEncoder::ClearRegion( const render::device::ClearRegion &region )
+{
+	Command command;
+	command.op = Op::kClearRegion;
+	command.region = region;
+	Push( command );
+}
+
 void VulkanEncoder::EndRendering()
 {
 	if ( !m_Rendering )
@@ -846,6 +854,18 @@ bool VulkanDevice::Validate(
 				return false;
 			v.occlusionOpen = false;
 			break;
+		case Op::kClearRegion:
+		{
+			// D44: inside rendering, at least one aspect, each on an
+			// attachment that has it.
+			const render::device::ClearRegion &r = command.region;
+			if ( !v.rendering || !( r.color || r.depth || r.stencil ) ||
+			     ( r.color && v.colors.empty() ) ||
+			     ( ( r.depth || r.stencil ) && v.depth == Format::kUnknown ) ||
+			     ( r.stencil && !HasStencil( v.depth ) ) )
+				return false;
+			break;
+		}
 		case Op::kSetViewport:
 		case Op::kBeginLabel:
 		case Op::kEndLabel:
@@ -1239,6 +1259,7 @@ private:
 		info.pStencilAttachment =
 		    depthTexture && HasStencil( depthTexture->desc.format ) ? &stencil : nullptr;
 		m_D.m_Vk.cmdBeginRendering( m_Cmd, &info );
+		m_RenderStencil = depthTexture && HasStencil( depthTexture->desc.format );
 		m_Width = command.width;
 		m_Height = command.height;
 		m_Rendering = true;
@@ -1349,12 +1370,49 @@ private:
 		begin.pClearValues = clears.data();
 		vkCmdBeginRenderPass( m_Cmd, &begin, VK_SUBPASS_CONTENTS_INLINE );
 		m_RenderPass = true;
+		m_RenderStencil = attachments.depth &&
+		                  HasStencil( m_D.LiveTexture( attachments.depth->texture.value )->desc.format );
 		m_Width = command.width;
 		m_Height = command.height;
 		m_Rendering = true;
 		ApplyViewport( m_Width, m_Height );
 		const VkRect2D scissor{ { 0, 0 }, { command.width, command.height } };
 		vkCmdSetScissor( m_Cmd, 0, 1, &scissor );
+	}
+
+	// D44: the attachments' rectangle, clipped to the render area, through
+	// vkCmdClearAttachments (inside the pass on either rendering path).
+	void ClearRegion( const render::device::ClearRegion &r )
+	{
+		const auto x1 = static_cast<std::uint32_t>(
+		    std::min<std::uint64_t>( std::uint64_t( r.x ) + r.width, m_Width ) );
+		const auto y1 = static_cast<std::uint32_t>(
+		    std::min<std::uint64_t>( std::uint64_t( r.y ) + r.height, m_Height ) );
+		if ( r.x >= x1 || r.y >= y1 )
+			return;
+		VkClearAttachment clears[2] = {};
+		std::uint32_t count = 0;
+		if ( r.color )
+		{
+			clears[count].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			clears[count].colorAttachment = 0;
+			clears[count].clearValue.color = { { r.colorValue.r, r.colorValue.g, r.colorValue.b,
+				r.colorValue.a } };
+			++count;
+		}
+		const VkImageAspectFlags depthStencil =
+		    ( r.depth ? VK_IMAGE_ASPECT_DEPTH_BIT : 0 ) |
+		    ( r.stencil && m_RenderStencil ? VK_IMAGE_ASPECT_STENCIL_BIT : 0 );
+		if ( depthStencil )
+		{
+			clears[count].aspectMask = depthStencil;
+			clears[count].clearValue.depthStencil = { r.depthValue, r.stencilValue };
+			++count;
+		}
+		VkClearRect rect{};
+		rect.rect = { { std::int32_t( r.x ), std::int32_t( r.y ) }, { x1 - r.x, y1 - r.y } };
+		rect.layerCount = 1;
+		vkCmdClearAttachments( m_Cmd, count, clears, 1, &rect );
 	}
 
 	void ClearTexture( const Command &command )
@@ -1549,6 +1607,9 @@ private:
 			if ( m_Rendering )
 				ApplyViewport( m_Width, m_Height );
 			break;
+		case Op::kClearRegion:
+			ClearRegion( command.region );
+			break;
 		case Op::kDraw:
 			Flush( VK_PIPELINE_BIND_POINT_GRAPHICS );
 			vkCmdDraw(
@@ -1730,6 +1791,7 @@ private:
 	IndexFormat m_IndexFormat = IndexFormat::kUint16;
 	std::optional<Viewport> m_Viewport;
 	bool m_Rendering = false;
+	bool m_RenderStencil = false; // the open rendering's depth attachment has stencil (D44)
 	std::uint32_t m_Width = 0;
 	std::uint32_t m_Height = 0;
 };

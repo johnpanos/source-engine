@@ -78,8 +78,15 @@ nanoseconds.
   clocks (backward-time, zero-resolution, non-additive/clamped-elapsed) and
   asserts each is caught while the conforming backend passes.
 
-### Native providers (added as they land)
+### Native providers (installed 2026-10-08, R26)
 
-A real monotonic-clock provider (POSIX `clock_gettime(CLOCK_MONOTONIC)`, Win32
-`QueryPerformanceCounter`) adds one manifest row running the same shared suite to
-certify OS timer behavior; fake-provider success is not evidence of it.
+- POSIX (`platform/posix/foundation_providers.h`, library `platform_posix`):
+  `CreatePosixMonotonicClock` (CLOCK_MONOTONIC). Row `platform.foundation.posix` runs this suite and the native
+  clauses on Linux with g++ and clang++, in release, under TSan and ASan/UBSan
+  (`.tsan`, `.asan`) and as i386 (`.i386`). The same source cross-builds for
+  Android arm64-v8a and x86_64 at API 29 (`tools/quality/android_foundation.py`)
+  and compiles for iOS arm64.
+- Win32 (`platform/win32/foundation_providers.h`): `CreateWin32MonotonicClock` (QueryPerformanceCounter, converted to nanoseconds once per sample so elapsed time stays exactly additive). Row
+  `platform.foundation.win32` runs as a static PE under Wine
+  (`tools/quality/parity_wine.py check --suite platform.foundation.win32`).
+- Evidence and what is still unverified: `RFC/0001-foundation-providers-progress.md`.

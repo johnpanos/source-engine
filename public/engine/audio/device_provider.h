@@ -55,6 +55,7 @@ extern "C" DEVICE_PROVIDER_EXPORT const audio::DeviceProvider *Audio_SDLProvider
 extern "C" DEVICE_PROVIDER_EXPORT const audio::DeviceProvider *Audio_DirectSoundProvider();
 extern "C" DEVICE_PROVIDER_EXPORT const audio::DeviceProvider *Audio_WaveProvider();
 extern "C" DEVICE_PROVIDER_EXPORT const audio::DeviceProvider *Audio_NullProvider();
+extern "C" DEVICE_PROVIDER_EXPORT const audio::DeviceProvider *Audio_N3dsProvider();
 
 // Copies the plan before Connect. Invalid plans and replacement while connected
 // fail without changing the current selection. Providers remain root-owned.

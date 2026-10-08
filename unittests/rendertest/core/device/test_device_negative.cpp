@@ -47,7 +47,8 @@ enum class Defect
 	kDropsOcclusion,      // D43: records no occlusion query
 	kClampsIndirectDraws, // D30: draws only the records that fit, instead of failing
 	kIgnoresCountOffset,  // D31: reads the count at offset 0 whatever was asked
-	kCollapsesCubeLayers  // D36: copies every cube-array face to its cube's layer 0..5
+	kCollapsesCubeLayers, // D36: copies every cube-array face to its cube's layer 0..5
+	kClearsWholeTarget    // D44: clears the whole attachment, not the region
 };
 
 // Draw-constant block sizes by pipeline, for kFillsDrawConstants.
@@ -114,6 +115,16 @@ public:
 	}
 	void BeginRendering( const RenderingDesc &desc ) override { m_Inner->BeginRendering( desc ); }
 	void EndRendering() override { m_Inner->EndRendering(); }
+	void ClearRegion( const render::device::ClearRegion &region ) override
+	{
+		render::device::ClearRegion widened = region;
+		if ( m_Defect == Defect::kClearsWholeTarget )
+		{
+			widened.x = widened.y = 0;
+			widened.width = widened.height = 0xFFFFFFFFu;
+		}
+		m_Inner->ClearRegion( widened );
+	}
 	void SetPipeline( PipelineId pipeline ) override
 	{
 		m_Inner->SetPipeline( pipeline );
@@ -428,6 +439,7 @@ int main()
 	    { Defect::kClampsIndirectDraws, "under-test.D30 " },
 	    { Defect::kIgnoresCountOffset, "under-test.D31 " },
 	    { Defect::kCollapsesCubeLayers, "under-test.D36 " },
+	    { Defect::kClearsWholeTarget, "under-test.D44 " },
 	};
 	for ( const Case &c : cases )
 	{

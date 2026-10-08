@@ -1,4 +1,4 @@
-//==== Copyright © 1996-2007, Valve Corporation, All rights reserved. =========
+//==== Copyright Â© 1996-2007, Valve Corporation, All rights reserved. =========
 //
 // Missile shooting version of the android. Used for area denial like the turrets in Portal.
 //

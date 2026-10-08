@@ -1,4 +1,4 @@
-//========== Copyright © Valve Corporation, All rights reserved. ========
+//========== Copyright Â© Valve Corporation, All rights reserved. ========
 
 #include "vjobs/pcring.h"
 #include "vjobs/edgegeom_shared.h"

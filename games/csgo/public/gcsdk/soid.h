@@ -1,4 +1,4 @@
-//====== Copyright ©, Valve Corporation, All rights reserved. =======
+//====== Copyright Â©, Valve Corporation, All rights reserved. =======
 //
 // Purpose: Ownership id for a shared object cache
 //

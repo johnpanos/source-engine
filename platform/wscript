@@ -50,7 +50,12 @@ def build(bld):
 		bld.stlib(
 			env       = bld.strict_cpp20_env(),
 			source    = [ 'posix/dynamic_library_provider.cpp', 'posix/tool_process_provider.cpp',
-			              'posix/process_exec.cpp', 'posix/process_spawner.cpp' ],
+			              'posix/process_exec.cpp', 'posix/process_spawner.cpp',
+			              # RFC 0001 foundation providers (R26).
+			              'posix/clock_providers.cpp', 'posix/thread_provider.cpp',
+			              'posix/virtual_memory_provider.cpp',
+			              'posix/process_environment_provider.cpp', 'posix/paths_provider.cpp',
+			              'posix/diagnostics_provider.cpp' ],
 			target    = 'platform_posix',
 			name      = 'platform_posix',
 			arch_module = 'platform.posix',

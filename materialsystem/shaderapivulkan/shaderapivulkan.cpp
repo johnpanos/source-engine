@@ -934,21 +934,6 @@ static PolygonOffsetMode_t g_CurrentPolyOffset = SHADER_POLYOFFSET_DISABLE;
 static float g_CurrentAlphaRef = -1.0f;
 // CVulkanContext::kColorSrgb*/kFragment*/kVertex* flags of the pass being drawn.
 static int g_CurrentColorFlags = 0;
-// The pass's pixel shader is vertexlit_and_unlit_generic (UnlitGeneric,
-// VertexLitGeneric), whose modulation is pixel constant c1, not cModulationColor.
-static bool g_CurrentModulationInPixelC1 = false;
-
-// What a pass's vertexlit_and_unlit_generic_vs20 static combo says about vertex
-// lighting: whether the shader is that one, VERTEXCOLOR (which replaces lighting
-// with the vertex color) and HALFLAMBERT. Its dynamic combo (DYNAMIC_LIGHT,
-// STATIC_LIGHT) comes with each draw (SetVertexShaderIndex).
-struct VertexLitCombo
-{
-	bool vertexLit = false;
-	bool vertexColor = false;
-	bool halfLambert = false;
-};
-static VertexLitCombo g_CurrentVertexLit;
 
 // D3DRS_STENCIL* render state (IShaderAPI SetStencil*), D3D9's defaults.
 struct StencilRenderState
@@ -993,7 +978,6 @@ static bool LegacyPortsEnabled()
 // Stores SetStandardVertexShaderConstants' registers (defined with g_vsConstants).
 static void StoreStandardVertexShaderConstants( float fOverbright );
 // The samplers the pass reads as sRGB.
-static unsigned int g_CurrentSrgbSamplers = 0;
 // The samplers the pass being drawn enabled (all when no snapshot is current).
 static unsigned int g_CurrentEnabledSamplers = ~0u;
 // The census of drawn passes by route: the snapshot's route with its pixel and
@@ -1007,7 +991,6 @@ struct RouteCensus
 static std::map<std::string, RouteCensus> g_RouteCensus;
 static std::string g_CurrentRouteKey;
 // The pass's vertex format (the shadow state's VertexShaderVertexFormat).
-static VertexFormat_t g_CurrentVertexUsage = 0;
 // The texture bound to each sampler this pass (-1 none), lightmap pages included.
 static int g_boundSamplerHandles[16] = {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
@@ -1053,14 +1036,6 @@ enum
 	kSpriteCardDepthBlend = 256,
 	kSpriteCardMod2x = 512
 };
-static std::vector<int> g_snapshotSpriteCard;
-static int g_CurrentSpriteCard = -1;
-// Fixed-function dynamic state D3D9 keeps in m_DynamicState: the constant color
-// (D3DRS_TEXTUREFACTOR, a D3DCOLOR set by Color*), the shade mode and the
-// ambient light (D3DRS_AMBIENT). No DX9 shader reads them; they are held so the
-// interface reports what was set.
-static unsigned int g_ConstantColor = 0xFFFFFFFF;
-static unsigned int g_AmbientLightColor = 0;
 // Fog, as CShaderAPIDx8 keeps it: the scene's mode and color (SceneFogMode,
 // SceneFogColor3ub), the mode in effect for the current pass (FogMode, which
 // ApplyFogMode derives from the snapshot's IShaderShadow::FogMode), the fog
@@ -4112,17 +4087,6 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 	g_pRenderMesh = nullptr;
 }
 
-// Frozen-path: core progress (RFC 0016 K8 particles) - SpriteCard and Portal 2's
-// spline cards build their corners from card records; render.sprite-card.v1
-// (render/sprite_card.h) is the one definition, shared with the render core.
-// The native pipelines transform positions by cModelViewProj only, so the
-// corners are built here, on the draw's constants, into model-space positions.
-struct SpriteCardFrame
-{
-	render::sprite_card::Frame card;
-	float addSelf; // ADDSELF's weight (c0.z), or < 0 without the combo
-};
-
 // The bound material's core point: render/legacy/core_mesh_kind.h, shared
 // with the 3DS frontend (one classifier).
 using render::legacy::CoreMeshKindFor;
@@ -5589,12 +5553,10 @@ static std::vector<PolygonOffsetMode_t> g_snapshotPolyOffset;
 // Parallel to g_snapshotShaders: the $alphatest reference each snapshot applies
 // (< 0 when alpha test is disabled).
 static std::vector<float> g_snapshotAlphaRef;
-// Parallel to g_snapshotShaders: the vertex usage each snapshot's shader declared.
 static std::vector<VertexFormat_t> g_snapshotVertexUsage;
+// Parallel to g_snapshotShaders: the vertex usage each snapshot's shader declared.
 // Parallel to g_snapshotShaders: the kColorSrgb* flags each snapshot declared.
 static std::vector<int> g_snapshotColorFlags;
-static std::vector<bool> g_snapshotModulationInPixelC1;
-static std::vector<VertexLitCombo> g_snapshotVertexLit;
 // Parallel to g_snapshotShaders: the fog each snapshot's pass applies
 // (IShaderShadow::FogMode, DisableFogGammaCorrection) and the samplers it enabled.
 struct SnapshotFogState
@@ -5604,58 +5566,17 @@ struct SnapshotFogState
 };
 static std::vector<SnapshotFogState> g_snapshotFog;
 static std::vector<unsigned int> g_snapshotEnabledSamplers;
-static std::vector<unsigned int> g_snapshotSrgbSamplers;
 // Each snapshot's census key: its route, pixel and vertex shader, static combos.
 static std::vector<std::string> g_snapshotRouteKeys;
 // Parallel to g_snapshotShaders: SnapshotToneMapType of each snapshot's pass.
-static std::vector<int> g_snapshotToneMap;
 // Snapshots whose pixel shader is bloomadd_ps2x (screenspace_general's
 // dev/bloomadd, Portal 2's bloom composite): the base texture with alpha 1.
-static std::vector<bool> g_snapshotBloomAdd;
-static bool g_CurrentBloomAdd = false;
 
 static bool IsBloomAddPixelShader( const char *pixelShaderName )
 {
 	return !V_strnicmp( pixelShaderName, "bloomadd_ps2", 12 );
 }
-static int g_CurrentToneMap = 0;
-// Parallel to g_snapshotShaders: sprite_ps2x's CONSTANTCOLOR (bit 0) and HDRTYPE
-// (bits 1..2) static combos, -1 for other pixel shaders.
-static std::vector<int> g_snapshotSpriteCombos;
-static int g_CurrentSpriteCombos = -1;
-// Parallel to g_snapshotShaders: how each snapshot's pixel shader fogs
-// (common_ps_fxc.h CalcPixelFogFactor / FinalOutput) and the registers it reads
-// its fog parameters and eye position from.
-enum PixelFogMode
-{
-	kPixelFogNone = 0,     // PIXEL_FOG_TYPE_NONE, or a shader without fog
-	kPixelFogCombo,        // the PIXELFOGTYPE dynamic combo (GetPixelFogCombo)
-	kPixelFogConstantType, // the type in g_ShaderControls.x (c12.x; ps2b and up)
-	kPixelFogDecal         // PIXELFOGTYPE, factor raised to 0.4 (DecalModulate)
-};
-struct PixelFogInputs
-{
-	int mode = kPixelFogNone;
-	int paramsRegister = 0;
-	int eyeRegister = 0;
-};
-static std::vector<PixelFogInputs> g_snapshotPixelFog;
-static PixelFogInputs g_CurrentPixelFog;
 
-// vertexlit_and_unlit_generic_vs20's static combos (fxctmp9/
-// vertexlit_and_unlit_generic_vs20.inc): VERTEXCOLOR at stride 192, HALFLAMBERT
-// at 768. The vs30 build (hardware with fast vertex textures) is not used here.
-static VertexLitCombo SnapshotVertexLitCombo( const CShaderShadowVulkan &shadow )
-{
-	VertexLitCombo combo;
-	combo.vertexLit = !V_stricmp( shadow.m_vertexShaderName, "vertexlit_and_unlit_generic_vs20" );
-	if ( combo.vertexLit )
-	{
-		combo.vertexColor = ( shadow.m_vertexShaderIndex / 192 ) % 2 != 0;
-		combo.halfLambert = ( shadow.m_vertexShaderIndex / 768 ) % 2 != 0;
-	}
-	return combo;
-}
 // Snapshot ids are 16-bit (StateSnapshot_t is a short): four flag bits and an
 // 11-bit table index. As in D3D9's transition table, identical shadow states
 // share one snapshot, so the table holds distinct states rather than one entry
@@ -5683,17 +5604,9 @@ static void ClearSnapshotTables()
 	g_snapshotAlphaRef.clear();
 	g_snapshotVertexUsage.clear();
 	g_snapshotColorFlags.clear();
-	g_snapshotModulationInPixelC1.clear();
-	g_snapshotVertexLit.clear();
 	g_snapshotFog.clear();
 	g_snapshotEnabledSamplers.clear();
-	g_snapshotSrgbSamplers.clear();
 	g_snapshotRouteKeys.clear();
-	g_snapshotToneMap.clear();
-	g_snapshotBloomAdd.clear();
-	g_snapshotSpriteCombos.clear();
-	g_snapshotSpriteCard.clear();
-	g_snapshotPixelFog.clear();
 }
 
 // Faithful vertex-shader constant register file. The material system commits its
@@ -6046,22 +5959,6 @@ struct MatrixStackState
 };
 MatrixStackState g_matrices;
 
-// D3D9's transform change flags (CShaderAPIDx8::MatrixIsChanging and
-// UpdateMatrixTransform): every load or product of a matrix changes it, except
-// LoadIdentity on a matrix that is already the identity. The legacy ports'
-// derived registers follow them (render_vulkan::LegacyTransformCommit).
-static uint64_t g_transformGeneration[NUM_MATRIX_MODES];
-static bool g_transformIsIdentity[NUM_MATRIX_MODES];
-
-static void NoteTransformChanged( bool identity )
-{
-	const int mode = g_matrices.mode;
-	if ( mode < 0 || mode >= NUM_MATRIX_MODES || ( identity && g_transformIsIdentity[mode] ) )
-		return;
-	++g_transformGeneration[mode];
-	g_transformIsIdentity[mode] = identity;
-}
-
 void MatSetIdentity( float *m )
 {
 	for ( int i = 0; i < 16; ++i )
@@ -6294,146 +6191,11 @@ VkCompareOp NativeStencilCompare( StencilComparisonFunction_t func )
 
 } // namespace
 
-// The tone-mapping scale type a pass's pixel shader ends in (common_ps_fxc.h
-// FinalOutput's iTONEMAP_SCALE_TYPE): LINEAR multiplies by cLightScale.x (the
-// tone-mapping scale in integer HDR), GAMMA by its 1/2.2 power, NONE by 1.
-enum SnapshotToneMap
-{
-	kToneMapUnknown = 0,
-	kToneMapNone,
-	kToneMapLinear,
-	kToneMapGamma
-};
 
-// sprite_ps2x.fxc's CONSTANTCOLOR and HDRTYPE static combos (fxctmp9
-// sprite_ps20b.inc strides 16 and 32; sprite_ps20.inc 8 and 16), packed as
-// CONSTANTCOLOR | HDRTYPE << 1; -1 for other pixel shaders.
-// spritecard_ps2x.fxc's static combos (fxctmp9/spritecard_ps20b.inc and
-// spritecard_ps20.inc strides) for a SpriteCard vertex shader's pass.
-static int SnapshotSpriteCard( const CShaderShadowVulkan &shadow )
-{
-	const bool sprite = !V_stricmp( shadow.m_vertexShaderName, "spritecard_vs20" );
-	const bool spline = !V_stricmp( shadow.m_vertexShaderName, "splinecard_vs20" );
-	if ( !sprite && !spline )
-		return -1;
-	int flags = spline ? kSpriteCardSpline : 0;
-	const int index = shadow.m_pixelShaderIndex;
-	const bool ps20b = !V_stricmp( shadow.m_pixelShaderName, "spritecard_ps20b" );
-	if ( !ps20b && V_stricmp( shadow.m_pixelShaderName, "spritecard_ps20" ) )
-	{
-		NoteUnimplemented( "SpriteCard: pixel shader other than spritecard_ps20/ps20b" );
-		return flags;
-	}
-	// ps20b has CONVERT_TO_SRGB (stride 1) in front of the ps20 combos, so its
-	// strides are twice ps20's; DEPTHBLEND exists only in ps20b.
-	const int scale = ps20b ? 2 : 1;
-	const auto combo = [index, scale]( int ps20Stride )
-	{ return ( index / ( ps20Stride * scale ) ) % 2 != 0; };
-	if ( combo( 1 ) )
-		flags |= kSpriteCardDualSequence;
-	if ( combo( 6 ) )
-		flags |= kSpriteCardAddBaseTexture2;
-	if ( combo( 12 ) )
-		flags |= kSpriteCardMaxLumFrameBlend;
-	if ( combo( 48 ) )
-		flags |= kSpriteCardExtractGreenAlpha;
-	if ( combo( 96 ) )
-		flags |= kSpriteCardColorRamp;
-	if ( combo( 192 ) )
-		flags |= kSpriteCardAnimBlend;
-	if ( combo( 384 ) )
-		flags |= kSpriteCardAddSelf;
-	if ( ps20b && combo( 768 ) )
-		flags |= kSpriteCardDepthBlend;
-	// MOD2X follows DEPTHBLEND, which ps20 lacks: stride 3072 in ps20b, 768 in ps20.
-	if ( ( index / ( ps20b ? 3072 : 768 ) ) % 2 != 0 )
-		flags |= kSpriteCardMod2x;
-	return flags;
-}
 
-static int SnapshotSpriteCombos( const CShaderShadowVulkan &shadow )
-{
-	const int index = shadow.m_pixelShaderIndex;
-	if ( !V_stricmp( shadow.m_pixelShaderName, "sprite_ps20b" ) )
-		return ( ( index / 16 ) % 2 ) | ( ( ( index / 32 ) % 3 ) << 1 );
-	if ( !V_stricmp( shadow.m_pixelShaderName, "sprite_ps20" ) )
-		return ( ( index / 8 ) % 2 ) | ( ( ( index / 16 ) % 3 ) << 1 );
-	return -1;
-}
 
-// Which pixel shaders fog, and from which registers (each shader's own
-// declarations: g_FogParams and g_EyePos / g_EyePos_SpecExponent).
-static PixelFogInputs SnapshotPixelFog( const CShaderShadowVulkan &shadow )
-{
-	const char *ps = shadow.m_pixelShaderName;
-	const auto is = [ps]( const char *prefix ) { return !V_strnicmp( ps, prefix, strlen( prefix ) ); };
-	PixelFogInputs fog;
-	if ( is( "lightmappedgeneric_ps2" ) )
-	{
-		fog.mode = kPixelFogCombo;
-		fog.paramsRegister = 11;
-		fog.eyeRegister = 10;
-	}
-	else if ( is( "vertexlit_and_unlit_generic_" ) )
-	{
-		// ps20 selects the type with a combo; ps20b and ps30 read it from c12.x.
-		fog.mode = V_stristr( ps, "_ps20b" ) || V_stristr( ps, "_ps30" ) ? kPixelFogConstantType
-		                                                                  : kPixelFogCombo;
-		fog.paramsRegister = 21;
-		fog.eyeRegister = 20;
-	}
-	else if ( is( "cable_ps2" ) || is( "monitorscreen_ps2" ) || is( "refract_ps2" ) ||
-	          is( "unlittwotexture_ps2" ) || is( "sprite_ps2" ) || is( "skin_ps2" ) )
-	{
-		fog.mode = kPixelFogCombo;
-		fog.paramsRegister = 12; // PSREG_FOG_PARAMS
-		fog.eyeRegister = 11;    // PSREG_EYEPOS_SPEC_EXPONENT
-	}
-	else if ( is( "decalmodulate_ps2" ) )
-	{
-		fog.mode = kPixelFogDecal;
-		fog.paramsRegister = 12;
-		fog.eyeRegister = 11;
-	}
-	else if ( is( "shadow_ps2" ) )
-	{
-		// shadow_ps2x: g_EyePos c2, g_FogParams c3. It fades toward white rather
-		// than blending (demo_dyn_tex.frag's shadow stage).
-		fog.mode = kPixelFogCombo;
-		fog.paramsRegister = 3;
-		fog.eyeRegister = 2;
-	}
-	return fog;
-}
 
-static int SnapshotToneMapType( const CShaderShadowVulkan &shadow )
-{
-	const char *ps = shadow.m_pixelShaderName;
-	const auto is = [ps]( const char *prefix ) { return !V_strnicmp( ps, prefix, strlen( prefix ) ); };
-	if ( !ps[0] || is( "white_ps2" ) || is( "bufferclearobeystencil_ps2" ) ||
-	     is( "luminance_compare_ps2" ) )
-		return kToneMapNone; // no color, a clear color, or a coverage count
-	if ( is( "lightmappedgeneric_ps2" ) || is( "vertexlit_and_unlit_generic_" ) ||
-	     is( "skin_ps2" ) || is( "sky_ps2" ) || is( "spritecard_ps2" ) || is( "cable_ps2" ) ||
-	     is( "unlittwotexture_ps2" ) )
-		return kToneMapLinear;
-	if ( is( "shadow_ps2" ) || is( "decalmodulate_ps2" ) || is( "refract_ps2" ) ||
-	     is( "monitorscreen_ps2" ) || is( "shadowbuildtexture_ps2" ) ||
-	     is( "downsample_nohdr_ps2" ) || is( "blurfilter_ps2" ) || is( "engine_post_ps2" ) ||
-	     is( "bloomadd_ps2" ) )
-		return kToneMapNone;
-	// PortalRefract: only stage 2 (the flames) scales; RenderPass knows the stage.
-	// SolidEnergy clamps the scale; RenderPass applies it.
-	if ( is( "portal_refract_ps2" ) || is( "solidenergy_ps2" ) )
-		return kToneMapNone;
-	// sprite_ps2x: LINEAR with its SRGB combo, GAMMA without (stride 96 in the
-	// ps20b build, 48 in ps20).
-	if ( !V_stricmp( ps, "sprite_ps20b" ) )
-		return ( shadow.m_pixelShaderIndex / 96 ) % 2 ? kToneMapLinear : kToneMapGamma;
-	if ( !V_stricmp( ps, "sprite_ps20" ) )
-		return ( shadow.m_pixelShaderIndex / 48 ) % 2 ? kToneMapLinear : kToneMapGamma;
-	return kToneMapUnknown;
-}
+
 
 // Distinct raster states have distinct keys.
 static uint64_t SnapshotRasterKey( const render_vulkan::CVulkanContext::DynRasterState &state )
@@ -6486,17 +6248,13 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	        ? static_cast<int>( g_ShaderShadow.m_alphaRef * 255 ) / 255.0f
 	        : -1.0f;
 	const int shaderFlags = SnapshotShaderFlags( g_ShaderShadow );
-	const int toneMap = SnapshotToneMapType( g_ShaderShadow );
-	const int spriteCombos = SnapshotSpriteCombos( g_ShaderShadow );
-	const int spriteCard = SnapshotSpriteCard( g_ShaderShadow );
 	char key[192];
-	V_snprintf( key, sizeof( key ), "|%d|%llx|%d|%.6g|%llx|%d|%d|%d|%d|%x|%d|%d|%d",
+	V_snprintf( key, sizeof( key ), "|%d|%llx|%d|%.6g|%llx|%d|%d|%d|%d|%x",
 	    static_cast<int>( id ), static_cast<unsigned long long>( SnapshotRasterKey( raster ) ),
 	    static_cast<int>( g_ShaderShadow.m_polyOffset ), alphaRef,
 	    static_cast<unsigned long long>( g_ShaderShadow.m_vertexUsage ), shaderFlags,
 	    g_ShaderShadow.m_vertexShaderIndex, static_cast<int>( g_ShaderShadow.m_fogMode ),
-	    g_ShaderShadow.m_disableFogGammaCorrection ? 1 : 0, g_ShaderShadow.m_enabledSamplers,
-	    toneMap, spriteCombos, spriteCard );
+	    g_ShaderShadow.m_disableFogGammaCorrection ? 1 : 0, g_ShaderShadow.m_enabledSamplers );
 	// The shaders and their combos keep states of different programs apart.
 	char shaders[160];
 	V_snprintf( shaders, sizeof( shaders ), "%s#%d %s#%d", g_ShaderShadow.m_pixelShaderName,
@@ -6521,14 +6279,9 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 	g_snapshotAlphaRef.push_back( alphaRef );
 	g_snapshotVertexUsage.push_back( g_ShaderShadow.m_vertexUsage );
 	g_snapshotColorFlags.push_back( shaderFlags );
-	// vertexlit_and_unlit_generic_ps2x/_bump_ps2x: g_DiffuseModulation : c1.
-	g_snapshotModulationInPixelC1.push_back(
-	    !V_strnicmp( g_ShaderShadow.m_pixelShaderName, "vertexlit_and_unlit_generic_", 28 ) );
-	g_snapshotVertexLit.push_back( SnapshotVertexLitCombo( g_ShaderShadow ) );
 	g_snapshotFog.push_back(
 	    { g_ShaderShadow.m_fogMode, g_ShaderShadow.m_disableFogGammaCorrection } );
 	g_snapshotEnabledSamplers.push_back( g_ShaderShadow.m_enabledSamplers );
-	g_snapshotSrgbSamplers.push_back( g_ShaderShadow.m_srgbReadSamplers );
 	{
 		char routeKey[256];
 		V_snprintf( routeKey, sizeof( routeKey ), "ps=%s#%d vs=%s#%d",
@@ -6536,11 +6289,6 @@ StateSnapshot_t CShaderAPIVulkan::TakeSnapshot()
 		    g_ShaderShadow.m_vertexShaderName, g_ShaderShadow.m_vertexShaderIndex );
 		g_snapshotRouteKeys.push_back( routeKey );
 	}
-	g_snapshotToneMap.push_back( toneMap );
-	g_snapshotBloomAdd.push_back( bloomAdd );
-	g_snapshotSpriteCombos.push_back( spriteCombos );
-	g_snapshotSpriteCard.push_back( spriteCard );
-	g_snapshotPixelFog.push_back( SnapshotPixelFog( g_ShaderShadow ) );
 	// Flags occupy bits 0..3; the index fits the remaining 11 bits of the short.
 	id = static_cast<StateSnapshot_t>( id | static_cast<int>( index << 4 ) );
 	g_snapshotIds[stateKey] = id;
@@ -6600,22 +6348,10 @@ VertexFormat_t CShaderAPIVulkan::ComputeVertexUsage( int numSnapshots, StateSnap
 	    flags, VERTEX_MAX_TEXTURE_COORDINATES, texCoordSize, numBones, userDataSize );
 }
 
-// The constant color, as CShaderAPIDx8 keeps it: a D3DCOLOR (D3DRS_TEXTUREFACTOR)
-// with float channels truncated to 0..255. Fixed-function stages read it.
-static unsigned int PackConstantColor( int r, int g, int b, int a )
-{
-	const auto clampByte = []( int v )
-	{
-		return static_cast<unsigned int>( v < 0 ? 0 : ( v > 255 ? 255 : v ) );
-	};
-	return ( clampByte( a ) << 24 ) | ( clampByte( r ) << 16 ) | ( clampByte( g ) << 8 ) |
-	       clampByte( b );
-}
 
 void CShaderAPIVulkan::Color3f( float r, float g, float b )
 {
-	g_ConstantColor = PackConstantColor(
-	    static_cast<int>( r * 255 ), static_cast<int>( g * 255 ), static_cast<int>( b * 255 ), 255 );
+	// D3D9's fixed-function texture factor: no shader the core claims reads it.
 }
 
 void CShaderAPIVulkan::Color3fv( float const *pColor )
@@ -6625,8 +6361,7 @@ void CShaderAPIVulkan::Color3fv( float const *pColor )
 
 void CShaderAPIVulkan::Color4f( float r, float g, float b, float a )
 {
-	g_ConstantColor = PackConstantColor( static_cast<int>( r * 255 ), static_cast<int>( g * 255 ),
-	    static_cast<int>( b * 255 ), static_cast<int>( a * 255 ) );
+	// D3D9's fixed-function texture factor: no shader the core claims reads it.
 }
 
 void CShaderAPIVulkan::Color4fv( float const *pColor )
@@ -6636,7 +6371,7 @@ void CShaderAPIVulkan::Color4fv( float const *pColor )
 
 void CShaderAPIVulkan::Color3ub( unsigned char r, unsigned char g, unsigned char b )
 {
-	g_ConstantColor = PackConstantColor( r, g, b, 255 );
+	// D3D9's fixed-function texture factor: no shader the core claims reads it.
 }
 
 void CShaderAPIVulkan::Color3ubv( unsigned char const *rgb )
@@ -6646,7 +6381,7 @@ void CShaderAPIVulkan::Color3ubv( unsigned char const *rgb )
 
 void CShaderAPIVulkan::Color4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a )
 {
-	g_ConstantColor = PackConstantColor( r, g, b, a );
+	// D3D9's fixed-function texture factor: no shader the core claims reads it.
 }
 
 void CShaderAPIVulkan::Color4ubv( unsigned char const *rgba )
@@ -6842,12 +6577,10 @@ void CShaderAPIVulkan::CommitPixelShaderLighting( int pshReg )
 	SetPixelShaderConstant( pshReg, state[0], 6 );
 }
 
-// D3DRS_AMBIENT, the fixed-function ambient term, kept as D3D9 keeps it. Shader
-// passes light from the ambient cube (SetAmbientLightCube).
+// D3DRS_AMBIENT, the fixed-function ambient term: the core lights models from
+// the ambient cube (SetAmbientLightCube), so nothing reads it.
 void CShaderAPIVulkan::SetAmbientLight( float r, float g, float b )
 {
-	g_AmbientLightColor = PackConstantColor( static_cast<int>( r * 255 ),
-	    static_cast<int>( g * 255 ), static_cast<int>( b * 255 ), 255 );
 }
 
 void CShaderAPIVulkan::SetAmbientLightCube( Vector4D cube[6] )
@@ -6987,13 +6720,6 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 		ApplyShadowStateOverrides( raster );
 	}
 	g_CurrentColorFlags = index < g_snapshotColorFlags.size() ? g_snapshotColorFlags[index] : 0;
-	g_CurrentSrgbSamplers =
-	    index < g_snapshotSrgbSamplers.size() ? g_snapshotSrgbSamplers[index] : 0u;
-	g_CurrentVertexUsage = index < g_snapshotVertexUsage.size() ? g_snapshotVertexUsage[index] : 0;
-	g_CurrentModulationInPixelC1 =
-	    index < g_snapshotModulationInPixelC1.size() && g_snapshotModulationInPixelC1[index];
-	g_CurrentVertexLit =
-	    index < g_snapshotVertexLit.size() ? g_snapshotVertexLit[index] : VertexLitCombo();
 	// The lightmap and samplers 1..15 are bound per pass by the shader's dynamic
 	// state.
 	g_boundLightmapHandle = -1;
@@ -7012,13 +6738,6 @@ void CShaderAPIVulkan::BeginPass( StateSnapshot_t snapshot )
 	// samplers it enabled.
 	g_CurrentEnabledSamplers =
 	    index < g_snapshotEnabledSamplers.size() ? g_snapshotEnabledSamplers[index] : ~0u;
-	g_CurrentToneMap = index < g_snapshotToneMap.size() ? g_snapshotToneMap[index] : 0;
-	g_CurrentBloomAdd = index < g_snapshotBloomAdd.size() && g_snapshotBloomAdd[index];
-	g_CurrentSpriteCombos =
-	    index < g_snapshotSpriteCombos.size() ? g_snapshotSpriteCombos[index] : -1;
-	g_CurrentSpriteCard = index < g_snapshotSpriteCard.size() ? g_snapshotSpriteCard[index] : -1;
-	g_CurrentPixelFog =
-	    index < g_snapshotPixelFog.size() ? g_snapshotPixelFog[index] : PixelFogInputs();
 	if ( index < g_snapshotFog.size() )
 	{
 		g_CurrentShadowFogMode = g_snapshotFog[index].mode;
@@ -7226,7 +6945,6 @@ void CShaderAPIVulkan::PopMatrix()
 		for ( int i = 0; i < 16; ++i )
 			cur[i] = top[i];
 		st.pop_back();
-		NoteTransformChanged( false );
 		CommitModelViewProj();
 	}
 }
@@ -7238,7 +6956,6 @@ void CShaderAPIVulkan::LoadMatrix( float *m )
 	float *cur = CurrentMatrix();
 	for ( int i = 0; i < 16; ++i )
 		cur[i] = m[i];
-	NoteTransformChanged( false );
 	CommitModelViewProj();
 }
 
@@ -7248,7 +6965,6 @@ void CShaderAPIVulkan::MultMatrix( float *m )
 		return;
 	float *cur = CurrentMatrix();
 	MatMul( cur, m, cur ); // top = top * m
-	NoteTransformChanged( false );
 	CommitModelViewProj();
 }
 
@@ -7258,7 +6974,6 @@ void CShaderAPIVulkan::MultMatrixLocal( float *m )
 		return;
 	float *cur = CurrentMatrix();
 	MatMul( m, cur, cur ); // top = m * top
-	NoteTransformChanged( false );
 	CommitModelViewProj();
 }
 
@@ -7274,7 +6989,6 @@ void CShaderAPIVulkan::GetMatrix( MaterialMatrixMode_t matrixMode, float *dst )
 void CShaderAPIVulkan::LoadIdentity( void )
 {
 	MatSetIdentity( CurrentMatrix() );
-	NoteTransformChanged( true );
 	CommitModelViewProj();
 }
 
@@ -9044,9 +8758,7 @@ void CShaderAPIVulkan::ResetRenderState( bool bFullReset )
 	FogStart( 0.0f );
 	FogEnd( 0.0f );
 	FogMaxDensity( 1.0f );
-	// Constant color, ambient, cull and shade mode, morphing and skinning.
-	g_ConstantColor = 0xFFFFFFFF;
-	g_AmbientLightColor = 0;
+	// Cull and shade mode, morphing and skinning.
 	g_DesiredCullMode = MATERIAL_CULLMODE_CCW;
 	m_bHWMorphingEnabled = false;
 	g_NumBoneWeights = 0;

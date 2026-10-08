@@ -42,6 +42,7 @@
 #include "shaderapi/commandbuffer.h"
 #include "bitmap/imageformat.h"
 #include "tier0/icommandline.h"
+#include "core_copies.h"
 #include "pica_renderer.h"
 #include "renderparm.h"
 #include "pixelwriter.h"
@@ -292,14 +293,16 @@ struct PicaSnapshot
 {
 	pica::DrawState state;
 	VertexFormat_t format;
+	int polyOffset = 0; // PolygonOffsetMode_t (EnablePolyOffset), the core's depth bias
 };
 
 // Same recorded state (DrawState compared field by field: its padding is not
 // initialized) and vertex format.
-bool SameSnapshot( const PicaSnapshot &a, const pica::DrawState &s, VertexFormat_t format )
+bool SameSnapshot( const PicaSnapshot &a, const pica::DrawState &s, VertexFormat_t format,
+	int polyOffset )
 {
 	const pica::DrawState &t = a.state;
-	return a.format == format && t.depthTest == s.depthTest && t.depthWrite == s.depthWrite &&
+	return a.format == format && a.polyOffset == polyOffset && t.depthTest == s.depthTest && t.depthWrite == s.depthWrite &&
 		t.depthFunc == s.depthFunc && t.blend == s.blend && t.src == s.src && t.dst == s.dst &&
 		t.alphaTest == s.alphaTest && t.alphaFunc == s.alphaFunc && t.alphaRef == s.alphaRef &&
 		t.cull == s.cull && t.colorWrite == s.colorWrite && t.alphaWrite == s.alphaWrite &&
@@ -351,6 +354,25 @@ constexpr int kMaxBones = 53;
 constexpr int kStackDepth = 32;
 
 CUtlVector<PicaSnapshot> g_Snapshots;
+// The dynamic stencil state (IShaderDynamicAPI::SetStencil*), which the core's
+// mesh slots take (DecorateCoreTarget).
+struct CoreStencil
+{
+	bool enable = false;
+	StencilOperation_t fail = STENCILOPERATION_KEEP;
+	StencilOperation_t depthFail = STENCILOPERATION_KEEP;
+	StencilOperation_t pass = STENCILOPERATION_KEEP;
+	StencilComparisonFunction_t compare = STENCILCOMPARISONFUNCTION_ALWAYS;
+	int reference = 0;
+	uint32 testMask = 0xFFFFFFFF;
+	uint32 writeMask = 0xFFFFFFFF;
+};
+CoreStencil g_CoreStencil;
+float g_CoreShadowSlopeBias = 0.0f; // SetShadowDepthBiasFactors
+float g_CoreShadowBias = 0.0f;
+// Set by DecorateCoreDraw for the slot QueueCore marks next: a mesh slot takes
+// the bound snapshot's raster state; the frontend's own slots keep theirs.
+bool g_CoreMeshSlotPending = false;
 CUtlVector<PicaTexture *> g_Textures; // index = handle - 1
 ShaderAPITextureHandle_t g_ModifyTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
 ShaderAPITextureHandle_t g_BoundTextures[16];
@@ -446,6 +468,8 @@ struct DrawPathCounters
 	unsigned coreMeshDraws = 0;  // model draws the render core took (EmitToCore)
 	unsigned errorMaterialDraws = 0; // draws with the error material, dropped
 	unsigned refusedDraws = 0;   // draws the render core refused, dropped
+	unsigned targetCopies = 0;   // render-target copies recorded (core_copies.cpp)
+	unsigned copiesSkipped = 0;  // ... not done: stretched or moved regions, refusals
 };
 // Texture path counters since startup.
 struct TexturePathCounters
@@ -522,8 +546,14 @@ PicaTexture *TextureFor( ShaderAPITextureHandle_t handle )
 // targets keep being skipped until their own cohort is brought over.
 bool DrawableTarget( PicaTexture &texture )
 {
+#if defined( PLATFORM_3DS )
 	if ( !texture.renderTarget || texture.depth || V_strnicmp( texture.name, "_rt_PortalPlane", 15 ) != 0 )
 		return false;
+#else
+	// The full model draws into and samples every colour target.
+	if ( !texture.renderTarget || texture.depth )
+		return false;
+#endif
 	if ( !texture.gpu.IsTarget() && !texture.gpu.CreateTarget( texture.width, texture.height ) )
 		return false;
 	return true;
@@ -843,6 +873,7 @@ public:
 	bool m_bUsesVertexAndPixelShaders;
 	// The PICA state and vertex format the next snapshot records.
 	pica::DrawState m_State;
+	int m_PolyOffset = SHADER_POLYOFFSET_DISABLE; // EnablePolyOffset's mode
 	VertexFormat_t m_VertexFormat;
 };
 
@@ -933,6 +964,9 @@ public:
 				g_Counters.primListEmpty, g_Counters.materialDraws,
 				g_Counters.renderPasses, g_Counters.targetSkips, g_Counters.clears, g_Counters.overrunDraws, g_Counters.wideTexCoordLocks, g_Counters.coreMeshDraws,
 				g_Counters.refusedDraws, g_Counters.errorMaterialDraws );
+		if ( s_frame % 120 == 1 )
+			printf( "pica: target copies %u skipped %u\n", g_Counters.targetCopies,
+				g_Counters.copiesSkipped );
 		if ( s_frame % 120 == 1 )
 			printf( "pica: textures: images %u rejected %u convert failed %u uploads %u failed %u "
 				"corrupted %u\n",
@@ -1132,10 +1166,38 @@ public:
 	void BindFBTexture( TextureStage_t stage, int textureIdex );
 	void CopyRenderTargetToTexture( ShaderAPITextureHandle_t texID )
 	{
+		CopyRenderTargetToTextureEx( texID, 0, nullptr, nullptr );
 	}
 
+	// R91: the current target's region into a render target, in frame order
+	// (core_copies.cpp). Copies keep their texels' place (D37): a source and
+	// destination rectangle that differ (a stretch or a move) are counted and
+	// skipped until a blit does them.
 	void CopyRenderTargetToTextureEx( ShaderAPITextureHandle_t texID, int nRenderTargetID, Rect_t *pSrcRect, Rect_t *pDstRect )
 	{
+		PicaTexture *texture = TextureFor( texID );
+		if ( nRenderTargetID != 0 || !texture || !pica::Initialized() )
+		{
+			++g_Counters.copiesSkipped;
+			return;
+		}
+		const Rect_t *rect = pSrcRect ? pSrcRect : pDstRect;
+		if ( pSrcRect && pDstRect &&
+			 ( pSrcRect->x != pDstRect->x || pSrcRect->y != pDstRect->y ||
+			   pSrcRect->width != pDstRect->width || pSrcRect->height != pDstRect->height ) )
+		{
+			++g_Counters.copiesSkipped;
+			return;
+		}
+		pica::CopyRect region;
+		region.width = rect ? rect->width : texture->width;
+		region.height = rect ? rect->height : texture->height;
+		region.x = rect ? rect->x : 0;
+		region.y = rect ? rect->y : 0;
+		if ( pica::CopyTargetRegion( texture->gpu, region ) == pica::CopyResult::kCopied )
+			++g_Counters.targetCopies;
+		else
+			++g_Counters.copiesSkipped;
 	}
 
 	void CopyTextureToRenderTargetEx( int nRenderTargetID, ShaderAPITextureHandle_t textureHandle, Rect_t *pSrcRect, Rect_t *pDstRect )
@@ -1746,34 +1808,42 @@ public:
 	// Methods related to stencil
 	void SetStencilEnable(bool onoff)
 	{
+		g_CoreStencil.enable = onoff;
 	}
 
 	void SetStencilFailOperation(StencilOperation_t op)
 	{
+		g_CoreStencil.fail = op;
 	}
 
 	void SetStencilZFailOperation(StencilOperation_t op)
 	{
+		g_CoreStencil.depthFail = op;
 	}
 
 	void SetStencilPassOperation(StencilOperation_t op)
 	{
+		g_CoreStencil.pass = op;
 	}
 
 	void SetStencilCompareFunction(StencilComparisonFunction_t cmpfn)
 	{
+		g_CoreStencil.compare = cmpfn;
 	}
 
 	void SetStencilReferenceValue(int ref)
 	{
+		g_CoreStencil.reference = ref;
 	}
 
 	void SetStencilTestMask(uint32 msk)
 	{
+		g_CoreStencil.testMask = msk;
 	}
 
 	void SetStencilWriteMask(uint32 msk)
 	{
+		g_CoreStencil.writeMask = msk;
 	}
 
 	void ClearStencilBufferRectangle( int xmin, int ymin, int xmax, int ymax,int value)
@@ -1825,7 +1895,11 @@ public:
 
 	virtual bool HasFastVertexTextures() const { return false; }
 
-	virtual void SetShadowDepthBiasFactors( float fShadowSlopeScaleDepthBias, float fShadowDepthBias ) {}
+	virtual void SetShadowDepthBiasFactors( float fShadowSlopeScaleDepthBias, float fShadowDepthBias )
+	{
+		g_CoreShadowSlopeBias = fShadowSlopeScaleDepthBias;
+		g_CoreShadowBias = fShadowDepthBias;
+	}
 
 	virtual void SetDisallowAccess( bool ) {}
 	virtual void EnableShaderShaderMutex( bool ) {}
@@ -2059,8 +2133,14 @@ public:
 				srgb ? "sRGB view" : "no such texture" );
 			return render::device::TextureId{};
 		}
-		if ( texture->dirty )
+		if ( texture && texture->dirty )
 			UploadTexture( *texture );
+#if !defined( PLATFORM_3DS )
+		// A render target the core samples before anything drew into it: its
+		// image is made now (WebGPU and Vulkan clear it to zero).
+		if ( texture && texture->renderTarget && !texture->gpu.Valid() )
+			(void)DrawableTarget( *texture );
+#endif
 		if ( !texture->gpu.Valid() )
 			printf( "pica: core import of texture %d (%s) refused: not uploaded (%d levels, %dx%d)\n",
 				handle, texture->name, texture->levels.Count(), texture->baseWidth, texture->baseHeight );
@@ -2085,10 +2165,138 @@ public:
 	bool Pending( int handle ) override
 	{
 		const PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
+#if !defined( PLATFORM_3DS )
+		if ( texture && texture->renderTarget && !texture->depth )
+			return false; // Import makes its image
+#endif
 		return texture && !texture->gpu.Valid() && texture->levels.Count() == 0;
 	}
 };
 CPicaCoreTextures g_PicaCoreTextures;
+
+// R91 (the desktop client's move off shaderapivulkan, parts c-e): what a
+// draw and its slot take on their way to the core.
+//
+// DecorateCoreDraw runs on each mesh draw just before it is queued. It marks
+// the slot QueueCore opens next as a mesh slot; it will also consume an
+// occlusion query's proxy and attach the depth-alpha copy. True: the draw was
+// consumed and is not queued.
+static bool DecorateCoreDraw( render::legacy::CoreMeshDraw &draw )
+{
+	(void)draw;
+	g_CoreMeshSlotPending = true;
+	return false;
+}
+
+#if !defined( PLATFORM_3DS )
+static render::device::CompareOp CoreCompare( pica::Compare compare )
+{
+	using render::device::CompareOp;
+	switch ( compare )
+	{
+	case pica::Compare::kNever: return CompareOp::kNever;
+	case pica::Compare::kLess: return CompareOp::kLess;
+	case pica::Compare::kEqual: return CompareOp::kEqual;
+	case pica::Compare::kLessEqual: return CompareOp::kLessEqual;
+	case pica::Compare::kGreater: return CompareOp::kGreater;
+	case pica::Compare::kNotEqual: return CompareOp::kNotEqual;
+	case pica::Compare::kGreaterEqual: return CompareOp::kGreaterEqual;
+	case pica::Compare::kAlways: return CompareOp::kAlways;
+	}
+	return CompareOp::kLessEqual;
+}
+
+static render::device::CompareOp CoreStencilCompare( StencilComparisonFunction_t func )
+{
+	using render::device::CompareOp;
+	switch ( func )
+	{
+	case STENCILCOMPARISONFUNCTION_NEVER: return CompareOp::kNever;
+	case STENCILCOMPARISONFUNCTION_LESS: return CompareOp::kLess;
+	case STENCILCOMPARISONFUNCTION_EQUAL: return CompareOp::kEqual;
+	case STENCILCOMPARISONFUNCTION_LESSEQUAL: return CompareOp::kLessEqual;
+	case STENCILCOMPARISONFUNCTION_GREATER: return CompareOp::kGreater;
+	case STENCILCOMPARISONFUNCTION_NOTEQUAL: return CompareOp::kNotEqual;
+	case STENCILCOMPARISONFUNCTION_GREATEREQUAL: return CompareOp::kGreaterEqual;
+	default: return CompareOp::kAlways;
+	}
+}
+
+static render::device::StencilOp CoreStencilOp( StencilOperation_t op )
+{
+	using render::device::StencilOp;
+	switch ( op )
+	{
+	case STENCILOPERATION_ZERO: return StencilOp::kZero;
+	case STENCILOPERATION_REPLACE: return StencilOp::kReplace;
+	case STENCILOPERATION_INCRSAT: return StencilOp::kIncrementClamp;
+	case STENCILOPERATION_DECRSAT: return StencilOp::kDecrementClamp;
+	case STENCILOPERATION_INVERT: return StencilOp::kInvert;
+	case STENCILOPERATION_INCR: return StencilOp::kIncrementWrap;
+	case STENCILOPERATION_DECR: return StencilOp::kDecrementWrap;
+	default: return StencilOp::kKeep;
+	}
+}
+#endif
+
+// DecorateCoreTarget runs as a slot is marked. A mesh slot takes the bound
+// snapshot's raster state (depth test, write and compare, cull, colour and
+// alpha writes), the dynamic stencil state and the poly-offset depth bias,
+// as shaderapivulkan's slots do (its ApplyDepthBiasState: the material
+// system's decal and normal biases, or the shadow bias factors). The 3DS
+// keeps the defaults it draws with.
+static void DecorateCoreTarget( render::legacy::CorePassTarget &target )
+{
+	const bool mesh = g_CoreMeshSlotPending;
+	g_CoreMeshSlotPending = false;
+#if defined( PLATFORM_3DS )
+	(void)target;
+	(void)mesh;
+#else
+	if ( !mesh || g_CurrentSnapshot < 0 || g_CurrentSnapshot >= g_Snapshots.Count() )
+		return;
+	const PicaSnapshot &snapshot = g_Snapshots[g_CurrentSnapshot];
+	const pica::DrawState &state = snapshot.state;
+	render::material::SurfaceDrawState &out = target.drawState;
+	out.overrideDepth = true;
+	out.depthTest = state.depthTest;
+	out.depthWrite = state.depthWrite;
+	out.depthCompare = CoreCompare( state.depthFunc );
+	out.cull = state.cull ? render::device::CullMode::kBack : render::device::CullMode::kNone;
+	out.colorWrite = std::uint8_t( ( state.colorWrite ? 7 : 0 ) | ( state.alphaWrite ? 8 : 0 ) );
+	render::device::StencilState &stencil = out.stencil;
+	stencil.enabled = g_CoreStencil.enable;
+	stencil.compare = CoreStencilCompare( g_CoreStencil.compare );
+	stencil.fail = CoreStencilOp( g_CoreStencil.fail );
+	stencil.depthFail = CoreStencilOp( g_CoreStencil.depthFail );
+	stencil.pass = CoreStencilOp( g_CoreStencil.pass );
+	stencil.reference = std::uint8_t( g_CoreStencil.reference & 255 );
+	stencil.readMask = std::uint8_t( g_CoreStencil.testMask & 255 );
+	stencil.writeMask = std::uint8_t( g_CoreStencil.writeMask & 255 );
+	static const MaterialSystem_Config_t defaults;
+	const MaterialSystem_Config_t &config = ShaderUtil() ? ShaderUtil()->GetConfig() : defaults;
+	float slope = 0.0f, normalized = 0.0f;
+	if ( snapshot.polyOffset == SHADER_POLYOFFSET_DECAL )
+	{
+		slope = config.m_SlopeScaleDepthBias_Decal != 0.0f ? 1.0f / config.m_SlopeScaleDepthBias_Decal : 0.0f;
+		normalized = config.m_DepthBias_Decal != 0.0f ? 1.0f / config.m_DepthBias_Decal : 0.0f;
+	}
+	else if ( snapshot.polyOffset == SHADER_POLYOFFSET_SHADOW_BIAS )
+	{
+		slope = g_CoreShadowSlopeBias;
+		normalized = g_CoreShadowBias;
+	}
+	else
+	{
+		slope = config.m_SlopeScaleDepthBias_Normal != 0.0f ? 1.0f / config.m_SlopeScaleDepthBias_Normal : 0.0f;
+		normalized = config.m_DepthBias_Normal != 0.0f ? 1.0f / config.m_DepthBias_Normal : 0.0f;
+	}
+	// D3D9's normalized bias in depth-buffer units of the D32F depth (2^23,
+	// as shaderapivulkan's SetDynamicDepthBias).
+	out.depthBiasConstant = normalized * 8388608.0f;
+	out.depthBiasSlope = slope;
+#endif
+}
 
 class CPicaCorePassSlots final : public render::legacy::ICorePassSlots
 {
@@ -2148,6 +2356,15 @@ public:
 			g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_PREVIOUS_FOLIAGE_TIME );
 		target.foliageAvailable =
 			g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_AVAILABLE ) > 0.0f;
+		DecorateCoreTarget( target );
+		if ( getenv( "SOURCE_PICA_LOG_SLOTS" ) )
+		{
+			static int s_logged = 0;
+			if ( s_logged++ < 20000 )
+				printf( "pica: slot %08x color %u depth %u %ux%u frame %llu\n", tag,
+					unsigned( section.color ), unsigned( section.depth ), section.width,
+					section.height, (unsigned long long)section.serial );
+		}
 		g_CorePassRecorder->RecordSlot( tag, *encoder, target );
 		pica::EndCoreSection();
 	}
@@ -3679,6 +3896,8 @@ bool CEmptyMesh::EmitSurfaceToCore( int firstIndex, int indexCount, render::lega
 	draw.takeVertices = &vertices;
 	if ( drawTriangles == &triangles )
 		draw.takeIndices16 = &triangles;
+	if ( DecorateCoreDraw( draw ) )
+		return true; // consumed (core_draw_hooks)
 	if ( QueueCore( draw, geometryBytes ) )
 		return true;
 	// Each refused shader named once.
@@ -3793,6 +4012,7 @@ void CShaderShadowEmpty::SetDefaultState()
 	m_bUsesVertexAndPixelShaders = false;
 	m_State = pica::DrawState();
 	m_VertexFormat = 0;
+	m_PolyOffset = SHADER_POLYOFFSET_DISABLE;
 }
 
 // Methods related to depth buffering
@@ -3814,6 +4034,7 @@ void CShaderShadowEmpty::EnableDepthTest( bool bEnable )
 
 void CShaderShadowEmpty::EnablePolyOffset( PolygonOffsetMode_t nOffsetMode )
 {
+	m_PolyOffset = nOffsetMode;
 }
 
 // Suppresses/activates color writing 
@@ -4343,13 +4564,15 @@ StateSnapshot_t	 CShaderAPIEmpty::TakeSnapshot( )
 	// states share one record (materials record a handful of distinct states).
 	int index = -1;
 	for ( int i = 0; i < g_Snapshots.Count() && index < 0; ++i )
-		if ( SameSnapshot( g_Snapshots[i], g_ShaderShadow.m_State, g_ShaderShadow.m_VertexFormat ) )
+		if ( SameSnapshot( g_Snapshots[i], g_ShaderShadow.m_State, g_ShaderShadow.m_VertexFormat,
+				 g_ShaderShadow.m_PolyOffset ) )
 			index = i;
 	if ( index < 0 )
 	{
 		PicaSnapshot snapshot;
 		snapshot.state = g_ShaderShadow.m_State;
 		snapshot.format = g_ShaderShadow.m_VertexFormat;
+		snapshot.polyOffset = g_ShaderShadow.m_PolyOffset;
 		index = g_Snapshots.AddToTail( snapshot );
 		if ( index > 0x7FF )
 			Warning( "pica: %d distinct state snapshots exceed StateSnapshot_t's 11 index bits\n", index + 1 );

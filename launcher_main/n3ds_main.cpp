@@ -54,9 +54,9 @@ const char *const kDefaults[] = {
 	"hl2_launcher",
 	"-game", "portal2",
 	"-novid",
-	// Audio off for now (user direction 2026-10-07): the engine mixes on the
-	// main thread, a cost to recover once the frame rate is up.
-	"-nosound",
+	// Audio plays on the DSP (engine/audio/snd_dev_n3ds.cpp): fully loaded
+	// PCM sounds on its hardware voices, the rest through one software
+	// stream. -nosound in args.txt turns it off.
 	// The buttons, Circle Pad and C-Stick are SDL3's "Nintendo 3DS" gamepad;
 	// Portal 2's joy_configuration.cfg binds its Xbox layout.
 	"-console",

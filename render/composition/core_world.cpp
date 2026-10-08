@@ -2981,7 +2981,7 @@ void CoreWorld::RecordSlot(
 		hatch.width = target.width;
 		hatch.height = target.height;
 		hatch.samples = target.samples;
-		if ( target.device && m_Overlays.RecordHatch( *target.device, encoder, hatch ) )
+		if ( !std::getenv( "SOURCE_EXPERIMENT_NO_HATCH" ) && target.device && m_Overlays.RecordHatch( *target.device, encoder, hatch ) )
 			m_Hatches.fetch_add( 1, std::memory_order_relaxed );
 		return;
 	}

@@ -115,6 +115,27 @@ struct TextureCopy
 	std::uint32_t y = 0;
 };
 
+// D44 (Capability::kClearRegions): a rectangle of the open rendering's
+// attachments cleared without a draw, as D3D9's Clear bounded by the viewport:
+// colour attachment 0 and/or the depth attachment's depth and stencil. The
+// rectangle is in texels from the top left and is clipped to the rendering's
+// extent (an empty result clears nothing). Asking for depth or stencil needs
+// a depth attachment (stencil: one with stencil), colour needs a colour
+// attachment, and at least one aspect is asked for; anything else is invalid.
+struct ClearRegion
+{
+	std::uint32_t x = 0;
+	std::uint32_t y = 0;
+	std::uint32_t width = 0;
+	std::uint32_t height = 0;
+	bool color = false;
+	ClearColor colorValue;
+	bool depth = false;
+	float depthValue = 1.0f;
+	bool stencil = false;
+	std::uint8_t stencilValue = 0;
+};
+
 enum class IndexFormat : std::uint8_t
 {
 	kUint16,
@@ -174,6 +195,7 @@ public:
 	    TextureId source, TextureId destination, const TextureCopy &copy ) = 0;
 	virtual void BeginRendering( const RenderingDesc &desc ) = 0;
 	virtual void EndRendering() = 0;
+	virtual void ClearRegion( const render::device::ClearRegion &region ) = 0;
 	virtual void SetPipeline( PipelineId pipeline ) = 0;
 	virtual void SetBindGroup( BindGroupRole role, BindGroupId group ) = 0;
 	virtual void SetVertexBuffer( std::uint32_t slot, BufferId buffer, std::uint64_t offset ) = 0;
@@ -246,6 +268,8 @@ public:
 	void CopyTexture( TextureId source, TextureId destination, const TextureCopy &copy );
 	void BeginRendering( const RenderingDesc &desc );
 	void EndRendering();
+	// D44: see ClearRegion.
+	void ClearRegion( const render::device::ClearRegion &region );
 	void SetPipeline( PipelineId pipeline );
 	void SetBindGroup( BindGroupRole role, BindGroupId group );
 	void SetVertexBuffer( std::uint32_t slot, BufferId buffer, std::uint64_t offset = 0 );

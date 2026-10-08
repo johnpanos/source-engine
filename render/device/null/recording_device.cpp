@@ -264,6 +264,7 @@ struct Command
 	std::vector<ColorAttachment> colors;
 	std::optional<DepthAttachment> depth;
 	std::uint32_t slot = 0;
+	ClearRegion region; // D44
 };
 
 class RecordingDevice;
@@ -364,6 +365,15 @@ public:
 		                                : desc.colors[0].texture.value;
 		if ( desc.width == 0 || desc.height == 0 || ( desc.colors.empty() && !desc.depth ) )
 			m_Error = true;
+		Push( std::move( command ) );
+	}
+	void ClearRegion( const render::device::ClearRegion &region ) override
+	{
+		if ( !m_Rendering )
+			m_Error = true;
+		Command command;
+		command.op = RecordedOp::kClearRegion;
+		command.region = region;
 		Push( std::move( command ) );
 	}
 	void EndRendering() override
@@ -1125,8 +1135,13 @@ private:
 			return b && state( id, b->usage ) == required;
 		};
 		DrawConstantCoverage constants; // D16
+		const Command *rendering = nullptr; // the open BeginRendering (D44)
 		for ( Command &command : commands )
 		{
+			if ( command.op == RecordedOp::kBeginRendering )
+				rendering = &command;
+			else if ( command.op == RecordedOp::kEndRendering )
+				rendering = nullptr;
 			switch ( command.op )
 			{
 			case RecordedOp::kTransitionTexture:
@@ -1219,6 +1234,21 @@ private:
 				     !texture( command.depth->texture.value, ResourceUsage::kDepthRead ) )
 					return false;
 				break;
+			case RecordedOp::kClearRegion:
+			{
+				// D44: inside rendering, at least one aspect, each on an
+				// attachment that has it.
+				const render::device::ClearRegion &r = command.region;
+				const Texture *depth = rendering && rendering->depth
+				                           ? LiveTexture( rendering->depth->texture.value )
+				                           : nullptr;
+				if ( !rendering || !( r.color || r.depth || r.stencil ) ||
+				     ( r.color && rendering->colors.empty() ) ||
+				     ( ( r.depth || r.stencil ) && !depth ) ||
+				     ( r.stencil && !HasStencil( depth->desc.format ) ) )
+					return false;
+				break;
+			}
 			case RecordedOp::kSetPipeline:
 				if ( !Live( m_Pipelines, command.a ) )
 					return false;
@@ -1334,6 +1364,63 @@ private:
 			std::memcpy( data.data() + offset, texel.data(), texel.size() );
 	}
 
+	// D44 on the texels: colour attachment 0 takes the encoded colour; a
+	// depth attachment takes the depth bytes and, separately, the stencil byte
+	// (byte 4 of kD32FloatS8, the top byte of kD24UnormS8).
+	void ClearRegionTexels( const Command &rendering, const render::device::ClearRegion &r )
+	{
+		Texture *color = r.color && !rendering.colors.empty()
+		                     ? ExistingTexture( rendering.colors[0].texture.value )
+		                     : nullptr;
+		Texture *depth = ( r.depth || r.stencil ) && rendering.depth
+		                     ? ExistingTexture( rendering.depth->texture.value )
+		                     : nullptr;
+		auto each = [&]( Texture &t, auto &&write )
+		{
+			const std::uint32_t width = t.desc.width;
+			const std::size_t texel = BytesPerTexel( t.desc.format );
+			std::vector<std::byte> &data = t.Subresource( 0, 0 );
+			const std::uint64_t x1 = std::min<std::uint64_t>( std::uint64_t( r.x ) + r.width, width );
+			const std::uint64_t y1 =
+			    std::min<std::uint64_t>( std::uint64_t( r.y ) + r.height, t.desc.height );
+			for ( std::uint64_t y = r.y; y < y1; ++y )
+				for ( std::uint64_t x = r.x; x < x1; ++x )
+					write( data.data() + ( y * width + x ) * texel );
+		};
+		if ( color )
+		{
+			const std::vector<std::byte> value = EncodeTexel( color->desc.format, r.colorValue );
+			each( *color, [&]( std::byte *at ) { std::memcpy( at, value.data(), value.size() ); } );
+		}
+		if ( depth )
+		{
+			const Format format = depth->desc.format;
+			const std::vector<std::byte> value =
+			    EncodeTexel( format, { r.depthValue, 0.0f, 0.0f, 0.0f } );
+			each( *depth,
+			    [&]( std::byte *at )
+			    {
+				    if ( format == Format::kD24UnormS8 )
+				    {
+					    std::uint32_t word = 0;
+					    std::memcpy( &word, at, 4 );
+					    std::uint32_t d = 0;
+					    std::memcpy( &d, value.data(), 4 );
+					    if ( r.depth )
+						    word = ( word & 0xFF000000u ) | ( d & 0x00FFFFFFu );
+					    if ( r.stencil )
+						    word = ( word & 0x00FFFFFFu ) | ( std::uint32_t( r.stencilValue ) << 24 );
+					    std::memcpy( at, &word, 4 );
+					    return;
+				    }
+				    if ( r.depth )
+					    std::memcpy( at, value.data(), 4 );
+				    if ( r.stencil && BytesPerTexel( format ) > 4 )
+					    at[4] = std::byte( r.stencilValue );
+			    } );
+		}
+	}
+
 	void Apply( Command &command )
 	{
 		switch ( command.op )
@@ -1445,7 +1532,15 @@ private:
 				command.count = tick;
 			}
 			break;
+		case RecordedOp::kEndRendering:
+			m_ApplyRendering = nullptr;
+			break;
+		case RecordedOp::kClearRegion:
+			if ( m_ApplyRendering )
+				ClearRegionTexels( *m_ApplyRendering, command.region );
+			break;
 		case RecordedOp::kBeginRendering:
+			m_ApplyRendering = &command;
 			for ( const ColorAttachment &color : command.colors )
 			{
 				Texture *t = ExistingTexture( color.texture.value );
@@ -1482,6 +1577,7 @@ private:
 	std::deque<Batch> m_Pending[kQueueCount];
 	std::vector<RecordedCommand> m_Recorded;
 	std::uint64_t m_Clock = 0; // D23: the null GPU's time, in ticks
+	const Command *m_ApplyRendering = nullptr; // the BeginRendering being applied (D44)
 	UploadRing m_Ring;
 	std::mutex m_RingLock; // guards m_Ring, m_NextAllocation, m_DeferredUploads
 };
@@ -1557,6 +1653,9 @@ DeviceResult<CompletionToken> RecordingDevice::Submit(
 			// occlusion queries.
 			if ( command.op == RecordedOp::kBeginOcclusionQuery ||
 			     command.op == RecordedOp::kEndOcclusionQuery )
+				return Fail( DeviceStatus::kUnsupported, op );
+			if ( command.op == RecordedOp::kClearRegion &&
+			     !m_Facts.capabilities.Has( Capability::kClearRegions ) )
 				return Fail( DeviceStatus::kUnsupported, op );
 			if ( command.op != RecordedOp::kWriteTimestamp )
 				continue;

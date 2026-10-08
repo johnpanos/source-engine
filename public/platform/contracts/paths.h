@@ -36,7 +36,8 @@ enum class PlatformPathId
 
 // Reports well-known platform path locations. All returned paths are normalized
 // engine paths (UTF-8, '/'-separated, no "//", no trailing '/' except a lone
-// root "/"). A location may be optional on some platforms; absence is reported
+// root "/"), absolute ("/..." or "C:/...") and free of "." and ".." segments.
+// kExecutableDir, when available with kExecutableFile, is the file's parent. A location may be optional on some platforms; absence is reported
 // explicitly through IsAvailable / a negative GetPath result, never emulated
 // with an empty or bogus path.
 class IPlatformPaths

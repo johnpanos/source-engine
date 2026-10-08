@@ -2,6 +2,7 @@
 """Serves the WebAssembly product to a browser (RFC 0029).
 
     serve.py --build <dir with hl2_launcher.js/.wasm> --content <game tree> [--port N]
+             [--open [--browser google-chrome]] [-- engine args]
 
 The page (tools/web/site) runs the engine on the browser's main thread with
 JSPI and WebGPU. The server sends what the page needs and nothing else:
@@ -25,7 +26,10 @@ import http.server
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
+import urllib.parse
 import threading
 from pathlib import Path
 
@@ -181,12 +185,31 @@ def main(argv=None):
     parser.add_argument("--content", required=True, help="the game tree the page mounts")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--out", help="where the page's log, exit status and files go")
+    parser.add_argument("--open", action="store_true",
+                        help="open the page in a browser with WebGPU on (kiln play)")
+    parser.add_argument("--browser", default="google-chrome")
+    parser.add_argument("engine_args", nargs="*", help="the engine's arguments (after --)")
     args = parser.parse_args(argv)
     server, url = start(args.build, args.content, args.out, args.port)
+    if args.engine_args:
+        url += "?args=" + urllib.parse.quote(" ".join(args.engine_args))
     print("serve: %s (content %s, %d files)" % (url, args.content,
           len(json.loads(server.manifest)["files"])), file=sys.stderr)
+    browser = None
+    if args.open:
+        # Its own profile, so WebGPU's flags apply whatever else is running.
+        profile = Path(tempfile.gettempdir()) / "source-engine-web-profile"
+        browser = subprocess.Popen([args.browser, "--enable-unsafe-webgpu",
+                                    "--enable-features=Vulkan", "--ignore-gpu-blocklist",
+                                    "--no-first-run", "--no-default-browser-check",
+                                    "--user-data-dir=" + str(profile), "--new-window", url])
+        print("serve: opened %s; close the browser to stop" % url, file=sys.stderr)
     try:
-        server.done.wait()
+        if browser:
+            while browser.poll() is None and not server.done.is_set():
+                server.done.wait(1.0)
+        else:
+            server.done.wait()
     except KeyboardInterrupt:
         pass
     return 0

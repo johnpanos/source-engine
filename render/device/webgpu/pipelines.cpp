@@ -13,6 +13,7 @@
 #include <bit>
 #include <charconv>
 #include <cstdio>
+#include <cstdlib>
 #include <limits>
 
 namespace render::device::webgpu
@@ -538,6 +539,9 @@ DeviceResult<void> WebGpuDevice::BuildShader( const ShaderArtifactView &artifact
 			value = static_cast<double>( std::bit_cast<float>( constant.value ) );
 			break;
 		}
+		if ( std::getenv( "SOURCE_WEBGPU_LOG_CONSTANTS" ) )
+			std::fprintf( stderr, "render.device.webgpu: %.*s constant %u = %g\n",
+			    int( desc.debugName.size() ), desc.debugName.data(), constant.id, value );
 		keys.push_back( std::to_string( constant.id ) );
 		WGPUConstantEntry entry = WGPU_CONSTANT_ENTRY_INIT;
 		entry.key = View( keys.back() );
@@ -753,6 +757,8 @@ DeviceResult<PipelineId> WebGpuDevice::CreatePipeline( const PipelineDesc &desc 
 		descriptor.primitive.cullMode = desc.raster.cull == CullMode::kNone   ? WGPUCullMode_None
 		                                : desc.raster.cull == CullMode::kBack ? WGPUCullMode_Back
 		                                                                      : WGPUCullMode_Front;
+		if ( std::getenv( "SOURCE_EXPERIMENT_NO_CULL" ) )
+			descriptor.primitive.cullMode = WGPUCullMode_None;
 		WGPUDepthStencilState depthStencil = WGPU_DEPTH_STENCIL_STATE_INIT;
 		if ( desc.depthFormat != Format::kUnknown )
 		{

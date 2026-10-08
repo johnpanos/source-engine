@@ -1075,6 +1075,325 @@
       "expect": "pass"
     },
     {
+      "id": "platform.wall_clock",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-WALLCLOCK-001",
+      "contract": "unittests/platformtest/contracts/platform.wall-clock.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/wall_clock/test_wall_clock.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.wall_clock.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-WALLCLOCK-001",
+      "contract": "unittests/platformtest/contracts/platform.wall-clock.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/wall_clock/test_wall_clock_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.thread",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-THREAD-001",
+      "contract": "unittests/platformtest/contracts/platform.thread.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/thread/test_thread.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.thread.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-THREAD-001",
+      "contract": "unittests/platformtest/contracts/platform.thread.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/thread/test_thread_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.virtual_memory",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-VMEM-001",
+      "contract": "unittests/platformtest/contracts/platform.virtual-memory.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/virtual_memory/test_virtual_memory.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.virtual_memory.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-VMEM-001",
+      "contract": "unittests/platformtest/contracts/platform.virtual-memory.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/virtual_memory/test_virtual_memory_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.process_environment",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-ENV-001",
+      "contract": "unittests/platformtest/contracts/platform.process-environment.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/process_environment/test_process_environment.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.process_environment.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-ENV-001",
+      "contract": "unittests/platformtest/contracts/platform.process-environment.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "sources": [
+        "unittests/platformtest/process_environment/test_process_environment_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.diagnostics",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-DIAG-001",
+      "contract": "unittests/platformtest/contracts/platform.diagnostics.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "unittests/platformtest/diagnostics/test_diagnostics.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.diagnostics.sensitivity",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "PLAT-DIAG-001",
+      "contract": "unittests/platformtest/contracts/platform.diagnostics.v1.md",
+      "kind": "sensitivity",
+      "profile": "linux-headless-core",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "unittests/platformtest/diagnostics/test_diagnostics_negative.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.foundation.posix",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R26",
+      "kind": "positive",
+      "result_protocol": "checks-v1",
+      "contract": "unittests/platformtest/contracts/platform.thread.v1.md",
+      "profile": "linux-headless-core",
+      "description": "R26 native POSIX foundation providers (platform/posix): every shared suite (monotonic and wall clock with a real zone, threads, virtual memory, process environment from an exact re-exec, Linux and supplied paths, framed debug output over a SOCK_SEQPACKET socket, crash reporter) plus native clauses: real concurrency, honoured stack size, faults on read-only and reserved pages, the crash handler's report and re-raise, unjoined-thread abort, handler restore and single ownership, refused address space and a vanished report directory.",
+      "extra_flags": [
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread"
+      ],
+      "sources": [
+        "unittests/platformtest/foundation_posix/test_foundation_posix.cpp",
+        "platform/posix/clock_providers.cpp",
+        "platform/posix/thread_provider.cpp",
+        "platform/posix/virtual_memory_provider.cpp",
+        "platform/posix/process_environment_provider.cpp",
+        "platform/posix/paths_provider.cpp",
+        "platform/posix/diagnostics_provider.cpp"
+      ],
+      "min_checks": 2500,
+      "timeout_seconds": 120,
+      "expect": "pass"
+    },
+    {
+      "id": "platform.foundation.posix.i386",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R26",
+      "contract": "unittests/platformtest/contracts/platform.thread.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "platform.foundation.posix built for i386 (-m32; the linux-i386-legacy profile). CONFORMANCE_M32=1 python3 tools/quality/conformance.py check --suite platform.foundation.posix.i386",
+      "result_protocol": "checks-v1",
+      "extra_flags": [
+        "-pthread",
+        "-m32"
+      ],
+      "link_flags": [
+        "-pthread",
+        "-m32"
+      ],
+      "sources": [
+        "unittests/platformtest/foundation_posix/test_foundation_posix.cpp",
+        "platform/posix/clock_providers.cpp",
+        "platform/posix/thread_provider.cpp",
+        "platform/posix/virtual_memory_provider.cpp",
+        "platform/posix/process_environment_provider.cpp",
+        "platform/posix/paths_provider.cpp",
+        "platform/posix/diagnostics_provider.cpp"
+      ],
+      "requires": [
+        "env:CONFORMANCE_M32"
+      ],
+      "optional": true,
+      "min_checks": 2500,
+      "timeout_seconds": 120,
+      "expect": "pass"
+    },
+    {
+      "id": "platform.foundation.posix.tsan",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R26",
+      "kind": "positive",
+      "result_protocol": "checks-v1",
+      "contract": "unittests/platformtest/contracts/platform.thread.v1.md",
+      "profile": "linux-headless-core",
+      "description": "platform.foundation.posix under ThreadSanitizer (the test sets the runtime to leave fatal signals to the crash handler). CONFORMANCE_TSAN=1 python3 tools/quality/conformance.py check --cxx clang++ --suite platform.foundation.posix.tsan",
+      "extra_flags": [
+        "-pthread",
+        "-fsanitize=thread",
+        "-O1",
+        "-g"
+      ],
+      "link_flags": [
+        "-pthread",
+        "-fsanitize=thread"
+      ],
+      "sources": [
+        "unittests/platformtest/foundation_posix/test_foundation_posix.cpp",
+        "platform/posix/clock_providers.cpp",
+        "platform/posix/thread_provider.cpp",
+        "platform/posix/virtual_memory_provider.cpp",
+        "platform/posix/process_environment_provider.cpp",
+        "platform/posix/paths_provider.cpp",
+        "platform/posix/diagnostics_provider.cpp"
+      ],
+      "requires": [
+        "env:CONFORMANCE_TSAN"
+      ],
+      "optional": true,
+      "timeout_seconds": 600,
+      "expect": "pass"
+    },
+    {
+      "id": "platform.foundation.posix.asan",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R26",
+      "kind": "positive",
+      "result_protocol": "checks-v1",
+      "contract": "unittests/platformtest/contracts/platform.virtual-memory.v1.md",
+      "profile": "linux-headless-core",
+      "description": "platform.foundation.posix under AddressSanitizer and UBSan. CONFORMANCE_ASAN=1 python3 tools/quality/conformance.py check --cxx clang++ --suite platform.foundation.posix.asan",
+      "extra_flags": [
+        "-pthread",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=undefined",
+        "-O1",
+        "-g"
+      ],
+      "link_flags": [
+        "-pthread",
+        "-fsanitize=address,undefined"
+      ],
+      "sources": [
+        "unittests/platformtest/foundation_posix/test_foundation_posix.cpp",
+        "platform/posix/clock_providers.cpp",
+        "platform/posix/thread_provider.cpp",
+        "platform/posix/virtual_memory_provider.cpp",
+        "platform/posix/process_environment_provider.cpp",
+        "platform/posix/paths_provider.cpp",
+        "platform/posix/diagnostics_provider.cpp"
+      ],
+      "requires": [
+        "env:CONFORMANCE_ASAN"
+      ],
+      "optional": true,
+      "timeout_seconds": 600,
+      "expect": "pass"
+    },
+    {
+      "id": "platform.foundation.win32",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R26",
+      "kind": "positive",
+      "result_protocol": "checks-v1",
+      "contract": "unittests/platformtest/contracts/platform.thread.v1.md",
+      "profile": "windows-pe-wine",
+      "description": "R26 native Win32 foundation providers (platform/win32) as a static Windows PE under Wine: every shared suite plus native clauses (access-violation exit codes, the unhandled-exception filter's report and original exit code, unjoined-thread abort, filter restore, refused address space, a vanished report directory, framed debug output over a message-mode pipe, the fixture from a CreateProcessW re-run). The native runner reports it unavailable; run: python3 tools/quality/parity_wine.py check --suite platform.foundation.win32",
+      "link_flags": [
+        "-lshell32",
+        "-lole32"
+      ],
+      "sources": [
+        "unittests/platformtest/foundation_win32/test_foundation_win32.cpp",
+        "platform/win32/clock_providers.cpp",
+        "platform/win32/thread_provider.cpp",
+        "platform/win32/virtual_memory_provider.cpp",
+        "platform/win32/process_environment_provider.cpp",
+        "platform/win32/paths_provider.cpp",
+        "platform/win32/diagnostics_provider.cpp"
+      ],
+      "requires": [
+        "env:CONFORMANCE_WINDOWS_PE"
+      ],
+      "optional": true,
+      "timeout_seconds": 300,
+      "expect": "pass"
+    },
+    {
       "id": "platform.task_runner",
       "domain": "Q-FOUNDATION",
       "rfc": "0001",

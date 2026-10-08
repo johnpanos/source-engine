@@ -271,7 +271,6 @@ void CVulkanContext::DescribeDevice( VkPhysicalDevice physical, uint32_t graphic
 	features.samplerAnisotropy = supported.samplerAnisotropy;
 	m_preciseOcclusion = supported.occlusionQueryPrecise == VK_TRUE;
 	// D3D9's wireframe fill mode (materials with $wireframe, Wireframe_DX9).
-	m_fillModeNonSolid = supported.fillModeNonSolid == VK_TRUE;
 	features.fillModeNonSolid = supported.fillModeNonSolid;
 	// D3D9 user clip planes are clip distances. The planes travel in the push
 	// constants, so a device must also hold the widest block that carries them
@@ -425,7 +424,6 @@ bool CVulkanContext::CreateDevice( std::string *outError )
 	vkGetPhysicalDeviceProperties( m_physicalDevice, &props );
 	m_deviceName = props.deviceName;
 	m_vendorId = props.vendorID;
-	m_deviceId = props.deviceID;
 	m_isDiscrete = ( props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU );
 	VkPhysicalDeviceMemoryProperties mem = {};
 	vkGetPhysicalDeviceMemoryProperties( m_physicalDevice, &mem );
@@ -1306,8 +1304,6 @@ bool CVulkanContext::CreateShaderModule( const uint32_t *embedded, size_t embedd
 	m_debugUtils.NameF( VK_OBJECT_TYPE_SHADER_MODULE, *outModule, "%s%s",
 	    resolved.name ? resolved.name : "unindexed shader",
 	    resolved.debugVariant ? " (debug)" : "" );
-	if ( m_debugUtils.Active() )
-		m_moduleNames[*outModule] = resolved.name ? resolved.name : "unindexed shader";
 	// A handle can be reused after its module is destroyed; forget the old one.
 	m_vertexInputLocations.erase( *outModule );
 	uint64_t locations = 0;
@@ -2811,7 +2807,6 @@ void CVulkanContext::QueueClear( bool color, bool depth, bool stencil )
 		return;
 	EnsureRenderTargetStorage( m_dynTarget );
 	DynDraw &d = AppendRecord( kRecordClear );
-	NoteSceneChanged();
 	d.clearColor = color;
 	d.clearDepth = depth;
 	d.clearStencil = stencil;
@@ -2837,8 +2832,6 @@ bool CVulkanContext::QueueCopyToTexture(
 	std::string error;
 	const bool depthAlpha = depthToAlpha && EnsureSceneCapture( &error );
 	DynDraw &d = AppendRecord( kRecordCopy );
-	if ( dstHandle == m_sceneCaptureTarget || depthAlpha )
-		NoteSceneChanged();
 	d.copyDst = dstHandle;
 	d.copyDepthToAlpha = depthAlpha;
 	if ( depthAlpha )
@@ -2863,20 +2856,8 @@ int CVulkanContext::CreateOcclusionQuery( std::string *outError )
 		                    "(occlusionQueryPrecise is not supported)" );
 		return -1;
 	}
-	if ( m_queryPool == VK_NULL_HANDLE )
-	{
-		VkQueryPoolCreateInfo info = {};
-		info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
-		info.queryType = VK_QUERY_TYPE_OCCLUSION;
-		info.queryCount = kMaxOcclusionQueries;
-		const VkResult r = vkCreateQueryPool( m_device, &info, nullptr, &m_queryPool );
-		if ( r != VK_SUCCESS )
-		{
-			SetError( outError, std::string( "vkCreateQueryPool failed: " ) + ResultString( r ) );
-			return -1;
-		}
+	if ( m_querySlots.empty() )
 		m_querySlots.assign( kMaxOcclusionQueries, OcclusionQuerySlot() );
-	}
 	for ( size_t slot = 0; slot < m_querySlots.size(); ++slot )
 	{
 		if ( !m_querySlots[slot].live )
@@ -2933,20 +2914,10 @@ int64_t CVulkanContext::OcclusionQueryResult( int query, bool wait )
 		// a failure rather than a wait that never ends.
 		return wait ? kQueryFailed : kQueryPending;
 	}
-	uint64_t result[2] = { 0, 0 }; // samples passed, availability
-	VkQueryResultFlags flags = VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT;
-	if ( wait )
-		flags |= VK_QUERY_RESULT_WAIT_BIT;
-	const uint64_t readStart = wait ? FrameClockMicros() : 0;
-	const VkResult r = vkGetQueryPoolResults( m_device, m_queryPool, static_cast<uint32_t>( query ),
-	    1, sizeof( result ), result, sizeof( result ), flags );
-	if ( wait )
-		m_frameCost.Add( kCostQueryWait, FrameClockMicros() - readStart );
-	if ( r != VK_SUCCESS && r != VK_NOT_READY )
-		return kQueryFailed;
-	if ( !result[1] )
-		return kQueryPending;
-	return static_cast<int64_t>( result[0] );
+	// Every draw reaches the core at a slot, and a slot, copy or target switch
+	// between Begin and End ends the query as failed (the replay), so a query
+	// that completed counted only clears: zero samples, known once submitted.
+	return 0;
 }
 
 std::string CVulkanContext::DescribeStream() const
@@ -3488,7 +3459,6 @@ void CVulkanContext::RecordDepthToAlpha( VkCommandBuffer cmd, int srcTarget, con
 			Log( "frame copy without depth in alpha: %s\n",
 			    error.empty() ? "no single-sampled depth to copy" : error.c_str() );
 		s_reported = true;
-		++m_lastFrameDepthToAlphaSkipped;
 		return;
 	}
 	ScopedDebugLabel label( m_debugUtils, "depth to alpha" );
@@ -3578,7 +3548,6 @@ void CVulkanContext::RecordDepthToAlpha( VkCommandBuffer cmd, int srcTarget, con
 		    VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
 		    0, 0, nullptr, 0, nullptr, 1, &back );
 	}
-	++m_lastFrameDepthToAlpha;
 }
 
 void CVulkanContext::DestroyDynamicMesh()
@@ -3608,9 +3577,7 @@ void CVulkanContext::DestroyDynamicMesh()
 		ReleaseManagedTextureObjects( t );
 	m_managedTextures.clear();
 	m_whiteVolumeHandle = -1;
-	m_sceneColorHandle = -1;
 	m_sceneDepthHandle = -1;
-	m_sceneDepthCaptured = false;
 	for ( RetiredTexture &r : m_retiredTextures )
 		ReleaseManagedTextureObjects( r.texture );
 	m_retiredTextures.clear();
@@ -3780,7 +3747,6 @@ bool CVulkanContext::PrepareFrame( bool *outSkip, std::string *outError )
 		// FIFO swapchain's buffers indefinitely around a resize). Skip this frame
 		// and replace the swapchain, which returns its buffers, instead of
 		// blocking forever.
-		++m_acquireTimeouts;
 		Log( "swapchain image not released within %llu ms; recreating the swapchain\n",
 		    static_cast<unsigned long long>( kAcquireTimeoutNs / 1000000 ) );
 		m_acquireTimedOut = true;
@@ -3915,17 +3881,7 @@ void CVulkanContext::QueueCorePass( uint32_t tag, const CorePassTerms &terms )
 {
 	if ( !m_corePassRecorder )
 		return;
-	// AppendRecord starts a new queue after present; publish the policy after
-	// that reset so the following draws see it before vertex conversion.
 	DynDraw &record = AppendRecord( kRecordCorePass );
-	if ( tag == render::legacy::kCorePassLegacyHud )
-		m_queueLegacyHud = true;
-	if ( ( tag & render::legacy::kCorePassForwarded ) &&
-	     ( tag & render::legacy::kCorePassLegacyOff ) )
-	{
-		m_queueCoreOnly = true;
-		m_queueCustomEffects = ( tag & render::legacy::kCorePassCustomEffects ) != 0;
-	}
 	record.corePass = tag;
 	record.corePassTerms = static_cast<uint32_t>( m_corePassTerms.size() );
 	m_corePassTerms.push_back( terms );
@@ -4576,18 +4532,6 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 	// them replays. Only the slots this stream issues are reset, so a result of
 	// an earlier frame that the engine has yet to read survives.
 	m_replayedQueries.clear();
-	m_lastFrameSceneCaptures = 0;
-	m_lastFrameSceneDepthCaptures = 0;
-	m_lastFrameDepthToAlpha = 0;
-	m_lastFrameDepthToAlphaSkipped = 0;
-	if ( m_queryPool != VK_NULL_HANDLE && m_dynamicResourcesReady )
-	{
-		for ( const DynDraw &d : m_dynDrawRecords )
-		{
-			if ( d.kind == kRecordQueryBegin )
-				vkCmdResetQueryPool( cmd, m_queryPool, static_cast<uint32_t>( d.query ), 1 );
-		}
-	}
 
 	VkClearValue clears[2] = {};
 	clears[0].color = m_clearColor;
@@ -4638,7 +4582,6 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 		{
 			if ( activeQuery < 0 )
 				return;
-			vkCmdEndQuery( cmd, m_queryPool, static_cast<uint32_t>( activeQuery ) );
 			if ( !complete )
 				m_querySlots[static_cast<size_t>( activeQuery )].failed = true;
 			activeQuery = -1;
@@ -4781,8 +4724,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 			if ( d.kind == kRecordQueryBegin )
 			{
 				endActiveQuery( false );
-				// A slot is reset once per replay, so a second issue of the same
-				// query in one frame cannot begin; that issue fails.
+				// One issue of a query per replay; a second issue in one frame fails.
 				bool reissued = false;
 				for ( const std::pair<int, uint64_t> &issue : m_replayedQueries )
 					reissued = reissued || issue.first == d.query;
@@ -4791,8 +4733,6 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					m_querySlots[static_cast<size_t>( d.query )].failed = true;
 					continue;
 				}
-				vkCmdBeginQuery( cmd, m_queryPool, static_cast<uint32_t>( d.query ),
-				    VK_QUERY_CONTROL_PRECISE_BIT );
 				activeQuery = d.query;
 				m_replayedQueries.emplace_back( d.query, d.querySerial );
 				continue;
@@ -5379,7 +5319,6 @@ void CVulkanContext::ResolveBackBuffer( VkCommandBuffer cmd, uint32_t imageIndex
 	region.extent = { m_swapExtent.width, m_swapExtent.height, 1 };
 	vkCmdResolveImage( cmd, m_msColor, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 	    m_swapImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region );
-	++m_resolveCount;
 
 	VkImageMemoryBarrier out[2] = { in[0], in[1] };
 	out[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -5861,7 +5800,7 @@ bool CVulkanContext::FinishFrame(
 		return false;
 	}
 	const uint64_t value = token.value;
-	m_slotSerial[m_currentFrame] = ++m_submitSerial;
+	++m_submitSerial;
 	m_slotValue[m_currentFrame] = value;
 	m_imageValue[imageIndex] = value;
 	m_serialValues.emplace_back( m_submitSerial, value );
@@ -5924,10 +5863,6 @@ bool CVulkanContext::FinishFrame(
 }
 
 static const char kPipelineCacheFile[] = "vulkan_pipelines.cache";
-static const char kPipelineKeysFile[] = "vulkan_pipelines.keys";
-// The first line of the keys file. Bump the version when RasterStateKey's
-// encoding or a family's meaning changes, so old keys are ignored, not misread.
-static const char kPipelineKeysHeader[] = "vulkan-pipeline-keys/v1";
 
 static bool ReadWholeFile( const std::string &path, std::vector<char> *out )
 {
@@ -6021,21 +5956,9 @@ bool CVulkanContext::SavePipelineStore( std::string *outError )
 			size = 0;
 		data.resize( size );
 	}
-	std::vector<std::pair<int, uint64_t>> variants = m_pipelineVariants;
-	std::sort( variants.begin(), variants.end() );
-	variants.erase( std::unique( variants.begin(), variants.end() ), variants.end() );
-	std::string keys = std::string( kPipelineKeysHeader ) + "\n";
-	for ( const std::pair<int, uint64_t> &variant : variants )
-	{
-		char line[64];
-		std::snprintf( line, sizeof( line ), "%d %llx\n", variant.first,
-		    static_cast<unsigned long long>( variant.second ) );
-		keys += line;
-	}
 	const std::string base = m_pipelineStoreDirectory + "/";
-	if ( ( !data.empty() &&
-	         !WriteFileAtomically( base + kPipelineCacheFile, data.data(), data.size() ) ) ||
-	     !WriteFileAtomically( base + kPipelineKeysFile, keys.data(), keys.size() ) )
+	if ( !data.empty() &&
+	     !WriteFileAtomically( base + kPipelineCacheFile, data.data(), data.size() ) )
 	{
 		SetError( outError, "cannot write the pipeline store in " + m_pipelineStoreDirectory );
 		return false;
@@ -6336,7 +6259,6 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		m_renderDocFrames.erase( m_renderDocFrames.begin() );
 		m_renderDocArmed = m_renderDocTrigger && m_renderDocTrigger();
 	}
-	m_lastFrameCost = m_frameCost;
 	m_frameCost.Reset();
 	m_prevFrameBeginUs = m_frameBeginUs;
 	m_prevFrameBeginCpuUs = m_frameBeginCpuUs;
@@ -6589,11 +6511,6 @@ void CVulkanContext::Shutdown()
 		DestroyMsaaTargets();
 		DestroyMsaaPasses();
 		DestroyPresentGamma();
-		if ( m_queryPool != VK_NULL_HANDLE )
-		{
-			vkDestroyQueryPool( m_device, m_queryPool, nullptr );
-			m_queryPool = VK_NULL_HANDLE;
-		}
 		if ( m_timestampPool != VK_NULL_HANDLE )
 		{
 			vkDestroyQueryPool( m_device, m_timestampPool, nullptr );
@@ -6611,8 +6528,7 @@ void CVulkanContext::Shutdown()
 			vkDestroyPipelineCache( m_device, m_pipelineCache, nullptr );
 			m_pipelineCache = VK_NULL_HANDLE;
 		}
-		m_pipelineVariants.clear();
-		m_pipelineStoreDirectory.clear();
+			m_pipelineStoreDirectory.clear();
 		m_querySlots.clear();
 		m_replayedQueries.clear();
 
@@ -6689,7 +6605,6 @@ void CVulkanContext::Shutdown()
 	m_frameOpen = false;
 	m_currentFrame = 0;
 	m_captureRequested = false;
-	m_capturePending = false;
 	m_swapExtent = { 0, 0 };
 	m_presentExtent = { 0, 0 };
 	m_host = nullptr;

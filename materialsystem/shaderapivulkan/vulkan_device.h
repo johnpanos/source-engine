@@ -296,13 +296,8 @@ public:
 		m_dynDrawRecords.clear();
 		m_queuedOcclusionQuery = -1;
 		m_corePassTerms.clear();
-		m_queueCoreOnly = false;
-		m_queueCustomEffects = false;
-		m_queueLegacyHud = false;
 		m_frameLabels.clear();
 		m_dynFramePresented = false;
-		m_sceneCaptureCurrent = false;
-		m_sceneCapturesQueued = 0;
 	}
 	// Volume textures (the material system's colour-correction lookups and the
 	// white volume) are available once the dynamic resources hold the white
@@ -1031,9 +1026,6 @@ private:
 	    const VkPipelineVertexInputStateCreateInfo *input, VkShaderModule vertex,
 	    ConsumedVertexInput *storage ) const;
 	std::map<VkShaderModule, uint64_t> m_vertexInputLocations;
-	// Each module's index name (material_spv_index.h), kept while debug labels
-	// are on, to name the pipelines built from it.
-	std::map<VkShaderModule, const char *> m_moduleNames;
 	bool CreateShaderModule(
 	    const uint32_t *code, size_t sizeBytes, VkShaderModule *outModule, std::string *outError );
 	bool CreateBuffer( VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags props,
@@ -1105,7 +1097,6 @@ private:
 	VulkanAdapterCaps m_adapterCaps;
 	int m_requestedSamples = 1;
 	int m_activeSamples = 1;
-	uint64_t m_resolveCount = 0;
 	VkImage m_msColor = VK_NULL_HANDLE;
 	VkImage m_msDepth = VK_NULL_HANDLE;
 	VulkanMemory m_msColorMemory = VK_NULL_HANDLE;
@@ -1129,7 +1120,6 @@ private:
 	std::vector<VkPresentModeKHR> m_surfacePresentModes;
 	bool m_swapchainVSync = true; // the vsync request m_presentMode was selected for
 	uint64_t m_swapchainGeneration = 0;
-	uint64_t m_acquireTimeouts = 0;
 	bool m_acquireTimedOut = false;
 	// An acquire or present reported VK_SUBOPTIMAL_KHR with the surface
 	// unchanged (NoteSuboptimal). On Wayland that is new dmabuf feedback (a
@@ -1184,9 +1174,6 @@ private:
 	// The frame being recorded turned the legacy stream off (RFC 0014,
 	// render::legacy::kCorePassLegacyOff): it presents without the ramp.
 	bool m_frameLegacyOff = false;
-	bool m_queueCustomEffects = false; // product custom effects; off in diagnostics
-	bool m_queueCoreOnly = false;    // frame-ordered slot, before vertex conversion
-	bool m_queueLegacyHud = false;   // top-level HUD stage, scoped to this frame
 	bool m_gammaUnavailable = false; // the pass failed to build; presents blit
 	uint64_t m_gammaPresentCount = 0;
 	VkFormat m_gammaFormat = VK_FORMAT_UNDEFINED; // what the pass was built for
@@ -1203,8 +1190,6 @@ private:
 	VkPipeline m_depthToAlphaPipeline = VK_NULL_HANDLE;
 	VkPipeline m_depthToAlphaMsPipeline = VK_NULL_HANDLE; // reads multisampled depth
 	bool m_depthToAlphaUnavailable = false; // the pass failed to build
-	uint32_t m_lastFrameDepthToAlpha = 0;
-	uint32_t m_lastFrameDepthToAlphaSkipped = 0;
 	VkSampler m_gammaSamplerNearest = VK_NULL_HANDLE;
 	VkSampler m_gammaSamplerLinear = VK_NULL_HANDLE;
 	VkDescriptorPool m_gammaDescriptorPool = VK_NULL_HANDLE;
@@ -1284,7 +1269,6 @@ private:
 	bool m_captureRequested = false;
 	bool m_captureHdrRequested = false;
 	VkFormat m_captureFormat = VK_FORMAT_UNDEFINED;
-	bool m_capturePending = false;
 	std::vector<uint8_t> m_capturedPixels;
 	std::vector<uint16_t> m_capturedHdrPixels;
 	int m_capturedWidth = 0;
@@ -1297,25 +1281,14 @@ private:
 	// "$basetexture" material pipeline: a built-in 2-tone texture sampled at the
 	// mesh UVs, bound through a descriptor set (its own layout adds the sampler).
 	// Scene capture (vulkan_scene_capture.cpp): managed textures the size of the
-	// back buffer. Color is the swapchain format with its sRGB view and a full
-	// mip chain; depth is the depth format, sampled through a depth-only view.
-	int m_sceneColorHandle = -1;
+	// back buffer's depth: the depth format, sampled through a depth-only view
+	// (RecordDepthToAlpha's input).
 	int m_sceneDepthHandle = -1;
 	// The depth format can be copied from the attachments and sampled.
 	bool m_sceneDepthUsable = false;
 	bool m_sceneDepthEnabled = true;
-	// Queue-side state: whether the target still holds what the last capture
-	// copied, which target and glass material it served, and captures queued.
-	bool m_sceneCaptureCurrent = false;
-	int m_sceneCaptureTarget = -1;
-	uint32_t m_sceneCapturesQueued = 0;
-	uint32_t m_lastFrameSceneCaptures = 0;
-	uint32_t m_lastFrameSceneDepthCaptures = 0;
-	// Whether the latest replayed capture copied depth (ReadSceneDepth).
-	bool m_sceneDepthCaptured = false;
 	bool EnsureSceneCapture( std::string *outError );
 	void DestroySceneCapture();
-	void NoteSceneChanged() { m_sceneCaptureCurrent = false; }
 	// Records the copy into the capture images; returns whether depth was copied.
 	// Copies `target`'s depth (width x height from the origin) into the capture's
 	// depth image; false when there is no single-sampled depth to copy.
@@ -1326,7 +1299,6 @@ private:
 	{
 	};
 	VkPipelineCache m_pipelineCache = VK_NULL_HANDLE;
-	std::vector<std::pair<int, uint64_t>> m_pipelineVariants;
 	std::string m_pipelineStoreDirectory;
 
 	// PortalRefract pipelines, one per raster state, built on first use.
@@ -1428,10 +1400,8 @@ private:
 	};
 	std::vector<RetiredTexture> m_retiredTextures;
 	std::vector<int> m_freeTextureHandles;
-	// Frame submissions: the count so far, the serial each frame slot last
-	// submitted, and the newest serial known complete.
+	// Frame submissions: the count so far and the newest serial known complete.
 	uint64_t m_submitSerial = 0;
-	uint64_t m_slotSerial[kMaxFramesInFlight] = {};
 	uint64_t m_completedSerial = 0;
 	uint32_t m_liveTextureSets = 0;
 	void ReleaseManagedTextureObjects( ManagedTexture &t );
@@ -1568,7 +1538,7 @@ private:
 	bool m_dynFramePresented = false;
 	DynDraw &AppendRecord( int kind );
 
-	// Occlusion queries: one pool slot per query object. `issued` counts begins
+	// Occlusion queries: one slot per query object. `issued` counts begins
 	// recorded; `submitted` is the issue whose frame was last submitted, so a
 	// result is readable only when the two agree.
 	struct OcclusionQuerySlot
@@ -1578,11 +1548,9 @@ private:
 		uint64_t submitted = 0;
 		bool failed = false; // the latest issue cannot produce a result
 	};
-	VkQueryPool m_queryPool = VK_NULL_HANDLE;
 	std::vector<OcclusionQuerySlot> m_querySlots;
 	int m_queuedOcclusionQuery = -1;
 	bool m_preciseOcclusion = false;
-	bool m_fillModeNonSolid = false;
 	// Issues replayed into the frame being recorded; marked submitted by EndFrame.
 	std::vector<std::pair<int, uint64_t>> m_replayedQueries;
 	void FailUnsubmittedQueries();
@@ -1618,7 +1586,6 @@ private:
 	bool m_frameCaptureHdr = false;
 	bool m_frameCapturePresented = false;
 	int64_t m_recordEndUs = 0;
-	FrameCost m_lastFrameCost;
 	// Records the prepared frame's stages (AttachFrameStage's host work):
 	// all of them, or one.
 	void RecordFrameCommands( VkCommandBuffer cmd );
@@ -1632,7 +1599,6 @@ private:
 	// Selected adapter facts.
 	std::string m_deviceName = "unknown";
 	uint32_t m_vendorId = 0;
-	uint32_t m_deviceId = 0;
 	uint64_t m_deviceLocalMemoryBytes = 0;
 	bool m_isDiscrete = false;
 	bool m_validationEnabled = false;

@@ -1734,7 +1734,8 @@ void CBasePanel::ApplySchemeSettings(IScheme *pScheme)
 		if ( m_iLoadingImageID == -1 )
 		{
 			const char* loading = "console/startup_loading";
-			if ( IsSteamDeck() )
+			// Optional Steam Deck logo; Portal 2 ships none.
+			if ( IsSteamDeck() && g_pFullFileSystem->FileExists( "materials/gamepadui/game_logo.vtf", "GAME" ) )
 				loading = "gamepadui/game_logo";
 			m_iLoadingImageID = surface()->CreateNewTextureID();
 			surface()->DrawSetTextureFile( m_iLoadingImageID, loading, false, false );

@@ -22,6 +22,7 @@
 #include "product/stage_waf.h"
 #include "product/toolchain_linux.h"
 
+#include "../../../platform/posix/foundation_providers.h"
 #include "../../../platform/posix/process_spawner.h"
 #include "../../../platform/posix/tool_process_provider.h"
 
@@ -113,7 +114,9 @@ int main( int argc, char **argv )
 	     !Add( catalog, product::CreateSingleRunProvider() ) )
 		return 1;
 
-	const kiln::SessionConfig config = kiln::DefaultSessionConfig( root, "linux-x86_64" );
+	const auto environment = platform::CreatePosixProcessEnvironment( argc, argv );
+	const kiln::SessionConfig config =
+	    kiln::DefaultSessionConfig( root, "linux-x86_64", *environment );
 	jobsystem::DeterministicExecutor executor;
 	Sink sink;
 	kiln::Session session( catalog, *processes, executor, sink, config );

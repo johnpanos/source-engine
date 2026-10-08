@@ -1282,7 +1282,10 @@ def configure_render_core(conf):
 	conf.env.RENDER_CORE_VULKAN = bool(conf.env.RENDER_CORE and conf.env.NATIVE_VULKAN)
 	# The tools product has no engine renderer, so the editor's viewports take
 	# the Vulkan adapter on their own (RFC 0016 "Editor viewports").
-	if conf.env.RENDER_CORE and conf.options.TOOLS and conf.options.RENDER_CORE_VULKAN != 'off':
+	# The core shader API on the Linux desktop (render backend core) takes it
+	# too: the same frames on Vulkan, as the reference the WebGPU lane meets.
+	core_desktop = conf.options.RENDER_BACKEND == 'core' and conf.env.DEST_OS == 'linux'
+	if conf.env.RENDER_CORE and ( conf.options.TOOLS or core_desktop ) and conf.options.RENDER_CORE_VULKAN != 'off':
 		conf.env.RENDER_CORE_VULKAN = bool(conf.check_cfg(package='vulkan', uselib_store='VULKAN',
 			args=['--cflags', '--libs'], msg='Checking for the Vulkan loader (render core)',
 			mandatory=conf.options.RENDER_CORE_VULKAN == 'on'))

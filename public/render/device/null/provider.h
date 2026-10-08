@@ -75,12 +75,13 @@ enum class RecordedOp : std::uint8_t
 	kDispatch,
 	kBeginLabel,
 	kEndLabel,
-	kSetDrawConstants,        // count: the bytes written
-	kWriteTimestamp,          // D23: count is the tick written
-	kBeginOcclusionQuery,     // D43 (unclaimed: the submission fails kUnsupported)
+	kSetDrawConstants,    // count: the bytes written
+	kWriteTimestamp,      // D23: count is the tick written
+	kBeginOcclusionQuery, // D43 (unclaimed: the submission fails kUnsupported)
 	kEndOcclusionQuery,
-	kDrawIndexedIndirect,     // D30: count is the draw count
-	kDrawIndexedIndirectCount // D31: count is the maximum draw count
+	kDrawIndexedIndirect,      // D30: count is the draw count
+	kDrawIndexedIndirectCount, // D31: count is the maximum draw count
+	kClearRegion               // D44
 };
 
 // One executed command. resource is the command's main handle value;

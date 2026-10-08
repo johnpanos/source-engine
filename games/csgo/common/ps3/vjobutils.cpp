@@ -1,4 +1,4 @@
-//========== Copyright © Valve Corporation, All rights reserved. ========
+//========== Copyright Â© Valve Corporation, All rights reserved. ========
 #include "vjobutils.h"
 
 #ifdef VJOBS_ON_SPURS

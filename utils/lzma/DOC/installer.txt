@@ -111,7 +111,7 @@ Small SFX modules support this codecs: LZMA, LZMA2, BCJ, BCJ2, ARM, COPY
 Small SFX module is similar to common SFX module for installers.
 The difference (what's new in small version):
  - Smaller size (30 KB vs 100 KB)
- - C source code instead of Ñ++
+ - C source code instead of Ã‘++
  - No installer Configuration file
  - No extracting progress window
  - It decompresses solid 7z blocks (it can be whole 7z archive) to RAM.

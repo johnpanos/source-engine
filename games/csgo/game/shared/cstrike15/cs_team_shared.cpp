@@ -1,4 +1,4 @@
-//========= Copyright © Valve Corporation, All rights reserved. ============//
+//========= Copyright Â© Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Shared code for cs teams
 //

@@ -22,6 +22,7 @@ def build(bld):
 	source = [
 		'shaderapipica.cpp',
 		'pica_renderer.cpp',
+		'core_copies.cpp',
 		'pica_texture.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]
