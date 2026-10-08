@@ -90,7 +90,6 @@ def capture_burst(args, producer, target):
     camera = args.camera or sorted(fixture["cameras"])[0]
     profile, _ = pbrt_map_toolchain.load_profiles()
     toolchain = pbrt_map_toolchain.load(ROOT / profile["layout"]["toolchain_file"])
-    runtime = Path(args.runtime or toolchain["runtime"])
     map_build = Path(args.map_build or MAPS / args.fixture)
     manifest = json.loads((fixture["directory"] / fixture["map_manifest"]).read_text())
     placement, _ = reference_compare.camera_commands(gi_runtime.camera_scene(fixture, camera))
@@ -106,7 +105,7 @@ def capture_burst(args, producer, target):
     frames = (gi_runtime.PLACEMENT_FRAMES + args.warm +
               args.frames * (args.stride + SHOT_FRAMES) + 30)
     result = subprocess.run(
-        [sys.executable, HERE / "portal_boot.py", "--runtime", runtime, "--build", args.build,
+        [sys.executable, HERE / "portal_boot.py", *pbrt_map_toolchain.boot_target(toolchain, args),
          "--content-root", map_build / "content", "--renderer", "native-vulkan", "--headless",
          "--map", manifest["map"], "--width", str(args.width), "--height", str(args.height),
          "--capture-wait", str(frames)] +
@@ -140,7 +139,7 @@ def capture(args):
                                                       "pixel_range_p99"))))
     summary = {"schema": SCHEMA, "fixture": args.fixture, "camera": args.camera,
                "view": args.view, "frames": args.frames, "stride": args.stride,
-               "warm": args.warm, "build": args.build,
+               "warm": args.warm, "client": [args.profile, args.flavor],
                "limits": {"flicker_rms": FLICKER_RMS_LIMIT, "step_max": STEP_LIMIT},
                "status": "pass" if passed else "fail", "producers": results}
     out.mkdir(parents=True, exist_ok=True)
@@ -180,8 +179,7 @@ def main():
                    help="extra console commands before the producer is selected")
     c.add_argument("--width", type=int, default=1024)
     c.add_argument("--height", type=int, default=768)
-    c.add_argument("--build", default="build")
-    c.add_argument("--runtime")
+    pbrt_map_toolchain.add_client_arguments(c)
     c.add_argument("--out", required=True)
     s = commands.add_parser("score")
     s.add_argument("--frames", required=True, help="a directory of the burst's TGA screenshots")

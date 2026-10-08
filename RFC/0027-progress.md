@@ -662,3 +662,23 @@ Evidence:
     `build/toolchains/pbrt-map-toolchain.json` (Blender, OpenUSD, KTX, xatlas
     and the compile tools). Moving that pipeline is later RFC 0027 work, not
     L1.
+
+### L1d (sixth slice): the map pipeline boots its kiln client profile
+
+- **Toolchain record.** `pbrt-map-linux-tools.json` names the boot client as
+  a kiln profile (`runtime.client_profile` `portal`, `client_flavor` `dev`),
+  in place of `run/runtime-native` and a legacy client tree.
+  - `pbrt_map_toolchain.load()` resolves `runtime` (the profile's package, a
+    content source) and `model_tool` (the engine install's
+    `mdl_mesh_export`) through `sepipe_loader`. `client_build` is gone.
+  - `add_client_arguments()` and `boot_target()` own the default and the
+    `--profile`/`--flavor` override.
+- **Callers on `portal_boot.py --profile`.** `pbrt_map_build.py` (boot,
+  camera-boot and traversal-boot; the cache keys name the client profile),
+  `gi_runtime.py` (its unused `--game` goes), `gi_soak.py`, `gi_swing.py`,
+  `gi_temporal.py`, `gi_probes.py` and `reflection_runtime.py`.
+- **Tests.** `load()` resolves on this host. `test_gi_tools` 48, the
+  `pbrt_map_build_run` tests 14 and the toolchain boundary tests 16 pass.
+- **Pre-existing failures, files not touched.** Three
+  `test_reflection_probe_set` placement tests, and four lighting back-end
+  plan tests (the `light-masks` operation).

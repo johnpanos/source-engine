@@ -41,6 +41,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools" / "kiln"))
+import sepipe_loader  # noqa: E402
 PROFILE = ROOT / "quality/product_profiles/pbrt-map-linux-tools.json"
 STEPS = ("sources", "openusd", "ktx", "ktx-reader", "compile-tools", "xatlas", "write")
 
@@ -256,8 +258,22 @@ def toolchain_document(profile, linked):
             "ktx": str(absolute(layout["ktx_build"]) / ktx),
             "xatlas": str(absolute(layout["xatlas_build"]) /
                           profile["dependencies"]["xatlas"]["build"]["binary"]),
-            "runtime": profile["runtime"]["runtime"],
-            "client_build": profile["runtime"]["client_build"]}
+            "client_profile": profile["runtime"]["client_profile"],
+            "client_flavor": profile["runtime"]["client_flavor"]}
+
+
+def add_client_arguments(parser):
+    """A boot tool's optional client override; the toolchain's client profile
+    is the default (RFC 0027: callers name a kiln profile, not a tree)."""
+    parser.add_argument("--profile", help="kiln client profile (default: the toolchain's)")
+    parser.add_argument("--flavor", help="its build flavor (default: the toolchain's)")
+
+
+def boot_target(toolchain, args=None):
+    """portal_boot.py's --profile/--flavor for a toolchain and optional overrides."""
+    profile = getattr(args, "profile", None) or toolchain["client_profile"]
+    flavor = getattr(args, "flavor", None) or toolchain["client_flavor"]
+    return ["--profile", profile, "--flavor", flavor]
 
 
 def oidn_version(library):
@@ -285,7 +301,7 @@ def load(path, profile_path=PROFILE):
     profile, linked = load_profiles(profile_path)
     problems = []
     keys = ("blender", "ocio", "usd_python", "usd_pythonpath", "compile_tools", "ktx",
-            "xatlas", "runtime", "client_build")
+            "xatlas")
     for key in keys:
         value = toolchain.get(key)
         if not value:
@@ -298,6 +314,18 @@ def load(path, profile_path=PROFILE):
         toolchain[key] = resolved
     toolchain["bsp2tool"] = str(absolute(toolchain.get("bsp2tool") or
                                          Path(toolchain["compile_tools"] or "") / "bsp2tool"))
+    # The game the maps boot in is a kiln profile (the profile file owns the
+    # choice; a record written before RFC 0027 L1 names paths instead).
+    toolchain.pop("client_build", None)
+    toolchain["client_profile"] = profile["runtime"]["client_profile"]
+    toolchain["client_flavor"] = profile["runtime"]["client_flavor"]
+    try:
+        toolchain["runtime"] = str(sepipe_loader.packaged_runtime(
+            toolchain["client_profile"], toolchain["client_flavor"]))
+        toolchain["model_tool"] = str(sepipe_loader.installed(
+            toolchain["client_profile"], toolchain["client_flavor"]) / "mdl_mesh_export")
+    except sepipe_loader.LoadError as error:
+        problems.append("client profile %s: %s" % (toolchain["client_profile"], error))
     if problems:
         raise SystemExit("toolchain problems:\n  " + "\n  ".join(problems))
     tools = Path(toolchain["compile_tools"])

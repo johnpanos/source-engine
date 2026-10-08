@@ -162,8 +162,9 @@ cone, and its light cells use the map's PVS, so `r_indirect_producer sdf`
 traces only the lights near each probe. The producer updates the probes
 around the camera every update and the rest in turn (`r_indirect_focus`,
 `r_indirect_probe_budget`). `--quality legacy-relight-preview` builds in
-minutes instead of hours. Boot on a client with the RTRN/SDFV loaders, such
-as `--build build`: the toolchain's `client_build` offers only `baked`.
+minutes instead of hours. Boot on a client with the RTRN/SDFV loaders: the
+boot tools take the toolchain's kiln client profile (`runtime.client_profile`
+in `pbrt-map-linux-tools.json`, `portal` by default) or `--profile`/`--flavor`.
 
 The engine replaces only the opaque world with the relit world mesh. Brush
 entities, displacements, water and translucent faces keep their vrad

@@ -77,7 +77,7 @@ def plan(manifest, out):
     path = write(Path(out) / "manifest.json", json.dumps(manifest))
     tools = {key: "/nonexistent/" + key for key in (
         "blender", "ocio", "usd_python", "usd_pythonpath", "compile_tools", "ktx", "xatlas",
-        "runtime", "client_build", "bsp2tool")}
+        "runtime", "model_tool", "client_profile", "client_flavor", "bsp2tool")}
     pipeline = Recording(pbrt_map_build.load_manifest(path), tools, Path(out), None, False,
                          publish=False)
     pipeline.build()

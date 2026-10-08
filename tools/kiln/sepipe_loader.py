@@ -103,3 +103,17 @@ def add_arguments(parser, profile):
 def boot_arguments(args):
     """portal_boot.py's arguments for a caller's --profile/--flavor."""
     return ["--profile", args.profile, "--flavor", args.flavor]
+
+
+def installed(profile, flavor="dev"):
+    """The profile's engine install (`kiln build`'s engine-install artifact)."""
+    try:
+        built = session().build(profile, flavor=flavor)
+    except LoadError:
+        raise
+    except Exception as error:  # sepipe.KilnError
+        raise LoadError("kiln build %s --flavor %s: %s" % (profile, flavor, error)) from error
+    for artifact in built.get("artifacts", []):
+        if artifact.get("name") == "engine-install":
+            return Path(artifact["path"])
+    raise LoadError("kiln build %s produced no engine-install artifact" % profile)

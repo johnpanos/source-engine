@@ -363,8 +363,8 @@ def cmd_malformed(args):
             replace_lump(data, probe_volume.MAGIC, payload, rehash))
         boot = directory / "boot"
         result = subprocess.run(
-            [sys.executable, HERE / "portal_boot.py", "--runtime", profile["runtime"],
-             "--build", profile["client_build"], "--content-root", directory / "content",
+            [sys.executable, HERE / "portal_boot.py", *boot_target(profile),
+             "--content-root", directory / "content",
              "--renderer", "native-vulkan", "--headless", "--map", source.stem,
              "--console-command", "r_drawvgui 0; r_worldmesh_draw 2", "--out", boot],
             cwd=ROOT, capture_output=True, text=True)
@@ -391,6 +391,11 @@ def cmd_malformed(args):
     write(out / "malformed.json", record)
     print("GI probe malformed %s: %s" % (source.stem, record["status"]))
     return 0 if not failures else 1
+
+
+def boot_target(toolchain):
+    import pbrt_map_toolchain
+    return pbrt_map_toolchain.boot_target(toolchain)
 
 
 def pbrt_map_toolchain_profiles():

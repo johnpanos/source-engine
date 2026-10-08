@@ -105,11 +105,17 @@ def select(producer):
     return "r_indirect_report 1; r_indirect_producer %s" % producer
 
 
+def client_overrides(args):
+    """The --profile/--flavor overrides this run forwards to gi_runtime.py."""
+    return [part for flag, value in (("--profile", args.profile), ("--flavor", args.flavor))
+            if value for part in (flag, value)]
+
+
 def capture(args, name, command, view, wait):
     target = Path(args.out) / name
     run = [sys.executable, HERE / "gi_runtime.py", "capture", "--fixture", "swing",
            "--map-build", Path(args.map_build or MAPS / "swing"), "--out", target,
-           "--build", args.build, "--console-command", command, "--capture-wait",
+           *client_overrides(args), "--console-command", command, "--capture-wait",
            str(gi_runtime.PLACEMENT_FRAMES + wait), "--view", str(view)]
     if view == 3:
         run += ["--scale", str(DIFFUSE_SCALE)]
@@ -291,8 +297,8 @@ def cost(args):
     line = "; ".join(["r_drawvgui 0"] + prelude + [
         "%s; %s; wait %d; g9p0" % (hold("rest"), select("sdf"), WARM_FRAMES + CHANGE_FRAMES)])
     frames = WARM_FRAMES + CHANGE_FRAMES + 5 * (COST_PHASE_FRAMES + 30) + 150 + 60
-    run = [sys.executable, HERE / "portal_boot.py", "--runtime", toolchain["runtime"],
-           "--build", args.build, "--content-root", map_build / "content",
+    run = [sys.executable, HERE / "portal_boot.py", *pbrt_map_toolchain.boot_target(toolchain, args),
+           "--content-root", map_build / "content",
            "--renderer", "native-vulkan", "--headless", "--map", "gi_swing",
            "--width", "1920", "--height", "1080",
            "--capture-wait", str(gi_runtime.PLACEMENT_FRAMES + frames),
@@ -348,7 +354,7 @@ def cost(args):
 def write(args, gate, passed, **record):
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    record = dict({"gate": gate, "status": "pass" if passed else "fail", "build": args.build},
+    record = dict({"gate": gate, "status": "pass" if passed else "fail", "client": client_overrides(args)},
                   **record)
     (out / "gate.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     print("%s: %s" % (gate, record["status"]))
@@ -363,7 +369,7 @@ def main():
         command = commands.add_parser(name)
         command.add_argument("--map-build", type=Path)
         command.add_argument("--out", required=True)
-        command.add_argument("--build", default="build")
+        pbrt_map_toolchain.add_client_arguments(command)
         if name == "frozen":
             command.add_argument("--producer", choices=("sdf", "rayquery"), default="sdf")
         else:
