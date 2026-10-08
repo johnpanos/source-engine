@@ -29,7 +29,6 @@ def build(bld):
 		'core_dx9.cpp',
 		#'debugmorphaccumulator_dx9.cpp',					[$WIN32]
 		'DecalBaseTimesLightmapAlphaBlendSelfIllum_dx9.cpp',
-		'DecalModulate_dx9.cpp',
 		'Engine_Post_dx9.cpp',
 		'emissive_scroll_blended_pass_helper.cpp',
 		'eye_refract.cpp',

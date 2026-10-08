@@ -73,6 +73,9 @@ enum class Op
 	AlphaWritesIfOpaque, // EnableAlphaWrites( base texture neither blends nor alpha tests )
 	ShadowBias,     // EnablePolyOffset( SHADOW_BIAS ) unless extra a is set
 	ColorWritesIf1, // EnableColorWrites( extra a == 1 )
+	PolyOffset,     // EnablePolyOffset( PolygonOffsetMode_t( a ) )
+	FogToGreyRaw,   // DisableFogGammaCorrection( true ); FogToGrey()
+	DecalFormat,    // DecalModulate's format: POSITION | COMPRESSED, plus NORMAL and texcoords { 2, 0, 3 } with fast vertex textures
 	ClearWrites,    // BufferClearObeyStencil: depth, colour and alpha writes from extras 2, 0 and 1
 	CullAlphaTested, // EnableCulling( $alphatest && !$nocull )
 	DepthWriteAlpha, // DepthWrite's alpha-clip / vertex-texture samplers (extra a: $color_depth)
@@ -121,6 +124,7 @@ enum class InitHook
 {
 	None,
 	ParticleSphere, // $DEPTHBLEND from the depth-feathering default; $USINGPIXELSHADER at init
+	VertexIdSkinning, // USES_VERTEXID and SUPPORTS_HW_SKINNING with fast vertex textures
 };
 
 bool IsSixteenBitPerChannel( ITexture *texture )
@@ -308,6 +312,15 @@ const FixedStateRow kRows[] = {
 	        { Op::Format, VERTEX_POSITION | VERTEX_COLOR, 1 },
 	        { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ZERO }, { Op::AlphaTest, 1, 0 },
 	        { Op::AlphaFunc, SHADER_ALPHAFUNC_ALWAYS, 0 } } },
+	{ "DecalModulate", "DecalModulate_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "DecalModulate_dx9", nullptr, 0, 0, NO_PARAMS, -1, 0, { { false, BASETEXTURE, false } },
+	    { { Op::AlphaTest, 1, 0 }, { Op::AlphaFunc, SHADER_ALPHAFUNC_GREATER, 0 },
+	        { Op::DepthWrites, 0, 0 }, { Op::PolyOffset, SHADER_POLYOFFSET_DECAL, 0 },
+	        { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::AlphaWrites, 0, 0 },
+	        { Op::SrgbRead, SHADER_SAMPLER0, 0 }, { Op::SrgbWrite, 0, 0 },
+	        { Op::Blending, SHADER_BLEND_DST_COLOR, SHADER_BLEND_SRC_COLOR },
+	        { Op::FogToGreyRaw, 0, 0 }, { Op::DecalFormat, 0, 0 } },
+	    MATERIAL_VAR_NO_DEBUG_OVERRIDE, {}, {}, nullptr, InitHook::VertexIdSkinning },
 	{ "Downsample_nohdr", nullptr, SHADER_NOT_EDITABLE, 0,
 	    { { "$BLOOMTINTENABLE", I, "1", "" }, { "$CSTRIKE", I, "0", "" } }, 0, 1,
 	    { { false, BASETEXTURE, false } },
@@ -602,6 +615,11 @@ protected:
 			SET_FLAGS( MaterialVarFlags_t( m_Row.initFlags ) );
 		if ( m_Row.initFlags2 )
 			SET_FLAGS2( MaterialVarFlags2_t( m_Row.initFlags2 ) );
+		if ( m_Row.hook == InitHook::VertexIdSkinning && g_pHardwareConfig->HasFastVertexTextures() )
+		{
+			SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
+			SET_FLAGS2( MATERIAL_VAR2_SUPPORTS_HW_SKINNING );
+		}
 		if ( m_Row.hook == InitHook::ParticleSphere )
 		{
 			IMaterialVar *depthBlend = params[Extra( 0 )];
@@ -849,6 +867,22 @@ private:
 		case Op::ColorWritesIf1:
 			pShaderShadow->EnableColorWrites( params[Extra( step.a )]->GetIntValue() == 1 );
 			break;
+		case Op::PolyOffset:
+			pShaderShadow->EnablePolyOffset( PolygonOffsetMode_t( step.a ) );
+			break;
+		case Op::FogToGreyRaw:
+			pShaderShadow->DisableFogGammaCorrection( true );
+			FogToGrey();
+			break;
+		case Op::DecalFormat:
+		{
+			const bool fast = g_pHardwareConfig->HasFastVertexTextures();
+			int texCoordDims[3] = { 2, 0, 3 };
+			pShaderShadow->VertexShaderVertexFormat(
+			    VERTEX_POSITION | VERTEX_FORMAT_COMPRESSED | ( fast ? VERTEX_NORMAL : 0 ), fast ? 3 : 1,
+			    texCoordDims, 0 );
+			break;
+		}
 		case Op::ClearWrites:
 		{
 			// $CLEARALPHA -1 copies $CLEARCOLOR.
