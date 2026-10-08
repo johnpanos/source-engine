@@ -437,10 +437,12 @@ private:
 			const SamplerDesc &s = m_D.m_Samplers.at( sampler->sampler.value ).desc;
 			C3D_Tex &tex = Shared().units[unit];
 			tex = t.sampled;
-			const GPU_TEXTURE_WRAP_PARAM wrap =
-			    s.address == AddressMode::kClampToEdge      ? GPU_CLAMP_TO_EDGE
-			    : s.address == AddressMode::kMirroredRepeat ? GPU_MIRRORED_REPEAT
-			                                                : GPU_REPEAT;
+			const auto wrapOf = []( AddressMode mode )
+			{
+				return mode == AddressMode::kClampToEdge      ? GPU_CLAMP_TO_EDGE
+				       : mode == AddressMode::kMirroredRepeat ? GPU_MIRRORED_REPEAT
+				                                              : GPU_REPEAT;
+			};
 			const auto filter = []( Filter f )
 			{
 				return f == Filter::kLinear ? GPU_LINEAR : GPU_NEAREST;
@@ -449,7 +451,8 @@ private:
 			            GPU_TEXTURE_MAG_FILTER( filter( s.magFilter ) ) |
 			            GPU_TEXTURE_MIN_FILTER( filter( s.minFilter ) ) |
 			            GPU_TEXTURE_MIP_FILTER( filter( s.mipFilter ) ) |
-			            GPU_TEXTURE_WRAP_S( wrap ) | GPU_TEXTURE_WRAP_T( wrap );
+			            GPU_TEXTURE_WRAP_S( wrapOf( s.address ) ) |
+			            GPU_TEXTURE_WRAP_T( wrapOf( AddressV( s ) ) );
 			C3D_TexBind( int( unit ), &tex );
 		}
 	}

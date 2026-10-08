@@ -55,9 +55,10 @@ enum class Memory : std::uint8_t
 // The texel formats Texture::Upload takes, in the port's raster layout.
 enum class UploadFormat : std::uint8_t
 {
-	kRGBA8, // 4 bytes per texel
-	kETC1,  // render.device.v2's kETC1Rgb
-	kETC1A4 // render.device.v2's kETC1A4
+	kRGBA8,  // 4 bytes per texel
+	kETC1,   // render.device.v2's kETC1Rgb
+	kETC1A4, // render.device.v2's kETC1A4
+	kRGBA4   // render.device.v2's kRGBA4Unorm: a 16-bit word per texel (D42)
 };
 static_assert( sizeof( Vertex ) == 24, "PICA vertex record" );
 
@@ -133,12 +134,11 @@ public:
 	std::size_t Bytes() const { return m_bytes; }
 	std::uint32_t Group(); // the material bind group drawing it (renderer use)
 	std::uint32_t Id() const { return m_texture; } // the device's TextureId value
-	bool Repeat() const { return m_repeat; }
 
 private:
 	std::uint32_t m_texture; // TextureId
 	std::uint32_t m_group;   // BindGroupId, made on first draw
-	bool m_repeat;
+	std::uint8_t m_wrap; // bit 0 repeats u, bit 1 repeats v
 	int m_width;
 	int m_height;
 	std::size_t m_bytes;
@@ -217,6 +217,10 @@ struct CoreSectionTarget
 	std::uint64_t submittedValue = 0;
 };
 render::device::CommandEncoder *BeginCoreSection( CoreSectionTarget &target );
+// Submits the frame's recording so far and continues it (the next recording
+// loads what this one drew): what the device holds for the recorded draws is
+// released behind it (a budget on per-frame geometry).
+void FlushRecording();
 void EndCoreSection();
 
 // Writes the last presented frame as a binary PPM (400x240, RGB).

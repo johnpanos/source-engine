@@ -78,7 +78,7 @@ struct State
 	TextureId color;
 	TextureId depth;
 	BindGroupLayoutId materialLayout;
-	SamplerId samplers[2]; // clamped, repeating
+	SamplerId samplers[4]; // by wrap: bit 0 repeats u, bit 1 repeats v
 	std::vector<std::byte> vertexArtifact;
 	std::unordered_map<std::uint64_t, PipelineId> pipelines;
 	// Allocations by their first byte's address.
@@ -407,7 +407,7 @@ void SubmitRecording( bool sample )
 } // namespace
 
 Texture::Texture()
-    : m_texture( 0 ), m_group( 0 ), m_repeat( true ), m_width( 0 ), m_height( 0 ), m_bytes( 0 )
+    : m_texture( 0 ), m_group( 0 ), m_wrap( 3 ), m_width( 0 ), m_height( 0 ), m_bytes( 0 )
 {
 }
 
@@ -439,6 +439,7 @@ bool Texture::Upload(
 	TextureDesc desc;
 	desc.format = format == UploadFormat::kETC1     ? Format::kETC1Rgb
 	              : format == UploadFormat::kETC1A4 ? Format::kETC1A4
+	              : format == UploadFormat::kRGBA4  ? Format::kRGBA4Unorm
 	                                                : Format::kRGBA8Unorm;
 	desc.width = std::uint32_t( width );
 	desc.height = std::uint32_t( height );
@@ -463,8 +464,8 @@ bool Texture::Upload(
 		const std::uint32_t w = std::uint32_t( width >> level ),
 		                    h = std::uint32_t( height >> level );
 		const std::size_t bytes =
-		    format == UploadFormat::kRGBA8
-		        ? std::size_t( w ) * h * 4
+		    format == UploadFormat::kRGBA8   ? std::size_t( w ) * h * 4
+		    : format == UploadFormat::kRGBA4 ? std::size_t( w ) * h * 2
 		        : std::size_t( w / 4 ) * ( h / 4 ) * ( format == UploadFormat::kETC1 ? 8 : 16 );
 		auto buffer = Device().CreateUploadBuffer(
 		    { reinterpret_cast<const std::byte *>( levels[level] ), bytes } );
@@ -496,10 +497,10 @@ bool Texture::Upload(
 
 void Texture::SetWrap( bool wrapS, bool wrapT )
 {
-	const bool repeat = wrapS && wrapT;
-	if ( repeat == m_repeat )
+	const std::uint8_t wrap = ( wrapS ? 1 : 0 ) | ( wrapT ? 2 : 0 );
+	if ( wrap == m_wrap )
 		return;
-	m_repeat = repeat;
+	m_wrap = wrap;
 	if ( m_group )
 		g_state.releases.push_back( BindGroupId{ m_group } );
 	m_group = 0;
@@ -512,7 +513,7 @@ std::uint32_t Texture::Group()
 	if ( !m_group )
 	{
 		const BindGroupEntry entries[] = { { 0, {}, 0, 0, TextureId{ m_texture }, {} },
-		    { 1, {}, 0, 0, {}, g_state.samplers[m_repeat ? 1 : 0] } };
+		    { 1, {}, 0, 0, {}, g_state.samplers[m_wrap] } };
 		auto group = Device().CreateBindGroup( { g_state.materialLayout, entries } );
 		m_group = group ? group.Value().value : 0;
 	}
@@ -554,11 +555,17 @@ bool Init()
 	sampler.magFilter = Filter::kLinear;
 	sampler.minFilter = Filter::kNearest;
 	sampler.mipFilter = Filter::kLinear;
-	sampler.address = AddressMode::kClampToEdge;
-	auto clamped = Device().CreateSampler( sampler );
-	sampler.address = AddressMode::kRepeat;
-	auto repeating = Device().CreateSampler( sampler );
-	if ( !color || !depth || !layout || !clamped || !repeating )
+	bool samplersMade = true;
+	for ( std::uint8_t wrap = 0; wrap < 4; ++wrap )
+	{
+		sampler.address = ( wrap & 1 ) ? AddressMode::kRepeat : AddressMode::kClampToEdge;
+		sampler.addressV = ( wrap & 2 ) ? AddressMode::kRepeat : AddressMode::kClampToEdge;
+		auto made = Device().CreateSampler( sampler );
+		samplersMade = samplersMade && made;
+		if ( made )
+			g_state.samplers[wrap] = made.Value();
+	}
+	if ( !color || !depth || !layout || !samplersMade )
 	{
 		std::printf( "pica: the frame's target, layout or samplers were refused\n" );
 		g_state = State();
@@ -567,8 +574,6 @@ bool Init()
 	g_state.color = color.Value();
 	g_state.depth = depth.Value();
 	g_state.materialLayout = layout.Value();
-	g_state.samplers[0] = clamped.Value();
-	g_state.samplers[1] = repeating.Value();
 
 	pf::VertexProgram program;
 	program.drawConstantRegister = 0;
@@ -634,8 +639,10 @@ void Shutdown()
 		(void)device.Release( g_state.reserve, {} );
 	for ( ResourceId id : { ResourceId( g_state.color ), ResourceId( g_state.depth ),
 			  ResourceId( g_state.materialLayout ), ResourceId( g_state.samplers[0] ),
-			  ResourceId( g_state.samplers[1] ) } )
-		(void)device.Release( id, {} );
+			  ResourceId( g_state.samplers[1] ), ResourceId( g_state.samplers[2] ),
+			  ResourceId( g_state.samplers[3] ) } )
+		if ( id.value )
+			(void)device.Release( id, {} );
 	(void)device.Poll();
 	g_state = State();
 }
@@ -876,6 +883,12 @@ render::device::CommandEncoder *BeginCoreSection( CoreSectionTarget &target )
 	target.submittedEpoch = g_state.submitted.epoch;
 	target.submittedValue = g_state.submitted.value;
 	return &*g_state.encoder;
+}
+
+void FlushRecording()
+{
+	if ( g_state.encoder && g_state.inFrame )
+		SubmitRecording( false );
 }
 
 void EndCoreSection()

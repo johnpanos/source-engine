@@ -40,7 +40,7 @@ const DeviceFacts &AdapterFacts()
 		value.diagnosticBackend = "pica";
 		value.adapterName = "PICA200";
 		// RFC 0026 decision 4: ETC1 (D40) alone of the optional capabilities.
-		value.capabilities = { Capability::kTextureCompressionETC1 };
+		value.capabilities = { Capability::kTextureCompressionETC1, Capability::kPackedRGBA4 };
 		value.limits.maxBindGroups = kMaxBindGroups;
 		value.limits.maxTextureDimension2D = 1024;
 		value.limits.maxColorAttachments = 1;

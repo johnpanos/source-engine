@@ -50,7 +50,7 @@ inline constexpr std::uint8_t kNone = 0, kFrontCcw = 1, kBackCcw = 2;
 // GPU_TEXCOLOR and GPU_COLORBUF / GPU_DEPTHBUF
 namespace texel
 {
-inline constexpr std::uint8_t kRGBA8 = 0, kL8 = 7, kETC1 = 0xC, kETC1A4 = 0xD;
+inline constexpr std::uint8_t kRGBA8 = 0, kRGBA4 = 4, kL8 = 7, kETC1 = 0xC, kETC1A4 = 0xD;
 }
 namespace colorbuffer
 {

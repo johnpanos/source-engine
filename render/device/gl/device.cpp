@@ -779,11 +779,15 @@ DeviceResult<SamplerId> GlDevice::CreateSampler( const SamplerDesc &desc )
 	gl.SamplerParameteri( record.name, GL_TEXTURE_MIN_FILTER, minFilter );
 	gl.SamplerParameteri( record.name, GL_TEXTURE_MAG_FILTER,
 	    desc.magFilter == Filter::kLinear ? GL_LINEAR : GL_NEAREST );
-	const GLint wrap = desc.address == AddressMode::kClampToEdge      ? GL_CLAMP_TO_EDGE
-	                   : desc.address == AddressMode::kMirroredRepeat ? GL_MIRRORED_REPEAT
-	                                                                  : GL_REPEAT;
-	for ( const GLenum axis : { GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T, GL_TEXTURE_WRAP_R } )
-		gl.SamplerParameteri( record.name, axis, wrap );
+	const auto wrapOf = []( AddressMode mode ) -> GLint
+	{
+		return mode == AddressMode::kClampToEdge      ? GL_CLAMP_TO_EDGE
+		       : mode == AddressMode::kMirroredRepeat ? GL_MIRRORED_REPEAT
+		                                              : GL_REPEAT;
+	};
+	gl.SamplerParameteri( record.name, GL_TEXTURE_WRAP_S, wrapOf( desc.address ) );
+	gl.SamplerParameteri( record.name, GL_TEXTURE_WRAP_T, wrapOf( AddressV( desc ) ) );
+	gl.SamplerParameteri( record.name, GL_TEXTURE_WRAP_R, wrapOf( desc.address ) );
 	if ( desc.maxAnisotropy > 1 )
 		gl.SamplerParameterf(
 		    record.name, GL_TEXTURE_MAX_ANISOTROPY, static_cast<GLfloat>( desc.maxAnisotropy ) );

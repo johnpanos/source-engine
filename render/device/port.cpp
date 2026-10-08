@@ -113,6 +113,8 @@ const char *CapabilityName( Capability capability )
 		return "float-targets";
 	case Capability::kTextureCompressionETC1:
 		return "texture-compression-etc1";
+	case Capability::kPackedRGBA4:
+		return "packed-rgba4";
 	case Capability::kCount:
 		break;
 	}
@@ -126,6 +128,8 @@ std::optional<Capability> FormatCapability( Format format )
 	case Format::kETC1Rgb:
 	case Format::kETC1A4:
 		return Capability::kTextureCompressionETC1;
+	case Format::kRGBA4Unorm:
+		return Capability::kPackedRGBA4;
 	case Format::kRG16Float:
 	case Format::kRGBA16Float:
 	case Format::kR32Float:
@@ -159,6 +163,8 @@ std::uint32_t BytesPerTexel( Format format )
 	{
 	case Format::kR8Unorm:
 		return 1;
+	case Format::kRGBA4Unorm:
+		return 2;
 	case Format::kRGB10A2Unorm:
 	case Format::kRG11B10Float:
 	case Format::kRGBA8Unorm:

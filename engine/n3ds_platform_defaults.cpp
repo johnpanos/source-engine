@@ -41,6 +41,13 @@ const PlatformDefault kDefaults[] =
 	// model vertex data (15 MB on sp_a1_intro4) outlives the meshes built from
 	// it; evicted data reloads from disk when used again.
 	{ "datacachesize", "16" },
+	// RFC 0026 P3: the render core draws the world (lightmapped) and the
+	// models (Source's model lighting per vertex) with the reduced 3DS
+	// material model on the PICA200 device; the dynamic hand-off carries the
+	// models, since 3DS maps have no world stage (desktop gates it on queued,
+	// capture and resize acceptance, none of which the 3DS has).
+	{ "r_core_world", "1" },
+	{ "r_core_dynamic_draws", "1" },
 	// Post-processing samples render targets the backend never draws.
 	{ "mat_motion_blur_enabled", "0" },
 	{ "mat_disable_bloom", "1" },

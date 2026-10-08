@@ -491,14 +491,15 @@ DeviceResult<SamplerId> MetalDevice::CreateSampler( const SamplerDesc &desc )
 	descriptor.magFilter = filter( desc.magFilter );
 	descriptor.mipFilter =
 	    desc.mipFilter == Filter::kLinear ? MTLSamplerMipFilterLinear : MTLSamplerMipFilterNearest;
-	const MTLSamplerAddressMode address = desc.address == AddressMode::kClampToEdge
-	                                          ? MTLSamplerAddressModeClampToEdge
-	                                      : desc.address == AddressMode::kMirroredRepeat
-	                                          ? MTLSamplerAddressModeMirrorRepeat
-	                                          : MTLSamplerAddressModeRepeat;
-	descriptor.sAddressMode = address;
-	descriptor.tAddressMode = address;
-	descriptor.rAddressMode = address;
+	const auto addressOf = []( AddressMode mode )
+	{
+		return mode == AddressMode::kClampToEdge      ? MTLSamplerAddressModeClampToEdge
+		       : mode == AddressMode::kMirroredRepeat ? MTLSamplerAddressModeMirrorRepeat
+		                                              : MTLSamplerAddressModeRepeat;
+	};
+	descriptor.sAddressMode = addressOf( desc.address );
+	descriptor.tAddressMode = addressOf( AddressV( desc ) );
+	descriptor.rAddressMode = addressOf( desc.address );
 	descriptor.maxAnisotropy = std::clamp( desc.maxAnisotropy, 1u, 16u );
 	// D24: compare the reference with each stored depth.
 	descriptor.compareFunction =

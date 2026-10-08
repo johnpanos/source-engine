@@ -47,6 +47,7 @@
 #include "render/legacy/core_passes.h"
 #include "render/legacy/material_flag_keys.h"
 #include "itextureinternal.h"
+#include "texture_group_names.h"
 #include <string>
 #include <vector>
 #include <malloc.h>
@@ -251,6 +252,7 @@ struct PicaTexture
 	bool used = false;
 	bool renderTarget = false;
 	bool depth = false;
+	bool lightmap = false; // TEXTURE_GROUP_LIGHTMAP: kept RGBA8 (RGBA4 would band)
 	int width = 0;
 	int height = 0;
 	int mipLevels = 1;
@@ -469,14 +471,17 @@ void UploadTexture( PicaTexture &texture )
 		const int w = texture.baseWidth >> i, h = texture.baseHeight >> i;
 		alpha = pica::HasAlpha( texture.levels[i].Base(), w, h );
 	}
-	// Block-compressed when mipmapped (world and model textures); RGBA8 for
-	// textures the material system updates in place (fonts, UI).
-	// -pica_texture_rgba8 uploads everything as RGBA8 (isolates the ETC1 encoder).
+	// Block-compressed when mipmapped (world and model textures); RGBA4 for
+	// textures the material system updates in place (fonts, UI: half the
+	// linear memory of RGBA8, clause D42); RGBA8 for lightmap pages, whose
+	// 2x overbright would show 4-bit steps. -pica_texture_rgba8 uploads
+	// everything as RGBA8 (isolates the ETC1 encoder and the RGBA4 packing).
 	static const bool s_ForceRGBA8 = CommandLine()->FindParm( "-pica_texture_rgba8" ) != 0;
 	const pica::UploadFormat format =
-	    ( !mipped || s_ForceRGBA8 )
-	        ? pica::UploadFormat::kRGBA8
-	        : ( alpha ? pica::UploadFormat::kETC1A4 : pica::UploadFormat::kETC1 );
+	    ( s_ForceRGBA8 || ( !mipped && texture.lightmap ) ) ? pica::UploadFormat::kRGBA8
+	    : !mipped                                          ? pica::UploadFormat::kRGBA4
+	    : alpha ? pica::UploadFormat::kETC1A4
+	            : pica::UploadFormat::kETC1;
 	CUtlVector<std::vector<std::uint8_t>> encoded;
 	const std::uint8_t *levels[16];
 	int count = 0;
@@ -491,6 +496,12 @@ void UploadTexture( PicaTexture &texture )
 			continue;
 		}
 		std::vector<std::uint8_t> &out = encoded[encoded.AddToTail()];
+		if ( format == pica::UploadFormat::kRGBA4 )
+		{
+			pica::PackRgba4Level( texture.levels[i].Base(), w, h, out );
+			levels[count++] = out.data();
+			continue;
+		}
 		if ( !pica::EncodeEtc1Level( format == pica::UploadFormat::kETC1A4, texture.levels[i].Base(), w, h, out ) )
 			break;
 		levels[count++] = out.data();
@@ -1891,9 +1902,13 @@ public:
 		desc.magFilter = render::device::Filter::kLinear;
 		desc.mipFilter = render::device::Filter::kLinear;
 		const PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
-		desc.address = !texture || ( texture->wrapS && texture->wrapT )
-			? render::device::AddressMode::kRepeat
-			: render::device::AddressMode::kClampToEdge;
+		const auto mode = []( bool repeat )
+		{
+			return repeat ? render::device::AddressMode::kRepeat
+			              : render::device::AddressMode::kClampToEdge;
+		};
+		desc.address = mode( !texture || texture->wrapS );
+		desc.addressV = mode( !texture || texture->wrapT );
 		return desc;
 	}
 	bool Pending( int handle ) override
@@ -1932,7 +1947,13 @@ public:
 		// the last (a constant epoch kept every recorded view, up to 8192 with
 		// their geometry, and a present-counted frame let retired geometry
 		// pile up between presents: the 3DS ran out of memory).
-		target.streamEpoch = target.frame;
+		// Narrower still: a slot is recorded once and never replayed, so its
+		// stream is discarded as soon as it records. A new epoch per slot lets
+		// the core drop each recorded view (a model draw's whole geometry)
+		// at the next slot instead of holding a frame of them (~10 MB on the
+		// intro4 demo's opening).
+		static std::uint64_t s_streamEpoch = 0;
+		target.streamEpoch = ++s_streamEpoch;
 		// LDR, gamma space: the reduced model reads the pages as they are.
 		target.lightmapScale = 1.0f;
 		target.outputScale = 1.0f;
@@ -2917,6 +2938,17 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	if ( !tag )
 		return skip( 4, "QueueMesh refused it" );
 	g_PicaCorePassSlots.MarkSlot( tag );
+	// The core holds each model draw's geometry (72 bytes a vertex) until the
+	// recording that reads it is submitted: past 1.5 MB, submit and go on, so
+	// a frame of models never holds the 3DS's linear memory at once.
+	static std::size_t s_pendingBytes = 0;
+	s_pendingBytes += vertices.size() * sizeof( render::material::SurfaceWorldVertex ) +
+		triangles.size() * sizeof( std::uint32_t );
+	if ( s_pendingBytes > ( 3u << 19 ) )
+	{
+		pica::FlushRecording();
+		s_pendingBytes = 0;
+	}
 	static unsigned s_taken = 0;
 	if ( ++s_taken % 50 == 0 && s_taken <= 2000 )
 	{
@@ -4552,6 +4584,8 @@ void CShaderAPIEmpty::CreateTextures(
 		texture->mipLevels = numMipLevels > 0 ? numMipLevels : 1;
 		texture->renderTarget = ( flags & TEXTURE_CREATE_RENDERTARGET ) != 0;
 		texture->depth = ( flags & TEXTURE_CREATE_DEPTHBUFFER ) != 0;
+		texture->lightmap =
+			pTextureGroupName && V_strcmp( pTextureGroupName, TEXTURE_GROUP_LIGHTMAP ) == 0;
 		V_strncpy( texture->name, pDebugName ? pDebugName : "", sizeof( texture->name ) );
 		pHandles[k] = ShaderAPITextureHandle_t( g_Textures.AddToTail( texture ) + 1 );
 	}

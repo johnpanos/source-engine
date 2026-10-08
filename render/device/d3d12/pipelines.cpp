@@ -549,11 +549,15 @@ DeviceResult<void> D3d12Device::WriteGroupDescriptors( BindGroupRecord &group )
 					    minLinear ? D3D12_FILTER_TYPE_LINEAR : D3D12_FILTER_TYPE_POINT,
 					    magLinear ? D3D12_FILTER_TYPE_LINEAR : D3D12_FILTER_TYPE_POINT,
 					    mipLinear ? D3D12_FILTER_TYPE_LINEAR : D3D12_FILTER_TYPE_POINT, reduction );
-				const D3D12_TEXTURE_ADDRESS_MODE address =
-				    desc.address == AddressMode::kClampToEdge    ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP
-				    : desc.address == AddressMode::kMirroredRepeat ? D3D12_TEXTURE_ADDRESS_MODE_MIRROR
-				                                                   : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-				view.AddressU = view.AddressV = view.AddressW = address;
+				const auto addressOf = []( AddressMode mode )
+				{
+					return mode == AddressMode::kClampToEdge ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP
+					       : mode == AddressMode::kMirroredRepeat
+					           ? D3D12_TEXTURE_ADDRESS_MODE_MIRROR
+					           : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+				};
+				view.AddressU = view.AddressW = addressOf( desc.address );
+				view.AddressV = addressOf( AddressV( desc ) );
 				view.MaxAnisotropy = std::max( 1u, desc.maxAnisotropy );
 				view.ComparisonFunc = Compare( desc.comparison.value_or( CompareOp::kNever ) );
 				view.MaxLOD = D3D12_FLOAT32_MAX;

@@ -184,6 +184,7 @@ std::vector<std::byte> EncodeTexel( Format format, const ClearColor &color )
 	case Format::kBC7Srgb:
 	case Format::kETC1Rgb:
 	case Format::kETC1A4:
+	case Format::kRGBA4Unorm: // D42: not claimed
 	case Format::kUnknown:
 	case Format::kCount:
 		break;

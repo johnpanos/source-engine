@@ -29,6 +29,8 @@
 //			                            (the port's is the specification's
 //			                            byte order, D40); ETC1A4 is the same
 //			                            16 bytes as the port's
+//			  kRGBA4Unorm               GPU RGBA4: the port's 16-bit word,
+//			                            2 bytes a texel (D42)
 //
 //=============================================================================//
 
@@ -70,6 +72,9 @@ constexpr std::uint32_t RoundToTile( std::uint32_t extent )
 bool Storable( Format format );
 // Bytes of one stored texel of the uncompressed formats.
 inline constexpr std::uint32_t kStoredTexelBytes = 4;
+// Bytes of one stored texel of an uncompressed format: 2 for kRGBA4Unorm,
+// otherwise kStoredTexelBytes.
+std::uint32_t StoredTexelBytes( Format format );
 // Bytes of a stored 4x4 block of an ETC format (0 for the others).
 std::uint32_t StoredBlockBytes( Format format );
 

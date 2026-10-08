@@ -299,4 +299,22 @@ bool DecodeEtc1Level(
 	return true;
 }
 
+void PackRgba4Level( const std::uint8_t *rgba, int width, int height, std::vector<std::uint8_t> &out )
+{
+	const std::size_t texels = std::size_t( width ) * std::size_t( height );
+	out.resize( texels * 2 );
+	const auto nibble = []( std::uint8_t v ) -> unsigned
+	{
+		return ( unsigned( v ) * 15 + 127 ) / 255;
+	};
+	for ( std::size_t i = 0; i < texels; ++i )
+	{
+		const std::uint8_t *t = rgba + i * 4;
+		const unsigned word =
+		    nibble( t[0] ) << 12 | nibble( t[1] ) << 8 | nibble( t[2] ) << 4 | nibble( t[3] );
+		out[i * 2] = std::uint8_t( word );
+		out[i * 2 + 1] = std::uint8_t( word >> 8 );
+	}
+}
+
 } // namespace pica

@@ -171,7 +171,7 @@ the smallest of any adapter.
 | P0 | `kPica`; module, provider and Waf target; `PVS1`/`PFP1` readers with full validation and the state tables, host suite with seeded malformed artifacts; the register codes checked against libctru; the `--n3ds` product links the adapter | done (2026-10-07) |
 | P1 | Buffers, textures, samplers, bind groups, encoders, `Submit`, tokens, copies and readback; the shared suite's resource, copy, completion, lifetime and loss clauses pass in Azahar | done (2026-10-07; Azahar software renderer) |
 | P2 | Pipelines and draws: the shared suite's conventions, D13, D16, D17, D20, D21 and sampled clauses, the adapter's raster checks, and seeded defects caught, in Azahar | done (2026-10-07): every check on Azahar's OpenGL renderer; all but texture LOD (which it lacks) on its software renderer |
-| P3 | The unlit and lightmapped families compile `kPica` artifacts and match their Vulkan pixels within a recorded PICA tolerance; refused families named | open |
+| P3 | The unlit and lightmapped families compile `kPica` artifacts and match their Vulkan pixels within a recorded PICA tolerance; refused families named | partial (2026-10-07): the reduced model draws the game (lightmaps, model lighting, self-illumination) on Azahar with a matched desktop camera; the per-family Vulkan pixel tolerance is open |
 | P4 | Top-screen presentation (rotation, display transfer) proven against the scanout; `render_lab` draws a BSP2 fixture on the 3DS | partial: the presenter passes in Azahar (2026-10-07); `render_lab` on the 3DS open |
 | P5 | Shared suite and frame time on New 3DS hardware; asynchronous submission if frame time needs it | open |
 | P6 | Legacy retirement (decision 9): the 3DS client draws only through this adapter, the legacy citro3d renderer and the borrowed context deleted | done (2026-10-07, Azahar): Portal 2's `intro4` demo on `sp_a1_intro4`; hardware and frame time stay P5's |
@@ -310,3 +310,43 @@ See the [progress section](#progress).
   - The device suite gained ETC1 and ETC1A4 mipmap sampling checks (level 1
     under 2:1 minification): 380 checks, 0 failures, 0 unverified on
     OpenGL.
+- 2026-10-07: memory audit, the reduced model in the game, and two port
+  gaps (user goal: "fix the texture corruption and audit all memory
+  corruption", then P3, RGBA4 and separate wrap modes).
+  - Audit (`92aaacbb6` and after): `Unlock` clamps to what `Lock`
+    granted; wide texcoord 0 goes to a side array instead of past the
+    vertex record; `ModifyBegin` prepares the write; Box3D allocates
+    through tier0 (a null write on refusal); linear-memory guard bands
+    (`guardLinearMemory`, on with validation) are checked at submit and
+    name the first refused allocation; each texture level's FNV-1a is
+    checked at upload (`corrupted` counter). Heap fixes found on the way:
+    per-slot stream epochs (recorded views piled up), mid-frame
+    `FlushRecording` past 1.5 MB of pending geometry, single-draw batches
+    written in place, the material snapshot cache bounded at 64 on the
+    3DS, and `CoreArtifacts()` holding no desktop formats in the 3DS build
+    (copying them ran the core-only hatch out of memory at the matched
+    camera).
+  - P3: `EmitToCore` hands VertexLitGeneric meshes to the core; the
+    reduced point `kWorldLit` lights a model handed over as world geometry
+    per vertex (`surface_lit.v.pica`); material constants start at c8,
+    clear of the draw block. `r_core_world 1` and `r_core_dynamic_draws 1`
+    are the 3DS defaults.
+  - Evidence (Azahar software renderer, headless): the whole `intro4` demo
+    runs (verdict ok, 721 frames, 16,372 views drawn, 0 failed, 16,055
+    dynamic draws, 0 refused; heap 71-84 MB used of 97 MB, linear free
+    9.2-10.6 MB); the matched camera (`setpos -150 64 40; setang 55 0 0`)
+    boots with 0 corrupted textures and compares with the desktop capture.
+  - D41 (`SamplerDesc::addressV`, absent = `address`): every adapter
+    honours it (Vulkan, GL, D3D12, Metal, PICA); the 3DS shader API keeps
+    one sampler per S/T wrap pair instead of clamping when they differ.
+    Creation and refusal are checked; no pixel check yet.
+  - D42 (`Format::kRGBA4Unorm`, `Capability::kPackedRGBA4`, claimed by the
+    PICA adapter alone): stored 2 bytes a texel; textures the material
+    system updates in place use it (lightmap pages stay RGBA8;
+    `-pica_texture_rgba8` restores RGBA8). Portable suite 146 checks,
+    0 failures; a seeded 4-byte stride fails the D42 check; the texel code
+    is checked against libctru's `GPU_RGBA4`. On the matched camera the
+    in-place textures fall from 796 KB to 680 KB; console text draws
+    correctly.
+  - Open: the P3 per-family pixel tolerance against Vulkan; a D41 pixel
+    check; New 3DS hardware (P5).

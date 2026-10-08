@@ -1496,7 +1496,15 @@ std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
     const WorldMaterial &source, bool stage, bool reflection, std::string &key )
 {
 	// Bounded: snapshot values that change every frame would otherwise grow it.
+	// Each entry holds a parsed material description (tens of KB with its
+	// variables); on the 3DS (a ~95 MB heap) the desktop's 4096 ran the
+	// intro4 demo out of memory, and 256 still grew ~1.7 MB a few hundred
+	// frames in, so the bound is 64 there (RFC 0026 memory audit).
+#if defined( __3DS__ )
+	constexpr std::size_t kMaxMapped = 64;
+#else
 	constexpr std::size_t kMaxMapped = 4096;
+#endif
 	key = MaterialSnapshotKey( source );
 	std::shared_ptr<const MappedEntry> found;
 	{
@@ -5574,6 +5582,7 @@ void WorldPass::RecordBatch(
 	// linear memory until allocations failed with megabytes free).
 	std::vector<WorldVertex> batchVertices;
 	std::vector<std::uint32_t> batchIndices;
+	std::size_t batchVertexCount = 0, batchIndexCount = 0;
 	// Draw groups holding one draw's model lighting: built per draw and
 	// retired with the frame, never cached.
 	std::deque<Group> litDrawGroups;
@@ -5626,8 +5635,8 @@ void WorldPass::RecordBatch(
 			}
 			lit = &litDrawGroups.back();
 		}
-		const std::uint64_t vertexOffset = batchVertices.size() * sizeof( WorldVertex );
-		const std::uint64_t indexOffset = batchIndices.size() * sizeof( std::uint32_t );
+		const std::uint64_t vertexOffset = batchVertexCount * sizeof( WorldVertex );
+		const std::uint64_t indexOffset = batchIndexCount * sizeof( std::uint32_t );
 		// A static prop's baked vertex lighting is a variant of its program.
 		PipelineId pipeline = m->program.request.pipeline;
 		if ( draw.staticVertexLight )
@@ -5642,19 +5651,42 @@ void WorldPass::RecordBatch(
 			}
 			pipeline = variant.Value();
 		}
-		batchVertices.insert( batchVertices.end(), draw.vertices.begin(), draw.vertices.end() );
-		batchIndices.insert( batchIndices.end(), draw.indices.begin(), draw.indices.end() );
 		dynamicDraws.push_back( { m, BufferId{}, BufferId{}, std::uint32_t( draw.indices.size() ),
 		    draw.lightmapPage, &draw, lit, pipeline, vertexOffset, indexOffset } );
+		batchVertexCount += draw.vertices.size();
+		batchIndexCount += draw.indices.size();
 	}
 	if ( !dynamicDraws.empty() )
 	{
+		// One draw (the common case: a slot per draw) writes from its own
+		// geometry; several are gathered once.
+		std::span<const WorldVertex> vertexBytes;
+		std::span<const std::uint32_t> indexBytes;
+		if ( dynamicDraws.size() == 1 )
+		{
+			vertexBytes = dynamicDraws.front().source->vertices;
+			indexBytes = dynamicDraws.front().source->indices;
+		}
+		else
+		{
+			batchVertices.reserve( batchVertexCount );
+			batchIndices.reserve( batchIndexCount );
+			for ( const DynamicDraw &draw : dynamicDraws )
+			{
+				batchVertices.insert(
+				    batchVertices.end(), draw.source->vertices.begin(), draw.source->vertices.end() );
+				batchIndices.insert(
+				    batchIndices.end(), draw.source->indices.begin(), draw.source->indices.end() );
+			}
+			vertexBytes = batchVertices;
+			indexBytes = batchIndices;
+		}
 		BufferDesc desc;
-		desc.size = batchVertices.size() * sizeof( WorldVertex );
+		desc.size = vertexBytes.size() * sizeof( WorldVertex );
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };
 		desc.debugName = "core dynamic vertices";
 		auto vertices = device.CreateBuffer( desc );
-		desc.size = batchIndices.size() * sizeof( std::uint32_t );
+		desc.size = indexBytes.size() * sizeof( std::uint32_t );
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kIndex };
 		desc.debugName = "core dynamic indices";
 		auto indices = device.CreateBuffer( desc );
@@ -5668,17 +5700,15 @@ void WorldPass::RecordBatch(
 			}
 			note( "dynamic geometry buffers were refused (" +
 			      std::string( DescribeStatus( error.status ) ) + ", " +
-			      std::to_string( batchVertices.size() ) + " vertices)" );
+			      std::to_string( vertexBytes.size() ) + " vertices)" );
 			complete = false;
 			dynamicDraws.clear();
 		}
 		else
 		{
 			for ( const auto &[buffer, bytes, usage] :
-			    { std::tuple{ vertices.Value(), std::as_bytes( std::span( batchVertices ) ),
-			          ResourceUsage::kVertex },
-			        std::tuple{ indices.Value(), std::as_bytes( std::span( batchIndices ) ),
-			            ResourceUsage::kIndex } } )
+			    { std::tuple{ vertices.Value(), std::as_bytes( vertexBytes ), ResourceUsage::kVertex },
+			        std::tuple{ indices.Value(), std::as_bytes( indexBytes ), ResourceUsage::kIndex } } )
 			{
 				encoder.TransitionBuffer(
 				    buffer, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );

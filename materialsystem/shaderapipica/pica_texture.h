@@ -30,6 +30,11 @@ bool EncodeEtc1Level(
 bool DecodeEtc1Level(
     bool alpha, const std::uint8_t *data, int width, int height, std::vector<std::uint8_t> &rgba );
 
+// Packs row-major RGBA8 into render.device.v2's kRGBA4Unorm (clause D42):
+// one little-endian 16-bit word per texel, R in bits 12-15 down to A in 0-3,
+// each channel rounded to the nearest of 16 levels.
+void PackRgba4Level( const std::uint8_t *rgba, int width, int height, std::vector<std::uint8_t> &out );
+
 // True when any texel's alpha is below 255.
 bool HasAlpha( const std::uint8_t *rgba, int width, int height );
 

@@ -101,6 +101,11 @@ enum class Format : std::uint8_t
 	// other in raster order, as the kBC* formats' do.
 	kETC1Rgb,
 	kETC1A4,
+	// Packed 4-bit RGBA: one little-endian 16-bit word per texel, R in bits
+	// 12-15, G 8-11, B 4-7, A 0-3 (GL's UNSIGNED_SHORT_4_4_4_4, Vulkan's
+	// R4G4B4A4_UNORM_PACK16), half of kRGBA8Unorm's bytes; sampled and copied
+	// only, on a device that claims Capability::kPackedRGBA4 (clause D42).
+	kRGBA4Unorm,
 	kCount
 };
 
@@ -198,7 +203,9 @@ struct SamplerDesc
 	Filter minFilter = Filter::kLinear;
 	Filter magFilter = Filter::kLinear;
 	Filter mipFilter = Filter::kLinear;
-	AddressMode address = AddressMode::kRepeat;
+	AddressMode address = AddressMode::kRepeat; // u (and w)
+	// Absent: v wraps as address does. Present: v's own mode.
+	std::optional<AddressMode> addressV;
 	std::uint32_t maxAnisotropy = 1;
 	// Absent: ordinary sampling. Present: compare the reference with each
 	// depth texel before filtering (D24). Enable and operation are one value.
@@ -206,6 +213,12 @@ struct SamplerDesc
 
 	friend bool operator==( const SamplerDesc &, const SamplerDesc & ) = default;
 };
+
+// The v axis's mode of a sampler.
+inline AddressMode AddressV( const SamplerDesc &desc )
+{
+	return desc.addressV.value_or( desc.address );
+}
 
 } // namespace render::device
 

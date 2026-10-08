@@ -209,6 +209,7 @@ VkFormat ToVkFormat( Format format )
 	// D40: not claimed (ETC2's formats decode ETC1, under textureCompressionETC2).
 	case Format::kETC1Rgb:
 	case Format::kETC1A4:
+	case Format::kRGBA4Unorm: // D42: not claimed
 	case Format::kUnknown:
 	case Format::kCount:
 		break;

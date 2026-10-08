@@ -109,6 +109,8 @@ std::optional<std::uint8_t> SampledFormat( Format format )
 		return texel::kETC1;
 	case Format::kETC1A4:
 		return texel::kETC1A4;
+	case Format::kRGBA4Unorm:
+		return texel::kRGBA4;
 	default:
 		return std::nullopt;
 	}

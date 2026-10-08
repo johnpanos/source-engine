@@ -2505,6 +2505,38 @@ inline bool SampleTexture( Suite &s, IRenderDevice2 &device, Format format,
 	return Raster( s, pixels == expected, clause, what );
 }
 
+inline void SplitAddressSampling( Suite &s )
+{
+	auto owned = s.Create();
+	if ( !owned )
+		return;
+	IRenderDevice2 &device = *owned;
+	const AddressMode modes[] = {
+	    AddressMode::kRepeat, AddressMode::kClampToEdge, AddressMode::kMirroredRepeat };
+	bool all = true;
+	for ( AddressMode u : modes )
+		for ( AddressMode v : modes )
+		{
+			SamplerDesc desc;
+			desc.address = u;
+			desc.addressV = v;
+			auto sampler = device.CreateSampler( desc );
+			all = all && sampler.HasValue() && AddressV( desc ) == v;
+			if ( sampler )
+				(void)device.Release( sampler.Value(), {} );
+		}
+	s.That( all, "D41", "every pair of u and v address modes creates a sampler" );
+	SamplerDesc same;
+	same.address = AddressMode::kMirroredRepeat;
+	s.That( AddressV( same ) == AddressMode::kMirroredRepeat, "D41",
+	    "an absent v mode wraps as the u mode" );
+	SamplerDesc invalid;
+	invalid.addressV = static_cast<AddressMode>( 255 );
+	auto refused = device.CreateSampler( invalid );
+	s.That( !refused && refused.Error().status == DeviceStatus::kInvalidDescription, "D41",
+	    "an invalid v address mode fails without a resource" );
+}
+
 inline void ComparisonSampling( Suite &s )
 {
 	auto owned = s.Create();
@@ -3162,6 +3194,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::IndirectDraws( suite );
 	detail::CubeArrays( suite );
 	detail::FillModeLines( suite );
+	detail::SplitAddressSampling( suite );
 	detail::ComparisonSampling( suite );
 	detail::FloatTargetFormats( suite );
 	detail::Etc1Formats( suite );

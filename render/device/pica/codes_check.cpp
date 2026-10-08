@@ -33,6 +33,7 @@ static_assert( stencil::kKeep == GPU_STENCIL_KEEP && stencil::kZero == GPU_STENC
 static_assert( cull::kNone == GPU_CULL_NONE && cull::kFrontCcw == GPU_CULL_FRONT_CCW &&
                cull::kBackCcw == GPU_CULL_BACK_CCW );
 static_assert( texel::kRGBA8 == GPU_RGBA8 && texel::kL8 == GPU_L8 && texel::kETC1 == GPU_ETC1 &&
+               texel::kRGBA4 == GPU_RGBA4 &&
                texel::kETC1A4 == GPU_ETC1A4 );
 static_assert( colorbuffer::kRGBA8 == GPU_RB_RGBA8 );
 static_assert( depthbuffer::kDepth24Stencil8 == GPU_RB_DEPTH24_STENCIL8 );

@@ -19,6 +19,9 @@
 #include <atomic>
 #include <map>
 #include <mutex>
+#include <string>
+#include <string_view>
+#include <vector>
 #include <cstdio>
 #include <cstring>
 
@@ -78,6 +81,7 @@ struct Guarded
 	const char *what = "";
 	std::uint64_t id = 0;
 	bool reported = false;
+	char name[32] = {}; // the resource's debug name, for the refusal report
 };
 
 std::map<std::uintptr_t, Guarded> &GuardRegistry()
@@ -125,7 +129,8 @@ void ReportGuard( std::uintptr_t at, Guarded &guarded, std::int64_t offset )
 	    (long long)offset, unsigned( data[offset] ) );
 }
 
-std::byte *AllocateLinear( std::uint64_t bytes, const char *what = "internal", std::uint64_t id = 0 )
+std::byte *AllocateLinear( std::uint64_t bytes, const char *what = "internal", std::uint64_t id = 0,
+    std::string_view name = {} )
 {
 	if ( bytes == 0 || bytes > 0x7FFFFFFF )
 		return nullptr;
@@ -153,6 +158,21 @@ std::byte *AllocateLinear( std::uint64_t bytes, const char *what = "internal", s
 			    (unsigned long long)bytes, what, (unsigned long)( linearSpaceFree() / 1024 ),
 			    buffers / 1024, textures / 1024, other / 1024, largest / 1024,
 			    GuardRegistry().size() );
+			// By debug name, the largest first.
+			std::map<std::string, std::pair<std::size_t, std::size_t>> byName;
+			for ( const auto &[at, guarded] : GuardRegistry() )
+			{
+				auto &total = byName[guarded.name[0] ? guarded.name : guarded.what];
+				total.first += guarded.bytes;
+				++total.second;
+			}
+			std::vector<std::pair<std::size_t, std::string>> order;
+			for ( const auto &[name, total] : byName )
+				order.push_back( { total.first, name } );
+			std::sort( order.rbegin(), order.rend() );
+			for ( std::size_t i = 0; i < order.size() && i < 10; ++i )
+				std::printf( "pica-device:   %6zu KB %s (%zu)\n", order[i].first / 1024,
+				    order[i].second.c_str(), byName[order[i].second].second );
 		}
 		return nullptr;
 	}
@@ -160,7 +180,11 @@ std::byte *AllocateLinear( std::uint64_t bytes, const char *what = "internal", s
 	std::memset( base + band + padded, int( kGuardAfter ), band );
 	std::byte *data = base + band;
 	std::lock_guard<std::mutex> guard( GuardLock() );
-	GuardRegistry()[reinterpret_cast<std::uintptr_t>( data )] = { band, std::size_t( bytes ), what, id };
+	Guarded &entry = GuardRegistry()[reinterpret_cast<std::uintptr_t>( data )];
+	entry = { band, std::size_t( bytes ), what, id };
+	const std::size_t length = std::min( name.size(), sizeof( entry.name ) - 1 );
+	std::memcpy( entry.name, name.data(), length );
+	entry.name[length] = '\0';
 	return data;
 }
 
@@ -582,7 +606,7 @@ DeviceResult<BufferId> PicaDevice::CreateBuffer( const BufferDesc &desc )
 	BufferRecord record;
 	record.desc = desc;
 	record.desc.debugName = {};
-	record.data = AllocateLinear( desc.size, "buffer", m_NextId + 1 );
+	record.data = AllocateLinear( desc.size, "buffer", m_NextId + 1, desc.debugName );
 	record.createdAt = m_Submitted;
 	if ( !record.data )
 		return Fail( DeviceStatus::kOutOfMemory, op );
@@ -659,7 +683,7 @@ DeviceResult<TextureId> PicaDevice::CreateTexture( const TextureDesc &desc )
 	record.desc.debugName = {};
 	if ( !LayoutOf( desc.format, desc.width, desc.height, desc.mipLevels, record.layout ) )
 		return Fail( DeviceStatus::kUnsupported, op );
-	record.data = AllocateLinear( record.layout.bytes, "texture", m_NextId + 1 );
+	record.data = AllocateLinear( record.layout.bytes, "texture", m_NextId + 1, desc.debugName );
 	if ( !record.data )
 		return Fail( DeviceStatus::kOutOfMemory, op );
 	std::memset( record.data, 0, std::size_t( record.layout.bytes ) );

@@ -529,6 +529,9 @@ void FactCases( testing::Checks &checks )
 	                 SampledFormat( Format::kETC1A4 ) == texel::kETC1A4 &&
 	                 !ColorBufferFormat( Format::kETC1Rgb ),
 	    "P6 ETC1 and ETC1A4 sampled, not rendered" );
+	checks.That( SampledFormat( Format::kRGBA4Unorm ) == texel::kRGBA4 &&
+	                 !ColorBufferFormat( Format::kRGBA4Unorm ),
+	    "P6 RGBA4 sampled, not rendered" );
 	for ( Format refused : { Format::kRGBA8Srgb, Format::kBGRA8Srgb, Format::kBC1Unorm,
 	          Format::kRGBA16Float, Format::kR32Float, Format::kRG11B10Float } )
 		checks.That( !SampledFormat( refused ) && !ColorBufferFormat( refused ),
@@ -539,8 +542,9 @@ void FactCases( testing::Checks &checks )
 	checks.That( !DepthBufferFormat( Format::kD32Float ), "P6 D32 refused" );
 
 	const DeviceFacts &facts = AdapterFacts();
-	checks.That( facts.capabilities == CapabilitySet{ Capability::kTextureCompressionETC1 },
-	    "P6 ETC1 (D40) alone of the optional capabilities" );
+	checks.That( facts.capabilities == CapabilitySet{ Capability::kTextureCompressionETC1,
+	                                       Capability::kPackedRGBA4 },
+	    "P6 ETC1 (D40) and RGBA4 (D42) alone of the optional capabilities" );
 	checks.That( facts.artifactFormat == ArtifactFormat::kPica, "P6 kPica artifacts" );
 	checks.Equal( facts.limits.maxTextureDimension2D, 1024u, "P6 1024 texture limit" );
 	checks.Equal( facts.limits.maxColorAttachments, 1u, "P6 one colour attachment" );
@@ -681,6 +685,28 @@ void LayoutCases( testing::Checks &checks )
 		checks.That( same && placed,
 		    "P8 a region copies in and out unchanged through the stored form: format " +
 		        std::to_string( int( format ) ) );
+	}
+
+	// RGBA4 (D42): the port's 16-bit word stored as it is, 2 bytes a texel at
+	// the tiled index, so a 24x16 level takes 384 texels of 2 bytes.
+	{
+		TextureLayout layout;
+		const bool laid = LayoutOf( Format::kRGBA4Unorm, 24, 16, 1, layout );
+		std::vector<std::byte> stored( layout.bytes, std::byte( 0xEE ) );
+		std::vector<std::byte> rows( 5 * 7 * 2 );
+		for ( std::size_t i = 0; i < rows.size(); ++i )
+			rows[i] = std::byte( ( i * 37 + 11 ) & 0xFF );
+		CopyIn( Format::kRGBA4Unorm, layout.levels[0], stored.data(), 3, 9, 5, 7, rows.data() );
+		std::vector<std::byte> back( rows.size() );
+		CopyOut( Format::kRGBA4Unorm, layout.levels[0], stored.data(), 3, 9, 5, 7, back.data() );
+		const std::size_t first =
+		    std::size_t( TiledIndex( 3, 9, layout.levels[0].storedWidth ) ) * 2;
+		const std::size_t next =
+		    std::size_t( TiledIndex( 4, 9, layout.levels[0].storedWidth ) ) * 2;
+		checks.That( laid && layout.bytes == 24 * 16 * 2 && back == rows &&
+		                 stored[first] == rows[0] && stored[first + 1] == rows[1] &&
+		                 stored[next] == rows[2] && stored[next + 1] == rows[3],
+		    "D42 RGBA4 copies in and out unchanged, 2 bytes a texel at the tiled index" );
 	}
 
 	// ETC (D40): the stored blocks in the order the 3DS reads them, as

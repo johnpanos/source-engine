@@ -23,6 +23,14 @@ const IShaderArtifactSource &CoreArtifacts()
 		ArtifactStore built;
 		for ( const generated::CoreArtifact &entry : generated::kCoreArtifacts )
 		{
+#if defined( __3DS__ )
+			// The 3DS build's one device consumes kPica artifacts, which this
+			// table does not hold (its programs are built with picasso), so a
+			// copy of the desktop formats would only spend the ~95 MB heap
+			// (RFC 0026 memory audit: the core-only hatch ran out of memory).
+			if ( entry.format != device::ArtifactFormat::kPica )
+				continue;
+#endif
 			ShaderArtifact artifact;
 			artifact.key = { entry.source, std::string( generated::kCompiler ), entry.format, 0 };
 			artifact.stage = entry.stage;

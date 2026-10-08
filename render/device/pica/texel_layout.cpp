@@ -27,10 +27,17 @@ std::uint32_t Word( const std::byte *at )
 	       std::to_integer<std::uint32_t>( at[3] ) << 24;
 }
 
-void PutWord( std::byte *at, std::uint32_t value )
+void PutWord( std::byte *at, std::uint32_t value, std::uint32_t bytes = 4 )
 {
-	for ( int i = 0; i < 4; ++i )
+	for ( std::uint32_t i = 0; i < bytes; ++i )
 		at[i] = std::byte( value >> ( 8 * i ) );
+}
+
+std::uint32_t Stored( const std::byte *at, std::uint32_t bytes )
+{
+	return bytes == 2 ? ( std::to_integer<std::uint32_t>( at[0] ) |
+	                        std::to_integer<std::uint32_t>( at[1] ) << 8 )
+	                  : Word( at );
 }
 
 std::uint8_t Unorm8( float value )
@@ -53,10 +60,16 @@ bool Storable( Format format )
 	case Format::kD24UnormS8:
 	case Format::kETC1Rgb:
 	case Format::kETC1A4:
+	case Format::kRGBA4Unorm:
 		return true;
 	default:
 		return false;
 	}
+}
+
+std::uint32_t StoredTexelBytes( Format format )
+{
+	return format == Format::kRGBA4Unorm ? 2u : kStoredTexelBytes;
 }
 
 std::uint32_t StoredBlockBytes( Format format )
@@ -119,7 +132,7 @@ bool LayoutOf( Format format, std::uint32_t width, std::uint32_t height, std::ui
 		l.offset = offset;
 		const std::uint64_t texels = std::uint64_t( l.storedWidth ) * l.storedHeight;
 		l.bytes = StoredBlockBytes( format ) ? texels / 16 * StoredBlockBytes( format )
-		                                     : texels * kStoredTexelBytes;
+		                                     : texels * StoredTexelBytes( format );
 		offset += l.bytes;
 		// A power-of-two level 0 under a tile is stretched over it (texels
 		// only; a block format has no texel to repeat): one sampled level.
@@ -143,7 +156,7 @@ bool LayoutOf( Format format, std::uint32_t width, std::uint32_t height, std::ui
 
 std::uint32_t PortTexelBytes( Format format )
 {
-	return format == Format::kR8Unorm ? 1u : 4u;
+	return format == Format::kR8Unorm ? 1u : format == Format::kRGBA4Unorm ? 2u : 4u;
 }
 
 std::uint32_t StoreTexel( Format format, std::span<const std::byte> port )
@@ -160,6 +173,8 @@ std::uint32_t StoreTexel( Format format, std::span<const std::byte> port )
 		return byte( 2 ) << 24 | byte( 1 ) << 16 | byte( 0 ) << 8 | byte( 3 );
 	case Format::kR8Unorm:
 		return byte( 0 ) << 24 | 0xFFu;
+	case Format::kRGBA4Unorm: // the same little-endian word
+		return byte( 0 ) | byte( 1 ) << 8;
 	case Format::kD24UnormS8:
 	{
 		float depth = 0.0f;
@@ -194,6 +209,10 @@ void LoadTexel( Format format, std::uint32_t stored, std::span<std::byte> port )
 		break;
 	case Format::kR8Unorm:
 		port[0] = channel( 24 );
+		break;
+	case Format::kRGBA4Unorm:
+		port[0] = channel( 0 );
+		port[1] = channel( 8 );
 		break;
 	case Format::kD24UnormS8:
 	{
@@ -234,6 +253,7 @@ void CopyIn( Format format, const LevelLayout &level, std::byte *stored, std::ui
 		return;
 	}
 	const std::uint32_t texel = PortTexelBytes( format );
+	const std::uint32_t storedBytes = StoredTexelBytes( format );
 	for ( std::uint32_t row = 0; row < height; ++row )
 	{
 		for ( std::uint32_t column = 0; column < width; ++column )
@@ -248,10 +268,11 @@ void CopyIn( Format format, const LevelLayout &level, std::byte *stored, std::ui
 					                             ( x + column ) * level.stretchX + sx,
 					                             ( y + row ) * level.stretchY + sy,
 					                             level.storedWidth ) ) *
-					                             kStoredTexelBytes;
+					                             storedBytes;
 					// A depth copy writes depth and keeps the stencil already stored.
-					PutWord( to, format == Format::kD24UnormS8 ? word | ( Word( to ) & ~kDepthMax )
-					                                           : word );
+					PutWord( to,
+					    format == Format::kD24UnormS8 ? word | ( Word( to ) & ~kDepthMax ) : word,
+					    storedBytes );
 				}
 		}
 	}
@@ -271,6 +292,7 @@ void CopyOut( Format format, const LevelLayout &level, const std::byte *stored, 
 		return;
 	}
 	const std::uint32_t texel = PortTexelBytes( format );
+	const std::uint32_t storedBytes = StoredTexelBytes( format );
 	for ( std::uint32_t row = 0; row < height; ++row )
 	{
 		for ( std::uint32_t column = 0; column < width; ++column )
@@ -278,9 +300,9 @@ void CopyOut( Format format, const LevelLayout &level, const std::byte *stored, 
 			const std::byte *from =
 			    stored + std::size_t( TiledIndex( ( x + column ) * level.stretchX,
 			                             ( y + row ) * level.stretchY, level.storedWidth ) ) *
-			                 kStoredTexelBytes;
+			                 storedBytes;
 			std::byte *to = rows + ( std::size_t( row ) * width + column ) * texel;
-			LoadTexel( format, Word( from ), { to, texel } );
+			LoadTexel( format, Stored( from, storedBytes ), { to, texel } );
 		}
 	}
 }
@@ -302,13 +324,13 @@ void CopyBetween( Format format, const LevelLayout &fromLevel, const std::byte *
 				    from + BlockOffset( bx, by, fromLevel.storedWidth, blockBytes ), blockBytes );
 		return;
 	}
+	const std::uint32_t storedBytes = StoredTexelBytes( format );
 	for ( std::uint32_t row = y; row < y + height; ++row )
 		for ( std::uint32_t column = x; column < x + width; ++column )
-			std::memcpy( to + std::size_t( TiledIndex( column, row, toLevel.storedWidth ) ) *
-			                      kStoredTexelBytes,
-			    from + std::size_t( TiledIndex( column, row, fromLevel.storedWidth ) ) *
-			               kStoredTexelBytes,
-			    kStoredTexelBytes );
+			std::memcpy(
+			    to + std::size_t( TiledIndex( column, row, toLevel.storedWidth ) ) * storedBytes,
+			    from + std::size_t( TiledIndex( column, row, fromLevel.storedWidth ) ) * storedBytes,
+			    storedBytes );
 }
 
 } // namespace render::device::pica

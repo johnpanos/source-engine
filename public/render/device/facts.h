@@ -46,6 +46,7 @@ enum class Capability : std::uint8_t
 	// those formats with kUnsupported (RFC 0026: the PICA200 has none).
 	kFloatTargets,
 	kTextureCompressionETC1, // the kETC1* formats (clause D40)
+	kPackedRGBA4,            // kRGBA4Unorm, sampled and copied (clause D42)
 	kCount
 };
 

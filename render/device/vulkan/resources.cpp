@@ -406,19 +406,13 @@ DeviceResult<SamplerId> VulkanDevice::CreateSampler( const SamplerDesc &desc )
 	{
 		return value == Filter::kNearest ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
 	};
-	VkSamplerAddressMode address = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-	switch ( desc.address )
+	auto addressOf = []( AddressMode mode )
 	{
-	case AddressMode::kRepeat:
-		address = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		break;
-	case AddressMode::kClampToEdge:
-		address = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-		break;
-	case AddressMode::kMirroredRepeat:
-		address = VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-		break;
-	}
+		return mode == AddressMode::kClampToEdge      ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
+		       : mode == AddressMode::kMirroredRepeat ? VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT
+		                                              : VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	};
+	const VkSamplerAddressMode address = addressOf( desc.address );
 	VkSamplerCreateInfo info{};
 	info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
 	info.magFilter = filter( desc.magFilter );
@@ -426,7 +420,7 @@ DeviceResult<SamplerId> VulkanDevice::CreateSampler( const SamplerDesc &desc )
 	info.mipmapMode = desc.mipFilter == Filter::kNearest ? VK_SAMPLER_MIPMAP_MODE_NEAREST
 	                                                     : VK_SAMPLER_MIPMAP_MODE_LINEAR;
 	info.addressModeU = address;
-	info.addressModeV = address;
+	info.addressModeV = addressOf( AddressV( desc ) );
 	info.addressModeW = address;
 	info.anisotropyEnable = desc.maxAnisotropy > 1 ? VK_TRUE : VK_FALSE;
 	info.maxAnisotropy = static_cast<float>( desc.maxAnisotropy );
