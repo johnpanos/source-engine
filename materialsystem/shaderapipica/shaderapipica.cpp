@@ -50,6 +50,7 @@
 #include "itextureinternal.h"
 #include "texture_group_names.h"
 #include <string>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 #include <malloc.h>
@@ -66,6 +67,11 @@ extern "C" unsigned long long svcGetSystemTick( void );
 //-----------------------------------------------------------------------------
 // The empty mesh
 //-----------------------------------------------------------------------------
+namespace
+{
+struct CoreCache;
+}
+
 class CEmptyMesh : public IMesh
 {
 public:
@@ -180,6 +186,10 @@ private:
 		const unsigned short *indices, int count ) const;
 
 	bool m_bIsDynamic;
+	// The triangles EmitToCore built from this mesh's contents (CoreCache), valid while
+	// m_nContentRevision is unchanged: every Lock and Modify bumps it.
+	unsigned m_nContentRevision = 0;
+	std::unique_ptr<CoreCache> m_pCoreCache;
 	// The mesh whose vertices this one's indices address: a vertex override
 	// (GetDynamicMesh's pVertexOverride, as the world's index batches use),
 	// else this mesh.
@@ -318,6 +328,53 @@ float g_Bones[kMaxBones][12];
 int g_MaxBone = -1;
 float g_Modulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 int g_TextureSizeCap = 128;
+
+// EmitToCore's triangles for a static mesh (RFC 0026): they depend only on
+// the mesh's contents, so they are built once per content revision and drawn
+// range, not every draw. Dynamic meshes are rewritten every frame and never
+// cached. The caches of all meshes share kCoreCacheBudget (about 0.5 MB of
+// triangles in the intro4 demo); past it, draws build as before. Vertices
+// are not cached: at 72 bytes each they filled the budget for 10% of draws.
+constexpr std::size_t kCoreCacheBudget = 2u << 20;
+std::size_t g_CoreCacheBytes = 0;
+struct CoreTriangles
+{
+	int first = 0;
+	int count = 0;
+	const CEmptyMesh *source = nullptr;
+	unsigned sourceRevision = 0;
+	std::vector<std::uint16_t> indices;
+};
+struct CoreCache
+{
+	// As an index mesh: triangles per drawn range, of this revision.
+	unsigned triangleRevision = ~0u;
+	std::vector<CoreTriangles> triangles;
+	std::size_t bytes = 0;
+
+	~CoreCache() { g_CoreCacheBytes -= bytes; }
+	void Account()
+	{
+		std::size_t now = 0;
+		for ( const CoreTriangles &t : triangles )
+			now += t.indices.capacity() * sizeof( std::uint16_t );
+		g_CoreCacheBytes = g_CoreCacheBytes - bytes + now;
+		bytes = now;
+	}
+};
+bool CoreCacheRoom( std::size_t bytes )
+{
+	if ( g_CoreCacheBytes + bytes <= kCoreCacheBudget )
+		return true;
+	static bool s_said = false;
+	if ( !s_said )
+	{
+		s_said = true;
+		printf( "pica: core model cache full (%u KB); later meshes build every draw\n",
+			unsigned( g_CoreCacheBytes >> 10 ) );
+	}
+	return false;
+}
 // Per-present counters of the draw path (printed with the frame stats).
 struct DrawPathCounters
 {
@@ -2277,6 +2334,7 @@ void CEmptyMesh::Unlock( int nWrittenIndexCount, IndexDesc_t& desc )
 		nWrittenIndexCount = m_nLockedIndices;
 	if ( nWrittenIndexCount > m_nIndexCapacity - m_nLockFirstIndex )
 		nWrittenIndexCount = m_nIndexCapacity - m_nLockFirstIndex;
+	++m_nContentRevision;
 	m_nLockedIndices = 0;
 	if ( nWrittenIndexCount > 0 && m_pIndices )
 	{
@@ -2319,6 +2377,7 @@ void CEmptyMesh::ValidateData( int nIndexCount, const IndexDesc_t &desc )
 {
 }
 
+	++m_nContentRevision;
 bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 {
 	// Components the record does not hold (normals, tangents, extra
@@ -2351,6 +2410,7 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	desc.m_NumBoneWeights = skinned ? 2 : 0;
 	desc.m_VertexSize_Position = 0;
 	desc.m_VertexSize_BoneWeight = 0;
+	++m_nContentRevision;
 	desc.m_VertexSize_BoneMatrixIndex = 0;
 	desc.m_VertexSize_Normal = 0;
 	desc.m_VertexSize_Color = 0;
@@ -2845,41 +2905,83 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	// 16-bit: the mesh is at most 65535 vertices (checked above), and the
 	// PICA200 reads 16-bit indices as they are (CoreMeshDraw::indices16).
 	std::vector<std::uint16_t> triangles;
-	const bool indexed = m_nIndices > 0 && indexCount > 0;
-	const int count = indexed ? ( firstIndex + indexCount <= m_nIndices ? indexCount : 0 ) : src.m_nVertices;
-	auto element = [&]( int i ) { return indexed ? int( m_pIndices[firstIndex + i] ) : i; };
-	triangles.reserve( size_t( count > 0 ? count : 0 ) * 3 );
-	bool valid = count > 0;
-	auto triangle = [&]( int a, int b, int c )
+	const std::vector<std::uint16_t> *drawTriangles = nullptr;
+	if ( cacheable )
 	{
-		if ( a < 0 || b < 0 || c < 0 || a >= src.m_nVertices || b >= src.m_nVertices || c >= src.m_nVertices )
+		CoreCache &cache = *m_pCoreCache;
+		if ( cache.triangleRevision != m_nContentRevision )
 		{
-			valid = false;
-			return;
+			cache.triangles.clear();
+			cache.triangleRevision = m_nContentRevision;
+			cache.Account();
 		}
-		if ( a != b && b != c && a != c )
+		for ( std::size_t i = 0; i < cache.triangles.size(); ++i )
 		{
-			triangles.push_back( std::uint16_t( a ) );
-			triangles.push_back( std::uint16_t( c ) );
-			triangles.push_back( std::uint16_t( b ) );
+			CoreTriangles &t = cache.triangles[i];
+			if ( t.first != firstIndex || t.count != indexCount )
+				continue;
+			if ( t.source == &src && t.sourceRevision == src.m_nContentRevision )
+				drawTriangles = &t.indices;
+			else
+			{
+				cache.triangles.erase( cache.triangles.begin() + i );
+				cache.Account();
+			}
+			break;
 		}
-	};
-	if ( m_Type == MATERIAL_TRIANGLES )
+	}
+	// A static mesh keeps the triangles this builds per range (CoreCache).
+	const bool cacheable = !m_bIsDynamic && !src.m_bIsDynamic;
+	if ( cacheable && !m_pCoreCache )
+		m_pCoreCache = std::make_unique<CoreCache>();
+
+	if ( !drawTriangles )
 	{
-		if ( count % 3 )
+		const bool indexed = m_nIndices > 0 && indexCount > 0;
+		const int count = indexed ? ( firstIndex + indexCount <= m_nIndices ? indexCount : 0 ) : src.m_nVertices;
+		auto element = [&]( int i ) { return indexed ? int( m_pIndices[firstIndex + i] ) : i; };
+		triangles.reserve( size_t( count > 0 ? count : 0 ) * 3 );
+		bool valid = count > 0;
+		auto triangle = [&]( int a, int b, int c )
+		{
+			if ( a < 0 || b < 0 || c < 0 || a >= src.m_nVertices || b >= src.m_nVertices || c >= src.m_nVertices )
+			{
+				valid = false;
+				return;
+			}
+			if ( a != b && b != c && a != c )
+			{
+				triangles.push_back( std::uint16_t( a ) );
+				triangles.push_back( std::uint16_t( c ) );
+				triangles.push_back( std::uint16_t( b ) );
+			}
+		};
+		if ( m_Type == MATERIAL_TRIANGLES )
+		{
+			if ( count % 3 )
+				return false;
+			for ( int i = 0; i < count; i += 3 )
+				triangle( element( i ), element( i + 1 ), element( i + 2 ) );
+		}
+		else if ( m_Type == MATERIAL_TRIANGLE_STRIP )
+		{
+			for ( int i = 0; i + 2 < count; ++i )
+				triangle( element( i + ( i & 1 ) ), element( i + 1 - ( i & 1 ) ), element( i + 2 ) );
+		}
+		else
 			return false;
-		for ( int i = 0; i < count; i += 3 )
-			triangle( element( i ), element( i + 1 ), element( i + 2 ) );
+		if ( !valid || triangles.empty() )
+			return false;
+		drawTriangles = &triangles;
+		if ( cacheable && CoreCacheRoom( triangles.size() * sizeof( std::uint16_t ) ) )
+		{
+			triangles.shrink_to_fit();
+			m_pCoreCache->triangles.push_back(
+				CoreTriangles{ firstIndex, indexCount, &src, src.m_nContentRevision, std::move( triangles ) } );
+			m_pCoreCache->Account();
+			drawTriangles = &m_pCoreCache->triangles.back().indices;
+		}
 	}
-	else if ( m_Type == MATERIAL_TRIANGLE_STRIP )
-	{
-		for ( int i = 0; i + 2 < count; ++i )
-			triangle( element( i + ( i & 1 ) ), element( i + 1 - ( i & 1 ) ), element( i + 2 ) );
-	}
-	else
-		return false;
-	if ( !valid || triangles.empty() )
-		return false;
 
 	// World-space positions and normals: skinned by the bones, else by the model.
 	const bool skinned = src.m_pBoneWeights && g_MaxBone > 0;
@@ -2917,6 +3019,7 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 					break;
 				}
 				slotOf[b[k]] = (signed char)paletteCount;
+	const std::vector<render::material::SurfaceWorldVertex> *drawVertices = &vertices;
 				memcpy( palette + paletteCount * 12, g_Bones[b[k]], 12 * sizeof( float ) );
 				++paletteCount;
 			}
@@ -3029,10 +3132,10 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		draw.bonePalette = palette;
 		draw.boneCount = std::uint32_t( paletteCount );
 	}
-	draw.vertices = vertices.data();
-	draw.vertexCount = std::uint32_t( vertices.size() );
-	draw.indices16 = triangles.data();
-	draw.indexCount = std::uint32_t( triangles.size() );
+	draw.vertices = drawVertices->data();
+	draw.vertexCount = std::uint32_t( drawVertices->size() );
+	draw.indices16 = drawTriangles->data();
+	draw.indexCount = std::uint32_t( drawTriangles->size() );
 	draw.mesh = true;
 	draw.modelLighting = true;
 	memcpy( draw.ambientCube, g_AmbientCube, sizeof( draw.ambientCube ) );
@@ -3087,10 +3190,13 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	}
 	draw.viewport = { float( vx ), float( vy ), float( vw ), float( vh ), 0.0f, 1.0f };
 	// The core takes the arrays (no copy); their sizes are counted first.
-	const std::size_t geometryBytes = vertices.size() * sizeof( render::material::SurfaceWorldVertex ) +
-		triangles.size() * sizeof( std::uint16_t );
-	draw.takeVertices = &vertices;
-	draw.takeIndices16 = &triangles;
+	// A cached array is lent (the core copies it); a built one is taken.
+	const std::size_t geometryBytes = drawVertices->size() * sizeof( render::material::SurfaceWorldVertex ) +
+		drawTriangles->size() * sizeof( std::uint16_t );
+	if ( drawVertices == &vertices )
+		draw.takeVertices = &vertices;
+	if ( drawTriangles == &triangles )
+		draw.takeIndices16 = &triangles;
 	const std::uint32_t tag = g_CorePassRecorder->QueueMesh( draw );
 	if ( !tag )
 		return skip( 4, "QueueMesh refused it" );
