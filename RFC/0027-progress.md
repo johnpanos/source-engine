@@ -236,19 +236,20 @@ python3 tools/quality/conformance.py check --suite kiln.l0 --suite kiln.profiles
 python3 -m unittest discover -s tools/archlint/tests
 ```
 
-## L1: desktop cutover (in progress, 2026-10-07)
+## L1: desktop cutover (done 2026-10-08)
 
 User direction: "Continue on L1." Worked in slices on `kiln-l0` in
-`../source-engine-kiln`; nothing is deleted until the whole launch-
-equivalence gate (argv, environment and staged-runtime manifest) passes.
+`../source-engine-kiln`; nothing was deleted until the whole launch-
+equivalence gate (argv, environment and staged-runtime manifest) passed
+(76/0, 2026-10-08), and L1e then deleted the retired surface.
 
 | Slice | Scope | State |
 | --- | --- | --- |
 | L1a | launch model, `.kiln/local.json` bindings, `kiln play`/`run --dry-run`, `kiln switches`, argv/environment equivalence | done (below) |
 | L1b | `linux-dir` packager, mount sets and content locators, `video.av1`, manifest equivalence, real `kiln play` | done (below) |
 | L1c | `coop-pair` and `external-install` run providers, `user`/`private`/`none` display sessions | done (below) |
-| L1d | `sepipe` and `play_embedded`; the 35 harness modules and the CI workflows | planned |
-| L1e | AGENTS.md and memory notes, the deletions, the root allowlist | planned |
+| L1d | `sepipe` and `play_embedded`; the 35 harness modules and the CI workflows | done (below) |
+| L1e | AGENTS.md and memory notes, the deletions, the root allowlist, the no-callers scan | done (below) |
 
 ### L1a: launch model and argv/environment equivalence
 
@@ -729,3 +730,101 @@ Evidence:
   - One frame-floor test.
 - **Not run in this slice.** The Wayland and scaled `corpus.hammer.ui` rows,
   and `corpus.hammer.mcp`.
+
+### L1d (eighth slice): the last harnesses, display sessions and CI (2026-10-08)
+
+- **Dedicated and USD runtimes.** `dedicated-linux` gains a `linux-dir`
+  package and a launch. `bsp2_dedicated`, the BSP2 F1 gate and
+  `usd_map_runtime` package their product into a private stage
+  (`sepipe_loader.package_into`) instead of `portal_boot` staging; the F1
+  gate takes `--dedicated-profile`/`--client-profile`. Dedicated and client
+  BSP2 runs pass through kiln.
+- **F-Stop.** `fstop_mechanics_check` packages the fstop profile and runs
+  each scenario through `run_test` (mall_doors passes);
+  `fstop_mechanics_map` and `fstop_puzzle_map` install into the fstop
+  profile's packaged runtime and take `hammer_cli` from the hammer install.
+- **Display sessions in `kiln.api`.** `Session::OpenDisplay`/`CloseDisplay`
+  (sepipe `open_display`/`close_display`, `sepipe_loader.Display` and
+  `run_under_display`) serve harnesses that run a whole session under a
+  display. A `private-x11` session (headless mutter, SDL on its Xwayland)
+  serves the 32-bit retail binary, Wine and RGP; the private socket is named
+  from the scratch path so concurrent sessions never collide. kilntest
+  142/0 on gcc and clang. Every `private_session` caller moved: the retail
+  captures of audio, material shots, storybeats and physics (physics through
+  the new `portal2-retail-mirror` profile as a kiln run request), map swipe,
+  relight diagnostics, `d3d12_lane`, `rgp` and `hammer_ui_test` (properties
+  on X11 9/0, visgroups on Wayland 13/0).
+- **Demo playback.** `demo_frames` and `term_sweep` package their workload's
+  profile (`portal2-fsr`) and play through kiln run requests; the intro4
+  playback completes.
+- **Mobile content.** The `portal2-content` profile (the portal2 package's
+  content steps, no engine) replaces `stage_portal2_runtime.py
+  --mount-custom` in the iOS/tvOS and Android Portal 2 scripts; file sets
+  are identical (2764) apart from kiln's record and the AV1 mount.
+- **Stale forwarding fixed.** The GI gates, paint, GI chamber, worldmesh
+  oracle and resolution sweep still forwarded `--build` to tools that take
+  profiles; `map_relight_diagnostics` had no client at all after the swipe
+  tool moved. Tools that defaulted to the player's `run/runtime-p2` read the
+  packaged runtime.
+- **CI.** `fragments/linux-ci-ubuntu-24.04` pins the runner's GCC 13.3.0;
+  `ci-dedicated-linux[-i386]`, `ci-tests-linux[-i386]` and
+  `ci-toolchain-linux[-clang]` (Clang 18.1.3) carry each lane, and the
+  build, tests and toolchain workflows run `./kiln build <profile>`. `kiln
+  doctor` in an `ubuntu:24.04` container finds every pin. The dedicated lane
+  fails there exactly as the legacy lane's own commands do
+  (`public/tier0/threadtools.h:1173`, a template-id constructor GCC 13
+  rejects in C++20; existing debt). The Windows lanes stay on `waf.bat`
+  until kiln has a Windows host (MSVC runners are optional). Hosted CI not
+  run.
+- **Found on the way.** `.gitignore`'s bare `run/` had hidden
+  `product/run/desktop.cpp`, so a clean checkout could not build kiln; the
+  rule is anchored and the file committed. The host kiln now bootstraps with
+  `--kiln-host` (kiln's projects only, no render core), so a clean
+  `ubuntu:24.04` with g++, Python, pkg-config, bzip2 and zlib runs `./kiln`
+  (before: the shader toolchain and DXC were required).
+- **Manifest.** 40 suites that build through kiln no longer require legacy
+  trees; Portal 2 content gates on `SOURCE_PORTAL2_STEAM_ROOT`.
+  `launch_sandbox` also protects kiln's player runtimes.
+- **A stale runtime record.** The first gate run of the day failed one check
+  (play_p2's manifest had Workshop packs): the runtime's record predated
+  6e3198091, so its Workshop entries carried no mount set and could not be
+  removed. A clean package fixes it; the rerun passed 76/0. Only runtimes
+  packaged before that commit (this unreleased worktree) are affected, so no
+  record migration was added.
+
+### L1e: the deletions, the root allowlist and the no-callers scan (2026-10-08)
+
+- **Deleted** (fe92eb024), after the full launch-equivalence gate passed
+  76/0: the launchers (`./play`, `./play_p2`, `./play_p2_fsr`, the three
+  release wrappers, `./play_fstop`, `./play_p2_coop`, `run.sh`,
+  `run.conf`); `render_flags.sh`, `launcher_ccache.sh`,
+  `ensure_configured.py`, `profile_extends.py`; the three `stage_*.py`
+  scripts and `portal_boot`'s legacy staging path (it now requires
+  `--profile`); `private_session.py`; `tools/video/transcode_av1.py`; the
+  four `scripts/*-ubuntu-*.sh` CI wrappers; and the launch-equivalence gate
+  with its `exec_capture` shim, whose subject is gone. The stray root files
+  the RFC lists were already absent on this branch.
+- **Hammer's Build and Run** launches `./kiln play portal <map>`.
+- **Root allowlist.** `tools/stylelint/root_files.py`, run by the style
+  workflow: wscript, waf, waf.bat, kiln, the documentation and licence files,
+  configuration and directories. Nine platform scripts are pending L7 in a
+  shrink-only list (an entry whose file is gone fails). Five tests, with a
+  seeded stray file and a stale pending entry.
+- **No-callers scan.** `tools/kiln/retired_scan.py` (suites
+  `kiln.l1.no-callers` 2/0 and `.selftest` 8/0): no retired path is tracked,
+  and no tracked file outside RFC/ and Markdown names one except on a
+  provenance line. Seeded callers (a launcher path join, an argv, an import,
+  a CI step, Hammer's old argv, `run.conf`) are caught.
+- **Docs.** AGENTS.md gains the kiln commands; READMEs, profiles, workloads
+  and tool help name kiln.
+- **Evidence.** tools/quality unit tests: 1707 run, no failure beyond the
+  pre-change baseline's (25 known, listed in the seventh slice and the
+  reflection-probe, lighting back-end, frame-floor and environment cases).
+  Profile parity 39/0.
+- **Not in L1, still open.** The Hammer build scripts (`hammer/gtk/build.sh`,
+  `build_*_shell.sh`) keep callers (`viewport_smoke.sh`,
+  `hammer_viewport_budget.py`, the Hammer profiles) and their own deletion
+  row. The platform scripts are L7. The render_lab and r03 test trees are
+  not launcher-driven. Retail captures were not rerun (no Steam client
+  here); hosted CI has not run.
+
