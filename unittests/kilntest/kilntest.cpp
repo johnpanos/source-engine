@@ -22,6 +22,7 @@
 #include "product/profile.h"
 #include "product/stage_waf.h"
 #include "product/toolchain_linux.h"
+#include "product/toolchain_msvc_wine.h"
 #include "testing/conformance_result.h"
 
 #include "../../platform/posix/process_spawner.h"
@@ -33,6 +34,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
@@ -131,7 +133,7 @@ std::string HostCompilerVersion(
 product::ProviderNames FixtureNames()
 {
 	product::ProviderNames names;
-	names.toolchains = { "fixture-host", "linux-gcc", "linux-clang" };
+	names.toolchains = { "fixture-host", "linux-gcc", "linux-clang", "windows-msvc-wine" };
 	names.stages = { "fixture-compile", "fixture-content", "fixture-symbols", "waf-engine" };
 	names.packagers = { "fixture-dir" };
 	names.transports = { "fixture-device" };
@@ -477,6 +479,56 @@ void ToolchainChecks( const Workbench &bench, platform::IToolProcessProvider &po
 		std::error_code ec;
 		fs::remove( bench.source / "toolchain.stamp", ec );
 	}
+}
+
+// The windows-msvc-wine toolchain against a fixture install: a stand-in cl
+// that prints the pinned banner, the stamp msvc_wine.py writes, and a
+// stand-in runner, so the shared suite runs without MSVC or Wine.
+std::string MsvcWineProfile( const std::string &version, const std::string &runner )
+{
+	return R"({"schema": "source-product-profile/v2", "id": "t", "description": "msvc case",
+	  "toolchain": {"family": "msvc", "cxx": "cl", "cc": "cl", "version": ")" +
+	       version + R"(", "msvc_wine": {"commit": "c0ffee", "msvc_toolset": "14.44",
+	  "msvc_version": "17.14", "sdk_version": "10.0.26100", "runner": ")" +
+	       runner + R"(", "installer_manifest": {"sha256": "abc"}}},
+	  "build": {"toolchain": "windows-msvc-wine", "flavors": {"dev": {"description": "d"}}}})";
+}
+
+void WriteExecutable( const fs::path &path, const std::string &text )
+{
+	fs::create_directories( path.parent_path() );
+	std::ofstream( path ) << text;
+	fs::permissions( path, fs::perms::owner_all, fs::perm_options::add );
+}
+
+void MsvcWineChecks( const Workbench &bench, platform::IToolProcessProvider &posix )
+{
+	suites::RecordingProcesses processes( posix );
+	const fs::path install = bench.dependencies / "windows-msvc-wine" / "14.44-10.0.26100";
+	WriteExecutable( install / "bin" / "x64" / "cl",
+	    "#!/bin/sh\necho 'Microsoft (R) C/C++ Optimizing Compiler Version 19.44.35229 for x64' "
+	    ">&2\n" );
+	std::ofstream( install / "msvc-wine-stamp.json" )
+	    << R"({"commit": "c0ffee", "msvc_toolset": "14.44", "msvc_version": "17.14",
+	      "sdk_version": "10.0.26100", "installer_manifest": {"sha256": "abc"}})";
+	const fs::path runner = bench.scratch / "msvc-wine-runner";
+	WriteExecutable( runner, "#!/bin/sh\necho wine-fixture\n" );
+	const auto valid = MakeProfile( MsvcWineProfile( "19.44", runner.string() ) );
+	const auto wrong = MakeProfile( MsvcWineProfile( "19.99", runner.string() ) );
+	auto toolchain = product::CreateMsvcWineToolchain( processes );
+	CheckVerdict( suites::ToolchainSuite(
+	                  *toolchain, processes, { &valid, &wrong, bench.source, bench.dependencies } ),
+	    "toolchain windows-msvc-wine" );
+	auto prepared = toolchain->Prepare( { &valid, bench.source, bench.dependencies, nullptr } );
+	Check( prepared && prepared.Value().wafOptions ==
+	                       std::vector<std::string>{ "--msvc-wine=" + install.string() },
+	    "toolchain.windows-msvc-wine gives Waf its install" );
+	std::ofstream( install / "msvc-wine-stamp.json" ) << R"({"commit": "other"})";
+	auto refused = toolchain->Prepare( { &valid, bench.source, bench.dependencies, nullptr } );
+	Check( !refused && refused.Error().code == "pin-mismatch",
+	    "toolchain.windows-msvc-wine refuses an install made from other pins" );
+	std::error_code ec;
+	fs::remove_all( bench.dependencies / "windows-msvc-wine", ec );
 }
 
 void RecipeChecks( const Workbench &bench )
@@ -1097,6 +1149,16 @@ void PackagerUnitChecks( const Workbench &bench, platform::IToolProcessProvider 
 		           !fs::is_symlink( package.output / "game/extra" ) &&
 		           without.Value().entries.empty(),
 		    "package.linux-dir-unselected-mount-set-entries-removed" );
+
+		// windows-dir runs the same steps and names its own form.
+		auto windows = product::CreateWindowsDirPackager();
+		package.output = bench.root / "set-runtime-windows";
+		package.mountSets = { "extra" };
+		auto laidOut = windows->Package( package );
+		Check( windows->Name() == "windows-dir" && laidOut &&
+		           laidOut.Value().form == "windows-dir" &&
+		           fs::is_symlink( package.output / "game/extra" ),
+		    "package.windows-dir-runs-the-directory-steps" );
 	}
 }
 } // namespace
@@ -1121,6 +1183,7 @@ int main()
 	JsonChecks();
 	ProfileChecks();
 	ToolchainChecks( bench, *posix );
+	MsvcWineChecks( bench, *posix );
 	RecipeChecks( bench );
 	const std::string version = HostCompilerVersion( *posix, "c++" );
 	const auto profile =

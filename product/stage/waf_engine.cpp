@@ -208,6 +208,10 @@ public:
 		if ( !arguments )
 			return foundation::MakeUnexpected(
 			    ProviderError{ "invalid-request", arguments.Error().Describe() } );
+		// A cross toolchain's own options (MSVC under Wine: --msvc-wine).
+		if ( inputs.Toolchain() )
+			arguments.Value().insert( arguments.Value().end(),
+			    inputs.Toolchain()->wafOptions.begin(), inputs.Toolchain()->wafOptions.end() );
 
 		const fs::path source = inputs.SourceRoot();
 		// out/<profile>/<flavor>/: the Waf tree (and its lock) in build/, the

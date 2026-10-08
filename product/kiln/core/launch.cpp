@@ -10,6 +10,8 @@
 #include "kiln/api.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
 #include <map>
 
 namespace kiln
@@ -20,6 +22,28 @@ namespace
 
 using foundation::json::Value;
 using Variables = std::map<std::string, std::vector<std::string>>;
+
+// A runner named without a path (wine) from the host's PATH: the spawner
+// runs argv[0] as given. Unfound, the name stays and the spawn names it.
+std::string OnPath( const std::string &name )
+{
+	if ( name.find( '/' ) != std::string::npos )
+		return name;
+	const char *path = std::getenv( "PATH" );
+	std::string list = path ? path : "";
+	for ( size_t start = 0; start <= list.size(); )
+	{
+		const size_t end = std::min( list.find( ':', start ), list.size() );
+		const std::string directory = list.substr( start, end - start );
+		std::error_code ec;
+		const std::filesystem::path candidate =
+		    std::filesystem::path( directory.empty() ? "." : directory ) / name;
+		if ( std::filesystem::is_regular_file( candidate, ec ) )
+			return candidate.string();
+		start = end + 1;
+	}
+	return name;
+}
 
 Error Fail( std::string code, std::string detail )
 {
@@ -325,6 +349,14 @@ foundation::Expected<LaunchPlan, Error> Session::PlanLaunch( const PlayRequest &
 	if ( !request.wrapper.empty() && launch->Find( "peers" ) )
 		return foundation::MakeUnexpected( Fail( "request", "a wrapper needs a single program" ) );
 	plan.argv = request.wrapper;
+	// launch.runner: the host program that runs the product (Windows builds
+	// under Wine), after any request wrapper and before the program.
+	auto runner = Expand( Strings( launch->Find( "runner" ) ), variables, "launch.runner" );
+	if ( !runner )
+		return foundation::MakeUnexpected( runner.Error() );
+	if ( !runner.Value().empty() )
+		runner.Value().front() = OnPath( runner.Value().front() );
+	plan.argv.insert( plan.argv.end(), runner.Value().begin(), runner.Value().end() );
 	// A program path as given (an installed game); a bare name is in the runtime.
 	plan.argv.push_back( program->find( '/' ) != std::string::npos ? *program : "./" + *program );
 	plan.argv.insert( plan.argv.end(), arguments.Value().begin(), arguments.Value().end() );

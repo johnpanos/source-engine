@@ -100,8 +100,14 @@
       {
         "id": "product.toolchain.linux",
         "owns": "RFC 0027: the linux-gcc and linux-clang host toolchain providers",
-        "paths": ["public/product/toolchain_linux.h", "product/toolchain/"],
+        "paths": ["public/product/toolchain_linux.h", "product/toolchain/linux.cpp"],
         "allowedEdges": ["product.contracts"]
+      },
+      {
+        "id": "product.toolchain.msvc-wine",
+        "owns": "RFC 0027: the windows-msvc-wine target toolchain (MSVC under Wine, provisioned by tools/windows/msvc_wine.py)",
+        "paths": ["public/product/toolchain_msvc_wine.h", "product/toolchain/msvc_wine.cpp"],
+        "allowedEdges": ["product.contracts", "foundation.json"]
       },
       {
         "id": "product.stage.waf",
@@ -151,7 +157,7 @@
         "id": "kiln.composition",
         "owns": "RFC 0027: the default provider catalog (ComposeDefaultCatalog)",
         "paths": ["public/kiln/composition.h", "product/kiln/composition/"],
-        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.stage.waf", "product.stage.fstop", "product.stage.video-av1", "product.display.desktop", "product.run.desktop", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
+        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.toolchain.msvc-wine", "product.stage.waf", "product.stage.fstop", "product.stage.video-av1", "product.display.desktop", "product.run.desktop", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
       },
       {
         "id": "kiln.app",
@@ -184,7 +190,7 @@
         "id": "kiln.tests",
         "kind": "native-test",
         "paths": ["unittests/kilntest/"],
-        "allowedEdges": ["kiln.core", "kiln.composition", "kiln.fixture-platform", "product.contracts", "product.profile", "product.toolchain.linux", "product.stage.waf", "product.package.linux-dir", "content.vpk", "product.display.desktop", "product.run.desktop", "platform.contracts", "platform.posix", "jobs.graph", "foundation", "foundation.json", "testing.contracts"]
+        "allowedEdges": ["kiln.core", "kiln.composition", "kiln.fixture-platform", "product.contracts", "product.profile", "product.toolchain.linux", "product.toolchain.msvc-wine", "product.stage.waf", "product.package.linux-dir", "content.vpk", "product.display.desktop", "product.run.desktop", "platform.contracts", "platform.posix", "jobs.graph", "foundation", "foundation.json", "testing.contracts"]
       },
       {
         "id": "content.asset-tests",

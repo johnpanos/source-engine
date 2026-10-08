@@ -14,6 +14,7 @@
 #include "product/stage_video_av1.h"
 #include "product/stage_waf.h"
 #include "product/toolchain_linux.h"
+#include "product/toolchain_msvc_wine.h"
 
 #include "../../../platform/posix/process_spawner.h"
 #include "../../../platform/posix/tool_process_provider.h"
@@ -74,6 +75,8 @@ foundation::Expected<product::ProviderCatalog, Error> ComposeDefaultCatalog(
 		return foundation::MakeUnexpected( *error );
 	if ( auto error = AddTo( catalog, product::CreateLinuxClangToolchain( processes ) ) )
 		return foundation::MakeUnexpected( *error );
+	if ( auto error = AddTo( catalog, product::CreateMsvcWineToolchain( processes ) ) )
+		return foundation::MakeUnexpected( *error );
 	if ( auto error = AddTo( catalog, product::CreateWafEngineStage() ) )
 		return foundation::MakeUnexpected( *error );
 	if ( auto error = AddTo( catalog, product::CreateFstopContentStage() ) )
@@ -81,6 +84,8 @@ foundation::Expected<product::ProviderCatalog, Error> ComposeDefaultCatalog(
 	if ( auto error = AddTo( catalog, product::CreateVideoAv1Stage() ) )
 		return foundation::MakeUnexpected( *error );
 	if ( auto error = AddTo( catalog, product::CreateLinuxDirPackager() ) )
+		return foundation::MakeUnexpected( *error );
+	if ( auto error = AddTo( catalog, product::CreateWindowsDirPackager() ) )
 		return foundation::MakeUnexpected( *error );
 	if ( auto error = AddTo( catalog, product::CreateUserDisplaySession() ) )
 		return foundation::MakeUnexpected( *error );

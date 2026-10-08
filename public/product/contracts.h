@@ -161,6 +161,9 @@ struct ToolchainEnvironment
 	std::vector<platform::ToolProcessEnvironmentOverride> environment;
 	std::vector<std::string> wafOptions; // cross options; empty for the host
 	std::optional<std::filesystem::path> cmakeToolchainFile;
+	// The command that shows the compiler runs (exit status 0); empty means
+	// `$CXX --version`. MSVC takes no --version: `cl` alone prints its banner.
+	std::vector<std::string> compilerProbe;
 };
 
 class ITargetToolchain

@@ -187,13 +187,13 @@ const std::set<std::string> kPackageKeys = { "form", "directory", "steps" };
 const std::set<std::string> kDeployKeys = { "transport", "content_root", "capabilities" };
 const std::set<std::string> kLaunchKeys = { "game", "default_map", "executable",
     "working_directory", "arguments", "environment", "display_session", "run", "switches",
-    "variables", "map_arguments", "peers", "facts" };
+    "variables", "map_arguments", "peers", "facts", "runner" };
 const std::set<std::string> kSwitchKeys = { "description", "arguments", "conflicts", "set" };
 const std::set<std::string> kContentKeys = {
     "roots", "base_packages", "mount_order", "mount_sets", "locators", "lowering" };
 const std::set<std::string> kTargetKeys = { "product", "os", "architecture" };
 const std::set<std::string> kToolchainKeys = { "cxx", "cc", "family", "version", "standard_library",
-    "dialect_policy", "glibcxx_cxx11_abi", "build_type" };
+    "dialect_policy", "glibcxx_cxx11_abi", "build_type", "msvc_wine" };
 
 // Options kiln owns for every tree; a profile setting them conflicts.
 const std::set<std::string> kReservedOptions = { "out", "o", "prefix", "top", "t" };

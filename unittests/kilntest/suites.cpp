@@ -137,7 +137,10 @@ Verdict ToolchainSuite( product::ITargetToolchain &toolchain, RecordingProcesses
 	}
 	const std::string cxx = Environment( first.Value(), "CXX" );
 	platform::ToolProcessRequest query;
-	query.argv = { cxx.empty() ? std::string( "/nonexistent" ) : cxx, "--version" };
+	query.argv = !first.Value().compilerProbe.empty()
+	                 ? first.Value().compilerProbe
+	                 : std::vector<std::string>{
+	                       cxx.empty() ? std::string( "/nonexistent" ) : cxx, "--version" };
 	query.workingDirectory = input.sourceRoot.string();
 	query.executionTimeout = std::chrono::seconds( 30 );
 	query.cancellationTimeout = std::chrono::seconds( 1 );
