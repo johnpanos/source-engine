@@ -671,6 +671,37 @@ UnlitClaim ClaimPortalView( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimVideo( const ParameterBlock &block )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "video" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	constexpr std::string_view keys[] = { "ytexture", "crtexture", "cbtexture", "nofog" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the video point does not draw " + *unread;
+		return claim;
+	}
+	if ( !detail::TextureBound( block, "ytexture" ) ||
+	     !detail::TextureBound( block, "crtexture" ) ||
+	     !detail::TextureBound( block, "cbtexture" ) )
+	{
+		claim.reason = "Bik needs its $ytexture, $crtexture and $cbtexture planes";
+		return claim;
+	}
+	claim.baseSrgb = false; // the planes are data, converted in the program
+	claim.blend = device::BlendMode::kOpaque;
+	claim.alphaWrite = true;
+	claim.decalModulate = true;
+	claim.constants.baseDecode[1] = 9.0f; // the video planes
+	claim.constants.surfaceControls[0] = ReadFlag( block, "nofog" ) ? 1.0f : 0.0f;
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimModulate( const ParameterBlock &block )
 {
 	UnlitClaim claim;

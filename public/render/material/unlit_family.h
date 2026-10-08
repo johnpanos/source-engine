@@ -156,6 +156,11 @@ UnlitClaim ClaimEyeRefract( const ParameterBlock &block );
 // alpha blended, else opaque. $renderfixz and a missing $basetexture (the
 // frame buffer) are refused by name.
 UnlitClaim ClaimPortalView( const ParameterBlock &block );
+
+// Bik (bik_ps2x): a Bink frame's planes, Y as the emission texture, Cr as the
+// detail and Cb as the bump texture, converted to RGB with bik_ps2x's
+// coefficients and fogged. Opaque. The decal-modulate point, mode 9.
+UnlitClaim ClaimVideo( const ParameterBlock &block );
 // Modulate (modulate_dx9.cpp, modulate_ps2x): the decal-modulate point with
 // saturate( base x $color/$alpha x vertex color ), its color lerped from the
 // neutral 0.5 by its alpha, fog to the neutral grey. $mod2x blends

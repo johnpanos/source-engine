@@ -2614,6 +2614,18 @@ void main()
 	// Points without image specular leave the SSR targets empty (weight 0:
 	// render.pass.ssr leaves their pixels unchanged).
 	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );
+	if ( kDecalModulate && material.baseDecode.y > 8.5 )
+	{
+		// Bik (bik_ps2x): the Y, Cr and Cb planes to RGB, which is sRGB-encoded.
+		const vec4 ycc = vec4( texture( sampler2D( emissionTexture, emissionSampler ), baseUv ).x,
+		    texture( sampler2D( detailTexture, detailSampler ), baseUv ).x,
+		    texture( sampler2D( bumpTexture, bumpSampler ), baseUv ).x, 1.0 );
+		const vec3 rgb = vec3( dot( ycc, vec4( 1.164123535, 1.595794678, 0.0, -0.87065506 ) ),
+		    dot( ycc, vec4( 1.164123535, -0.813476563, -0.391448975, 0.529705048 ) ),
+		    dot( ycc, vec4( 1.164123535, 0.0, 2.017822266, -1.081668854 ) ) );
+		outColor = Output( OutputLinearFromSrgb( clamp( rgb, 0.0, 1.0 ) ), 1.0 );
+		return;
+	}
 	if ( kDecalModulate && material.baseDecode.y > 7.5 )
 	{
 		// Portal (portal_vs20, portal_ps2x): the frame at the pixel's projection

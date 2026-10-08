@@ -89,7 +89,8 @@ inline CoreMeshKind CoreMeshKindFor( IMaterial *material )
 		}
 		if ( !V_stricmp( shader, "PortalStaticOverlay" ) )
 			return CoreMeshKind::kPortal;
-		if ( !V_stricmp( shader, "Portal" ) || !V_stricmp( shader, "Portal_DX90" ) )
+		if ( !V_stricmp( shader, "Portal" ) || !V_stricmp( shader, "Portal_DX90" ) ||
+		     !V_stricmp( shader, "Bik" ) || !V_stricmp( shader, "Bik_DX90" ) )
 			return CoreMeshKind::kPortal;
 		if ( !V_stricmp( shader, "WriteZ" ) || !V_stricmp( shader, "WriteZ_DX9" ) )
 			return CoreMeshKind::kDepthMask;

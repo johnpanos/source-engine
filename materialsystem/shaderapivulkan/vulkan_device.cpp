@@ -2030,16 +2030,6 @@ void CVulkanContext::DestroyTexturedQuad()
 	m_drawTexturedQuad = false;
 }
 
-void CVulkanContext::SetIndexedUboColor( float r, float g, float b, float a )
-{
-	m_iuColor[0] = r;
-	m_iuColor[1] = g;
-	m_iuColor[2] = b;
-	m_iuColor[3] = a;
-	if ( m_iuUniformMapped )
-		std::memcpy( m_iuUniformMapped, m_iuColor, sizeof( m_iuColor ) );
-}
-
 bool CVulkanContext::InitIndexedUbo( std::string *outError )
 {
 	if ( !IsValid() || m_renderPass == VK_NULL_HANDLE )
@@ -5514,21 +5504,6 @@ int64_t CVulkanContext::OcclusionQueryResult( int query, bool wait )
 	return static_cast<int64_t>( result[0] );
 }
 
-void CVulkanContext::FailUnsubmittedQueries()
-{
-	// The stream is being discarded: an issue it holds that no frame submitted
-	// will never produce a result.
-	for ( const DynDraw &d : m_dynDrawRecords )
-	{
-		if ( d.kind != kRecordQueryBegin || d.query < 0 ||
-		     d.query >= static_cast<int>( m_querySlots.size() ) )
-			continue;
-		OcclusionQuerySlot &slot = m_querySlots[static_cast<size_t>( d.query )];
-		if ( slot.issued == d.querySerial && slot.submitted != d.querySerial )
-			slot.failed = true;
-	}
-}
-
 bool CVulkanContext::RetainsQueryInput() const
 {
 	// Frozen-path: core progress - auto-exposure's luminance histogram queries
@@ -5672,45 +5647,6 @@ void CVulkanContext::EndDynamicDraw( uint32_t vertexCount, uint32_t indexCount )
 	m_dynIndices.resize( static_cast<size_t>( d.firstIndex ) + indexCount );
 	d.vertexCount = vertexCount;
 	d.indexCount = indexCount;
-}
-
-CVulkanContext::DrawRange CVulkanContext::LastDrawRange() const
-{
-	DrawRange range = { 0, 0, 0, 0 };
-	if ( !m_dynDrawRecords.empty() && m_dynDrawRecords.back().kind == kRecordDraw )
-	{
-		const DynDraw &d = m_dynDrawRecords.back();
-		range.firstVertex = d.firstVertex;
-		range.vertexCount = d.vertexCount;
-		range.firstIndex = d.firstIndex;
-		range.indexCount = d.indexCount;
-	}
-	return range;
-}
-
-bool CVulkanContext::StreamRangeEquals( const DrawRange &range, const float *vertices,
-    uint32_t vertexCount, const uint32_t *indices, uint32_t indexCount ) const
-{
-	const size_t firstFloat = static_cast<size_t>( range.firstVertex ) * kDynVertexFloats;
-	const size_t floats = static_cast<size_t>( vertexCount ) * kDynVertexFloats;
-	return range.vertexCount == vertexCount && range.indexCount == indexCount &&
-	       firstFloat + floats <= m_dynQueued.size() &&
-	       static_cast<size_t>( range.firstIndex ) + indexCount <= m_dynIndices.size() &&
-	       std::memcmp( m_dynQueued.data() + firstFloat, vertices, floats * sizeof( float ) ) ==
-	           0 &&
-	       std::memcmp( m_dynIndices.data() + range.firstIndex, indices,
-	           indexCount * sizeof( uint32_t ) ) == 0;
-}
-
-void CVulkanContext::ReuseDynamicDraw( const DrawRange &range )
-{
-	if ( range.vertexCount == 0 )
-		return;
-	DynDraw &d = AppendDrawRecord();
-	d.firstVertex = range.firstVertex;
-	d.vertexCount = range.vertexCount;
-	d.firstIndex = range.firstIndex;
-	d.indexCount = range.indexCount;
 }
 
 void CVulkanContext::QueueDynamicTriangles( const float *posColorInterleaved, uint32_t vertexCount,
@@ -6934,100 +6870,6 @@ void CVulkanContext::SetProbeVolumeHandles( int atlas, int grids, uint32_t gridC
 	m_probeGridCount = atlas >= 0 && grids >= 0 ? gridCount : 0;
 }
 
-bool CVulkanContext::QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCount )
-{
-	if ( !WorldMeshResident() || m_worldVert == VK_NULL_HANDLE || !indexCount ||
-	     firstIndex > m_worldIndexCount || indexCount > m_worldIndexCount - firstIndex ||
-	     ( m_dynShaderIndex != kDynShaderTextured && m_dynShaderIndex != kDynShaderPbrWorld &&
-	         m_dynShaderIndex != kDynShaderPbrGlass ) )
-		return false;
-	if ( m_dynShaderIndex == kDynShaderPbrWorld || m_dynShaderIndex == kDynShaderPbrGlass )
-	{
-		const bool ready =
-		    m_dynShaderIndex == kDynShaderPbrGlass ? m_pbrGlassReady : m_pbrWorldReady;
-		if ( !ready ||
-		     !PbrWorldTexturesReady( m_dynBoundTexHandle, m_dynSamplerHandles[1],
-		         m_dynSamplerHandles[2], m_dynPbrWorld.material[1] >= 0.5f,
-		         ( m_dynColorFlags & kColorSrgbReadBase ) != 0 ) )
-			return false;
-	}
-	// Glass refracts what was drawn before it.
-	if ( m_dynShaderIndex == kDynShaderPbrGlass )
-		QueueSceneCaptureIfNeeded( m_dynGlassKey );
-	DynDraw &draw = AppendDrawRecord();
-	draw.worldMesh = true;
-	draw.worldMeshRevision = m_worldMeshRevision;
-	draw.firstVertex = 0;
-	draw.vertexCount = m_worldVertexCount;
-	draw.firstIndex = firstIndex;
-	draw.indexCount = indexCount;
-	return true;
-}
-
-bool CVulkanContext::ReadWorldMeshBytes(
-    void *vertices, size_t vertexBytes, void *indices, size_t indexBytes, std::string *outError )
-{
-	if ( !IsValid() || !WorldMeshResident() || !vertices || !indices || !vertexBytes ||
-	     !indexBytes || vertexBytes != m_worldVertexBuffer.capacity ||
-	     indexBytes != m_worldIndexBuffer.capacity )
-	{
-		SetError( outError, "invalid WMSH readback request" );
-		return false;
-	}
-	StreamBuffer staging;
-	const size_t bytes = vertexBytes + indexBytes;
-	if ( !CreateBuffer( bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-	         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-	         &staging.buffer, &staging.memory, outError ) )
-	{
-		DestroyStreamBuffer( staging );
-		return false;
-	}
-	VkCommandBuffer cmd = VK_NULL_HANDLE;
-	if ( !BeginSingleTimeCommands( &cmd, outError ) )
-	{
-		DestroyStreamBuffer( staging );
-		return false;
-	}
-	const VkBufferCopy vertexCopy = { 0, 0, vertexBytes };
-	const VkBufferCopy indexCopy = { 0, vertexBytes, indexBytes };
-	vkCmdCopyBuffer( cmd, m_worldVertexBuffer.buffer, staging.buffer, 1, &vertexCopy );
-	vkCmdCopyBuffer( cmd, m_worldIndexBuffer.buffer, staging.buffer, 1, &indexCopy );
-	VkBufferMemoryBarrier hostRead = {};
-	hostRead.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-	hostRead.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	hostRead.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
-	hostRead.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	hostRead.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	hostRead.buffer = staging.buffer;
-	hostRead.offset = 0;
-	hostRead.size = VK_WHOLE_SIZE;
-	vkCmdPipelineBarrier( cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 0,
-	    nullptr, 1, &hostRead, 0, nullptr );
-	// A readback: wait for its own submission's value, nothing more.
-	uint64_t copied = 0;
-	if ( !EndSingleTimeCommands( cmd, outError, &copied ) ||
-	     m_hostDevice->WaitValue( copied, UINT64_MAX ) != VK_SUCCESS )
-	{
-		DestroyStreamBuffer( staging );
-		return false;
-	}
-	void *mapped = nullptr;
-	const VkResult mapResult = MapMemory( staging.memory, &mapped );
-	if ( mapResult != VK_SUCCESS )
-	{
-		SetError(
-		    outError, std::string( "WMSH readback map failed: " ) + ResultString( mapResult ) );
-		DestroyStreamBuffer( staging );
-		return false;
-	}
-	staging.mapped = mapped;
-	std::memcpy( vertices, mapped, vertexBytes );
-	std::memcpy( indices, static_cast<uint8_t *>( mapped ) + vertexBytes, indexBytes );
-	DestroyStreamBuffer( staging );
-	return true;
-}
-
 void CVulkanContext::ReleaseWorldMesh()
 {
 	if ( m_device == VK_NULL_HANDLE )
@@ -7655,29 +7497,6 @@ render::device::TextureId CVulkanContext::ImportManagedTexture( int handle, bool
 	import.image = texture.image;
 	import.id[srgb] = id;
 	return id;
-}
-
-render::device::SamplerDesc CVulkanContext::ManagedTextureSampler( int handle ) const
-{
-	using render::device::AddressMode;
-	using render::device::Filter;
-	const int state = ManagedTextureSamplerState( handle );
-	render::device::SamplerDesc desc;
-	const Filter filter = ( state & kSamplerLinear ) ? Filter::kLinear : Filter::kNearest;
-	desc.magFilter = filter;
-	desc.minFilter = filter;
-	desc.mipFilter = ( state & kSamplerMipLinear ) ? Filter::kLinear : Filter::kNearest;
-	desc.address = ( state & kSamplerClampU ) && ( state & kSamplerClampV )
-	                   ? AddressMode::kClampToEdge
-	                   : AddressMode::kRepeat;
-	if ( ( state & kSamplerAnisotropic ) && m_anisotropyLevel > 1 )
-	{
-		desc.magFilter = Filter::kLinear;
-		desc.minFilter = Filter::kLinear;
-		desc.mipFilter = Filter::kLinear;
-		desc.maxAnisotropy = static_cast<std::uint32_t>( m_anisotropyLevel );
-	}
-	return desc;
 }
 
 void CVulkanContext::ReleaseManagedImport( int handle )
@@ -11166,6 +10985,44 @@ void CVulkanContext::Shutdown()
 	m_swapExtent = { 0, 0 };
 	m_presentExtent = { 0, 0 };
 	m_host = nullptr;
+}
+
+render::device::SamplerDesc CVulkanContext::ManagedTextureSampler( int handle ) const
+{
+	using render::device::AddressMode;
+	using render::device::Filter;
+	const int state = ManagedTextureSamplerState( handle );
+	render::device::SamplerDesc desc;
+	const Filter filter = ( state & kSamplerLinear ) ? Filter::kLinear : Filter::kNearest;
+	desc.magFilter = filter;
+	desc.minFilter = filter;
+	desc.mipFilter = ( state & kSamplerMipLinear ) ? Filter::kLinear : Filter::kNearest;
+	desc.address = ( state & kSamplerClampU ) && ( state & kSamplerClampV )
+	                   ? AddressMode::kClampToEdge
+	                   : AddressMode::kRepeat;
+	if ( ( state & kSamplerAnisotropic ) && m_anisotropyLevel > 1 )
+	{
+		desc.magFilter = Filter::kLinear;
+		desc.minFilter = Filter::kLinear;
+		desc.mipFilter = Filter::kLinear;
+		desc.maxAnisotropy = static_cast<std::uint32_t>( m_anisotropyLevel );
+	}
+	return desc;
+}
+
+void CVulkanContext::FailUnsubmittedQueries()
+{
+	// The stream is being discarded: an issue it holds that no frame submitted
+	// will never produce a result.
+	for ( const DynDraw &d : m_dynDrawRecords )
+	{
+		if ( d.kind != kRecordQueryBegin || d.query < 0 ||
+		     d.query >= static_cast<int>( m_querySlots.size() ) )
+			continue;
+		OcclusionQuerySlot &slot = m_querySlots[static_cast<size_t>( d.query )];
+		if ( slot.issued == d.querySerial && slot.submitted != d.querySerial )
+			slot.failed = true;
+	}
 }
 
 } // namespace render_vulkan

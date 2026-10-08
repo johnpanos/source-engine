@@ -599,7 +599,8 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 	     material.family == "decal-modulate" || material.family == "energy" ||
 	     material.family == "modulate" || material.family == "blob-shadow" ||
 	     material.family == "shadow-build" || material.family == "portal-overlay" ||
-	     material.family == "eye-refract" || material.family == "portal-view" )
+	     material.family == "eye-refract" || material.family == "portal-view" ||
+	     material.family == "video" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
@@ -610,6 +611,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		    : material.family == "portal-overlay" ? ClaimPortalOverlay( *block )
 		    : material.family == "eye-refract"    ? ClaimEyeRefract( *block )
 		    : material.family == "portal-view"    ? ClaimPortalView( *block )
+		    : material.family == "video"          ? ClaimVideo( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -752,6 +754,13 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 	if ( material.family == "portal-view" )
 	{
 		const UnlitClaim claim = ClaimPortalView( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return claim.blend;
+	}
+	if ( material.family == "video" )
+	{
+		const UnlitClaim claim = ClaimVideo( *block );
 		if ( !claim.claimed )
 			return foundation::MakeUnexpected( claim.reason );
 		return claim.blend;
@@ -905,7 +914,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	     material.family == "decal-modulate" || material.family == "energy" ||
 	     material.family == "modulate" || material.family == "blob-shadow" ||
 	     material.family == "shadow-build" || material.family == "portal-overlay" ||
-	     material.family == "eye-refract" || material.family == "portal-view" )
+	     material.family == "eye-refract" || material.family == "portal-view" ||
+	     material.family == "video" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
@@ -916,6 +926,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		    : material.family == "portal-overlay" ? ClaimPortalOverlay( *block )
 		    : material.family == "eye-refract"    ? ClaimEyeRefract( *block )
 		    : material.family == "portal-view"    ? ClaimPortalView( *block )
+		    : material.family == "video"          ? ClaimVideo( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -959,6 +970,13 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			textures.emission = TextureOf( material, "basetexture" );
 			textures.detail = TextureOf( material, "alphamasktexture" );
 			textures.bump = TextureOf( material, "staticblendtexture" );
+		}
+		if ( material.family == "video" )
+		{
+			textures.base = TextureOf( material, "ytexture" );
+			textures.emission = TextureOf( material, "ytexture" );
+			textures.detail = TextureOf( material, "crtexture" );
+			textures.bump = TextureOf( material, "cbtexture" );
 		}
 		if ( material.family == "eye-refract" )
 		{

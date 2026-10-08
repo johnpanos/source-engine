@@ -288,13 +288,6 @@ public:
 	void SetProbeVolumeSampling( int mode ) { m_probeSampling = mode < 0 || mode > 2 ? 0 : mode; }
 	void ReleaseWorldMesh();
 	bool WorldMeshResident() const;
-	// Diagnostic readback for the native conformance test; synchronizes and
-	// copies the current device-local sections to caller-owned output storage.
-	bool ReadWorldMeshBytes( void *vertices, size_t vertexBytes, void *indices, size_t indexBytes,
-	    std::string *outError );
-	// Record one material batch using the uploaded WMSH buffers and the current
-	// material state. The first index/count are relative to the WMSH index section.
-	bool QueueWorldMeshBatch( uint32_t firstIndex, uint32_t indexCount );
 
 	// A frame (RFC 0016 K3). The frame's commands are recorded into a port
 	// encoder of the render core: the legacy frontend's frame graph, or
@@ -453,8 +446,6 @@ public:
 	bool InitIndexedUbo( std::string *outError );
 	void SetDrawIndexedUbo( bool enable ) { m_drawIndexedUbo = enable; }
 	bool IndexedUboReady() const { return m_indexedUboPipeline != VK_NULL_HANDLE; }
-	// Update the uniform-buffer color (linear RGBA). Takes effect next frame.
-	void SetIndexedUboColor( float r, float g, float b, float a );
 
 	// Bring up a bounded depth-tested pipeline: two overlapping triangles at
 	// different depths drawn far-then-near with depth testing on, proving the
@@ -512,11 +503,6 @@ public:
 		uint32_t firstIndex;
 		uint32_t indexCount;
 	};
-	DrawRange LastDrawRange() const;
-	void ReuseDynamicDraw( const DrawRange &range );
-	// Whether `range` of the stream holds exactly these vertices and indices.
-	bool StreamRangeEquals( const DrawRange &range, const float *vertices, uint32_t vertexCount,
-	    const uint32_t *indices, uint32_t indexCount ) const;
 	// Changes whenever the stream is discarded; a DrawRange is valid only while
 	// the epoch it was read in lasts.
 	uint64_t StreamEpoch() const { return m_streamEpoch; }
@@ -2109,7 +2095,6 @@ private:
 	bool m_sceneDepthCaptured = false;
 	bool EnsureSceneCapture( std::string *outError );
 	void DestroySceneCapture();
-	void QueueSceneCaptureIfNeeded( uint64_t materialKey );
 	void NoteSceneChanged() { m_sceneCaptureCurrent = false; }
 	// Records the copy into the capture images; returns whether depth was copied.
 	bool RecordSceneCapture( VkCommandBuffer cmd, int target );
