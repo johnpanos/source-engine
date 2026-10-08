@@ -116,6 +116,15 @@ projects={
 		'unicode',
 		'video',
 	],
+	# RFC 0027: the host kiln and the libraries it links (./kiln --kiln-host).
+	'kiln': [
+		'content',
+		'foundation',
+		'jobsystem',
+		'platform',
+		'product',
+		'product/kiln',
+	],
 	'tests': [
 		'foundation',
 		'product',
@@ -482,6 +491,10 @@ def options(opt):
 	grp.add_option('--tools', action = 'store_true', dest = 'TOOLS', default = False,
 		help = 'build isolated host content tools [default: %default]')
 
+	grp.add_option('--kiln-host', action = 'store_true', dest = 'KILN_HOST', default = False,
+		help = 'build only the host kiln (RFC 0027 bootstrap): the tools product\'s settings '
+			'with kiln\'s own projects and no render core [default: %default]')
+
 	grp.add_option('-D', '--debug-engine', action = 'store_true', dest = 'DEBUG_ENGINE', default = False,
 		help = 'build with -DDEBUG [default: %default]')
 
@@ -643,6 +656,10 @@ def check_deps(conf):
 	if conf.options.TESTS:
 		return
 
+	# The host kiln links no image or window libraries.
+	if conf.options.KILN_HOST:
+		return
+
 	if conf.options.TOOLS:
 		if conf.env.DEST_OS == 'android':
 			conf.fatal('host tools cannot be built for the Android target')
@@ -746,6 +763,12 @@ def configure(conf):
 	for name, value in vars(Options.options).items():
 		if not hasattr(conf.options, name):
 			setattr(conf.options, name, value)
+	# RFC 0027: the host kiln (./kiln's bootstrap) is the tools product reduced
+	# to kiln's projects, without the render core and its shader artifacts, so
+	# a clean checkout builds it with only a compiler and Python.
+	if conf.options.KILN_HOST:
+		conf.options.TOOLS = True
+	conf.env.KILN_HOST = conf.options.KILN_HOST
 
 	# Force XP compability, all build targets should add
 	# subsystem=bld.env.MSVC_SUBSYSTEM
@@ -1079,6 +1102,8 @@ def configure(conf):
 
 	if conf.options.TESTS:
 		conf.add_subproject(projects['tests'])
+	elif conf.options.KILN_HOST:
+		conf.add_subproject(projects['kiln'])
 	elif conf.options.TOOLS:
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if conf.env.DEST_OS == 'linux' else [])
 		tool_projects += ( ['unittests/texturecontainertest'] if conf.env.KTX_READ_ENABLED else [] ) + \
@@ -1138,7 +1163,7 @@ def configure_render_core(conf):
 	products only; a dedicated product never adds it, so it cannot link it.
 	Device adapters build only when configured: Vulkan with the native Vulkan
 	backend, OpenGL with --render-core-gl (K10).'''
-	conf.env.RENDER_CORE = not conf.options.DEDICATED
+	conf.env.RENDER_CORE = not (conf.options.DEDICATED or conf.options.KILN_HOST)
 	conf.env.RENDER_CORE_VULKAN = bool(conf.env.RENDER_CORE and conf.env.NATIVE_VULKAN)
 	# The tools product has no engine renderer, so the editor's viewports take
 	# the Vulkan adapter on their own (RFC 0016 "Editor viewports").
@@ -1216,6 +1241,8 @@ def build(bld):
 
 	if bld.env.TESTS:
 		bld.add_subproject(projects['tests'])
+	elif bld.env.KILN_HOST:
+		bld.add_subproject(projects['kiln'])
 	elif bld.env.TOOLS:
 		tool_projects = projects['tools'] + (LINUX_COMPILER_TOOL_PROJECTS if bld.env.DEST_OS == 'linux' else [])
 		tool_projects += ['unittests/texturecontainertest'] if bld.env.KTX_READ_ENABLED else []
