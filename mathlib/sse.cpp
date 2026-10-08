@@ -11,7 +11,9 @@
 #include "tier0/dbg.h"
 #include "mathlib/mathlib.h"
 #include "mathlib/vector.h"
-#if defined(__arm__) || defined(__aarch64__)
+#if ( defined( __arm__ ) || defined( __aarch64__ ) ) && !defined( __ARM_NEON )
+#include "sse2scalar.h" // the 3DS's ARM11: no NEON
+#elif defined( __arm__ ) || defined( __aarch64__ )
 #include "sse2neon.h"
 #endif
 

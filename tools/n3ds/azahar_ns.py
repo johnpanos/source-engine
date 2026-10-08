@@ -67,6 +67,13 @@ def _set(lines, key, value):
     return out + ["%s=%s" % (key, value), "%s\\default=false" % key]
 
 
+# Set by n3ds.py --private: the run is inside its own headless compositor
+# (mutter --headless on a private D-Bus session), so a "headless" emulator is
+# an ordinary Wayland client there and renders with OpenGL; nothing reaches
+# the user's desktop.
+PRIVATE_DISPLAY = os.environ.get("N3DS_PRIVATE_DISPLAY") == "1"
+
+
 def prepare(headless=False):
     """Creates the namespace's user directory and config (first use: from the shared config).
 
@@ -108,7 +115,8 @@ def prepare(headless=False):
     debug = _set(sections["Debugging"], "gdbstub_port", str(GDB_PORT))
     sections["Debugging"] = debug
     if headless:
-        sections["Renderer"] = _set(sections["Renderer"], "graphics_api", "0")
+        # 1 = OpenGL in the private compositor, else 0 = software (Qt offscreen).
+        sections["Renderer"] = _set(sections["Renderer"], "graphics_api", "1" if PRIVATE_DISPLAY else "0")
     elif config.exists() and SHARED_CONFIG.exists():
         shared = [l for l in SHARED_CONFIG.read_text().splitlines() if l.startswith("graphics_api")]
         sections["Renderer"] = [l for l in sections["Renderer"] if not l.startswith("graphics_api")] + shared

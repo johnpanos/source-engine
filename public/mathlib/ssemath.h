@@ -6,7 +6,9 @@
 #ifndef SSEMATH_H
 #define SSEMATH_H
 
-#if defined(__arm__) || defined(__aarch64__)
+#if ( defined( __arm__ ) || defined( __aarch64__ ) ) && !defined( __ARM_NEON )
+#include "sse2scalar.h" // the 3DS's ARM11: no NEON
+#elif defined( __arm__ ) || defined( __aarch64__ )
 #include "sse2neon.h"
 #else
 #include <xmmintrin.h>
@@ -1233,8 +1235,10 @@ FORCEINLINE fltx4 Dot4SIMD( const fltx4 &a, const fltx4 &b )
 // supplied by the build (the conformance sensitivity row defines it empty)
 #elif defined( __GNUC__ ) && ( defined( __i386__ ) || defined( __x86_64__ ) )
 #define SSEMATH_OPAQUE( v ) __asm__( "" : "+x"( v ) )
-#elif defined( __GNUC__ ) && ( defined( __aarch64__ ) || defined( __arm__ ) )
+#elif defined( __GNUC__ ) && ( defined( __aarch64__ ) || defined( __arm__ ) ) && defined( __ARM_NEON )
 #define SSEMATH_OPAQUE( v ) __asm__( "" : "+w"( v ) )
+#elif defined( __GNUC__ )
+#define SSEMATH_OPAQUE( v ) __asm__( "" : "+m"( v ) )
 #else
 #define SSEMATH_OPAQUE( v ) ( (void)0 )
 #endif

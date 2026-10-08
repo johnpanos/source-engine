@@ -11,6 +11,11 @@
 set -e
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 SRC=$ROOT/dependencies/3ds/src/azahar
+# The harness and its hooks are tools/n3ds/azahar-harness.patch on the
+# upstream commit it names; a fresh checkout gets it applied once.
+if [ ! -f "$SRC/src/citra_qt/harness.cpp" ]; then
+	git -C "$SRC" apply "$ROOT/tools/n3ds/azahar-harness.patch"
+fi
 flatpak run --user --command=bash --filesystem="$ROOT" org.kde.Sdk//6.11 -c "
 	set -e
 	export CCACHE_DIR='$ROOT/dependencies/3ds/ccache-azahar'

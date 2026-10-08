@@ -1,0 +1,1151 @@
+# Local changes to Azahar (upstream https://github.com/azahar-emu/azahar.git at c9e1e946a0b5d30a58ae14dee83c1f203a49622d):
+# the scripting harness (src/citra_qt/harness.{h,cpp}) and its hooks.
+# Apply with: git -C dependencies/3ds/src/azahar apply tools/n3ds/azahar-harness.patch
+diff --git a/src/citra_cli/citra_cli.cpp b/src/citra_cli/citra_cli.cpp
+index de7ab6b..0864ed7 100644
+--- a/src/citra_cli/citra_cli.cpp
++++ b/src/citra_cli/citra_cli.cpp
+@@ -8,6 +8,8 @@
+ #include <unistd.h>
+ #endif
+ 
++#include <vector>
++
+ #include "citra_cli/citra_cli.h"
+ #include "citra_cli/compression_cli.h"
+ 
+@@ -17,9 +19,14 @@ bool CheckForOptions(const char* optstring, int argc, char* argv[]) {
+     const int original_opterr = opterr;
+     opterr = 0; // Temporarily suppress invalid option messages
+ 
++    // GNU getopt permutes the array it scans (non-options move to the end);
++    // scan a copy so the frontend still sees the arguments in their order.
++    std::vector<char*> scan(argv, argv + argc);
++    scan.push_back(nullptr);
++
+     bool return_value = false;
+     int option;
+-    while ((option = getopt(argc, argv, optstring)) != -1) {
++    while ((option = getopt(argc, scan.data(), optstring)) != -1) {
+         for (size_t i = 0; optstring[i] != '\0'; ++i) {
+             if (optstring[i] == ':') {
+                 continue;
+diff --git a/src/citra_qt/CMakeLists.txt b/src/citra_qt/CMakeLists.txt
+index 8723f05..146747b 100644
+--- a/src/citra_qt/CMakeLists.txt
++++ b/src/citra_qt/CMakeLists.txt
+@@ -28,6 +28,8 @@ add_library(citra_qt STATIC EXCLUDE_FROM_ALL
+     camera/qt_multimedia_camera.cpp
+     camera/qt_multimedia_camera.h
+     citra_qt.cpp
++    harness.cpp
++    harness.h
+     citra_qt.h
+     configuration/config.cpp
+     configuration/config.h
+diff --git a/src/citra_qt/bootmanager.cpp b/src/citra_qt/bootmanager.cpp
+index 1443b17..74647c9 100644
+--- a/src/citra_qt/bootmanager.cpp
++++ b/src/citra_qt/bootmanager.cpp
+@@ -107,6 +107,7 @@ void EmuThread::run() {
+     // next execution step.
+     bool was_active = false;
+     while (!stop_run) {
++        RunJobs();
+         if (running) {
+             if (!was_active)
+                 emit DebugModeLeft();
+@@ -138,7 +139,9 @@ void EmuThread::run() {
+             was_active = false;
+         } else {
+             std::unique_lock lock{running_mutex};
+-            running_cv.wait(lock, [this] { return IsRunning() || exec_step || stop_run; });
++            running_cv.wait(lock, [this] {
++                return IsRunning() || exec_step || stop_run || !jobs.empty();
++            });
+         }
+     }
+ 
+diff --git a/src/citra_qt/bootmanager.h b/src/citra_qt/bootmanager.h
+index e3ab7ba..47c100f 100644
+--- a/src/citra_qt/bootmanager.h
++++ b/src/citra_qt/bootmanager.h
+@@ -7,7 +7,9 @@
+ #include <atomic>
+ #include <condition_variable>
+ #include <memory>
++#include <functional>
+ #include <mutex>
++#include <vector>
+ #include <QThread>
+ #include <QWidget>
+ #include "core/core.h"
+@@ -77,7 +79,31 @@ public:
+         SetRunning(false);
+     };
+ 
++    /**
++     * Runs a job on the emulation thread between run-loop iterations (also
++     * while paused), so it sees a consistent CPU and kernel state. Used by
++     * the scripting harness (harness.h).
++     * @note This function is thread-safe
++     */
++    void Post(std::function<void()> job) {
++        std::unique_lock lock{running_mutex};
++        jobs.push_back(std::move(job));
++        lock.unlock();
++        running_cv.notify_all();
++    }
++
+ private:
++    void RunJobs() {
++        std::unique_lock lock{running_mutex};
++        auto pending = std::move(jobs);
++        jobs.clear();
++        lock.unlock();
++        for (auto& job : pending) {
++            job();
++        }
++    }
++
++    std::vector<std::function<void()>> jobs;
+     bool exec_step = false;
+     bool running = false;
+     std::atomic<bool> stop_run{false};
+diff --git a/src/citra_qt/citra_qt.cpp b/src/citra_qt/citra_qt.cpp
+index 9728454..f2fb891 100644
+--- a/src/citra_qt/citra_qt.cpp
++++ b/src/citra_qt/citra_qt.cpp
+@@ -45,6 +45,8 @@
+ #include "citra_qt/camera/qt_multimedia_camera.h"
+ #include "citra_qt/camera/still_image_camera.h"
+ #include "citra_qt/citra_qt.h"
++#include "citra_qt/harness.h"
++#include "core/gdbstub/gdbstub.h"
+ #include "citra_qt/compatibility_list.h"
+ #include "citra_qt/configuration/config.h"
+ #include "citra_qt/configuration/configure_dialog.h"
+@@ -382,6 +384,40 @@ GMainWindow::GMainWindow(Core::System& system_)
+             exit(0);
+         }
+ 
++        // Hold the guest at its entry point until the harness resumes it
++        // (no c, x or o in the name: citra_cli's getopt pre-pass would take
++        // it as the compression tool's options)
++        if (args[i] == QStringLiteral("--harness-paused")) {
++            harness_hold = true;
++            continue;
++        }
++
++        // Scripting harness on a UNIX socket (citra_qt/harness.h)
++        if (args[i] == QStringLiteral("--harness")) {
++            if (i >= args.size() - 1) {
++                continue;
++            }
++            harness = std::make_unique<Harness>(
++                system, args[++i].toStdString(), [this] { return emu_thread.get(); },
++                [this] {
++                    // A harness quit closes without the "exit now?" prompt.
++                    QMetaObject::invokeMethod(
++                        this,
++                        [this] {
++                            harness_quit = true;
++                            close();
++                        },
++                        Qt::QueuedConnection);
++                },
++                [this](const std::string& path) {
++                    const QString target = QString::fromStdString(path);
++                    QMetaObject::invokeMethod(
++                        this, [this, target] { render_window->CaptureScreenshot(1, target); },
++                        Qt::QueuedConnection);
++                });
++            continue;
++        }
++
+         // Launch game in windowed mode
+         if (args[i] == QStringLiteral("--windowed") || args[i] == QStringLiteral("-w")) {
+             fullscreen_override = false;
+@@ -2615,12 +2651,32 @@ void GMainWindow::OnResumeGame(bool first_start) {
+ 
+     PreventOSSleep();
+ 
+-    emu_thread->SetRunning(true);
++    // --harness-paused: the guest stays paused at its entry point until the
++    // harness client sends "resume" (time to attach gdb and set breakpoints).
++    if (!(first_start && harness_hold)) {
++        emu_thread->SetRunning(true);
++    } else {
++        // Held: open the GDB stub's listener now (it otherwise starts inside
++        // the first RunLoop), so gdb can attach before the guest runs.
++        emu_thread->Post([this] { GDBStub::HandlePackets(system); });
++    }
+     system.frame_limiter.SetFrameAdvancing(false);
+     graphics_api_button->setEnabled(false);
+     qRegisterMetaType<Core::System::ResultStatus>("Core::System::ResultStatus");
+     qRegisterMetaType<std::string>("std::string");
+     connect(emu_thread.get(), &EmuThread::ErrorThrown, this, &GMainWindow::OnCoreError);
++    if (harness) {
++        connect(emu_thread.get(), &EmuThread::ErrorThrown, this,
++                [this](Core::System::ResultStatus result, const std::string& details) {
++                    std::string text;
++                    for (char c : details) {
++                        text += (c == '"' || c == '\\') ? ' ' : c;
++                    }
++                    harness->PushEvent("{\"event\":\"error\",\"result\":" +
++                                       std::to_string(static_cast<int>(result)) + ",\"details\":\"" +
++                                       text + "\"}");
++                });
++    }
+ 
+     UpdateMenuState();
+ 
+@@ -3945,7 +4001,7 @@ void GMainWindow::OnMenuAboutCitra() {
+ }
+ 
+ bool GMainWindow::ConfirmClose() {
+-    if (!emu_thread || !UISettings::values.confirm_before_closing) {
++    if (!emu_thread || harness_quit || !UISettings::values.confirm_before_closing) {
+         return true;
+     }
+ 
+diff --git a/src/citra_qt/citra_qt.h b/src/citra_qt/citra_qt.h
+index 53ac62d..41933bc 100644
+--- a/src/citra_qt/citra_qt.h
++++ b/src/citra_qt/citra_qt.h
+@@ -34,6 +34,7 @@ class AboutDialog;
+ class QtConfig;
+ class ClickableLabel;
+ class EmuThread;
++class Harness;
+ class GameList;
+ enum class GameListOpenTarget;
+ class GameListPlaceholder;
+@@ -381,6 +382,10 @@ private:
+     // Whether emulation is currently running in Citra.
+     bool emulation_running = false;
+     std::unique_ptr<EmuThread> emu_thread;
++    /// The scripting harness (--harness <socket>), if requested.
++    bool harness_quit = false;
++    std::unique_ptr<Harness> harness;
++    bool harness_hold = false;
+     // The title of the game currently running
+     QString game_title;
+     // The path to the game currently running
+diff --git a/src/core/arm/dynarmic/arm_dynarmic_cp15.cpp b/src/core/arm/dynarmic/arm_dynarmic_cp15.cpp
+index f7128f7..96ce0b5 100644
+--- a/src/core/arm/dynarmic/arm_dynarmic_cp15.cpp
++++ b/src/core/arm/dynarmic/arm_dynarmic_cp15.cpp
+@@ -1,3 +1,4 @@
++#include <cstdio>
+ // Copyright 2017 Citra Emulator Project
+ // Licensed under GPLv2 or any later version
+ // Refer to the misc/licenses/gplv2.txt file included.
+@@ -20,6 +21,16 @@ std::optional<Callback> DynarmicCP15::CompileInternalOperation(bool two, unsigne
+     return std::nullopt;
+ }
+ 
++// An unsupported coprocessor access raises dynarmic's coprocessor exception
++// (an assertion that ends the emulator); say which one first.
++static void ReportUnsupported(const char* what, bool two, unsigned opc1, DynarmicCP15::CoprocReg CRn, DynarmicCP15::CoprocReg CRm,
++                              unsigned opc2) {
++    std::fprintf(stderr, "cp15: unsupported %s two=%d opc1=%u CRn=c%u CRm=c%u opc2=%u\n", what,
++                 two ? 1 : 0, opc1, static_cast<unsigned>(CRn), static_cast<unsigned>(CRm), opc2);
++    LOG_CRITICAL(Core_ARM11, "cp15: unsupported {} two={} opc1={} CRn=c{} CRm=c{} opc2={}", what,
++                 two, opc1, static_cast<unsigned>(CRn), static_cast<unsigned>(CRm), opc2);
++}
++
+ CallbackOrAccessOneWord DynarmicCP15::CompileSendOneWord(bool two, unsigned opc1, CoprocReg CRn,
+                                                          CoprocReg CRm, unsigned opc2) {
+     // TODO(merry): Privileged CP15 registers
+@@ -46,6 +57,7 @@ CallbackOrAccessOneWord DynarmicCP15::CompileSendOneWord(bool two, unsigned opc1
+         return &state.cp15_thread_uprw;
+     }
+ 
++    ReportUnsupported("mcr", two, opc1, CRn, CRm, opc2);
+     return std::monostate{};
+ }
+ 
+@@ -64,10 +76,11 @@ CallbackOrAccessOneWord DynarmicCP15::CompileGetOneWord(bool two, unsigned opc1,
+         case 3:
+             return &state.cp15_thread_uro;
+         default:
+-            return std::monostate{};
++            break;
+         }
+     }
+ 
++    ReportUnsupported("mrc", two, opc1, CRn, CRm, opc2);
+     return std::monostate{};
+ }
+ 
+diff --git a/src/core/arm/exception_handler.cpp b/src/core/arm/exception_handler.cpp
+index dd7b4b5..addd75a 100644
+--- a/src/core/arm/exception_handler.cpp
++++ b/src/core/arm/exception_handler.cpp
+@@ -2,6 +2,7 @@
+ // Licensed under GPLv2 or any later version
+ // Refer to the misc/licenses/gplv2.txt file included.
+ 
++#include "common/scope_exit.h"
+ #include "core/arm/exception_handler.h"
+ 
+ #include <fmt/format.h>
+@@ -105,10 +106,32 @@ static const char* ExceptionTypeToString(ExceptionType type) {
+     }
+ }
+ 
++namespace {
++GuestStopHook g_guest_stop_hook;
++}
++
++void SetGuestStopHook(GuestStopHook hook) {
++    g_guest_stop_hook = std::move(hook);
++}
++
++void NotifyGuestStop(const std::string& reason, const std::string& report) {
++    if (g_guest_stop_hook) {
++        g_guest_stop_hook(reason, report);
++    }
++}
++
+ void LogException(System& system, ExceptionType type) {
+     if (g_ignore_exceptions_for_session) {
+         return;
+     }
++    // Dumping the stack can itself touch unmapped memory, which (with the
++    // exception handler enabled) lands here again: report the first one only.
++    static thread_local bool reporting = false;
++    if (reporting) {
++        return;
++    }
++    reporting = true;
++    SCOPE_EXIT({ reporting = false; });
+ 
+     auto& core = system.GetRunningCore();
+     auto& memory = system.Memory();
+@@ -138,6 +161,7 @@ void LogException(System& system, ExceptionType type) {
+     report += DumpStack(core, memory);
+ 
+     LOG_CRITICAL(Core, "\n{}", report);
++    NotifyGuestStop("exception", report);
+ 
+     system.SetStatus(System::ResultStatus::ErrorCoreExceptionRaised, report.c_str());
+ }
+diff --git a/src/core/arm/exception_handler.h b/src/core/arm/exception_handler.h
+index 0b7299d..a189795 100644
+--- a/src/core/arm/exception_handler.h
++++ b/src/core/arm/exception_handler.h
+@@ -4,6 +4,9 @@
+ 
+ #pragma once
+ 
++#include <functional>
++#include <string>
++
+ #include <string>
+ #include "common/common_types.h"
+ 
+@@ -31,6 +34,13 @@ enum class ExceptionType : u32 {
+  */
+ void LogException(System& system, ExceptionType type);
+ 
++/// Called on the emulation thread when the guest stops itself: an exception or
++/// break (reason "exception", with the report) or svcExitProcess ("exit").
++/// Used by the frontend's scripting harness; empty by default.
++using GuestStopHook = std::function<void(const std::string& reason, const std::string& report)>;
++void SetGuestStopHook(GuestStopHook hook);
++void NotifyGuestStop(const std::string& reason, const std::string& report);
++
+ /**
+  * Configures whether exceptions should be ignored for the current session.
+  *
+diff --git a/src/core/core.cpp b/src/core/core.cpp
+index dc1eb15..0c8a5c8 100644
+--- a/src/core/core.cpp
++++ b/src/core/core.cpp
+@@ -25,6 +25,7 @@
+ #include "core/arm/fastinterp/fastinterp.h"
+ #endif
+ #include "core/cheats/cheats.h"
++#include "core/arm/exception_handler.h"
+ #include "core/core.h"
+ #include "core/core_timing.h"
+ #include "core/dumping/backend.h"
+@@ -110,6 +111,13 @@ static void ExecuteCore(ARM_Interface& core, Kernel::Thread* thread, bool tight_
+     }
+ }
+ 
++void System::RequestShutdown() {
++    if (std::this_thread::get_id() == GetCoreLoopThreadId()) {
++        NotifyGuestStop("shutdown_request", "");
++    }
++    SendSignal(Signal::Shutdown);
++}
++
+ System::ResultStatus System::RunLoop(bool tight_loop) {
+     status = ResultStatus::Success;
+ 
+diff --git a/src/core/core.h b/src/core/core.h
+index 5920595..5915236 100644
+--- a/src/core/core.h
++++ b/src/core/core.h
+@@ -171,9 +171,9 @@ public:
+     }
+ 
+     /// Request shutdown of the system
+-    void RequestShutdown() {
+-        SendSignal(Signal::Shutdown);
+-    }
++    /// Requests a shutdown. Made from the emulation thread (a guest service
++    /// call), it is reported to the guest-stop hook first (exception_handler.h).
++    void RequestShutdown();
+ 
+     /**
+      * Load an executable application.
+diff --git a/src/core/hle/kernel/svc.cpp b/src/core/hle/kernel/svc.cpp
+index 87b2c5e..9e8df5d 100644
+--- a/src/core/hle/kernel/svc.cpp
++++ b/src/core/hle/kernel/svc.cpp
+@@ -580,6 +580,7 @@ Result SVC::ControlMemory(u32* out_addr, u32 addr0, u32 addr1, u32 size, u32 ope
+ }
+ 
+ void SVC::ExitProcess() {
++    Core::NotifyGuestStop("exit", "");
+     kernel.TerminateProcess(kernel.GetCurrentProcess());
+ }
+ 
+diff --git a/src/video_core/renderer_software/renderer_software.cpp b/src/video_core/renderer_software/renderer_software.cpp
+index 14aabca..e2fd46c 100644
+--- a/src/video_core/renderer_software/renderer_software.cpp
++++ b/src/video_core/renderer_software/renderer_software.cpp
+@@ -2,6 +2,7 @@
+ // Licensed under GPLv2 or any later version
+ // Refer to the misc/licenses/gplv2.txt file included.
+ 
++#include <cstring>
+ #include "common/color.h"
+ #include "core/core.h"
+ #include "video_core/gpu.h"
+@@ -20,6 +21,7 @@ RendererSoftware::~RendererSoftware() = default;
+ void RendererSoftware::SwapBuffers() {
+     system.perf_stats->StartSwap();
+     PrepareRenderTarget();
++    RenderScreenshot();
+     system.perf_stats->EndSwap();
+     EndFrame();
+ }
+@@ -34,6 +36,54 @@ void RendererSoftware::PrepareRenderTarget() {
+     }
+ }
+ 
++void RendererSoftware::RenderScreenshot() {
++    if (!settings.screenshot_requested.exchange(false)) {
++        return;
++    }
++    // The OpenGL renderer's result: the layout drawn bottom-up as BGRA (glReadPixels
++    // with GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV), screens scaled nearest-neighbour.
++    const Layout::FramebufferLayout layout{settings.screenshot_framebuffer_layout};
++    u8* out = static_cast<u8*>(settings.screenshot_bits);
++    std::memset(out, 0, std::size_t(layout.width) * layout.height * 4);
++    const auto blit = [&](const ScreenInfo& info, const Common::Rectangle<u32>& rect) {
++        // screen_infos hold the screen as LoadFBToScreenInfo leaves it: `width`
++        // rows of `height` pixels, i.e. an image `height` wide and `width` tall.
++        const u32 image_w = info.height, image_h = info.width;
++        const u32 rect_w = rect.GetWidth(), rect_h = rect.GetHeight();
++        if (info.pixels.empty() || !image_w || !image_h || !rect_w || !rect_h) {
++            return;
++        }
++        for (u32 ry = 0; ry < rect_h; ++ry) {
++            const u32 oy = rect.top + ry;
++            if (oy >= layout.height) {
++                break;
++            }
++            const u32 sy = ry * image_h / rect_h;
++            u8* row = out + std::size_t(layout.height - 1 - oy) * layout.width * 4;
++            for (u32 rx = 0; rx < rect_w; ++rx) {
++                const u32 ox = rect.left + rx;
++                if (ox >= layout.width) {
++                    break;
++                }
++                const u32 sx = rx * image_w / rect_w;
++                const u8* rgba = info.pixels.data() + (std::size_t(sy) * image_w + sx) * 4;
++                u8* bgra = row + std::size_t(ox) * 4;
++                bgra[0] = rgba[2];
++                bgra[1] = rgba[1];
++                bgra[2] = rgba[0];
++                bgra[3] = 255;
++            }
++        }
++    };
++    if (layout.top_screen_enabled) {
++        blit(screen_infos[0], layout.top_screen);
++    }
++    if (layout.bottom_screen_enabled) {
++        blit(screen_infos[2], layout.bottom_screen);
++    }
++    settings.screenshot_complete_callback(true);
++}
++
+ void RendererSoftware::LoadFBToScreenInfo(int i, const Pica::ColorFill& color_fill) {
+     const u32 fb_id = i == 2 ? 1 : 0;
+     const auto& framebuffer = pica.regs.framebuffer_config[fb_id];
+diff --git a/src/video_core/renderer_software/renderer_software.h b/src/video_core/renderer_software/renderer_software.h
+index 5e2bf19..4af56fb 100644
+--- a/src/video_core/renderer_software/renderer_software.h
++++ b/src/video_core/renderer_software/renderer_software.h
+@@ -39,6 +39,7 @@ public:
+ private:
+     void PrepareRenderTarget();
+     void LoadFBToScreenInfo(int i, const Pica::ColorFill& color_fill);
++    void RenderScreenshot();
+ 
+ private:
+     Memory::MemorySystem& memory;
+diff --git a/src/video_core/renderer_software/sw_framebuffer.cpp b/src/video_core/renderer_software/sw_framebuffer.cpp
+index 8309ab1..32a047f 100644
+--- a/src/video_core/renderer_software/sw_framebuffer.cpp
++++ b/src/video_core/renderer_software/sw_framebuffer.cpp
+@@ -60,6 +60,11 @@ void Framebuffer::DrawPixel(u32 x, u32 y, const Common::Vec4<u8>& color) const {
+     // Similarly to textures, the render framebuffer is laid out from bottom to top, too.
+     // NOTE: The framebuffer height register contains the actual FB height minus one.
+     y = framebuffer.height - y;
++    // `height` holds the height minus one, so rows 0..height are valid; a row the
++    // rasterizer reaches past them wraps to a huge u32. Columns stop at `width`.
++    if (y > framebuffer.height || x >= framebuffer.width) {
++        return;
++    }
+ 
+     const u32 coarse_y = y & ~7;
+     const u32 bytes_per_pixel =
+@@ -94,6 +99,11 @@ void Framebuffer::DrawPixel(u32 x, u32 y, const Common::Vec4<u8>& color) const {
+ const Common::Vec4<u8> Framebuffer::GetPixel(u32 x, u32 y) const {
+     const auto& framebuffer = regs.framebuffer;
+     y = framebuffer.height - y;
++    // `height` holds the height minus one, so rows 0..height are valid; a row the
++    // rasterizer reaches past them wraps to a huge u32. Columns stop at `width`.
++    if (y > framebuffer.height || x >= framebuffer.width) {
++        return {};
++    }
+ 
+     const u32 coarse_y = y & ~7;
+     const u32 bytes_per_pixel =
+@@ -125,6 +135,11 @@ const Common::Vec4<u8> Framebuffer::GetPixel(u32 x, u32 y) const {
+ u32 Framebuffer::GetDepth(u32 x, u32 y) const {
+     const auto& framebuffer = regs.framebuffer;
+     y = framebuffer.height - y;
++    // `height` holds the height minus one, so rows 0..height are valid; a row the
++    // rasterizer reaches past them wraps to a huge u32. Columns stop at `width`.
++    if (y > framebuffer.height || x >= framebuffer.width) {
++        return 0;
++    }
+ 
+     const u32 coarse_y = y & ~7;
+     const u32 bytes_per_pixel = FramebufferRegs::BytesPerDepthPixel(framebuffer.depth_format);
+@@ -151,6 +166,11 @@ u32 Framebuffer::GetDepth(u32 x, u32 y) const {
+ u8 Framebuffer::GetStencil(u32 x, u32 y) const {
+     const auto& framebuffer = regs.framebuffer;
+     y = framebuffer.height - y;
++    // `height` holds the height minus one, so rows 0..height are valid; a row the
++    // rasterizer reaches past them wraps to a huge u32. Columns stop at `width`.
++    if (y > framebuffer.height || x >= framebuffer.width) {
++        return 0;
++    }
+ 
+     const u32 coarse_y = y & ~7;
+     const u32 bytes_per_pixel = Pica::FramebufferRegs::BytesPerDepthPixel(framebuffer.depth_format);
+@@ -174,6 +194,11 @@ u8 Framebuffer::GetStencil(u32 x, u32 y) const {
+ void Framebuffer::SetDepth(u32 x, u32 y, u32 value) const {
+     const auto& framebuffer = regs.framebuffer;
+     y = framebuffer.height - y;
++    // `height` holds the height minus one, so rows 0..height are valid; a row the
++    // rasterizer reaches past them wraps to a huge u32. Columns stop at `width`.
++    if (y > framebuffer.height || x >= framebuffer.width) {
++        return;
++    }
+ 
+     const u32 coarse_y = y & ~7;
+     const u32 bytes_per_pixel = FramebufferRegs::BytesPerDepthPixel(framebuffer.depth_format);
+@@ -203,6 +228,11 @@ void Framebuffer::SetDepth(u32 x, u32 y, u32 value) const {
+ void Framebuffer::SetStencil(u32 x, u32 y, u8 value) const {
+     const auto& framebuffer = regs.framebuffer;
+     y = framebuffer.height - y;
++    // `height` holds the height minus one, so rows 0..height are valid; a row the
++    // rasterizer reaches past them wraps to a huge u32. Columns stop at `width`.
++    if (y > framebuffer.height || x >= framebuffer.width) {
++        return;
++    }
+ 
+     const u32 coarse_y = y & ~7;
+     const u32 bytes_per_pixel = Pica::FramebufferRegs::BytesPerDepthPixel(framebuffer.depth_format);
+@@ -233,6 +263,11 @@ void Framebuffer::DrawShadowMapPixel(u32 x, u32 y, u32 depth, u8 stencil) const
+     const PAddr addr = framebuffer.GetColorBufferPhysicalAddress();
+ 
+     y = framebuffer.height - y;
++    // `height` holds the height minus one, so rows 0..height are valid; a row the
++    // rasterizer reaches past them wraps to a huge u32. Columns stop at `width`.
++    if (y > framebuffer.height || x >= framebuffer.width) {
++        return;
++    }
+ 
+     const u32 coarse_y = y & ~7;
+     u32 bytes_per_pixel = 4;
+diff --git a/src/citra_qt/harness.cpp b/src/citra_qt/harness.cpp
+new file mode 100644
+index 0000000..0a54d5e
+--- /dev/null
++++ b/src/citra_qt/harness.cpp
+@@ -0,0 +1,452 @@
++// Copyright Citra Emulator Project / Azahar Emulator Project
++// Licensed under GPLv2 or any later version
++// Refer to the license.txt file included.
++
++#include "citra_qt/harness.h"
++
++#include <algorithm>
++#include <cstdio>
++#include <vector>
++#include <future>
++#include <sstream>
++#include <sys/socket.h>
++#include <sys/un.h>
++#include <unistd.h>
++
++#include "citra_qt/bootmanager.h"
++#include "core/arm/arm_interface.h"
++#include "core/arm/exception_handler.h"
++#include "core/core.h"
++#include "core/core_timing.h"
++#include "core/hle/kernel/kernel.h"
++#include "core/hle/kernel/memory.h"
++#include "core/hle/kernel/process.h"
++#include "core/hle/kernel/thread.h"
++#include "core/memory.h"
++#include "common/logging/backend.h"
++#include "common/logging/filter.h"
++#include "common/settings.h"
++
++namespace {
++
++std::string Hex(u32 value) {
++    char buffer[16];
++    std::snprintf(buffer, sizeof(buffer), "\"%08x\"", value);
++    return buffer;
++}
++
++std::string Escape(const std::string& text) {
++    std::string out;
++    for (char c : text) {
++        if (c == '"' || c == '\\') {
++            out += '\\';
++        }
++        out += (c >= 0x20) ? c : ' ';
++    }
++    return out;
++}
++
++const char* StatusName(Kernel::ThreadStatus status) {
++    switch (status) {
++    case Kernel::ThreadStatus::Running:
++        return "running";
++    case Kernel::ThreadStatus::Ready:
++        return "ready";
++    case Kernel::ThreadStatus::WaitArb:
++        return "wait_arb";
++    case Kernel::ThreadStatus::WaitSleep:
++        return "wait_sleep";
++    case Kernel::ThreadStatus::WaitIPC:
++        return "wait_ipc";
++    case Kernel::ThreadStatus::WaitSynchAny:
++        return "wait_synch_any";
++    case Kernel::ThreadStatus::WaitSynchAll:
++        return "wait_synch_all";
++    case Kernel::ThreadStatus::WaitHleEvent:
++        return "wait_hle_event";
++    case Kernel::ThreadStatus::Dormant:
++        return "dormant";
++    case Kernel::ThreadStatus::Dead:
++        return "dead";
++    }
++    return "unknown";
++}
++
++} // namespace
++
++Harness::Harness(Core::System& system_, std::string socket_path_, EmuThreadGetter emu_thread_,
++                 QuitCallback quit_, ScreenshotCallback screenshot_)
++    : system(system_), socket_path(std::move(socket_path_)), emu_thread(std::move(emu_thread_)),
++      quit(std::move(quit_)), screenshot(std::move(screenshot_)) {
++    listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
++    sockaddr_un address{};
++    address.sun_family = AF_UNIX;
++    std::snprintf(address.sun_path, sizeof(address.sun_path), "%s", socket_path.c_str());
++    unlink(socket_path.c_str());
++    if (listen_fd < 0 || bind(listen_fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
++        listen(listen_fd, 1) != 0) {
++        std::fprintf(stderr, "harness: cannot listen on %s\n", socket_path.c_str());
++        return;
++    }
++    std::fprintf(stderr, "harness: listening on %s\n", socket_path.c_str());
++    // A guest that stops itself (abort, break, fault, exit) is reported with
++    // every thread from the emulation thread, before the process is torn down.
++    Core::SetGuestStopHook([this](const std::string& reason, const std::string& report) {
++        {
++            std::scoped_lock lock{dump_mutex};
++            if (!stop_dump_path.empty()) {
++                DumpMemory(stop_dump_address, stop_dump_length, stop_dump_path);
++            }
++        }
++        PushEvent("{\"event\":\"guest_stop\",\"reason\":\"" + reason + "\",\"report\":\"" +
++                  Escape(report) + "\",\"dump\":" + DumpThreads(2048) + "}");
++    });
++    server = std::thread([this] { Serve(); });
++}
++
++Harness::~Harness() {
++    Core::SetGuestStopHook({});
++    stopping = true;
++    if (listen_fd >= 0) {
++        shutdown(listen_fd, SHUT_RDWR);
++        close(listen_fd);
++    }
++    {
++        std::scoped_lock lock{send_mutex};
++        for (const int fd : client_fds) {
++            shutdown(fd, SHUT_RDWR);
++        }
++    }
++    if (server.joinable()) {
++        server.join();
++    }
++    for (auto& thread : client_threads) {
++        thread.join();
++    }
++    unlink(socket_path.c_str());
++}
++
++// Replies go to the client that asked (one line each); events go to every
++// connected client.
++static void WriteLine(int fd, const std::string& line) {
++    const std::string out = line + "\n";
++    std::size_t sent = 0;
++    while (sent < out.size()) {
++        const ssize_t n = write(fd, out.data() + sent, out.size() - sent);
++        if (n <= 0) {
++            return;
++        }
++        sent += static_cast<std::size_t>(n);
++    }
++}
++
++void Harness::Send(const std::string& line) {
++    std::scoped_lock lock{send_mutex};
++    for (const int fd : client_fds) {
++        WriteLine(fd, line);
++    }
++}
++
++void Harness::PushEvent(const std::string& json) {
++    Send(json);
++}
++
++void Harness::Serve() {
++    while (!stopping) {
++        const int fd = accept(listen_fd, nullptr, nullptr);
++        if (fd < 0) {
++            return;
++        }
++        {
++            std::scoped_lock lock{send_mutex};
++            client_fds.push_back(fd);
++        }
++        client_threads.emplace_back([this, fd] { ServeClient(fd); });
++    }
++}
++
++void Harness::ServeClient(int fd) {
++    std::string pending;
++    char buffer[4096];
++    for (;;) {
++        const ssize_t n = read(fd, buffer, sizeof(buffer));
++        if (n <= 0) {
++            break;
++        }
++        pending.append(buffer, static_cast<std::size_t>(n));
++        std::size_t newline;
++        while ((newline = pending.find('\n')) != std::string::npos) {
++            const std::string line = pending.substr(0, newline);
++            pending.erase(0, newline + 1);
++            const std::string reply = Handle(line);
++            std::scoped_lock lock{send_mutex};
++            WriteLine(fd, reply);
++        }
++    }
++    std::scoped_lock lock{send_mutex};
++    std::erase(client_fds, fd);
++    close(fd);
++}
++
++std::string Harness::RunOnEmuThread(std::function<std::string()> job) {
++    EmuThread* thread = emu_thread();
++    if (!thread) {
++        return "{\"ok\":false,\"error\":\"no emulation running\"}";
++    }
++    auto promise = std::make_shared<std::promise<std::string>>();
++    auto future = promise->get_future();
++    thread->Post([promise, job = std::move(job)] { promise->set_value(job()); });
++    return future.get();
++}
++
++std::string Harness::Handle(const std::string& line) {
++    std::istringstream in(line);
++    std::string command;
++    in >> command;
++    if (command == "ping") {
++        return "{\"ok\":true}";
++    }
++    if (command == "status") {
++        EmuThread* thread = emu_thread();
++        return std::string("{\"ok\":true,\"booted\":") + (thread ? "true" : "false") +
++               ",\"running\":" + (thread && thread->IsRunning() ? "true" : "false") + "}";
++    }
++    if (command == "threads") {
++        int words = 64;
++        in >> words;
++        return RunOnEmuThread([this, words] { return DumpThreads(words); });
++    }
++    if (command == "profile") {
++        std::string action, argument;
++        in >> action >> argument;
++        if (action == "start") {
++            const double us = argument.empty() ? 1000.0 : std::stod(argument);
++            return RunOnEmuThread([this, us] {
++                auto& timing = system.CoreTiming();
++                if (!profile_event) {
++                    profile_event = timing.RegisterEvent(
++                        "HarnessProfile",
++                        [this](std::uintptr_t, int cycles_late) { ProfileSample(cycles_late); });
++                }
++                if (profile_interval) {
++                    timing.RemoveEvent(static_cast<Core::TimingEventType*>(profile_event));
++                }
++                profile_samples.clear();
++                profile_interval = std::max<s64>(
++                    1, static_cast<s64>(us * BASE_CLOCK_RATE_ARM11 / 1'000'000.0));
++                timing.ScheduleEvent(profile_interval,
++                                     static_cast<Core::TimingEventType*>(profile_event), 0, 0);
++                return std::string("{\"ok\":true}");
++            });
++        }
++        if (action == "stop") {
++            const std::string path = argument;
++            return RunOnEmuThread([this, path] {
++                if (profile_interval && profile_event) {
++                    system.CoreTiming().RemoveEvent(
++                        static_cast<Core::TimingEventType*>(profile_event));
++                }
++                profile_interval = 0;
++                FILE* file = std::fopen(path.c_str(), "wb");
++                if (!file) {
++                    return std::string("{\"ok\":false,\"error\":\"cannot open the output\"}");
++                }
++                static_assert(sizeof(ProfileSampleRecord) == 67 * 4);
++                std::fwrite(profile_samples.data(), sizeof(ProfileSampleRecord),
++                            profile_samples.size(), file);
++                std::fclose(file);
++                std::ostringstream out;
++                out << "{\"ok\":true,\"samples\":" << profile_samples.size() << "}";
++                return out.str();
++            });
++        }
++        return "{\"ok\":false,\"error\":\"usage: profile start <us> | profile stop <path>\"}";
++    }
++    if (command == "read") {
++        std::string address_text;
++        unsigned length = 0;
++        in >> address_text >> length;
++        const unsigned address = static_cast<unsigned>(std::stoul(address_text, nullptr, 16));
++        return RunOnEmuThread([this, address, length] { return ReadMemory(address, length); });
++    }
++    if (command == "memory") {
++        return RunOnEmuThread([this] {
++            auto& kernel = system.Kernel();
++            const auto region = kernel.GetMemoryRegion(Kernel::MemoryRegion::APPLICATION);
++            const auto process = kernel.GetCurrentProcess();
++            std::ostringstream out;
++            out << "{\"ok\":true,\"application_size\":" << region->size
++                << ",\"application_used\":" << region->used
++                << ",\"process_used\":" << (process ? process->memory_used : 0) << "}";
++            return out.str();
++        });
++    }
++    if (command == "pause" || command == "resume") {
++        EmuThread* thread = emu_thread();
++        if (!thread) {
++            return "{\"ok\":false,\"error\":\"no emulation running\"}";
++        }
++        thread->SetRunning(command == "resume");
++        return "{\"ok\":true}";
++    }
++    if (command == "dump" || command == "dump_on_stop") {
++        std::string address_text, path;
++        unsigned length = 0;
++        in >> address_text >> length >> path;
++        const unsigned address = static_cast<unsigned>(std::stoul(address_text, nullptr, 16));
++        if (command == "dump_on_stop") {
++            std::scoped_lock lock{dump_mutex};
++            stop_dump_address = address;
++            stop_dump_length = length;
++            stop_dump_path = path;
++            return "{\"ok\":true}";
++        }
++        return RunOnEmuThread(
++            [this, address, length, path] { return DumpMemory(address, length, path); });
++    }
++    if (command == "speed") {
++        // "speed 500" runs at 500 %, "speed 0" unlimited: a temporary limit
++        // for this session; the saved configuration is untouched.
++        double percent = 100;
++        in >> percent;
++        Settings::is_temporary_frame_limit = true;
++        Settings::temporary_frame_limit = percent;
++        return "{\"ok\":true}";
++    }
++    if (command == "log_filter") {
++        // e.g. "log_filter *:Info Service.FS:Debug": change what the emulator
++        // logs while the guest runs.
++        std::string filter;
++        std::getline(in, filter);
++        Common::Log::Filter parsed;
++        parsed.ParseFilterString(filter);
++        Common::Log::SetGlobalFilter(parsed);
++        return "{\"ok\":true}";
++    }
++    if (command == "screenshot") {
++        std::string path;
++        in >> path;
++        if (path.empty() || !emu_thread()) {
++            return "{\"ok\":false,\"error\":\"usage: screenshot <path>, with emulation running\"}";
++        }
++        screenshot(path);
++        return "{\"ok\":true,\"pending\":true}";
++    }
++    if (command == "quit") {
++        quit();
++        return "{\"ok\":true}";
++    }
++    return "{\"ok\":false,\"error\":\"unknown request\"}";
++}
++
++void Harness::ProfileSample(int cycles_late) {
++    if (!profile_interval) {
++        return;
++    }
++    ProfileSampleRecord record;
++    auto& kernel = system.Kernel();
++    const Kernel::Thread* current = kernel.GetThreadManager(0).GetCurrentThread();
++    const auto process = current ? current->owner_process.lock() : nullptr;
++    if (current && process && current->status == Kernel::ThreadStatus::Running) {
++        Core::ARM_Interface::ThreadContext context = current->context;
++        system.GetCore(0).SaveContext(context);
++        record.thread = current->GetThreadId();
++        record.pc = context.cpu_registers[15];
++        record.lr = context.cpu_registers[14];
++        const u32 sp = context.GetStackPointer();
++        for (u32 i = 0; i < 64; ++i) {
++            const u32 address = sp + i * 4;
++            if (!system.Memory().IsValidVirtualAddress(*process, address)) {
++                break;
++            }
++            record.stack[i] = system.Memory().Read32(*process, address);
++        }
++    }
++    if (profile_samples.size() < 2'000'000) {
++        profile_samples.push_back(record);
++    }
++    system.CoreTiming().ScheduleEvent(std::max<s64>(1, profile_interval - cycles_late),
++                                      static_cast<Core::TimingEventType*>(profile_event), 0, 0);
++}
++
++std::string Harness::DumpThreads(int stack_words) {
++    std::ostringstream out;
++    out << "{\"ok\":true,\"threads\":[";
++    bool first = true;
++    auto& kernel = system.Kernel();
++    for (u32 core = 0; core < system.GetNumCores(); ++core) {
++        auto& manager = kernel.GetThreadManager(core);
++        const Kernel::Thread* current = manager.GetCurrentThread();
++        for (const auto& thread : manager.GetThreadList()) {
++            Core::ARM_Interface::ThreadContext context = thread->context;
++            if (thread.get() == current) {
++                system.GetCore(core).SaveContext(context);
++            }
++            const auto process = thread->owner_process.lock();
++            out << (first ? "" : ",") << "{\"id\":" << thread->GetThreadId() << ",\"core\":" << core
++                << ",\"name\":\"" << Escape(thread->GetName()) << "\",\"process\":\""
++                << (process ? Escape(process->codeset->name) : std::string()) << "\",\"status\":\""
++                << StatusName(thread->status) << "\",\"current\":"
++                << (thread.get() == current ? "true" : "false") << ",\"regs\":[";
++            for (int i = 0; i < 16; ++i) {
++                out << (i ? "," : "") << Hex(context.cpu_registers[i]);
++            }
++            out << "],\"cpsr\":" << Hex(context.cpsr) << ",\"stack\":[";
++            const u32 sp = context.GetStackPointer();
++            for (int i = 0; process && i < stack_words; ++i) {
++                const u32 address = sp + static_cast<u32>(i) * 4;
++                if (!system.Memory().IsValidVirtualAddress(*process, address)) {
++                    break;
++                }
++                out << (i ? "," : "") << Hex(system.Memory().Read32(*process, address));
++            }
++            out << "]}";
++            first = false;
++        }
++    }
++    out << "]}";
++    return out.str();
++}
++
++std::string Harness::DumpMemory(unsigned address, unsigned length, const std::string& path) {
++    const auto process = system.Kernel().GetCurrentProcess();
++    FILE* file = std::fopen(path.c_str(), "wb");
++    if (!process || !file) {
++        if (file) {
++            std::fclose(file);
++        }
++        return "{\"ok\":false,\"error\":\"no process or cannot open the output\"}";
++    }
++    // Unmapped pages are written as zeros, so offsets in the file stay addresses.
++    std::vector<u8> page(4096);
++    for (unsigned offset = 0; offset < length; offset += 4096) {
++        const unsigned size = std::min<unsigned>(4096, length - offset);
++        if (system.Memory().IsValidVirtualAddress(*process, address + offset)) {
++            system.Memory().ReadBlock(*process, address + offset, page.data(), size);
++        } else {
++            std::fill(page.begin(), page.end(), 0);
++        }
++        std::fwrite(page.data(), 1, size, file);
++    }
++    std::fclose(file);
++    return "{\"ok\":true}";
++}
++
++std::string Harness::ReadMemory(unsigned address, unsigned length) {
++    const auto process = system.Kernel().GetCurrentProcess();
++    if (!process || length > 65536) {
++        return "{\"ok\":false,\"error\":\"no process or length too large\"}";
++    }
++    std::ostringstream out;
++    out << "{\"ok\":true,\"address\":" << Hex(address) << ",\"bytes\":\"";
++    for (unsigned i = 0; i < length; ++i) {
++        if (!system.Memory().IsValidVirtualAddress(*process, address + i)) {
++            break;
++        }
++        char byte[3];
++        std::snprintf(byte, sizeof(byte), "%02x", system.Memory().Read8(address + i));
++        out << byte;
++    }
++    out << "\"}";
++    return out.str();
++}
+diff --git a/src/citra_qt/harness.h b/src/citra_qt/harness.h
+new file mode 100644
+index 0000000..090c38f
+--- /dev/null
++++ b/src/citra_qt/harness.h
+@@ -0,0 +1,95 @@
++// Copyright Citra Emulator Project / Azahar Emulator Project
++// Licensed under GPLv2 or any later version
++// Refer to the license.txt file included.
++
++#pragma once
++
++#include <atomic>
++#include <functional>
++#include <mutex>
++#include <string>
++#include <thread>
++#include <vector>
++
++#include "common/common_types.h"
++
++namespace Core {
++class System;
++}
++class EmuThread;
++
++/**
++ * A scripting harness for debugging guest applications: a line protocol on a
++ * UNIX socket (--harness <path>). Each request is one line, each reply one
++ * JSON line; events (emulation errors, shutdown) are pushed as JSON lines
++ * with an "event" key to the connected client.
++ *
++ * Requests:
++ *   ping                  -> {"ok":true}
++ *   status                -> running/paused, booted
++ *   threads [words]       -> every guest thread: id, name, process, core,
++ *                            status, r0-r15, cpsr, and `words` stack words
++ *                            (default 64); read on the emulation thread
++ *   read <hexaddr> <len>  -> bytes of the current process's memory (hex)
++ *   screenshot <path>     -> the next frame (both screens) as a PNG
++ *   pause | resume        -> stop or continue the emulation thread
++ *   quit                  -> close the emulator
++ *   profile start <us>    -> sample core 0 every <us> microseconds of
++ *                            emulated time: the running thread's id, pc, lr
++ *                            and 64 stack words, or idle (a guest-time
++ *                            profile: no request per sample, no host bias)
++ *   profile stop <path>   -> stop and write the samples: records of 67
++ *                            little-endian u32 (thread, pc, lr, 64 stack
++ *                            words); thread 0 marks core 0 idle
++ */
++class Harness {
++public:
++    using EmuThreadGetter = std::function<EmuThread*()>;
++    using QuitCallback = std::function<void()>;
++    using ScreenshotCallback = std::function<void(const std::string& path)>;
++
++    Harness(Core::System& system, std::string socket_path, EmuThreadGetter emu_thread,
++            QuitCallback quit, ScreenshotCallback screenshot);
++    ~Harness();
++
++    /// Pushes an event line to the connected client (thread-safe).
++    void PushEvent(const std::string& json);
++
++private:
++    void Serve();
++    void ServeClient(int fd);
++    std::string Handle(const std::string& line);
++    std::string RunOnEmuThread(std::function<std::string()> job);
++    std::string DumpThreads(int stack_words);
++    void ProfileSample(int cycles_late);
++    // The guest-time profiler ("profile"): touched only on the emulation thread.
++    struct ProfileSampleRecord {
++        u32 thread = 0; // 0: core 0 idle
++        u32 pc = 0;
++        u32 lr = 0;
++        u32 stack[64] = {};
++    };
++    std::vector<ProfileSampleRecord> profile_samples;
++    s64 profile_interval = 0; // in ARM11 cycles; 0 = stopped
++    void* profile_event = nullptr;
++    std::string ReadMemory(unsigned address, unsigned length);
++    std::string DumpMemory(unsigned address, unsigned length, const std::string& path);
++    // Set by "dump_on_stop": the region the guest-stop hook writes to a file.
++    std::mutex dump_mutex;
++    unsigned stop_dump_address = 0;
++    unsigned stop_dump_length = 0;
++    std::string stop_dump_path;
++    void Send(const std::string& line);
++
++    Core::System& system;
++    std::string socket_path;
++    EmuThreadGetter emu_thread;
++    QuitCallback quit;
++    ScreenshotCallback screenshot;
++    int listen_fd = -1;
++    std::vector<int> client_fds;
++    std::vector<std::thread> client_threads;
++    std::mutex send_mutex;
++    std::atomic<bool> stopping{false};
++    std::thread server;
++};

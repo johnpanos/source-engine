@@ -384,7 +384,7 @@ def configure_apple(conf):
 	conf.msg('Selected %s SDK' % APPLE_PLATFORM_NAMES[platform], '%s (%s)' % (sdk, conf.env.APPLE_SDK_VERSION))
 	conf.msg('... target', triple)
 
-N3DS_ARCH = ['-march=armv6k', '-mtune=mpcore', '-mfloat-abi=hard', '-mtp=soft', '-mword-relocations']
+N3DS_ARCH = ['-march=armv6k', '-mtune=mpcore', '-mfloat-abi=hard', '-mfpu=vfp', '-mtp=soft', '-mword-relocations']
 
 def configure_n3ds(conf):
 	"""--n3ds: cross-compile for the Nintendo 3DS with devkitARM (run inside

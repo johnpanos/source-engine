@@ -377,3 +377,42 @@ See the [progress section](#progress).
   - Even when it completes, an Azahar timedemo approximates CPU cost only:
     the software renderer likely charges no emulated time for GPU work, so
     it is no stand-in for New 3DS hardware (P5).
+- 2026-10-07: performance tooling, ARMv6K correctness and worker cores (user
+  goals: "optimize Portal 2 on the 3DS emulator to a solid 20-30 FPS"; "find
+  3DS bottlenecks almost instantly").
+  - Guest-time profiler: the Azahar harness gains `profile start <us>` /
+    `profile stop <path>` (a core-0 timing event that records the running
+    thread, pc, lr and 64 stack words every N emulated microseconds, or
+    idle). `tools/n3ds/guest_profile.py` reports idle share, threads, self
+    time with each library function's nearest engine caller, and inclusive
+    time counting only stack words that are return addresses (the previous
+    instruction is BL/BLX). `n3ds.py profile` runs the intro4 demo and
+    profiles it in about 60 s; `n3ds.py gprof` re-reports in about 7 s.
+    The harness patch is tracked as `tools/n3ds/azahar-harness.patch`
+    (`build_azahar.sh` applies it to a fresh checkout).
+  - `n3ds.py --private`: runs inside a private headless mutter on its own
+    D-Bus session, where the emulator renders with OpenGL instead of the
+    software renderer. A 600-frame demo run went from about 45 min to
+    118 s; nothing opens on the user's desktop.
+  - The 3DS build was compiled for ARMv7-A with NEON and VFPv4 (a generic
+    `-march=armv7-a -mfpu=neon-vfpv4` line in `wscript` overrode
+    `N3DS_ARCH`), so the ELF held instructions the ARM11 cannot execute.
+    Now ARMv6K/VFPv2 (`-mfpu=vfp`); `common/sse2scalar.h` implements the 81
+    SSE intrinsics the engine uses for ARM without NEON (ssemath.h,
+    vector4d.h, mathlib/sse.cpp). Only devkitPro's libjpeg-turbo NEON
+    routines remain (runtime-dispatched, unused without NEON).
+  - Worker threads: libctru's `pthread_create` makes every thread on core 0
+    at priority 0x3F, below the main thread, so workers ran only when it
+    blocked. `n3ds_pthread_create` (tier0's three thread-creation sites)
+    places them on core 2, then core 1, at the creator's priority; the
+    exheader allows cores 0-2 (`AffinityMask: 7`, `CanAccessCore2`).
+    Verified in the harness's thread list; frame time unchanged, so the
+    main thread is the bottleneck.
+  - The bottom-screen text console is off by default (`-n3ds_console`
+    restores it); `console.log` keeps every line.
+  - Measurements (intro4 demo, emulated clock): 2-4 fps (270-620 ms per
+    frame); core 0 idle 23 %, the main thread 76.5 %. Hottest by guest time:
+    `memcpy` 12 % (a quarter from `std::to_chars`), `EmitToCore` 19.5 %
+    inclusive, printf formatting 13.6 %, `WorldPass::State::Mapped` 8.2 %,
+    the PICA texture-record map 8.1 %, `Replayer::BeginRendering` 5.6 % (CPU
+    clears, one 4-byte copy per pixel). The 20-30 fps goal is open.

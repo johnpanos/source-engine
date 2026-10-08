@@ -175,3 +175,30 @@ N3DS_EXPORT int pthread_kill( pthread_t, int sig )
 }
 
 }
+
+int n3ds_pthread_create( pthread_t *thread, void *( *entry )( void * ), void *arg, size_t stack )
+{
+	static bool s_checked = false, s_new3ds = false;
+	if ( !s_checked )
+	{
+		APT_CheckNew3DS( &s_new3ds );
+		s_checked = true;
+	}
+	static const int kNew3dsCores[] = { 2, 1 };
+	static const int kOld3dsCores[] = { 1 };
+	static unsigned s_next = 0;
+	const int *cores = s_new3ds ? kNew3dsCores : kOld3dsCores;
+	const unsigned count = s_new3ds ? 2 : 1;
+	const int core = cores[__atomic_fetch_add( &s_next, 1, __ATOMIC_RELAXED ) % count];
+	s32 priority = 0x30;
+	svcGetThreadPriority( &priority, CUR_THREAD_HANDLE );
+	const size_t bytes = stack ? stack : 64 * 1024;
+	// ThreadFunc returns void; the entry's return value is not used.
+	Thread created = threadCreate( (ThreadFunc)entry, arg, bytes, priority, core, false );
+	if ( !created ) // the core refused (exheader affinity, time limit): any core
+		created = threadCreate( (ThreadFunc)entry, arg, bytes, priority, -2, false );
+	if ( !created )
+		return EAGAIN;
+	*thread = (pthread_t)created;
+	return 0;
+}

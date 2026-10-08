@@ -33,7 +33,12 @@ AccessControlInfo:
     - DirectSdmc
     - DirectSdmcWrite
   IdealProcessor          : 0
-  AffinityMask            : 1
+  # Cores 0-2: the main thread on core 0, the engine's worker threads on
+  # the New 3DS's application core 2 and the system core 1 (time-limited
+  # by APT_SetAppCpuTimeLimit). Core 3 is the system's.
+  AffinityMask            : 7
+  # Kernel capability bit 13: threads on core 2 (New 3DS).
+  CanAccessCore2          : true
   Priority                : 16
   MaxCpu                  : 0x9E
   HandleTableSize         : 0x200

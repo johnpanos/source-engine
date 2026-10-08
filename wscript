@@ -879,7 +879,9 @@ def configure(conf):
 	elif conf.env.DEST_CPU in ['arm', 'aarch64']:
 		flags += ['-fsigned-char']
 
-	if conf.env.DEST_CPU == 'arm':
+	# The 3DS's ARM11 is ARMv6K with VFPv2 (xcompile.py's N3DS_ARCH): no NEON,
+	# no VFPv4, no movw/movt; this line would override its -march.
+	if conf.env.DEST_CPU == 'arm' and conf.env.DEST_OS != '3ds':
 		flags += ['-march=armv7-a', '-mfpu=neon-vfpv4']
 
 	if conf.env.DEST_OS == 'freebsd':

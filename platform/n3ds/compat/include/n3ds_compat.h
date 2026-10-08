@@ -37,6 +37,13 @@ int pthread_getschedparam( pthread_t thread, int *policy, struct sched_param *pa
 int pthread_setschedparam( pthread_t thread, int policy, const struct sched_param *param );
 int pthread_kill( pthread_t thread, int sig );
 int pthread_setname_np( pthread_t thread, const char *name );
+// The engine's threads (tier0 CreateSimpleThread and CThread::Start). libctru's
+// pthread_create puts every thread on core 0 at priority 0x3F, below the main
+// thread, so workers only run when the main thread blocks. This creates the
+// thread on the next worker core (the New 3DS's core 2, then the system
+// core 1, alternating) at the caller's priority. A libctru pthread_t is the
+// Thread threadCreate returns, so join and the rest work unchanged.
+int n3ds_pthread_create( pthread_t *thread, void *( *entry )( void * ), void *arg, size_t stack );
 struct passwd;
 uid_t getuid( void );
 struct passwd *getpwuid( uid_t uid );

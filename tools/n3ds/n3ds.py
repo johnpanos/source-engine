@@ -12,6 +12,10 @@
                                         allocations by stack; printed by the
                                         engine on out-of-memory)
   n3ds.py census <heap.bin>             heap census (heap_census.py)
+  n3ds.py profile [--map M] [--demo D]  one guest-time profile (~1 min): private
+                                        compositor, OpenGL, unlimited speed
+  n3ds.py gprof [profile.bin] [--callers F]  report the last guest-time profile
+                                        (run --guest-profile US records it)
   n3ds.py log [-n N] [pattern]          last console lines without the noise
   n3ds.py speed [PERCENT]               emulation speed of the running emulator:
                                         100 (default) is normal, 0 unlimited;
@@ -42,6 +46,24 @@ from pathlib import Path
 if len(sys.argv) > 2 and sys.argv[1] == "--ns":
     os.environ["N3DS_NS"] = sys.argv[2]
     del sys.argv[1:3]
+
+# --private: run the command inside a private headless compositor (mutter
+# --headless on its own D-Bus session, as the Hammer UI suite does), where a
+# --headless emulator renders with OpenGL instead of the software renderer.
+if len(sys.argv) > 1 and sys.argv[1] == "--private":
+    del sys.argv[1]
+    if os.environ.get("N3DS_PRIVATE_DISPLAY") != "1":
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "quality"))
+        import private_session  # noqa: E402
+        base = Path(__file__).resolve().parents[2] / "build-3ds/private" / os.environ.get("N3DS_NS", "shared")
+        env = dict(os.environ, N3DS_PRIVATE_DISPLAY="1")
+        for name in ("WAYLAND_DISPLAY", "DISPLAY"):
+            env.pop(name, None)
+        display = "n3ds-%d" % os.getpid()
+        command = private_session.dbus_run_session(base / "dbus") + [
+            "mutter", "--headless", "--virtual-monitor", "800x480", "--wayland-display", display, "--",
+            sys.executable, str(Path(__file__).resolve())] + sys.argv[1:]
+        raise SystemExit(subprocess.run(command, env=env).returncode)
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -89,6 +111,33 @@ def log(argv):
     return 0
 
 
+def profile(argv):
+    """One guest-time profile in about a minute: the build in a private
+    compositor (OpenGL), headless, unlimited speed, sampled inside the
+    emulator every 500 us of emulated time (guest_profile.py reports it)."""
+    import argparse
+    parser = argparse.ArgumentParser(prog="n3ds.py profile")
+    parser.add_argument("--map", default="sp_a1_intro4")
+    parser.add_argument("--demo", default="intro4", help="'' profiles the map without a demo")
+    parser.add_argument("--frames", type=int, default=3, help="counter lines (120 frames each) to profile")
+    parser.add_argument("--us", type=float, default=500, help="sampling interval in emulated microseconds")
+    parser.add_argument("--cmds", default="")
+    options = parser.parse_args(argv)
+    args = ["run", "--map", options.map, "--headless", "--speed", "0", "--wait", "300",
+            "--frames", str(options.frames), "--guest-profile", str(options.us), "--timeout", "1200"]
+    content = ROOT / "build-3ds-content" / (options.map + ".p3")
+    if content.is_dir():
+        args += ["--content", str(content.relative_to(ROOT))]
+    if options.demo:
+        args += ["--demo", options.demo]
+    if options.cmds:
+        args += ["--cmds", options.cmds]
+    command = [sys.executable, str(Path(__file__).resolve())]
+    if os.environ.get("N3DS_PRIVATE_DISPLAY") != "1":
+        command.append("--private")
+    return subprocess.run(command + args, cwd=ROOT).returncode
+
+
 def run(argv):
     args = list(argv)
     if "--map" in args:
@@ -123,6 +172,10 @@ def main():
                   if "error" in l.lower() or l.startswith("kiln:")]
         print("\n".join(errors[:20]) if result.returncode else "build ok")
         return result.returncode
+    if command == "profile":
+        return profile(argv)
+    if command == "gprof":
+        return subprocess.run([sys.executable, str(HERE / "guest_profile.py")] + argv, cwd=ROOT).returncode
     if command == "ns":
         print(harness.azahar_ns.describe())
         return 0

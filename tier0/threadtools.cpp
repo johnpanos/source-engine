@@ -364,7 +364,11 @@ ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, unsigne
 	return th;
 #elif POSIX
 	pthread_t tid;
+#ifdef PLATFORM_3DS
+	n3ds_pthread_create( &tid, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ), stackSize );
+#else
 	pthread_create( &tid, NULL, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ) );
+#endif
 	return ( ThreadHandle_t ) tid;
 #else
 	Assert( 0 );
@@ -384,7 +388,11 @@ ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, ThreadI
 	return (ThreadHandle_t)hThread;
 #elif POSIX
 	pthread_t tid;
+#ifdef PLATFORM_3DS
+	n3ds_pthread_create( &tid, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ), stackSize );
+#else
 	pthread_create( &tid, NULL, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ) );
+#endif
 	if( pID )
 		*pID = (ThreadId_t)tid;
 	return ( ThreadHandle_t ) tid;

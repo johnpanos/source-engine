@@ -708,8 +708,34 @@ public:
 			return;
 		if ( !pica::InFrame() )
 			pica::BeginFrame();
+		const double presentStart = Plat_FloatTime();
 		pica::EndFrame();
+		const double presentEnd = Plat_FloatTime();
 		g_bDrawingToBackBuffer = true;
+		{
+			// Frame time on the guest clock (Plat_FloatTime: the system tick): the
+			// performance line every 30 frames, the whole frame and the share
+			// spent in EndFrame (submit, GPU wait, present).
+			static double s_last = 0, s_sum = 0, s_max = 0, s_present = 0;
+			static int s_count = 0;
+			if ( s_last )
+			{
+				const double frame = presentEnd - s_last;
+				s_sum += frame;
+				s_max = frame > s_max ? frame : s_max;
+				s_present += presentEnd - presentStart;
+				if ( ++s_count == 30 )
+				{
+					const double ms = 1000.0;
+					printf( "pica: perf frame %d avg %.1f ms (%.1f fps) max %.1f ms end-frame %.1f ms\n",
+						g_PicaFrame + 1, s_sum * ms / 30, 30.0 / s_sum,
+						s_max * ms, s_present * ms / 30 );
+					s_sum = s_max = s_present = 0;
+					s_count = 0;
+				}
+			}
+			s_last = presentEnd;
+		}
 		// A capture the boot harness asks for: -pica_capture <frame> <path>.
 		static int s_captureFrame = CommandLine()->ParmValue( "-pica_capture", -1 );
 		g_PicaDumpFrame = CommandLine()->ParmValue( "-pica_dump_draws", -1 );

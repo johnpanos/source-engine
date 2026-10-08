@@ -232,7 +232,9 @@ def package():
 def start_emulator(headless, app, hold=False):
     azahar_ns.stop()
     command = ["flatpak", "run", "--filesystem=%s" % ROOT, "--command=%s" % AZAHAR_BINARY]
-    if headless:
+    if headless and azahar_ns.PRIVATE_DISPLAY:
+        command += ["--socket=wayland", "--env=QT_QPA_PLATFORM=wayland"]
+    elif headless:
         command.append("--env=QT_QPA_PLATFORM=offscreen")
     command += ["org.azahar_emu.Azahar", "--harness", str(SOCKET)]
     if hold:

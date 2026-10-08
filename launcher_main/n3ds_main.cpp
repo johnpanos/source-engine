@@ -128,11 +128,14 @@ __attribute__(( constructor( 101 ) )) void N3ds_EarlyInit()
 } // namespace
 
 // stdout and stderr (descriptors 1 and 2) go through one device that writes
-// each chunk to console.log and, once N3ds_StartDebugConsole has run, to
-// libctru's text console on the bottom screen.
+// each chunk to console.log and, with -n3ds_console, to libctru's text
+// console on the bottom screen. The screen console is off by default: it
+// draws every character into the framebuffer on the CPU (consolePrintChar),
+// a measured share of the frame (tools/n3ds/guest_profile.py).
 static FILE *g_LogFile;
 static ssize_t ( *g_ScreenWrite )( struct _reent *, void *, const char *, size_t );
 static devoptab_t g_TeeDevice;
+static bool g_WantScreenConsole; // -n3ds_console
 
 static ssize_t TeeWrite( struct _reent *r, void *fd, const char *ptr, size_t len )
 {
@@ -170,7 +173,7 @@ static void StartLogTee()
 extern "C" void N3ds_StartDebugConsole()
 {
 	static PrintConsole s_Console;
-	if ( g_ScreenWrite )
+	if ( g_ScreenWrite || !g_WantScreenConsole )
 		return;
 	consoleInit( GFX_BOTTOM, &s_Console );
 	g_ScreenWrite = devoptab_list[STD_OUT]->write_r;
@@ -225,6 +228,8 @@ extern "C" void N3ds_PrepareLaunch( int *argc, char ***argv )
 	g_Args[g_ArgCount] = nullptr;
 	*argc = g_ArgCount;
 	*argv = g_Args;
+	for ( int i = 1; i < g_ArgCount; ++i )
+		g_WantScreenConsole = g_WantScreenConsole || strcmp( g_Args[i], "-n3ds_console" ) == 0;
 	for ( int i = 0; i < g_ArgCount; ++i )
 		printf( "%s%s", i ? " " : "n3ds: argv ", g_Args[i] );
 	printf( "\n" );

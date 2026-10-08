@@ -139,7 +139,12 @@ INLINE_ON_PS3 bool CThread::Start( unsigned nBytesStack, ThreadPriorityEnum_t nP
 	//lwss - fix memory leak here
 	m_threadInit = ThreadInit_t( init );
 	//if ( pthread_create( &m_threadId, &attr, (void *(*)(void *))GetThreadProc(), new ThreadInit_t( init ) ) != 0 )
+#ifdef PLATFORM_3DS
+	if ( n3ds_pthread_create( &m_threadId, (void *(*)(void *))GetThreadProc(), &m_threadInit,
+			 MAX( nBytesStack, 1024u * 1024 ) ) != 0 )
+#else
 	if ( pthread_create( &m_threadId, &attr, (void *(*)(void *))GetThreadProc(), &m_threadInit ) != 0 )
+#endif
 	//lwss end
 	{
 		AssertMsg1( 0, "Failed to create thread (error 0x%x)", GetLastError() );
