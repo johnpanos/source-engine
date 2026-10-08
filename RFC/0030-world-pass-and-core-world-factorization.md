@@ -1,6 +1,7 @@
 # RFC 0030: Factoring `world_pass.cpp` and `core_world.cpp`
 
-- Status: Proposed (2026-10-08); nothing implemented.
+- Status: Implemented (2026-10-08); see Progress. Splitting `WorldPass::State`
+  into sub-structs is not done.
 - Date: 2026-10-08
 - User direction (2026-10-08): split `render/pass/world/world_pass.cpp` and
   `render/composition/core_world.cpp` along the responsibilities they
@@ -115,3 +116,86 @@ commit, so the shared tree never breaks.
 No file under `render/pass/world/` or `render/composition/` exceeds about
 1,500 lines, no function exceeds about 400, `core_world.cpp` records no pass
 itself, and each moved system is covered by a system-level suite, and every commit along the way built and passed its suites.
+
+## Progress (2026-10-08)
+
+State: implemented on `subsystem-refactor` (source-engine-6e). Every
+function in `render/pass/world/` and the `core_world*` files is under 400
+lines; the largest file is `world_draw.cpp` at 988.
+
+Baseline first: `render.world.null` W9 and `render.composition` P7 were stale
+against deliberate resolver and HUD-slot changes, and the composition suites'
+source lists missed `depth_alpha.cpp` and the VTF decompressor. Fixed in
+`787fc27d3`, so all five headless suites passed before any move.
+
+### `render.pass.world`
+
+- Step 1 (`c92f1949e`): `world_pass_internal.h` holds the pass's private
+  types and `WorldPass::State`; members split into `world_materials.cpp`,
+  `world_lightmap.cpp`, `world_stage.cpp`, `world_residency.cpp` and
+  `world_record.cpp`.
+- Step 2: `RecordBatch` (4,275 lines) keeps its queue-taking and validation,
+  then builds `WorldPass::Batch` (`world_batch.h`), an aggregate made with
+  designated initializers. Its steps run in the original order:
+  `PrepareResources`, `PrepareFrameTerms`, `PrepareViewGroups`,
+  `PrepareSurfacesAndModels`, `PrepareDrawHelpers`, `RecordCutoutShadows`,
+  `PrepareGpuSubmission`, `RecordScreenPasses`, `PrepareDynamicDraws`,
+  `RecordView`; a step returns false where `RecordBatch` returned.
+  - Locals used by more than one step, and lambdas called from more than
+    one step, became members (36 functions); the rest stayed local,
+    unchanged.
+  - Bodies moved verbatim. The edits are only those the move forced:
+    explicit return types, declarations turned into assignments,
+    `pass.` before the three `WorldPass` members, and `{}` initializers.
+  - One capture changed form: the pipeline-key sink outlives the batch,
+    so it binds `State` (`[&s = s, tag]`), as `[&s]` did before.
+  - Files: `world_resources.cpp`, `world_groups.cpp`, `world_view.cpp`,
+    `world_draw.cpp` (draw helpers and GPU-driven submission; the template
+    `submitSurfaceFootprints` and all its callers are in it),
+    `world_cutout_shadows.cpp`, `world_screen_passes.cpp`,
+    `world_dynamic.cpp`, `world_record.cpp`.
+
+### `render.composition`
+
+- `core_world.cpp` keeps the frame lifecycle, `DrawView` and posed models.
+  The rest moved to `core_world_scene.cpp`, `core_world_stage_capture.cpp`,
+  `core_world_lights.cpp`, `core_world_temporal.cpp`,
+  `core_world_diagnostics.cpp`, `core_world_handoff.cpp`,
+  `core_world_record.cpp`, `core_world_volumetric.cpp`,
+  `core_world_ssr.cpp` and `core_world_shadows.cpp`.
+- `RecordWorldBatch` lost its target setup to `PrepareWorldTarget`.
+  `DrawStageShadows` lost its moving casters to `CollectMovingCasters`, and
+  its plane lambdas became `PlanesOf` and `ChunkInside`.
+- Pass recording stays in composition. Moving it into `render.pass.*`
+  would be a redesign, not a move: `RecordVolumetric` uses
+  `render.map-media` (a layer above the passes), and the SSR, volumetric
+  and shadow recorders own `CoreWorld` state (renderers, targets, atlases,
+  `BindStageDevice`). That takes a separate change that gives the passes
+  that state.
+
+### Not done
+
+- Splitting `WorldPass::State` into sub-structs (order item 3). Every
+  access would be renamed for no size or ownership gain over the split
+  files; left for when an owner needs it.
+
+### Evidence
+
+- Headless, g++ and clang++, at every commit: `render.world.null` (159
+  checks), `render.composition` (65), `render.composition.capabilities`
+  and its GL and GLES variants (14 each).
+- `render_lab` (`build-rc-lab`, 59 suites): identical per-check results
+  across the pre-split binary, step 1 and step 2. These fail the same way
+  at HEAD before any move:
+  - `view-state.aperture-does-not-claim-stage-0`;
+  - posed-model's `refract-refuses-missing-scene-color` and
+    `cable-refuses-missing-required-normal-texture`;
+  - `shadow-receiver-perf` (and its sensitivity);
+  - two seeded portal-lights controls.
+- Unavailable here: the FSR tree, Cornell and Portal 2 Steam content,
+  and the Apple device.
+- archlint shows no finding in these paths; stylelint is clean on every
+  edited file.
+- Lab run 3 (final layout): identical per-check results again. Portal 2
+  (`portal2-linux-native-vulkan`, warnings on) builds; a headless
+  `portal_boot.py` run on `sp_a1_intro4` passes.
