@@ -5351,8 +5351,8 @@ CON_COMMAND( mat_dump_material_state, "mat_dump_material_state <file>: every loa
 		return;
 	}
 	CUtlVector<CUtlString> lines;
-	for ( MaterialHandle_t i = g_MaterialSystem.FirstMaterial(); i != g_MaterialSystem.InvalidMaterial();
-	      i = g_MaterialSystem.NextMaterial( i ) )
+	for ( MaterialHandle_t i = g_MaterialSystem.FirstMaterial();
+	    i != g_MaterialSystem.InvalidMaterial(); i = g_MaterialSystem.NextMaterial( i ) )
 	{
 		IMaterialInternal *material = g_MaterialSystem.GetMaterialInternal( i );
 		if ( !material || !material->IsRealTimeVersion() )
@@ -5388,7 +5388,11 @@ CON_COMMAND( mat_dump_material_state, "mat_dump_material_state <file>: every loa
 		line += "}}";
 		lines.AddToTail( line );
 	}
-	lines.Sort( []( const CUtlString *a, const CUtlString *b ) { return V_strcmp( a->Get(), b->Get() ); } );
+	lines.Sort(
+	    []( const CUtlString *a, const CUtlString *b )
+	    {
+		    return V_strcmp( a->Get(), b->Get() );
+	    } );
 	FileHandle_t file = g_pFullFileSystem->Open( args.Arg( 1 ), "wt" );
 	if ( !file )
 	{
