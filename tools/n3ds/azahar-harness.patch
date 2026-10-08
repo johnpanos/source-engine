@@ -592,10 +592,10 @@ index 8309ab1..32a047f 100644
      u32 bytes_per_pixel = 4;
 diff --git a/src/citra_qt/harness.cpp b/src/citra_qt/harness.cpp
 new file mode 100644
-index 0000000..0a54d5e
+index 0000000..6225cf8
 --- /dev/null
 +++ b/src/citra_qt/harness.cpp
-@@ -0,0 +1,452 @@
+@@ -0,0 +1,480 @@
 +// Copyright Citra Emulator Project / Azahar Emulator Project
 +// Licensed under GPLv2 or any later version
 +// Refer to the license.txt file included.
@@ -849,7 +849,7 @@ index 0000000..0a54d5e
 +                if (!file) {
 +                    return std::string("{\"ok\":false,\"error\":\"cannot open the output\"}");
 +                }
-+                static_assert(sizeof(ProfileSampleRecord) == 67 * 4);
++                static_assert(sizeof(ProfileSampleRecord) == 164 * 4);
 +                std::fwrite(profile_samples.data(), sizeof(ProfileSampleRecord),
 +                            profile_samples.size(), file);
 +                std::fclose(file);
@@ -942,22 +942,50 @@ index 0000000..0a54d5e
 +        return;
 +    }
 +    ProfileSampleRecord record;
++    record.ticks = static_cast<u32>(system.GetCore(0).GetTimer().GetTicks());
 +    auto& kernel = system.Kernel();
 +    const Kernel::Thread* current = kernel.GetThreadManager(0).GetCurrentThread();
 +    const auto process = current ? current->owner_process.lock() : nullptr;
++    const Kernel::Thread* sampled = nullptr;
++    Core::ARM_Interface::ThreadContext context{};
++    std::shared_ptr<Kernel::Process> owner;
 +    if (current && process && current->status == Kernel::ThreadStatus::Running) {
-+        Core::ARM_Interface::ThreadContext context = current->context;
++        context = current->context;
 +        system.GetCore(0).SaveContext(context);
++        sampled = current;
++        owner = process;
 +        record.thread = current->GetThreadId();
++    } else {
++        // Core 0 idle: what the application's main thread (its lowest id on
++        // core 0) is blocked in, from its saved context, flagged as waiting
++        // (bit 31 of the thread field).
++        for (const auto& thread : kernel.GetThreadManager(0).GetThreadList()) {
++            auto thread_owner = thread->owner_process.lock();
++            if (!thread_owner || thread->status == Kernel::ThreadStatus::Dead ||
++                thread_owner->codeset->name.empty()) {
++                continue;
++            }
++            if (!sampled || thread->GetThreadId() < sampled->GetThreadId()) {
++                sampled = thread.get();
++                owner = thread_owner;
++            }
++        }
++        if (sampled) {
++            context = sampled->context;
++            record.thread = sampled->GetThreadId() | 0x80000000u;
++        }
++    }
++    if (sampled && owner) {
++        const auto& process_ref = owner;
 +        record.pc = context.cpu_registers[15];
 +        record.lr = context.cpu_registers[14];
 +        const u32 sp = context.GetStackPointer();
-+        for (u32 i = 0; i < 64; ++i) {
++        for (u32 i = 0; i < 160; ++i) {
 +            const u32 address = sp + i * 4;
-+            if (!system.Memory().IsValidVirtualAddress(*process, address)) {
++            if (!system.Memory().IsValidVirtualAddress(*process_ref, address)) {
 +                break;
 +            }
-+            record.stack[i] = system.Memory().Read32(*process, address);
++            record.stack[i] = system.Memory().Read32(*process_ref, address);
 +        }
 +    }
 +    if (profile_samples.size() < 2'000'000) {
@@ -1050,10 +1078,10 @@ index 0000000..0a54d5e
 +}
 diff --git a/src/citra_qt/harness.h b/src/citra_qt/harness.h
 new file mode 100644
-index 0000000..090c38f
+index 0000000..a0044d8
 --- /dev/null
 +++ b/src/citra_qt/harness.h
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,99 @@
 +// Copyright Citra Emulator Project / Azahar Emulator Project
 +// Licensed under GPLv2 or any later version
 +// Refer to the license.txt file included.
@@ -1092,11 +1120,14 @@ index 0000000..090c38f
 + *   quit                  -> close the emulator
 + *   profile start <us>    -> sample core 0 every <us> microseconds of
 + *                            emulated time: the running thread's id, pc, lr
-+ *                            and 64 stack words, or idle (a guest-time
++ *                            and 160 stack words, or idle (a guest-time
 + *                            profile: no request per sample, no host bias)
-+ *   profile stop <path>   -> stop and write the samples: records of 67
-+ *                            little-endian u32 (thread, pc, lr, 64 stack
-+ *                            words); thread 0 marks core 0 idle
++ *   profile stop <path>   -> stop and write the samples: records of 164
++ *                            little-endian u32 (thread, pc, lr, the low
++ *                            32 bits of core 0's system tick, 160 stack
++ *                            words); with core 0 idle, the application's
++ *                            main thread as it waits, its id | 1 << 31
++ *                            (0 when there is none)
 + */
 +class Harness {
 +public:
@@ -1123,7 +1154,8 @@ index 0000000..090c38f
 +        u32 thread = 0; // 0: core 0 idle
 +        u32 pc = 0;
 +        u32 lr = 0;
-+        u32 stack[64] = {};
++        u32 ticks = 0; // core 0's timer (the guest's svcGetSystemTick), low bits
++        u32 stack[160] = {};
 +    };
 +    std::vector<ProfileSampleRecord> profile_samples;
 +    s64 profile_interval = 0; // in ARM11 cycles; 0 = stopped

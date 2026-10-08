@@ -609,3 +609,24 @@ See the [progress section](#progress).
   104,053 samples at 500 us); windows 151 -> 127, 330 -> 276, 186 -> 166 ms,
   with two windows slower through single-frame spikes (up to 1.5 s) not yet
   explained.
+- 2026-10-07: frame spikes found and fixed with the guest profiler.
+  - Tooling: each guest-profile sample carries core 0's system tick, the
+    game logs every frame over 400 ms (`pica: slow frame N ms ticks A B`),
+    and `guest_profile.py --window A B` profiles that frame alone. With core
+    0 idle the sampler records the application's main thread as it waits
+    (thread id | 1 << 31), so the report says what core 0's idle time waits
+    on; samples carry 160 stack words.
+  - Finding: core 0 was idle 38-43 % of the demo, 28.7 % of the time with
+    the main thread in file reads. A caller census traced them to
+    `CPackedStoreReadCache::ReadCacheLine`: the VPK read cache fills a 1 MB
+    line per miss and, since the memory audit, keeps one line on the 3DS, so
+    the demo's interleaved small reads (texture bits, materials) re-read
+    about 0.8 GB of the pack.
+  - Fix: on the 3DS the packed store reads exactly the requested bytes
+    (`packedstore.cpp`, ReadData), the path the cache falls back to.
+  - Effect (intro4 demo, guest clock): the profiled stretch took 24 % less
+    emulated time (70,833 against 92,612 samples at 500 us), core 0 idle
+    38 % -> 19.7 %, file reads gone from the waits; the frame-211 window
+    364 -> 186 ms (its 3.4 s spike now 0.6 s), windows 629 -> 299 and
+    127 -> 81 ms. The matched camera's image is unchanged. Remaining waits:
+    `GSPGPU_FlushDataCache` per replayed command, about 13 % of core 0.

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Reads and reports a guest-time profile of the 3DS build.
 
-  guest_profile.py [profile.bin] [--elf ELF] [--top N] [--callers FUNCTION]
+  guest_profile.py [profile.bin] [--elf ELF] [--top N] [--callers F] [--lines F]
+                   [--window START END]
 
 The patched Azahar's harness samples core 0 every N microseconds of emulated
 time ("profile start <us>", "profile stop <path>"; probe.py --guest-profile
-drives it). Each sample is one record of 67 little-endian u32: the running
-thread's id (0: core 0 idle), pc, lr and 64 stack words. Because samples are
+drives it). Each sample is one record of 68 little-endian u32: the running
+thread's id (0: core 0 idle), pc, lr, the low 32 bits of core 0's system
+tick and 160 stack words. --window START END keeps one slow frame's samples
+(the ticks the game's "pica: slow frame" line prints). Because samples are
 taken on the emulated clock, shares are shares of emulated time on core 0:
 host costs (the emulator's renderer, the JIT) do not distort them, and idle
 time is visible.
@@ -28,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import n3ds_tree  # noqa: E402
 
-RECORD_WORDS = 67
+RECORD_WORDS = 164
 TEXT_START, TEXT_END = 0x00100000, 0x04000000
 ADDR2LINE = n3ds_tree.ROOT / "dependencies/3ds/devkitpro/devkitARM/bin/arm-none-eabi-addr2line"
 
@@ -49,15 +52,27 @@ LIBRARY = {
     "__syscall_getreent", "pthread_mutex_lock", "pthread_mutex_unlock", "svcArbitrateAddressNoTimeout",
     "consolePrintChar", "newRow", "con_write", "__udivsi3", "__divsi3", "__aeabi_uidivmod",
     "__aeabi_idivmod",
+    # The C and libctru file layers: a wait in them belongs to the engine
+    # code that read or opened the file.
+    "fread", "_fread_r", "__srefill_r", "__sread", "_read_r", "fopen", "_fopen_r", "fseek",
+    "_fseek_r", "_fseeko_r", "ftell", "_ftell_r", "fclose", "_fclose_r", "archive_read",
+    "archive_open", "archive_seek", "archive_close", "FSFILE_Read", "FSFILE_Write",
+    "FSUSER_OpenFile", "FSFILE_Close", "FSFILE_GetSize",
 }
 
 
-def read_samples(path):
+def read_samples(path, window=None):
+    """(thread, pc, lr, stack) per sample; window = (start, end) system ticks
+    (low 32 bits, as the game's "pica: slow frame" line prints them) keeps
+    the samples taken inside it, modulo 2^32 (the low bits wrap every 16 s)."""
     data = Path(path).read_bytes()
     size = RECORD_WORDS * 4
+    span = (window[1] - window[0]) & 0xFFFFFFFF if window else 0
     for offset in range(0, len(data) - size + 1, size):
         words = struct.unpack_from("<%dI" % RECORD_WORDS, data, offset)
-        yield words[0], words[1], words[2], words[3:]
+        if window and ((words[3] - window[0]) & 0xFFFFFFFF) > span:
+            continue
+        yield words[0], words[1], words[2], words[4:]
 
 
 def text_reader(elf_path):
@@ -141,23 +156,25 @@ def report_lines(samples, function, names, elf, total, top, out):
         out("  %5.1f%%  %s" % (100.0 * hits / total, line[:150]))
 
 
-def report(path, elf=None, top=30, callers_of=None, out=print, lines_of=None):
+def report(path, elf=None, top=30, callers_of=None, out=print, lines_of=None, window=None):
     elf = Path(elf or n3ds_tree.ELF)
-    samples = list(read_samples(path))
+    samples = list(read_samples(path, window))
     if not samples:
         out("-- guest profile: no samples in %s" % path)
         return
     total = len(samples)
-    busy = [s for s in samples if s[0]]
+    WAITING = 0x80000000
+    busy = [s for s in samples if s[0] and not s[0] & WAITING]
+    waiting = [s for s in samples if s[0] & WAITING]
     idle = total - len(busy)
     word = text_reader(elf)
     addresses = set()
-    for _, pc, lr, stack in busy:
+    for _, pc, lr, stack in busy + waiting:
         addresses.add(pc)
         addresses.add(lr)
         addresses.update(stack)
     calls = {a for a in addresses if is_return_address(word, a)}
-    names = symbolize({pc for _, pc, _, _ in busy} | calls, elf)
+    names = symbolize({pc for _, pc, _, _ in busy + waiting} | calls, elf)
 
     own, inclusive, threads = collections.Counter(), collections.Counter(), collections.Counter()
     callers = collections.defaultdict(collections.Counter)
@@ -183,6 +200,25 @@ def report(path, elf=None, top=30, callers_of=None, out=print, lines_of=None):
     out("-- inclusive")
     for name, hits in inclusive.most_common(top):
         out("  %5.1f%%  %s" % (share(hits), name[:120]))
+    if waiting:
+        # Core 0 idle while the main thread is blocked: what it waits in,
+        # named by its nearest engine caller (the libctru/syscall frames are
+        # the same for every wait).
+        blocked = collections.Counter()
+        blocked_chain = collections.Counter()
+        for thread, pc, lr, stack in waiting:
+            chain = [names.get(pc, "?")] + [names[a] for a in [lr] + list(stack) if a in calls and a in names]
+            # The engine's file system is plumbing too: name who reads.
+            engine = [f for f in chain if f not in LIBRARY and not f.startswith(
+                ("svc", "_", "?", "CFileSystem_Stdio::", "CFileHandle::", "CBaseFileSystem::",
+                 "non-virtual thunk to CBaseFileSystem", "CPackedStore", "CStdioFile::",
+                 "CFileSystem_Stdio", "CBaseFileSystem"))]
+            blocked[engine[0] if engine else chain[0]] += 1
+            blocked_chain[" <- ".join(engine[:3]) if engine else chain[0]] += 1
+        out("-- waiting: core 0 idle while the main thread is blocked (%.1f%% of core-0 time)"
+            % share(len(waiting)))
+        for name, hits in blocked_chain.most_common(min(top, 15)):
+            out("  %5.1f%%  %s" % (share(hits), name[:150]))
     if lines_of:
         report_lines(samples, lines_of, names, elf, total, top, out)
     if callers_of:
@@ -202,10 +238,13 @@ def main():
     parser.add_argument("--top", type=int, default=30)
     parser.add_argument("--callers", help="list the nearest non-library callers of functions matching this")
     parser.add_argument("--lines", help="where inside the functions matching this the time goes (source lines)")
+    parser.add_argument("--window", nargs=2, metavar=("START", "END"),
+                        help="only samples between two system ticks (hex, from a 'pica: slow frame' line)")
     options = parser.parse_args()
     import azahar_ns
     report(options.profile or azahar_ns.HOME / "guest_profile.bin", options.elf, options.top, options.callers,
-           lines_of=options.lines)
+           lines_of=options.lines,
+           window=tuple(int(t, 16) for t in options.window) if options.window else None)
     return 0
 
 

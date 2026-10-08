@@ -58,6 +58,10 @@ extern "C" unsigned int linearSpaceFree( void ); // libctru: GPU-visible linear 
 extern "C" unsigned int __ctru_heap_size; // libctru: the main heap's size
 #include "pica_texture.h"
 
+// libctru's (linked into the program, not into a composed module): the system
+// tick the harness's guest-time profiler stamps its samples with.
+extern "C" unsigned long long svcGetSystemTick( void );
+
 
 //-----------------------------------------------------------------------------
 // The empty mesh
@@ -712,6 +716,17 @@ public:
 		const double presentStart = Plat_FloatTime();
 		pica::EndFrame();
 		const double presentEnd = Plat_FloatTime();
+		{
+			// A slow frame, named with its system ticks: the window to read in
+			// a guest-time profile (guest_profile.py --window START END).
+			static unsigned long long s_frameTick = 0;
+			const unsigned long long tick = svcGetSystemTick();
+			if ( s_frameTick && tick - s_frameTick > 268111856ull * 4 / 10 )
+				printf( "pica: slow frame %d %.0f ms ticks %08x %08x\n", g_PicaFrame + 1,
+					( tick - s_frameTick ) * 1000.0 / 268111856.0, unsigned( s_frameTick ),
+					unsigned( tick ) );
+			s_frameTick = tick;
+		}
 		g_bDrawingToBackBuffer = true;
 		{
 			// Frame time on the guest clock (Plat_FloatTime: the system tick): the

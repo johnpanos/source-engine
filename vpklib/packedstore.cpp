@@ -1186,7 +1186,16 @@ int CPackedStore::ReadData( CPackedStoreFileHandle &handle, void *pOutData, int 
 				nDesiredPos += m_nDirectoryDataSize + sizeof( VPKDirHeader_t );
 			}
 
-			if ( m_PackedStoreReadCache.BCanSatisfyFromReadCache( (uint8 *)pOutData, handle, fHandle, nDesiredPos, nNumBytes, nRead ) )
+#if defined( PLATFORM_3DS )
+			// The 3DS reads exactly what is asked: the read cache filled a
+			// 1 MB line per miss and keeps one line, so interleaved reads
+			// re-read the pack (about 0.8 GB in the intro4 demo; the guest
+			// profile's largest wait, RFC 0026).
+			const bool bFromCache = false;
+#else
+			const bool bFromCache = m_PackedStoreReadCache.BCanSatisfyFromReadCache( (uint8 *)pOutData, handle, fHandle, nDesiredPos, nNumBytes, nRead );
+#endif
+			if ( bFromCache )
 			{
 				handle.m_nCurrentFileOffset += nRead;
 			}
