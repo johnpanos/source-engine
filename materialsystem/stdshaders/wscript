@@ -27,7 +27,6 @@ def build(bld):
 		'BlurFilterX.cpp',
 		'BlurFilterY.cpp',
 		'BufferClearObeyStencil_dx9.cpp',
-		'cable_dx9.cpp',
 		'cloak.cpp',
 		'cloak_blended_pass_helper.cpp',
 		'cloak_dx9_helper.cpp',
@@ -37,7 +36,6 @@ def build(bld):
 		'DebugTextureView.cpp',
 		'DecalBaseTimesLightmapAlphaBlendSelfIllum_dx9.cpp',
 		'DecalModulate_dx9.cpp',
-		'depthwrite.cpp',
 		'Downsample.cpp',
 		'Engine_Post_dx9.cpp',
 		'emissive_scroll_blended_pass_helper.cpp',
@@ -58,7 +56,6 @@ def build(bld):
 		#'morphweight_dx9.cpp',						[$WIN32]
 		'paintblob_dx9.cpp',
 		'paintblob_helper.cpp',
-		'particlesphere_dx9.cpp',
 		'pbr_dx9.cpp',
 		'portal.cpp',
 		'portalstaticoverlay.cpp',

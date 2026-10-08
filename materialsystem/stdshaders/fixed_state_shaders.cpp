@@ -29,6 +29,8 @@ static ConVar r_bloomtintexponent( "r_bloomtintexponent", "2.2" );
 // Read by name by the native backend's and the render core's motion blur.
 ConVar mat_motion_blur_percent_of_screen_max( "mat_motion_blur_percent_of_screen_max", "4.0" );
 
+int GetDefaultDepthFeatheringValue(); // spritecard.cpp
+
 namespace
 {
 
@@ -65,6 +67,13 @@ enum class Op
 	BlendFunc,      // BlendFunc( a, b )
 	AlphaTest,      // EnableAlphaTest( a )
 	AlphaFunc,      // AlphaFunc( ShaderAlphaFunc_t( a ), b )
+	AlphaTestFlag,  // EnableAlphaTest( $alphatest )
+	SrgbReadDx9,    // EnableSRGBRead( Sampler_t( a ), true ) at DX9 level
+	AlphaWritesIfOpaque, // EnableAlphaWrites( base texture neither blends nor alpha tests )
+	ShadowBias,     // EnablePolyOffset( SHADOW_BIAS ) unless extra a is set
+	ColorWritesIf1, // EnableColorWrites( extra a == 1 )
+	CullAlphaTested, // EnableCulling( $alphatest && !$nocull )
+	DepthWriteAlpha, // DepthWrite's alpha-clip / vertex-texture samplers (extra a: $color_depth)
 };
 
 // When a step runs.
@@ -73,6 +82,7 @@ enum class When
 	Always,
 	Flag,    // MATERIAL_VAR_* c is set
 	NotFlag, // MATERIAL_VAR_* c is clear
+	Param,   // extra param c is nonzero
 };
 
 struct Step
@@ -100,6 +110,15 @@ enum class LoadAs
 	CubeMap,
 	OsxSrgbTexture, // TEXTUREFLAGS_SRGB where OSX render targets are sRGB
 	SkyTexture,     // TEXTUREFLAGS_SRGB unless the texture is 16 bits per channel
+	BumpMap,        // LoadBumpMap
+	BumpMapWithDefault, // LoadBumpMap, first giving an undefined param its default name
+};
+
+// Row-specific init that is not a plain default.
+enum class InitHook
+{
+	None,
+	ParticleSphere, // $DEPTHBLEND from the depth-feathering default; $USINGPIXELSHADER at init
 };
 
 bool IsSixteenBitPerChannel( ITexture *texture )
@@ -162,11 +181,17 @@ struct FixedStateRow
 	// A SHADER_FALLBACK block's answer, as opposed to a DEFINE_FALLBACK_SHADER
 	// alias (fallback above): the shader exists in its own right.
 	const char *shaderFallback = nullptr;
+	InitHook hook = InitHook::None;
+	// Falls back to unlessFallback when extra unlessDefined is undefined.
+	int unlessDefined = -1;
+	const char *unlessFallback = nullptr;
 };
 
 constexpr int kDistortMapFlags = TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD |
     TEXTUREFLAGS_NODEBUGOVERRIDE | TEXTUREFLAGS_SINGLECOPY | TEXTUREFLAGS_CLAMPS |
     TEXTUREFLAGS_CLAMPT;
+
+constexpr int kCableFormat = VERTEX_POSITION | VERTEX_COLOR | VERTEX_TANGENT_S | VERTEX_TANGENT_T;
 
 #define NO_PARAMS {}
 #define NO_LOADS { { false, -1, false } }
@@ -406,6 +431,45 @@ const FixedStateRow kRows[] = {
 	    { { 1, F, 0.1f }, { 0, SHADER_PARAM_TYPE_VEC4, 1.0f, 1.0f, 1.0f, 1.0f }, { 3, I, 0.0f },
 	        { 5, F, 0.2f }, { 6, SHADER_PARAM_TYPE_VEC4, 0.3f, 0.3f, 0.5f, 1.0f }, { 7, F, -0.3f },
 	        { 8, F, -0.1f }, { 9, F, 0.01f }, { 10, F, 0.0f } } },
+	{ "Cable", "Cable_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "SplineRope", "Cable_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "Cable_DX9", nullptr, 0, 0,
+	    { { "$BUMPMAP", T, "cable/cablenormalmap", "bumpmap texture" },
+	        { "$MINLIGHT", F, "0.1", "Minimum amount of light (0-1 value)" },
+	        { "$MAXLIGHT", F, "0.3", "Maximum amount of light" } },
+	    -1, 0,
+	    { { true, 0, false, 0, LoadAs::BumpMapWithDefault },
+	        { false, BASETEXTURE, false, TEXTUREFLAGS_SRGB } },
+	    { { Op::DepthWrites, 0, 0, When::Flag, MATERIAL_VAR_TRANSLUCENT },
+	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA, When::Flag,
+	            MATERIAL_VAR_TRANSLUCENT },
+	        { Op::AlphaTestFlag }, { Op::Texture, SHADER_SAMPLER0 }, { Op::Texture, SHADER_SAMPLER1 },
+	        { Op::SrgbReadDx9, SHADER_SAMPLER1 }, { Op::Format, kCableFormat, -2 },
+	        { Op::SrgbWrite, 1 }, { Op::FogToFogColor }, { Op::AlphaWritesIfOpaque } } },
+	{ "ParticleSphere", "ParticleSphere_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "ParticleSphere_DX9", nullptr, SHADER_NOT_EDITABLE, 0,
+	    { { "$DEPTHBLEND", I, "0", "fade at intersection boundaries" },
+	        { "$DEPTHBLENDSCALE", F, "50.0",
+	            "Amplify or reduce DEPTHBLEND fading. Lower values make harder edges." },
+	        { "$USINGPIXELSHADER", SHADER_PARAM_TYPE_BOOL, "0",
+	            "Tells to client code whether the shader is using DX8 vertex/pixel shaders or not" },
+	        { "$BUMPMAP", T, "models/shadertest/shader1_normal", "bumpmap" },
+	        { "$LIGHTS", SHADER_PARAM_TYPE_FOURCC, "", "array of lights" },
+	        { "$LIGHT_POSITION", SHADER_PARAM_TYPE_VEC3, "0 0 0",
+	            "This is the directional light position." },
+	        { "$LIGHT_COLOR", SHADER_PARAM_TYPE_VEC3, "1 1 1", "This is the directional light color." } },
+	    -1, 0, { { true, 3, false, 0, LoadAs::BumpMap } },
+	    { { Op::Texture, SHADER_SAMPLER0 }, { Op::Texture, SHADER_SAMPLER1, 0, When::Param, 0 },
+	        { Op::Format, VERTEX_POSITION | VERTEX_COLOR, -1 },
+	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA },
+	        { Op::DepthWrites, 0 }, { Op::FogToFogColor } },
+	    0, { { 1, F, 50.0f } }, {}, nullptr, InitHook::ParticleSphere, 3, "UnlitGeneric_DX6" },
+	{ "DepthWrite", nullptr, SHADER_NOT_EDITABLE, MATERIAL_VAR2_SUPPORTS_HW_SKINNING,
+	    { { "$ALPHATESTREFERENCE", F, "", "Alpha reference value" },
+	        { "$COLOR_DEPTH", SHADER_PARAM_TYPE_BOOL, "0", "Write depth as color" } },
+	    -1, 0, NO_LOADS,
+	    { { Op::CompressedPos }, { Op::ShadowBias, 1 }, { Op::ColorWritesIf1, 1 },
+	        { Op::AlphaWrites, 0 }, { Op::CullAlphaTested }, { Op::DepthWriteAlpha, 1 } } },
 	{ "EyeGlint", "EyeGlint_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
 	{ "EyeGlint_dx9", nullptr, 0, 0, NO_PARAMS, -1, 0, NO_LOADS,
 	    { { Op::DepthWrites, 0, 0 }, { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ONE },
@@ -434,7 +498,11 @@ public:
 	int GetFlags() const override { return m_Row.shaderFlags; }
 	char const *GetFallbackShader( IMaterialVar **params ) const override
 	{
-		return m_Row.fallback ? m_Row.fallback : m_Row.shaderFallback;
+		if ( m_Row.fallback )
+			return m_Row.fallback;
+		if ( m_Row.unlessFallback && params && !params[Extra( m_Row.unlessDefined )]->IsDefined() )
+			return m_Row.unlessFallback;
+		return m_Row.shaderFallback;
 	}
 	int GetNumParams() const override { return CBaseVSShader::GetNumParams() + m_nParams; }
 	char const *GetParamName( int param ) const override
@@ -476,6 +544,14 @@ protected:
 			SET_FLAGS( MaterialVarFlags_t( m_Row.initFlags ) );
 		if ( m_Row.initFlags2 )
 			SET_FLAGS2( MaterialVarFlags2_t( m_Row.initFlags2 ) );
+		if ( m_Row.hook == InitHook::ParticleSphere )
+		{
+			IMaterialVar *depthBlend = params[Extra( 0 )];
+			if ( !depthBlend->IsDefined() )
+				depthBlend->SetIntValue( GetDefaultDepthFeatheringValue() );
+			if ( !g_pHardwareConfig->SupportsPixelShaders_2_b() )
+				depthBlend->SetIntValue( 0 );
+		}
 		if ( m_Row.intDefault >= 0 )
 		{
 			IMaterialVar *var = params[Extra( m_Row.intDefault )];
@@ -502,6 +578,8 @@ protected:
 	void OnInitShaderInstance(
 	    IMaterialVar **params, IShaderInit *pShaderInit, const char *pMaterialName ) override
 	{
+		if ( m_Row.hook == InitHook::ParticleSphere )
+			params[Extra( 2 )]->SetIntValue( true );
 		for ( const Load &load : m_Row.loads )
 		{
 			if ( load.index < 0 )
@@ -516,6 +594,14 @@ protected:
 				break;
 			case LoadAs::CubeMap:
 				LoadCubeMap( param, load.textureFlags );
+				break;
+			case LoadAs::BumpMapWithDefault:
+				if ( !params[param]->IsDefined() )
+					params[param]->SetStringValue( GetParamDefault( param ) );
+				LoadBumpMap( param );
+				break;
+			case LoadAs::BumpMap:
+				LoadBumpMap( param );
 				break;
 			case LoadAs::SkyTexture:
 				LoadTexture( param, IsSixteenBitPerChannel( params[param]->GetTextureValue() )
@@ -543,6 +629,8 @@ protected:
 				if ( step.when == When::Flag && !IS_FLAG_SET( step.c ) )
 					continue;
 				if ( step.when == When::NotFlag && IS_FLAG_SET( step.c ) )
+					continue;
+				if ( step.when == When::Param && !params[Extra( step.c )]->GetIntValue() )
 					continue;
 				Apply( step, params, pShaderShadow );
 			}
@@ -660,7 +748,60 @@ private:
 			DefaultFog();
 			break;
 		case Op::Format:
-			pShaderShadow->VertexShaderVertexFormat( step.a, step.b, 0, 0 );
+			if ( step.b == -1 ) // one 2D texcoord, given explicitly
+			{
+				int dimensions[] = { 2 };
+				pShaderShadow->VertexShaderVertexFormat( step.a, 1, dimensions, 0 );
+			}
+			else if ( step.b == -2 ) // two 2D texcoords, given explicitly
+			{
+				int dimensions[] = { 2, 2 };
+				pShaderShadow->VertexShaderVertexFormat( step.a, 2, dimensions, 0 );
+			}
+			else
+				pShaderShadow->VertexShaderVertexFormat( step.a, step.b, 0, 0 );
+			break;
+		case Op::AlphaTestFlag:
+			pShaderShadow->EnableAlphaTest( IS_FLAG_SET( MATERIAL_VAR_ALPHATEST ) );
+			break;
+		case Op::SrgbReadDx9:
+			if ( g_pHardwareConfig->GetDXSupportLevel() >= 90 )
+				pShaderShadow->EnableSRGBRead( Sampler_t( step.a ), true );
+			break;
+		case Op::AlphaWritesIfOpaque:
+		{
+			// Dest alpha is free for special use when the base texture neither blends nor tests.
+			const BlendType_t blend = EvaluateBlendRequirements( BASETEXTURE, true );
+			pShaderShadow->EnableAlphaWrites( blend != BT_BLENDADD && blend != BT_BLEND &&
+			                                  !IS_FLAG_SET( MATERIAL_VAR_ALPHATEST ) );
+			break;
+		}
+		case Op::ShadowBias:
+			if ( params[Extra( step.a )]->GetIntValue() == 0 )
+				pShaderShadow->EnablePolyOffset( SHADER_POLYOFFSET_SHADOW_BIAS );
+			break;
+		case Op::ColorWritesIf1:
+			pShaderShadow->EnableColorWrites( params[Extra( step.a )]->GetIntValue() == 1 );
+			break;
+		case Op::CullAlphaTested:
+			pShaderShadow->EnableCulling(
+			    IS_FLAG_SET( MATERIAL_VAR_ALPHATEST ) && !IS_FLAG_SET( MATERIAL_VAR_NOCULL ) );
+			break;
+		case Op::DepthWriteAlpha:
+			if ( !g_pHardwareConfig->HasFastVertexTextures() )
+			{
+				if ( IS_FLAG_SET( MATERIAL_VAR_ALPHATEST ) )
+				{
+					pShaderShadow->EnableTexture( SHADER_SAMPLER0, true );
+					pShaderShadow->EnableSRGBRead( SHADER_SAMPLER0, true );
+				}
+			}
+			else
+			{
+				SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
+				pShaderShadow->EnableTexture( SHADER_SAMPLER0, true );
+				pShaderShadow->EnableSRGBRead( SHADER_SAMPLER0, true );
+			}
 			break;
 		case Op::Initial:
 			SetInitialShadowState();
