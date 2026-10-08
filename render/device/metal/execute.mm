@@ -233,6 +233,7 @@ private:
 		case Op::kBeginOcclusionQuery:
 		case Op::kEndOcclusionQuery:
 		case Op::kDrawIndexedIndirectCount:
+		case Op::kClearRegion:
 			break; // refused at Submit (unclaimed capabilities)
 		}
 	}

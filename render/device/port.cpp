@@ -117,6 +117,8 @@ const char *CapabilityName( Capability capability )
 		return "packed-rgba4";
 	case Capability::kOcclusionQueries:
 		return "occlusion-queries";
+	case Capability::kClearRegions:
+		return "clear-regions";
 	case Capability::kCount:
 		break;
 	}

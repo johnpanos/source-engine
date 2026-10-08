@@ -59,13 +59,14 @@ enum class Op : std::uint8_t
 	kSetDrawConstants,
 	kBeginLabel,
 	kEndLabel,
-	kWriteTimestamp, // D23: buffer a, at offset
+	kWriteTimestamp,      // D23: buffer a, at offset
 	kBeginOcclusionQuery, // D43: buffer a, at offset
 	kEndOcclusionQuery,
 	// D30/D31: records in buffer a at offset, count = draw count (maximum),
 	// first = stride; the count's buffer b at copy.destinationOffset.
 	kDrawIndexedIndirect,
-	kDrawIndexedIndirectCount
+	kDrawIndexedIndirectCount,
+	kClearRegion // D44: region
 };
 
 struct Command
@@ -88,6 +89,7 @@ struct Command
 	std::uint32_t firstInstance = 0; // z groups of a dispatch
 	IndexFormat indexFormat = IndexFormat::kUint16;
 	Viewport viewport;
+	ClearRegion region; // D44
 	std::vector<ColorAttachment> colors;
 	std::optional<DepthAttachment> depth;
 	std::uint32_t width = 0;
@@ -143,6 +145,7 @@ public:
 	void CopyTexture( TextureId source, TextureId destination, const TextureCopy &copy ) override;
 	void BeginRendering( const RenderingDesc &desc ) override;
 	void EndRendering() override;
+	void ClearRegion( const render::device::ClearRegion &region ) override;
 	void SetPipeline( PipelineId pipeline ) override;
 	void SetBindGroup( BindGroupRole role, BindGroupId group ) override;
 	void SetVertexBuffer( std::uint32_t slot, BufferId buffer, std::uint64_t offset ) override;

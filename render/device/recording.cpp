@@ -369,6 +369,14 @@ void RecordingEncoder::WriteTimestamp( BufferId buffer, std::uint64_t offset )
 	Push( std::move( command ) );
 }
 
+void RecordingEncoder::ClearRegion( const render::device::ClearRegion &region )
+{
+	Command command;
+	command.op = Op::kClearRegion;
+	command.region = region;
+	Push( std::move( command ) );
+}
+
 void RecordingEncoder::BeginOcclusionQuery( BufferId buffer, std::uint64_t offset )
 {
 	Command command;
@@ -697,6 +705,19 @@ bool Validate( const std::vector<Command> &commands,
 				return false;
 			v.occlusionOpen = false;
 			break;
+		case Op::kClearRegion:
+		{
+			// D44: inside rendering, at least one aspect, each on an
+			// attachment that has it. The capability is checked after
+			// validation (CheckSubmission).
+			const render::device::ClearRegion &r = command.region;
+			if ( !v.rendering || !( r.color || r.depth || r.stencil ) ||
+			     ( r.color && v.colors.empty() ) ||
+			     ( ( r.depth || r.stencil ) && v.depth == Format::kUnknown ) ||
+			     ( r.stencil && !HasStencil( v.depth ) ) )
+				return false;
+			break;
+		}
 		case Op::kSetViewport:
 		case Op::kBeginLabel:
 		case Op::kEndLabel:
@@ -737,7 +758,9 @@ std::optional<DeviceStatus> CheckSubmission( std::span<const RecordingEncoder *c
 			if ( ( command.op == Op::kDrawIndexedIndirect &&
 			         !capabilities.Has( Capability::kMultiDrawIndirect ) ) ||
 			     ( command.op == Op::kDrawIndexedIndirectCount &&
-			         !capabilities.Has( Capability::kDrawIndirectCount ) ) )
+			         !capabilities.Has( Capability::kDrawIndirectCount ) ) ||
+			     ( command.op == Op::kClearRegion &&
+			         !capabilities.Has( Capability::kClearRegions ) ) )
 				return DeviceStatus::kUnsupported;
 			if ( command.op != Op::kWriteTimestamp && command.op != Op::kBeginOcclusionQuery )
 				continue;

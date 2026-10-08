@@ -415,6 +415,7 @@ enum class Op : std::uint8_t
 	kWriteTimestamp, // D23: buffer a, at offset
 	kBeginOcclusionQuery, // D43: buffer a, at offset
 	kEndOcclusionQuery,
+	kClearRegion,    // D44: region
 	kComputeInterop, // private compute bridge with declared texture accesses
 	kNative,         // host work (host_device.h RecordNative)
 	kSectionBegin,   // port commands host work runs (host_device.h BeginSection)
@@ -474,6 +475,7 @@ struct Command
 	std::uint64_t offset = 0;
 	IndexFormat indexFormat = IndexFormat::kUint16;
 	Viewport viewport;
+	ClearRegion region; // kClearRegion
 	std::uint32_t params[4] = {};
 	std::int32_t vertexOffset = 0;
 	const std::string *label = nullptr; // kBeginLabel
@@ -506,6 +508,7 @@ public:
 	void CopyTexture( TextureId source, TextureId destination, const TextureCopy &copy ) override;
 	void BeginRendering( const RenderingDesc &desc ) override;
 	void EndRendering() override;
+	void ClearRegion( const render::device::ClearRegion &region ) override;
 	void SetPipeline( PipelineId pipeline ) override;
 	void SetBindGroup( BindGroupRole role, BindGroupId group ) override;
 	void SetVertexBuffer( std::uint32_t slot, BufferId buffer, std::uint64_t offset ) override;

@@ -84,6 +84,9 @@ DxFormat FormatOf( Format format )
 		return Same( DXGI_FORMAT_R10G10B10A2_UNORM );
 	case Format::kRG11B10Float:
 		return Same( DXGI_FORMAT_R11G11B10_FLOAT );
+	case Format::kETC1Rgb: // D40: not claimed
+	case Format::kETC1A4:
+	case Format::kRGBA4Unorm: // D42: not claimed
 	case Format::kUnknown:
 	case Format::kCount:
 		break;

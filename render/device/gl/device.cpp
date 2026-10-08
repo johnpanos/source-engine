@@ -333,6 +333,8 @@ void GlDevice::QueryFacts()
 	// record's firstInstance in the shaders' instance index, so
 	// kIndirectFirstInstance is not claimed.
 	have.Add( Capability::kMultiDrawIndirect );
+	// D44: scissored glClearNamedFramebuffer (shimmed on ES).
+	have.Add( Capability::kClearRegions );
 	// D39: core GL renders to every float format; ES only with
 	// EXT_color_buffer_float (which covers half floats too).
 	if ( !IsEs() || HasExtension( gl, "GL_EXT_color_buffer_float" ) )
