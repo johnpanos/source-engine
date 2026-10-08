@@ -44,6 +44,8 @@ def main():
     parser.add_argument("--content", default="build-3ds-content/n3ds_chamber")
     parser.add_argument("--map", default="n3ds_chamber")
     parser.add_argument("--demo", default=None, help="play this demo (game-relative, e.g. intro4) instead of loading --map")
+    parser.add_argument("--timedemo", default=None,
+                        help="time this demo (timedemo: frames, seconds, fps and ms/frame on the guest clock)")
     parser.add_argument("--cmds", default="", help="console commands, separated by ';'")
     parser.add_argument("--launch", default="", help="extra launch arguments (e.g. -pica_dump_draws 400)")
     parser.add_argument("--wait", type=int, default=300, help="frames to wait after the map load")
@@ -61,7 +63,8 @@ def main():
 
     stop_running_emulator()
     app = harness.package()
-    start = "+playdemo %s" % options.demo if options.demo else "+map %s" % options.map
+    start = ("+timedemo %s" % options.timedemo if options.timedemo
+             else "+playdemo %s" % options.demo if options.demo else "+map %s" % options.map)
     run_azahar.stage(options.content, "%s %s %s" % (options.launch, start, args))
     console = harness.GAME / "console.log"
     if console.exists():

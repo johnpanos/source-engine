@@ -350,3 +350,30 @@ See the [progress section](#progress).
     correctly.
   - Open: the P3 per-family pixel tolerance against Vulkan; a D41 pixel
     check; New 3DS hardware (P5).
+- 2026-10-07: first `intro4` timedemo on Azahar (user request: "perf test
+  the intro4 demo"). No timing result.
+  - Method: `n3ds.py --ns pica-p5 run --content
+    build-3ds-content/sp_a1_intro4.p3 --map sp_a1_intro4 --timedemo intro4
+    --headless --speed 0` (the probe's new `--timedemo` option; Source's
+    timedemo reports frames, seconds, fps and ms/frame from
+    `Plat_FloatTime`, which on the 3DS reads the emulated system tick).
+    Build: the kiln tree `out/portal2-3ds/dev` at `623fc981e`, core world
+    and dynamic draws on, software renderer.
+  - Result: verdict `stall`. The harness saw no guest progress for 120 s
+    after pica frame 121; the core had counted about 65 frames of model
+    draws (roughly 2,000 core model draws by then). The timedemo never
+    printed its result line, so there is no fps or ms/frame number. Heap
+    at frame 121: 67.1 MB used of 97.5 MB, 4.4 MB free; linear free
+    10.6 MB; 0 refused draws, 0 corrupted textures.
+  - The same demo under `playdemo` ran to the end earlier the same day
+    (721 frames, verdict ok), so the stall is specific to timedemo, which
+    runs frames back to back. Not yet known: whether the guest hung or a
+    timedemo frame took longer than the 120 s window under the software
+    renderer.
+  - Seen in the stall screenshot: the elevator's video screen shows texel
+    noise. The 3DS build has no video provider (`--video-provider=none`),
+    so the screen's texture may be shown without ever being written. Not
+    yet checked.
+  - Even when it completes, an Azahar timedemo approximates CPU cost only:
+    the software renderer likely charges no emulated time for GPU work, so
+    it is no stand-in for New 3DS hardware (P5).
