@@ -59,6 +59,7 @@ enum class Op
 	AdditiveBlend,  // EnableBlending( true ); BlendFunc( ONE, ONE ) if $additive, else ( a, b )
 	SkySrgbRead,    // EnableSRGBRead( SAMPLER0, base texture is not 16-bit-per-channel )
 	IntroSrgb,      // with $ENABLESRGB (extra a) or on OSX: sRGB read 0 and 1, sRGB write
+	OsxSrgbWrite,   // EnableSRGBWrite( OSX sRGB RTs )
 };
 
 struct Step
@@ -139,7 +140,7 @@ struct FixedStateRow
 	Load loads[kMaxLoads];         // index -1 ends the list
 	Step steps[kMaxSteps];         // Op::End ends the list
 	int initFlags = 0;             // MATERIAL_VAR_* set at init
-	Default defaults[3] = {};
+	Default defaults[5] = {};
 	Override overrides[2] = {};
 	// A SHADER_FALLBACK block's answer, as opposed to a DEFINE_FALLBACK_SHADER
 	// alias (fallback above): the shader exists in its own right.
@@ -308,6 +309,27 @@ const FixedStateRow kRows[] = {
 	    { { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::Texture, SHADER_SAMPLER1, 0 },
 	        { Op::IntroSrgb, 1, 0 }, { Op::Pos1, 0, 0 },
 	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE } } },
+	{ "Shadow", nullptr, SHADER_NOT_EDITABLE, 0, NO_PARAMS, -1, 0,
+	    { { false, BASETEXTURE, false, TEXTUREFLAGS_SRGB } },
+	    { { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::SrgbRead, SHADER_SAMPLER0, 1 },
+	        { Op::Blending, SHADER_BLEND_ZERO, SHADER_BLEND_SRC_COLOR }, { Op::DepthWrites, 0, 0 },
+	        { Op::Format, VERTEX_POSITION | VERTEX_COLOR, 1 }, { Op::SrgbWrite, 1, 0 },
+	        { Op::FogToWhite, 0, 0 } } },
+	{ "ColorCorrection", nullptr, SHADER_NOT_EDITABLE, MATERIAL_VAR2_NEEDS_FULL_FRAME_BUFFER_TEXTURE,
+	    { { "$WEIGHT_DEFAULT", F, "1", "Volume Texture Default Weight" },
+	        { "$WEIGHT0", F, "0", "Volume Texture Weight 0" },
+	        { "$WEIGHT1", F, "0", "Volume Texture Weight 1" },
+	        { "$WEIGHT2", F, "0", "Volume Texture Weight 2" },
+	        { "$WEIGHT3", F, "0", "Volume Texture Weight 3" },
+	        { "$NUM_LOOKUPS", I, "0", "Number of lookup maps" },
+	        { "$USE_FB_TEXTURE", SHADER_PARAM_TYPE_BOOL, "0", "Use frame buffer texture as input" },
+	        { "$INPUT_TEXTURE", T, "0", "Input texture" } },
+	    5, 0, NO_LOADS,
+	    { { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::Texture, SHADER_SAMPLER1, 0 },
+	        { Op::Texture, SHADER_SAMPLER2, 0 }, { Op::Texture, SHADER_SAMPLER3, 0 },
+	        { Op::Texture, SHADER_SAMPLER4, 0 }, { Op::Pos1, 0, 0 }, { Op::OsxSrgbWrite, 0, 0 } },
+	    0,
+	    { { 0, F, 1.0f }, { 1, F, 1.0f }, { 2, F, 1.0f }, { 3, F, 1.0f }, { 4, F, 1.0f } } },
 	{ "EyeGlint", "EyeGlint_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
 	{ "EyeGlint_dx9", nullptr, 0, 0, NO_PARAMS, -1, 0, NO_LOADS,
 	    { { Op::DepthWrites, 0, 0 }, { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ONE },
@@ -489,6 +511,9 @@ private:
 			break;
 		case Op::SrgbWrite:
 			pShaderShadow->EnableSRGBWrite( step.a != 0 );
+			break;
+		case Op::OsxSrgbWrite:
+			pShaderShadow->EnableSRGBWrite( IsOSX() && g_pHardwareConfig->CanDoSRGBReadFromRTs() );
 			break;
 		case Op::SrgbRead:
 			pShaderShadow->EnableSRGBRead( Sampler_t( step.a ), step.b != 0 );
