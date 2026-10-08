@@ -752,13 +752,17 @@ def pinned_bin(pin, root=ROOT):
     return Path(root) / pin["directory"] / "bin"
 
 
+# The pin names executables without a suffix; Windows hosts add .exe.
+EXE = ".exe" if os.name == "nt" else ""
+
+
 def resolve(executable, environment, pin, root=ROOT):
     """(path, how) of a compiler: the environment override, the pinned build,
     then PATH. Identity is verified separately."""
     override = os.environ.get(environment)
     if override:
         return override, "$" + environment
-    built = pinned_bin(pin, root) / executable
+    built = pinned_bin(pin, root) / (executable + EXE)
     if built.is_file():
         return str(built), "pinned build"
     found = shutil.which(executable)
@@ -1363,7 +1367,7 @@ def build(pin, jobs=None, fetch_only=False, root=ROOT):
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text())
         if manifest.get("stamp") == stamp and \
-                all((base / out).is_file() for out in pin["build"]["outputs"]):
+                all((base / (out + EXE)).is_file() for out in pin["build"]["outputs"]):
             log("up to date: %s" % bin_dir)
             return 0
     for directory in (sources, build_dir, bin_dir):
@@ -1398,11 +1402,11 @@ def build(pin, jobs=None, fetch_only=False, root=ROOT):
     subprocess.run(compile_, check=True, env=env, stdout=subprocess.DEVNULL)
     bin_dir.mkdir(parents=True)
     for output, built in pin["build"]["outputs"].items():
-        shutil.copy2(build_dir / built, base / output)
+        shutil.copy2(build_dir / (built + EXE), base / (output + EXE))
 
-    glslc_path = str(bin_dir / pin["compiler"]["executable"])
+    glslc_path = str(bin_dir / (pin["compiler"]["executable"] + EXE))
     problem = identity_problem(glslc_path, pin)
-    debug_problem = debug_identity_problem(str(bin_dir / pin["debug_compiler"]["executable"]),
+    debug_problem = debug_identity_problem(str(bin_dir / (pin["debug_compiler"]["executable"] + EXE)),
                                            pin)
     if problem or debug_problem:
         raise ToolchainError("the pinned build is not the pin: %s" % (problem or debug_problem))
@@ -1417,7 +1421,7 @@ def build(pin, jobs=None, fetch_only=False, root=ROOT):
         "host": {"c++": first_line(["c++", "--version"]),
                  "cmake": first_line(["cmake", "--version"]),
                  "ninja": first_line(["ninja", "--version"])},
-        "outputs": {output: sha256(base / output) for output in pin["build"]["outputs"]},
+        "outputs": {output: sha256(base / (output + EXE)) for output in pin["build"]["outputs"]},
     }
     manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
     log("built %s" % bin_dir)
@@ -1446,7 +1450,7 @@ def build_cross(pin, jobs=None, fetch_only=False, root=ROOT):
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text())
         if manifest.get("stamp") == stamp and \
-                all((base / out).is_file() for out in cross["build"]["outputs"]):
+                all((base / (out + EXE)).is_file() for out in cross["build"]["outputs"]):
             log("up to date: %s" % ", ".join(cross["build"]["outputs"]))
             return 0
     for directory in (sources, build_dir):
@@ -1478,8 +1482,8 @@ def build_cross(pin, jobs=None, fetch_only=False, root=ROOT):
     subprocess.run(compile_, check=True, env=env, stdout=subprocess.DEVNULL)
     (base / "bin").mkdir(parents=True, exist_ok=True)
     for output, built in cross["build"]["outputs"].items():
-        shutil.copy2(build_dir / built, base / output)
-    problem = cross_identity_problem(str(base / "bin" / cross["executable"]), pin)
+        shutil.copy2(build_dir / (built + EXE), base / (output + EXE))
+    problem = cross_identity_problem(str(base / "bin" / (cross["executable"] + EXE)), pin)
     if problem:
         raise ToolchainError("the pinned SPIRV-Cross build is not the pin: %s" % problem)
     manifest = {
@@ -1493,7 +1497,7 @@ def build_cross(pin, jobs=None, fetch_only=False, root=ROOT):
         "host": {"c++": first_line(["c++", "--version"]),
                  "cmake": first_line(["cmake", "--version"]),
                  "ninja": first_line(["ninja", "--version"])},
-        "outputs": {output: sha256(base / output) for output in cross["build"]["outputs"]},
+        "outputs": {output: sha256(base / (output + EXE)) for output in cross["build"]["outputs"]},
     }
     manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
     log("built %s" % ", ".join(cross["build"]["outputs"]))

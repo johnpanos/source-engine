@@ -81,7 +81,7 @@ class ProbeLightSeparation(unittest.TestCase):
     def setUpClass(cls):
         blender = shutil.which("blender")
         if not blender:
-            raise RuntimeError("probe separation requires Blender")
+            raise unittest.SkipTest("probe separation requires Blender")
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "separation.py"
             path.write_text(SCRIPT)

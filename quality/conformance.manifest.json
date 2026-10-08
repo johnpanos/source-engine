@@ -7336,7 +7336,7 @@
       ],
       "result_protocol": "checks-v1",
       "sources": [
-        "mapcontainer/blake2b.cpp",
+        "content/hash.cpp",
         "mapcontainer/map_container.cpp",
         "unittests/mapcontainertest/test_map_container.cpp"
       ],
@@ -7986,7 +7986,7 @@
             "-DTOOLCHAIN_LAYOUT_FN=ToolchainLayoutsCxx20"
           ],
           "sources": [
-            "mapcontainer/blake2b.cpp",
+            "content/hash.cpp",
             "mapcontainer/map_container.cpp",
             "unittests/toolchaintest/mapcontainer_bsp2_helper.cpp",
             "unittests/toolchaintest/boundary_layout_unit.cpp"

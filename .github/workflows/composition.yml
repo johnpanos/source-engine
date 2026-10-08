@@ -13,6 +13,8 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y g++ pkg-config libbz2-dev zlib1g-dev
         python -m pip install -r tools/quality/requirements-ci.txt
+        # imageio writes EXR through FreeImage, a library its plugin fetches.
+        python -c "import imageio; imageio.plugins.freeimage.download()"
     - name: Test gate sensitivity and architecture
       run: |
         python3 -m unittest discover -s tools/quality/tests -v
