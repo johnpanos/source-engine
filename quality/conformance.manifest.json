@@ -14007,7 +14007,7 @@
       "contract": "RFC/0016-render-core.md",
       "profile": "linux-native-vulkan-gpu",
       "kind": "positive",
-      "description": "RFC 0016 K8 portal views: PortalRefract's color stages on the core's decal-modulate point, judged against portal_refract_vs20/ps2x restated in C++ on a 64x64 canvas with D3D9 pixel centers. Stage 0 warps the scene color snapshot (a red ramp linear in x) outward around the opening along the surface's projected tangent frame (exact to 1e-5 inside the opening, where the unwarped value differs by 0.1), darkens it in a ring, and leaves pixels outside the oval untouched. Stage 2's flame rim (uniform noise through a gray sRGB ramp times $portalcolorscale, alpha blended with the source alpha clamped to 1 as the legacy frame buffer did) matches the oracle on a sampled grid. Stage 2 without its textures is refused by name. No validation messages.",
+      "description": "RFC 0016 K8 portal views: PortalRefract's color stages on the core's decal-modulate point, judged against portal_refract_vs20/ps2x restated in C++ on a 64x64 canvas with D3D9 pixel centers. Stage 0 warps the scene color snapshot (a red ramp linear in x) outward around the opening along the surface's projected tangent frame (exact to 1e-5 inside the opening, where the unwarped value differs by 0.1), darkens it in a ring, and leaves pixels outside the oval untouched. Stage 2's flame rim (uniform noise through a gray sRGB ramp times $portalcolorscale, alpha blended with the source alpha clamped to 1 as the legacy frame buffer did) matches the oracle on a sampled grid. Stage 2 without its textures is refused by name. PortalStaticOverlay's ghost ($ghostoverlay 2) is the static texture times the vertex alpha and $staticamount, premultiplied over the frame, and fades out entirely when facing the viewer closer than 120 units; the unghosted overlay is refused by name. No validation messages.",
       "command": [
         "{python}",
         "tools/render/lab.py",
@@ -14016,7 +14016,7 @@
         "--validate"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 11,
+      "min_checks": 14,
       "timeout_seconds": 300,
       "requires": [
         "path:build-rc-lab/render/lab/render_lab",

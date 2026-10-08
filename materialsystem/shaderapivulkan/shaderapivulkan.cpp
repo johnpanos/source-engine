@@ -4698,6 +4698,8 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 			// flame stages to the core's portal point.
 			return CoreMeshKind::kPortal;
 		}
+		if ( !V_stricmp( shader, "PortalStaticOverlay" ) )
+			return CoreMeshKind::kPortal;
 		if ( !V_stricmp( shader, "WriteZ" ) || !V_stricmp( shader, "WriteZ_DX9" ) )
 			return CoreMeshKind::kDepthMask;
 		if ( !V_stricmp( shader, "BufferClearObeyStencil" ) ||
@@ -4936,6 +4938,15 @@ bool CEmptyMesh::EmitToCoreQueue()
 	                                    : HasColorMesh()        ? this
 	                                                            : nullptr;
 	const bool brushTangents = ( source.m_format & VERTEX_TANGENT_S ) != 0;
+	// Frozen-path: core progress (RFC 0016 K8) - PortalStaticOverlay's ghost
+	// moves each vertex one unit off the wall (portalstaticoverlay_vs20).
+	bool ghostOverlay = false;
+	if ( !V_stricmp( g_pBoundMaterial->GetShaderName(), "PortalStaticOverlay" ) )
+	{
+		bool found = false;
+		IMaterialVar *ghost = g_pBoundMaterial->FindVar( "$ghostoverlay", &found, false );
+		ghostOverlay = found && ghost->GetIntValue() > 0;
+	}
 	for ( int i = 0; i < int( vertices.size() ); ++i )
 	{
 		const unsigned char *raw =
@@ -4971,6 +4982,9 @@ bool CEmptyMesh::EmitToCoreQueue()
 		memcpy( tangent, raw + ( brushTangents ? kMeshTangentSOffset : kMeshUserDataOffset ),
 		    sizeof( tangent ) );
 		WorldNormal( raw, normal, out.normal );
+		if ( ghostOverlay )
+			for ( int k = 0; k < 3; ++k )
+				out.position[k] += out.normal[k];
 		WorldNormal( raw, tangent, out.tangentS );
 		if ( brushTangents )
 		{

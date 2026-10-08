@@ -13186,3 +13186,20 @@ portal's far view reads dark against legacy: to be compared next.
     matching the retained one (mean difference 0.004 levels).
   - Open on the same view: PortalStaticOverlay (`_noz` overlays) and
     EyeRefract (Chell's eyes) are still dropped.
+- **Portal ghost overlays** (PortalStaticOverlay `$ghostoverlay`, the
+  `_noz` overlays: a portal seen through walls) were dropped. A new
+  `portal-overlay` family claims the ghost on the decal-modulate point:
+  - Per pixel: the static texture times the vertex color and the vertex
+    alpha, faded in from 120 to 240 units when the portal faces the viewer,
+    times `$staticamount`; premultiplied, scaled by the output's linear scale
+    clamped to 1.
+  - The frozen backend offsets the vertices one unit along their normals, as
+    `portalstaticoverlay_vs20` does, and gives the shader the `kPortal` kind.
+    The FARTHER depth test is the captured draw state's.
+  - `$alphamasktexture` is inert for the ghost. The unghosted overlay and
+    `$nocolorwrite` are refused by name.
+  - `render.lab.portal-refract` 14/0: the ghost is the premultiplied static,
+    and a portal facing the viewer from closer than 120 units fades out.
+  - Census `portal-walk`: only Chell's eyes (EyeRefract) are still dropped;
+    0 legacy stream draws. The frame matches the previous run (mean
+    difference 0.02 levels).

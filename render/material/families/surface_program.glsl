@@ -2488,6 +2488,23 @@ void main()
 	// Points without image specular leave the SSR targets empty (weight 0:
 	// render.pass.ssr leaves their pixels unchanged).
 	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );
+	if ( kDecalModulate && material.baseDecode.y > 5.5 )
+	{
+		// PortalStaticOverlay's ghost (portalstaticoverlay_vs20, _ps2x).
+		vec4 ghost = material.surfaceControls.y > 0.5
+		                 ? texture( sampler2D( emissionTexture, emissionSampler ), baseUv )
+		                 : vec4( 0.25 );
+		vec4 tint = vec4( material.tint.y < 1.5 ? color.rgb : vec3( 1.0 ), 1.0 );
+		const vec3 ray = worldPosition - frame.eye.xyz;
+		if ( dot( worldNormal, ray ) <= 0.0 )
+			tint.a = clamp( ( dot( ray, ray ) - 120.0 * 120.0 ) / ( 240.0 * 240.0 - 120.0 * 120.0 ),
+			    0.0, 1.0 );
+		tint.a *= color.a;
+		ghost.rgb *= tint.rgb * tint.a * material.tint.x;
+		ghost.a *= tint.a;
+		outColor = EncodeOutput( ghost * clamp( frame.light.y, 0.0, 1.0 ) );
+		return;
+	}
 	if ( kDecalModulate && material.baseDecode.y > 3.5 )
 	{
 		PortalRefractSurface( material.baseDecode.y > 4.5 );

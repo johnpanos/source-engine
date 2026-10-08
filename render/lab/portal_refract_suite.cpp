@@ -48,6 +48,8 @@ constexpr std::uint32_t kSize = 64;
 constexpr float kExtent = 64.0f; // the quad's half size in world units
 constexpr int kNoiseHandle = 1;
 constexpr int kRampHandle = 2;
+constexpr int kStaticHandle = 3;
+constexpr unsigned kStatic[] = { 200, 100, 50, 180 };
 constexpr float kOpen = 0.6f;
 constexpr float kColorScale = 2.0f;
 constexpr unsigned kNoiseByte = 128;
@@ -56,10 +58,13 @@ constexpr float kGray[] = { .25f, .25f, .25f, 1.0f };
 class PortalTextures final : public IWorldTextures
 {
 public:
-	TextureId noise, ramp;
+	TextureId noise, ramp, statics;
 	TextureId Import( int handle, bool ) override
 	{
-		return handle == kNoiseHandle ? noise : handle == kRampHandle ? ramp : TextureId();
+		return handle == kNoiseHandle    ? noise
+		       : handle == kRampHandle   ? ramp
+		       : handle == kStaticHandle ? statics
+		                                 : TextureId();
 	}
 	SamplerDesc Sampler( int ) override
 	{
@@ -255,6 +260,13 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		if ( !rampStaged )
 			return std::string( "the ramp texture did not stage" );
 		imports.ramp = rampStaged.Value().texture;
+		desc.width = 1;
+		const std::byte statics[4] = { std::byte( kStatic[0] ), std::byte( kStatic[1] ),
+		    std::byte( kStatic[2] ), std::byte( kStatic[3] ) };
+		auto staticStaged = textures.Stage( "portal-refract/static", desc, statics );
+		if ( !staticStaged )
+			return std::string( "the static texture did not stage" );
+		imports.statics = staticStaged.Value().texture;
 	}
 	WorldPass pass;
 	pass.SetSurfaceFragmentModule( module );
@@ -346,6 +358,60 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		results.That( close, "portal-refract.stage2.flame-matches-the-oracle", detail );
 		results.That(
 		    judged > 4, "portal-refract.stage2.fixture-draws-flame", std::to_string( judged ) );
+	}
+
+	// PortalStaticOverlay's ghost: the static texture times the vertex alpha
+	// and $staticamount, premultiplied over the clear; the portal faces away
+	// from the viewer, so no distance fade applies.
+	{
+		WorldMaterial ghost;
+		ghost.name = "models/portals/lab_ghost";
+		ghost.shader = "PortalStaticOverlay";
+		ghost.variables = { { "$ghostoverlay", "2" }, { "$staticamount", "0.3" },
+		    { "$staticblendtexture", "lab/static" }, { "$additive", "1" }, { "$nocull", "1" } };
+		ghost.textures = { { "$staticblendtexture", kStaticHandle } };
+		WorldView view = View();
+		auto quad = Quad( ghost, 0.4f );
+		for ( auto &v : quad.vertices )
+			v.color[3] = 128;
+		view.dynamicDraws.push_back( std::move( quad ) );
+		CanvasImage image;
+		if ( auto why = render( std::move( view ), kGray, image ) )
+			return "portal-refract.ghost: " + *why;
+		const double va = 128.0 / 255.0, alpha = kStatic[3] / 255.0 * va;
+		const float *pixel = image.At( 32, 32 );
+		bool close = true;
+		std::string detail;
+		for ( int c = 0; c < 3; ++c )
+		{
+			const double expected =
+			    Decode( kStatic[c] / 255.0 ) * va * 0.3 + kGray[c] * ( 1.0 - alpha );
+			close &= std::abs( pixel[c] - expected ) < .004;
+			detail += std::to_string( pixel[c] ) + "/" + std::to_string( expected ) + " ";
+		}
+		results.That( close, "portal-refract.ghost-overlay-is-the-premultiplied-static", detail );
+		// Facing the viewer closer than 120 units the ghost fades out entirely.
+		WorldView facing = View();
+		auto near = Quad( ghost, 0.4f );
+		for ( auto &v : near.vertices )
+		{
+			v.color[3] = 128;
+			v.normal[2] = -1.0f;
+		}
+		facing.dynamicDraws.push_back( std::move( near ) );
+		CanvasImage faded;
+		if ( auto why = render( std::move( facing ), kGray, faded ) )
+			return "portal-refract.ghost-facing: " + *why;
+		results.That( std::abs( faded.At( 32, 32 )[0] - kGray[0] ) < .002,
+		    "portal-refract.ghost-facing-near-is-faded-out",
+		    std::to_string( faded.At( 32, 32 )[0] ) );
+		WorldMaterial plain = ghost;
+		plain.variables = { { "$staticamount", "0.3" } };
+		WorldView refused = View();
+		refused.dynamicDraws.push_back( Quad( plain, 0.4f ) );
+		const auto tag = pass.QueueView( std::move( refused ) );
+		results.That( !tag && pass.Stats().lastRefusal.find( "$ghostoverlay" ) != std::string::npos,
+		    "portal-refract.refuse-overlay-without-ghost", pass.Stats().lastRefusal );
 	}
 
 	{

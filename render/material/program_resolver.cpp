@@ -557,7 +557,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 	if ( material.family == "unlit" || material.family == "cable" ||
 	     material.family == "decal-modulate" || material.family == "energy" ||
 	     material.family == "modulate" || material.family == "blob-shadow" ||
-	     material.family == "shadow-build" )
+	     material.family == "shadow-build" || material.family == "portal-overlay" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
@@ -565,6 +565,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		    : material.family == "modulate"       ? ClaimModulate( *block )
 		    : material.family == "blob-shadow"    ? ClaimBlobShadow( *block )
 		    : material.family == "shadow-build"   ? ClaimShadowBuild( *block )
+		    : material.family == "portal-overlay" ? ClaimPortalOverlay( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -704,6 +705,13 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 		return ClaimForMesh( AsVertexLit( material ), nativeReflectionProbes,
 		    sceneColorAvailable );
 	}
+	if ( material.family == "portal-overlay" )
+	{
+		const UnlitClaim claim = ClaimPortalOverlay( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return claim.blend;
+	}
 	if ( material.family == "shadow-build" )
 	{
 		// A caster's coverage into the shadow page: the model vertex's
@@ -837,7 +845,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	if ( material.family == "unlit" || material.family == "cable" ||
 	     material.family == "decal-modulate" || material.family == "energy" ||
 	     material.family == "modulate" || material.family == "blob-shadow" ||
-	     material.family == "shadow-build" )
+	     material.family == "shadow-build" || material.family == "portal-overlay" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
@@ -845,6 +853,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		    : material.family == "modulate"       ? ClaimModulate( *block )
 		    : material.family == "blob-shadow"    ? ClaimBlobShadow( *block )
 		    : material.family == "shadow-build"   ? ClaimShadowBuild( *block )
+		    : material.family == "portal-overlay" ? ClaimPortalOverlay( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -881,6 +890,8 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		}
 		if ( claim.twoTexture )
 			textures.emission = TextureOf( material, "texture2" );
+		if ( material.family == "portal-overlay" )
+			textures.emission = TextureOf( material, "staticblendtexture" );
 		if ( s.mesh && s.worldPbr && !claim.twoTexture && !claim.cable && !claim.decalModulate &&
 		     !claim.energy && !claim.wireframe &&
 		     !IsBlack( material ) )

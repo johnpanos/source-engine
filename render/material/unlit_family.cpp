@@ -504,6 +504,49 @@ UnlitClaim ClaimPortalRefract( const ParameterBlock &block, bool sceneColorAvail
 	return claim;
 }
 
+UnlitClaim ClaimPortalOverlay( const ParameterBlock &block )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "portal-overlay" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	// $color and $alpha are declared unused; $additive and $translucent are
+	// inert (the shader sets its own blend); the ghost never reads the alpha
+	// mask (portalstaticoverlay_ps2x's PORTALGHOSTOVERLAY branch).
+	constexpr std::string_view keys[] = { "staticamount", "staticblendtexture",
+	    "staticblendtextureframe", "ghostoverlay", "color", "alpha", "additive", "translucent",
+	    "model", "nocull", "nofog", "alphamasktexture", "alphamasktextureframe", "nocolorwrite" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the portal overlay point does not draw " + *unread;
+		return claim;
+	}
+	if ( ReadParameter( block, "nocolorwrite" ) != 0.0f )
+	{
+		claim.reason = "the portal overlay point does not draw $nocolorwrite";
+		return claim;
+	}
+	const int ghost = std::clamp( int( ReadParameter( block, "ghostoverlay" ) ), 0, 2 );
+	if ( ghost == 0 )
+	{
+		claim.reason = "PortalStaticOverlay without $ghostoverlay (the static fade) is not claimed";
+		return claim;
+	}
+	claim.blend = device::BlendMode::kPremultiplied;
+	claim.alphaWrite = false;
+	claim.decalModulate = true;
+	SurfaceConstants &constants = claim.constants;
+	constants.baseDecode[1] = 6.0f; // the ghost overlay
+	constants.tint[0] = ReadParameter( block, "staticamount" );
+	constants.tint[1] = float( ghost );
+	constants.surfaceControls[1] =
+	    detail::TextureBound( block, "staticblendtexture" ) ? 1.0f : 0.0f;
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimModulate( const ParameterBlock &block )
 {
 	UnlitClaim claim;

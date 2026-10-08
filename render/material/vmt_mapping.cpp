@@ -73,6 +73,10 @@ constexpr VmtShaderRow kShaders[] = {
         "added into the shadow page; the decal-modulate point (unlit_family.h "
         "ClaimShadowBuild)" },
     { "shadowbuild_dx9", "shadow-build", "ShadowBuild's DirectX 9 implementation" },
+    { "portalstaticoverlay", "portal-overlay",
+        "PortalStaticOverlay (portalstaticoverlay.cpp, portalstaticoverlay_ps2x): Portal 2's "
+        "ghost, the portal seen through walls (reverse depth test), on the decal-modulate "
+        "point (unlit_family.h ClaimPortalOverlay)" },
     { "teeth", "teeth",
         "Teeth: the base under Source's model lighting darkened by $illumfactor x N.$forward, "
         "on VertexLitGeneric's mesh point (vertexlit_family.h ClaimTeeth)" },
@@ -121,7 +125,7 @@ constexpr std::string_view kLegacyReason =
 // kLegacyDerivedFamilies a copy.
 constexpr std::string_view kLegacyDerivedFamilies[] = { "lightmapped", "vertexlit", "unlit",
     "depth", "portal-mask", "cable", "decal-modulate", "energy", "modulate", "teeth", "eyes",
-    "blob-shadow", "shadow-build" };
+    "blob-shadow", "shadow-build", "portal-overlay" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$one", "one", ValueKind::kFloat, "1" },
@@ -167,6 +171,15 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     // ShadowBuild's caster material: the frontend binds its $basetexture,
     // $frame and $basetexturetransform in this material's place.
     { "shadow-build", "$translucent_material", "translucent_material", ValueKind::kMaterial, "" },
+    // PortalStaticOverlay (portalstaticoverlay.cpp's parameters and defaults).
+    { "portal-overlay", "$staticamount", "staticamount", ValueKind::kFloat, "0" },
+    { "portal-overlay", "$staticblendtexture", "staticblendtexture", ValueKind::kTexture, "" },
+    { "portal-overlay", "$staticblendtextureframe", "staticblendtextureframe", ValueKind::kInt,
+        "0" },
+    { "portal-overlay", "$alphamasktexture", "alphamasktexture", ValueKind::kTexture, "" },
+    { "portal-overlay", "$alphamasktextureframe", "alphamasktextureframe", ValueKind::kInt, "0" },
+    { "portal-overlay", "$nocolorwrite", "nocolorwrite", ValueKind::kInt, "0" },
+    { "portal-overlay", "$ghostoverlay", "ghostoverlay", ValueKind::kInt, "0" },
     // Teeth (teeth.cpp's parameters; the shader system leaves an undefined
     // float or vector at zero, and studiorender sets these per draw).
     { "teeth", "$illumfactor", "illumfactor", ValueKind::kFloat, "0" },

@@ -122,6 +122,15 @@ UnlitClaim ClaimShadowBuild( const ParameterBlock &block );
 // ($portalcolortexture, as the emission) times $portalcolorscale, alpha
 // blended. Stage 1 is the portal-mask depth point's.
 UnlitClaim ClaimPortalRefract( const ParameterBlock &block, bool sceneColorAvailable );
+// PortalStaticOverlay's ghost ($ghostoverlay 1 or 2; portalstaticoverlay_vs20
+// and _ps2x): the static texture (sRGB, at the emission binding; 0.25 without
+// one) times the vertex color (white for 2) and the vertex alpha faded in
+// from 120 to 240 units when the portal faces the viewer, times $staticamount,
+// blended ONE, ONE_MINUS_SRC_ALPHA (premultiplied), scaled by the output's
+// linear scale clamped to 1. The frontend offsets the vertices one unit along
+// their normals; the depth test (FARTHER) is the captured draw state's. The
+// unghosted overlay is refused by name.
+UnlitClaim ClaimPortalOverlay( const ParameterBlock &block );
 // Modulate (modulate_dx9.cpp, modulate_ps2x): the decal-modulate point with
 // saturate( base x $color/$alpha x vertex color ), its color lerped from the
 // neutral 0.5 by its alpha, fog to the neutral grey. $mod2x blends
