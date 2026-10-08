@@ -1460,7 +1460,7 @@ CX360SmallBlockPool *CX360SmallBlockHeap::FindPool( void *p )
 // report names its owners (MemLedger_Print; tools/n3ds/n3ds.py symbolizes the
 // LEDGER lines). Unwinding costs only on these rare large allocations.
 //-----------------------------------------------------------------------------
-#include <unwind.h>
+#include "foundation_facade.h"
 
 namespace
 {
@@ -1479,26 +1479,6 @@ LedgerEntry g_Ledger[kLedgerSlots];
 CThreadFastMutex g_LedgerLock;
 int g_LedgerDropped = 0;
 
-struct UnwindState
-{
-	uintptr_t *frames;
-	int count;
-	int skip;
-};
-
-_Unwind_Reason_Code LedgerUnwind( struct _Unwind_Context *context, void *arg )
-{
-	UnwindState *state = static_cast<UnwindState *>( arg );
-	const uintptr_t pc = _Unwind_GetIP( context );
-	if ( state->skip > 0 )
-	{
-		--state->skip;
-		return _URC_NO_REASON;
-	}
-	state->frames[state->count++] = pc;
-	return state->count < kLedgerFrames ? _URC_NO_REASON : _URC_END_OF_STACK;
-}
-
 unsigned LedgerSlot( void *ptr )
 {
 	return ( unsigned( uintptr_t( ptr ) ) >> 3 ) * 2654435761u & ( kLedgerSlots - 1 );
@@ -1511,8 +1491,12 @@ void LedgerAdd( void *ptr, size_t size )
 	LedgerEntry entry = {};
 	entry.ptr = ptr;
 	entry.size = size;
-	UnwindState state = { entry.frames, 0, 2 }; // skip LedgerAdd and Alloc
-	_Unwind_Backtrace( LedgerUnwind, &state );
+	// Tier 0's stack capture (R103); its frames start at LedgerAdd, then Alloc,
+	// both skipped as before.
+	void *captured[kLedgerFrames + 2] = {};
+	const int nCaptured = tier0_facade::CaptureStackFromAllocator( captured, kLedgerFrames + 2 );
+	for ( int i = 2; i < nCaptured; ++i )
+		entry.frames[i - 2] = (uintptr_t)captured[i];
 	AUTO_LOCK( g_LedgerLock );
 	for ( unsigned i = LedgerSlot( ptr ), n = 0; n < kLedgerSlots; i = ( i + 1 ) & ( kLedgerSlots - 1 ), ++n )
 	{

@@ -19,6 +19,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <atomic>
+#include <cstdint>
+#include <functional>
 #include <thread>
 
 namespace platformtest
@@ -229,6 +232,130 @@ inline DiagnosticsReport RunCrashReporterConformance( platform::ICrashReporter &
 	reporter.SetAnnotation( maxKey.c_str(), nullptr );
 	reporter.SetAnnotation( "big", nullptr );
 	reporter.SetAnnotation( "empty", nullptr );
+	return r;
+}
+
+// ---------------------------------------------------------------------------
+// Stack capture (R103)
+
+#if defined( _MSC_VER )
+#define DG_NOINLINE __declspec( noinline )
+#else
+#define DG_NOINLINE __attribute__( ( noinline ) )
+#endif
+
+// Captures from a known function, so the innermost frame can be checked.
+DG_NOINLINE inline int CaptureAt( platform::IStackCapture &capture, void **frames, int maxFrames )
+{
+	const int n = capture.CaptureStack( frames, maxFrames );
+	// Keep the call from becoming a tail call, which would drop this frame.
+	volatile int keep = n;
+	return keep;
+}
+
+DG_NOINLINE inline int CaptureTwiceFromOneSite( platform::IStackCapture &capture, void **a, void **b,
+	int maxFrames, int limited, void **c )
+{
+	int n[3] = {};
+	for ( int i = 0; i < 3; ++i )
+	{
+		void **out = i == 0 ? a : i == 1 ? b : c;
+		n[i] = CaptureAt( capture, out, i == 2 ? limited : maxFrames );
+	}
+	volatile int keep = n[0] * 10000 + n[1] * 100 + n[2];
+	return keep;
+}
+
+inline DiagnosticsReport RunStackCaptureConformance( platform::IStackCapture &capture )
+{
+	DiagnosticsReport r;
+	void *dummy[4] = {};
+	DG_CHECK( r, capture.CaptureStack( nullptr, 8 ) == 0 );
+	DG_CHECK( r, capture.CaptureStack( dummy, 0 ) == 0 );
+	DG_CHECK( r, capture.CaptureStack( dummy, -1 ) == 0 );
+
+	void *a[32] = {};
+	void *b[32] = {};
+	void *c[32] = {};
+	const int packed = CaptureTwiceFromOneSite( capture, a, b, 32, 2, c );
+	const int na = packed / 10000, nb = packed / 100 % 100, nc = packed % 100;
+	DG_CHECK( r, na >= 2 && na <= 32 );
+	DG_CHECK( r, nb == na );
+	DG_CHECK( r, nc == 2 ); // never more than asked for
+	bool nonNull = na > 0;
+	bool same = na == nb;
+	for ( int i = 0; i < na && i < 32; ++i )
+	{
+		nonNull = nonNull && a[i] != nullptr;
+		same = same && a[i] == b[i];
+	}
+	DG_CHECK( r, nonNull );
+	DG_CHECK( r, same ); // the same site yields the same stack
+	DG_CHECK( r, nc == 2 && c[0] == a[0] && c[1] == a[1] ); // a limited capture is a prefix
+	// Innermost first, starting at the caller: frame 0 returns into CaptureAt.
+	const std::uintptr_t at = reinterpret_cast<std::uintptr_t>( &CaptureAt );
+	const std::uintptr_t first = reinterpret_cast<std::uintptr_t>( a[0] );
+	DG_CHECK( r, na > 0 && first > at && first - at < 4096 );
+	return r;
+}
+
+// ---------------------------------------------------------------------------
+// Watchdog (R103). `wait( milliseconds )` lets time pass: real sleeps for a
+// native provider, virtual time for the fake.
+
+struct WatchdogProbe
+{
+	std::atomic<int> fired{ 0 };
+};
+
+inline void WatchdogFire( void *context )
+{
+	static_cast<WatchdogProbe *>( context )->fired.fetch_add( 1 );
+}
+
+inline DiagnosticsReport RunWatchdogConformance( platform::IWatchdog &watchdog,
+	const std::function<void( unsigned )> &wait )
+{
+	DiagnosticsReport r;
+	WatchdogProbe probe;
+	if ( !watchdog.IsSupported() )
+	{
+		DG_CHECK( r, !watchdog.Arm( 1, WatchdogFire, &probe ) );
+		watchdog.Disarm();
+		wait( 1300 );
+		DG_CHECK( r, probe.fired.load() == 0 );
+		return r;
+	}
+	DG_CHECK( r, !watchdog.Arm( 0, WatchdogFire, &probe ) );
+	DG_CHECK( r, !watchdog.Arm( 1, nullptr, &probe ) );
+	watchdog.Disarm(); // harmless when not armed
+
+	// Fires once, not early.
+	DG_CHECK( r, watchdog.Arm( 1, WatchdogFire, &probe ) );
+	wait( 600 );
+	DG_CHECK( r, probe.fired.load() == 0 );
+	wait( 900 );
+	DG_CHECK( r, probe.fired.load() == 1 );
+	wait( 1200 );
+	DG_CHECK( r, probe.fired.load() == 1 );
+
+	// Disarm cancels.
+	WatchdogProbe cancelled;
+	DG_CHECK( r, watchdog.Arm( 1, WatchdogFire, &cancelled ) );
+	wait( 300 );
+	watchdog.Disarm();
+	wait( 1200 );
+	DG_CHECK( r, cancelled.fired.load() == 0 );
+
+	// Re-arming replaces the delay and the callback.
+	WatchdogProbe first, second;
+	DG_CHECK( r, watchdog.Arm( 1, WatchdogFire, &first ) );
+	DG_CHECK( r, watchdog.Arm( 2, WatchdogFire, &second ) );
+	wait( 1500 );
+	DG_CHECK( r, first.fired.load() == 0 && second.fired.load() == 0 );
+	wait( 1000 );
+	DG_CHECK( r, first.fired.load() == 0 && second.fired.load() == 1 );
+	watchdog.Disarm();
 	return r;
 }
 

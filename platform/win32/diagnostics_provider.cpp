@@ -322,6 +322,41 @@ LONG WINAPI UnhandledFilter( EXCEPTION_POINTERS *info )
 	return EXCEPTION_CONTINUE_SEARCH; // the process ends with the original code
 }
 
+class CWin32StackCapture final : public IStackCapture
+{
+public:
+	__declspec( noinline ) int CaptureStack( void **frames, int maxFrames ) override
+	{
+		if ( frames == nullptr || maxFrames <= 0 )
+		{
+			return 0;
+		}
+		const DWORD count = maxFrames > 62 ? 62 : static_cast<DWORD>( maxFrames );
+		// Skip this function's own frame.
+		return static_cast<int>( RtlCaptureStackBackTrace( 1, count, frames, nullptr ) );
+	}
+};
+
+class CWin32Watchdog final : public IWatchdog
+{
+public:
+	bool IsSupported() const override { return false; }
+	bool Arm( unsigned, void ( * )( void * ), void * ) override { return false; }
+	void Disarm() override {}
+};
+
+std::atomic<void ( * )( unsigned long, void * )> g_exceptionCallback{ nullptr };
+
+LONG WINAPI CallbackFilter( EXCEPTION_POINTERS *info )
+{
+	if ( void ( *callback )( unsigned long, void * ) = g_exceptionCallback.load() )
+	{
+		callback( info != nullptr && info->ExceptionRecord != nullptr ? info->ExceptionRecord->ExceptionCode : 0,
+		    info );
+	}
+	return EXCEPTION_CONTINUE_SEARCH;
+}
+
 } // namespace
 
 std::unique_ptr<IDebugOutput> CreateWin32HandleDebugOutput( void *file )
@@ -332,6 +367,22 @@ std::unique_ptr<IDebugOutput> CreateWin32HandleDebugOutput( void *file )
 std::unique_ptr<IDebugOutput> CreateWin32DebuggerOutput()
 {
 	return std::make_unique<CDebuggerOutput>();
+}
+
+std::unique_ptr<IStackCapture> CreateWin32StackCapture()
+{
+	return std::make_unique<CWin32StackCapture>();
+}
+
+std::unique_ptr<IWatchdog> CreateWin32Watchdog()
+{
+	return std::make_unique<CWin32Watchdog>();
+}
+
+void SetUnhandledExceptionCallback( void ( *callback )( unsigned long code, void *exceptionPointers ) )
+{
+	g_exceptionCallback.store( callback );
+	SetUnhandledExceptionFilter( callback != nullptr ? CallbackFilter : nullptr );
 }
 
 std::unique_ptr<ICrashReporter> CreateWin32CrashReporter(

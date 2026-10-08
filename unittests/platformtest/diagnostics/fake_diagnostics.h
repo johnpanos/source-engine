@@ -13,6 +13,10 @@
 
 #include "platform/contracts/diagnostics.h"
 
+#include <cstdint>
+#if defined( _MSC_VER )
+#include <intrin.h>
+#endif
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -173,6 +177,85 @@ private:
 	int m_nextReport = 1;
 	std::map<std::string, std::string> m_annotations;
 	std::vector<std::map<std::string, std::string>> m_reports;
+};
+
+// A stack capture whose innermost frame is its true caller (the compiler's
+// return address) followed by fixed synthetic frames: a conforming fake.
+class CFakeStackCapture : public platform::IStackCapture
+{
+public:
+#if defined( _MSC_VER )
+	__declspec( noinline )
+#else
+	__attribute__( ( noinline ) )
+#endif
+	int CaptureStack( void **frames, int maxFrames ) override
+	{
+		if ( frames == nullptr || maxFrames <= 0 )
+		{
+			return 0;
+		}
+#if defined( _MSC_VER )
+		void *caller = _ReturnAddress();
+#else
+		void *caller = __builtin_return_address( 0 );
+#endif
+		return Fill( frames, maxFrames, caller );
+	}
+
+protected:
+	static int Fill( void **frames, int maxFrames, void *caller )
+	{
+		static char outer[4];
+		const int depth = 4;
+		int n = 0;
+		for ( ; n < depth && n < maxFrames; ++n )
+		{
+			frames[n] = n == 0 ? caller : static_cast<void *>( &outer[n] );
+		}
+		return n;
+	}
+};
+
+// A watchdog on virtual time: Advance( ms ) fires it when its delay has passed.
+class CFakeWatchdog : public platform::IWatchdog
+{
+public:
+	explicit CFakeWatchdog( bool supported = true ) : m_supported( supported ) {}
+
+	bool IsSupported() const override { return m_supported; }
+
+	bool Arm( unsigned seconds, void ( *fire )( void * ), void *context ) override
+	{
+		if ( !m_supported || seconds == 0 || fire == nullptr )
+		{
+			return false;
+		}
+		m_deadline = m_now + static_cast<std::uint64_t>( seconds ) * 1000;
+		m_fire = fire;
+		m_context = context;
+		return true;
+	}
+
+	void Disarm() override { m_fire = nullptr; }
+
+	void Advance( unsigned milliseconds )
+	{
+		m_now += milliseconds;
+		if ( m_fire != nullptr && m_now >= m_deadline )
+		{
+			void ( *fire )( void * ) = m_fire;
+			m_fire = nullptr;
+			fire( m_context );
+		}
+	}
+
+private:
+	bool m_supported;
+	std::uint64_t m_now = 0;
+	std::uint64_t m_deadline = 0;
+	void ( *m_fire )( void * ) = nullptr;
+	void *m_context = nullptr;
 };
 
 } // namespace platformtest

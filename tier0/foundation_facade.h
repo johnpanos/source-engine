@@ -41,6 +41,15 @@ std::uint64_t MonotonicNanoseconds();
 // the debugger channel on Windows; null elsewhere, where spew goes to stdio.
 platform::IDebugOutput *DebugOutput();
 
+// Stack capture and the watchdog (Plat_*WatchdogTimer; unsupported on Windows).
+platform::IStackCapture &StackCapture();
+
+// Stack capture for allocator code: creating the provider allocates, so a
+// capture that re-enters while it is being created returns no frames instead
+// of recursing. Tier 0 also creates the capture when it loads.
+int CaptureStackFromAllocator( void **frames, int maxFrames );
+platform::IWatchdog &Watchdog();
+
 // The process's wall clock (civil time, deadlines for CLOCK_REALTIME waits).
 const platform::IWallClock &WallClock();
 

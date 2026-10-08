@@ -128,6 +128,20 @@ public:
 NativePath Win32NativePath( const wchar_t *units );
 NativePath Win32CurrentDirectory();
 
+// RtlCaptureStackBackTrace. Safe from any thread.
+[[nodiscard]] std::unique_ptr<IStackCapture> CreateWin32StackCapture();
+
+// Windows has no watchdog here (Tier 0's were always stubs): IsSupported()
+// is false and Arm refuses.
+[[nodiscard]] std::unique_ptr<IWatchdog> CreateWin32Watchdog();
+
+// Backend-only (R103): installs the process's unhandled-exception filter,
+// which calls `callback( exceptionCode, EXCEPTION_POINTERS * )` and then
+// continues the search, as Tier 0's minidump filter did. Null removes it.
+// This provider is the filter's one owner in a process that uses it; it is
+// not combined with CreateWin32CrashReporter's handler.
+void SetUnhandledExceptionCallback( void ( *callback )( unsigned long code, void *exceptionPointers ) );
+
 // Writes text reports into `reportDir` (UTF-8, must exist): the reason, pid,
 // time, annotations and a backtrace. With `installHandler` it also installs an
 // unhandled-exception filter that writes a report and then lets the process

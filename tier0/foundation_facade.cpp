@@ -6,6 +6,8 @@
 
 #include "foundation_facade.h"
 
+#include <atomic>
+
 #if defined( _WIN32 )
 #include "../platform/win32/foundation_providers.h"
 #else
@@ -109,6 +111,52 @@ platform::IDebugOutput *DebugOutput()
 	static platform::IDebugOutput *output = nullptr;
 #endif
 	return output;
+}
+
+platform::IStackCapture &StackCapture()
+{
+#if defined( _WIN32 )
+	static platform::IStackCapture &capture = Leak( platform::CreateWin32StackCapture() );
+#else
+	static platform::IStackCapture &capture = Leak( platform::CreatePosixStackCapture() );
+#endif
+	return capture;
+}
+
+namespace
+{
+thread_local bool t_creatingCapture = false;
+std::atomic<platform::IStackCapture *> g_capture{ nullptr };
+} // namespace
+
+int CaptureStackFromAllocator( void **frames, int maxFrames )
+{
+	platform::IStackCapture *capture = g_capture.load( std::memory_order_acquire );
+	if ( capture == nullptr )
+	{
+		if ( t_creatingCapture )
+		{
+			return 0;
+		}
+		t_creatingCapture = true;
+		capture = &StackCapture();
+		t_creatingCapture = false;
+		g_capture.store( capture, std::memory_order_release );
+	}
+	return capture->CaptureStack( frames, maxFrames );
+}
+
+// Created as Tier 0 loads, before any allocator capture is likely to need it.
+static const int s_captureReady = ( CaptureStackFromAllocator( nullptr, 0 ), 0 );
+
+platform::IWatchdog &Watchdog()
+{
+#if defined( _WIN32 )
+	static platform::IWatchdog &watchdog = Leak( platform::CreateWin32Watchdog() );
+#else
+	static platform::IWatchdog &watchdog = Leak( platform::CreatePosixWatchdog() );
+#endif
+	return watchdog;
 }
 
 double SecondsSinceStart()

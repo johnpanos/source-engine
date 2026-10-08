@@ -54,5 +54,20 @@ int main()
 		Tally( "test_diagnostics[crash-reporter-unavailable]",
 		    platformtest::RunCrashReporterConformance( reporter ), checks, failures );
 	}
+	{
+		platformtest::CFakeStackCapture capture;
+		Tally( "test_diagnostics[stack-capture]", platformtest::RunStackCaptureConformance( capture ),
+		    checks, failures );
+	}
+	{
+		platformtest::CFakeWatchdog watchdog;
+		Tally( "test_diagnostics[watchdog]",
+		    platformtest::RunWatchdogConformance( watchdog, [&]( unsigned ms ) { watchdog.Advance( ms ); } ),
+		    checks, failures );
+		platformtest::CFakeWatchdog none( false );
+		Tally( "test_diagnostics[watchdog-unsupported]",
+		    platformtest::RunWatchdogConformance( none, [&]( unsigned ms ) { none.Advance( ms ); } ), checks,
+		    failures );
+	}
 	return testing::ReportConformance( checks, failures );
 }

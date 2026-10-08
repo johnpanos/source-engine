@@ -260,17 +260,17 @@ FnMiniDump SetMiniDumpFunction( FnMiniDump pfn )
 // Unhandled exceptions
 //-----------------------------------------------------------------------------
 static FnMiniDump g_UnhandledExceptionFunction;
-static LONG STDCALL ValveUnhandledExceptionFilter( _EXCEPTION_POINTERS* pExceptionInfo )
+static void ValveUnhandledException( unsigned long uStructuredExceptionCode, void *pExceptionInfo )
 {
-	uint uStructuredExceptionCode = pExceptionInfo->ExceptionRecord->ExceptionCode;
-	g_UnhandledExceptionFunction( uStructuredExceptionCode, pExceptionInfo, 0 );
-	return EXCEPTION_CONTINUE_SEARCH;
+	g_UnhandledExceptionFunction( (uint)uStructuredExceptionCode, (_EXCEPTION_POINTERS *)pExceptionInfo, 0 );
 }
 
+// The process's unhandled-exception filter belongs to the Win32 diagnostics
+// provider (R103); it calls this, then continues the search, as before.
 void MinidumpSetUnhandledExceptionFunction( FnMiniDump pfn )
 {
 	g_UnhandledExceptionFunction = pfn;
-	SetUnhandledExceptionFilter( ValveUnhandledExceptionFilter );
+	platform::SetUnhandledExceptionCallback( ValveUnhandledException );
 }
 
 

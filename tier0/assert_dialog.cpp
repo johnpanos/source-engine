@@ -392,7 +392,7 @@ DBG_INTERFACE bool ShouldUseNewAssertDialog()
 static void SpewBacktrace()
 {
 	void *buffer[ 16 ];
-	int nptrs = backtrace( buffer, ARRAYSIZE( buffer ) );
+	int nptrs = tier0_facade::StackCapture().CaptureStack( buffer, ARRAYSIZE( buffer ) ); // R103
 	if ( nptrs )
 	{
 		char **strings = backtrace_symbols(buffer, nptrs);

@@ -85,6 +85,41 @@ public:
 	    const char *reason, char *idBuffer, int idBufferSize ) = 0;
 };
 
+// The return addresses of the calling thread's stack (R103: Tier 0's
+// GetCallStack, assert backtraces and the memory ledger).
+class IStackCapture
+{
+public:
+	virtual ~IStackCapture() = default;
+
+	// Writes up to `maxFrames` return addresses, innermost first, starting at
+	// the function that called CaptureStack (the provider's own frames are not
+	// included), and returns how many. Never more than maxFrames; 0 when
+	// maxFrames <= 0 or frames is null. Safe to call from any thread.
+	virtual int CaptureStack( void **frames, int maxFrames ) = 0;
+};
+
+// A watchdog: unless disarmed in time, calls `fire( context )` once after the
+// armed delay (R103: Tier 0's Plat_*WatchdogTimer). Where a provider fires
+// from a signal handler (POSIX), `fire` must be async-signal-safe. A provider
+// without one reports IsSupported() false and Arm returns false, changing
+// nothing.
+class IWatchdog
+{
+public:
+	virtual ~IWatchdog() = default;
+
+	virtual bool IsSupported() const = 0;
+
+	// Arms (or re-arms, replacing the previous delay and callback) for
+	// `seconds` > 0. Returns false for seconds == 0, a null `fire`, or when
+	// unsupported.
+	virtual bool Arm( unsigned seconds, void ( *fire )( void *context ), void *context ) = 0;
+
+	// Cancels a pending fire; harmless when not armed.
+	virtual void Disarm() = 0;
+};
+
 } // namespace platform
 
 #endif // PLATFORM_CONTRACTS_DIAGNOSTICS_H

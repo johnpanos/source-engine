@@ -4,13 +4,7 @@
   "T2-threads": {},
   "T3-process-environment": {},
   "T4-debug-output": {},
-  "T5-crash-reporting": {
-   "tier0/assert_dialog.cpp": 1,
-   "tier0/memstd.cpp": 1,
-   "tier0/minidump.cpp": 1,
-   "tier0/platform_posix.cpp": 3,
-   "tier0/stacktools.cpp": 2
-  },
+  "T5-crash-reporting": {},
   "T6-memory-paths": {
    "public/tier0/bootstrap_module_load_telemetry.h": 2,
    "public/tier0/memoverride.cpp": 4,
@@ -27,7 +21,7 @@
   "T2-threads": 0,
   "T3-process-environment": 0,
   "T4-debug-output": 0,
-  "T5-crash-reporting": 8,
+  "T5-crash-reporting": 0,
   "T6-memory-paths": 19
  }
 }

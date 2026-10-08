@@ -499,6 +499,108 @@ public:
 
 } // namespace
 
+namespace
+{
+
+struct StackState
+{
+	void **frames;
+	int max;
+	int count;
+	int skip;
+};
+
+_Unwind_Reason_Code CollectStackFrame( _Unwind_Context *context, void *arg )
+{
+	StackState &state = *static_cast<StackState *>( arg );
+	const std::uintptr_t ip = static_cast<std::uintptr_t>( _Unwind_GetIP( context ) );
+	if ( ip == 0 )
+	{
+		return _URC_END_OF_STACK;
+	}
+	if ( state.skip > 0 )
+	{
+		--state.skip;
+		return _URC_NO_REASON;
+	}
+	state.frames[state.count++] = reinterpret_cast<void *>( ip );
+	return state.count < state.max ? _URC_NO_REASON : _URC_END_OF_STACK;
+}
+
+class CPosixStackCapture final : public IStackCapture
+{
+public:
+	__attribute__( ( noinline ) ) int CaptureStack( void **frames, int maxFrames ) override
+	{
+		if ( frames == nullptr || maxFrames <= 0 )
+		{
+			return 0;
+		}
+		// The first frame reported is this function's own.
+		StackState state{ frames, maxFrames, 0, 1 };
+		_Unwind_Backtrace( CollectStackFrame, &state );
+		return state.count;
+	}
+};
+
+std::atomic<void ( * )( void * )> g_watchdogFire{ nullptr };
+std::atomic<void *> g_watchdogContext{ nullptr };
+
+void OnWatchdogAlarm( int )
+{
+	void ( *fire )( void * ) = g_watchdogFire.exchange( nullptr );
+	if ( fire != nullptr )
+	{
+		fire( g_watchdogContext.load() );
+	}
+}
+
+class CPosixWatchdog final : public IWatchdog
+{
+public:
+	~CPosixWatchdog() override { Disarm(); }
+
+	bool IsSupported() const override { return true; }
+
+	bool Arm( unsigned seconds, void ( *fire )( void * ), void *context ) override
+	{
+		if ( seconds == 0 || fire == nullptr )
+		{
+			return false;
+		}
+		g_watchdogContext.store( context );
+		g_watchdogFire.store( fire );
+		struct sigaction action{};
+		action.sa_handler = OnWatchdogAlarm;
+		sigemptyset( &action.sa_mask );
+		sigaction( SIGALRM, &action, nullptr );
+		alarm( seconds );
+		return true;
+	}
+
+	void Disarm() override
+	{
+		alarm( 0 );
+		g_watchdogFire.store( nullptr );
+		struct sigaction action{};
+		action.sa_handler = SIG_DFL;
+		sigemptyset( &action.sa_mask );
+		sigaction( SIGALRM, &action, nullptr );
+	}
+};
+
+} // namespace
+
+std::unique_ptr<IStackCapture> CreatePosixStackCapture()
+{
+	return std::make_unique<CPosixStackCapture>();
+}
+
+std::unique_ptr<IWatchdog> CreatePosixWatchdog()
+{
+	return std::make_unique<CPosixWatchdog>();
+}
+
 std::unique_ptr<IDebugOutput> CreateFdDebugOutput( int fd )
 {
 	return std::make_unique<CFdDebugOutput>( fd );

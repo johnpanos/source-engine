@@ -619,6 +619,26 @@ void DiagnosticsSuites()
 		NATIVE_CHECK( again != nullptr );
 	}
 
+	// Stack capture and the watchdog (R103), on real stacks and real time.
+	{
+		auto capture = platform::CreatePosixStackCapture();
+		Tally( "posix.stack-capture", platformtest::RunStackCaptureConformance( *capture ) );
+		auto watchdog = platform::CreatePosixWatchdog();
+		auto clock = platform::CreatePosixMonotonicClock();
+		auto wait = [&clock]( unsigned ms ) {
+			// SIGALRM interrupts sleeps; wait on the clock.
+			const platform::MonotonicTimestamp start = clock->Now();
+			while ( clock->ElapsedNanoseconds( start, clock->Now() ) < ms * 1000000ull )
+			{
+				usleep( 1000 );
+			}
+		};
+		Tally( "posix.watchdog", platformtest::RunWatchdogConformance( *watchdog, wait ) );
+		struct sigaction now{};
+		sigaction( SIGALRM, nullptr, &now );
+		NATIVE_CHECK( now.sa_handler == SIG_DFL ); // disarmed: the default action is back
+	}
+
 	auto unavailable = platform::CreateUnavailableCrashReporter();
 	Tally( "posix.crash-reporter[unavailable]",
 	    platformtest::RunCrashReporterConformance( *unavailable ) );

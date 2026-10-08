@@ -142,6 +142,16 @@ struct PlatformPathValues
 NativePath PosixNativePath( const char *bytes );
 NativePath PosixCurrentDirectory();
 
+// _Unwind_Backtrace, which every POSIX toolchain here has (glibc, bionic,
+// Apple, musl). Safe from any thread.
+[[nodiscard]] std::unique_ptr<IStackCapture> CreatePosixStackCapture();
+
+// SIGALRM and alarm(2): one process-wide watchdog (the signal is the
+// process's). Fire runs in the signal handler, so it must be
+// async-signal-safe. Disarm restores the default SIGALRM action. Destroying
+// the provider disarms it.
+[[nodiscard]] std::unique_ptr<IWatchdog> CreatePosixWatchdog();
+
 // A reporter with no capture (IsAvailable() false), for profiles without one.
 [[nodiscard]] std::unique_ptr<ICrashReporter> CreateUnavailableCrashReporter();
 

@@ -184,6 +184,185 @@ public:
 	}
 };
 
+// --- stack capture defects ---------------------------------------------
+
+// DEFECT: includes its own frame first.
+class COwnFrame : public platformtest::CFakeStackCapture
+{
+public:
+	int CaptureStack( void **frames, int maxFrames ) override
+	{
+		if ( frames == nullptr || maxFrames <= 0 )
+		{
+			return 0;
+		}
+		return Fill( frames, maxFrames, reinterpret_cast<void *>( &COwnFrame::Marker ) );
+	}
+	static void Marker() {}
+};
+
+// DEFECT: outermost first.
+class CReversed : public platformtest::CFakeStackCapture
+{
+public:
+	int CaptureStack( void **frames, int maxFrames ) override
+	{
+		if ( frames == nullptr || maxFrames <= 0 )
+		{
+			return 0;
+		}
+		void *full[8] = {};
+		const int n = CFakeStackCapture::CaptureStack( full, 8 );
+		int out = 0;
+		for ( int i = n - 1; i >= 0 && out < maxFrames; --i )
+		{
+			frames[out++] = full[i];
+		}
+		return out;
+	}
+};
+
+// DEFECT: reports more frames than it may write.
+class COverrun : public platformtest::CFakeStackCapture
+{
+public:
+	int CaptureStack( void **frames, int maxFrames ) override
+	{
+		const int n = CFakeStackCapture::CaptureStack( frames, maxFrames );
+		return n > 0 ? n + 2 : n;
+	}
+};
+
+// DEFECT: a null buffer is reported as frames captured.
+class CNullFrames : public platformtest::CFakeStackCapture
+{
+public:
+	int CaptureStack( void **frames, int maxFrames ) override
+	{
+		return frames == nullptr ? 3 : CFakeStackCapture::CaptureStack( frames, maxFrames );
+	}
+};
+
+// DEFECT: a different stack each time from the same site.
+class CUnstable : public platformtest::CFakeStackCapture
+{
+public:
+	int CaptureStack( void **frames, int maxFrames ) override
+	{
+		const int n = CFakeStackCapture::CaptureStack( frames, maxFrames );
+		static char salt[64];
+		if ( n > 1 )
+		{
+			frames[1] = &salt[( m_calls++ ) % 64];
+		}
+		return n;
+	}
+
+private:
+	int m_calls = 0;
+};
+
+// --- watchdog defects --------------------------------------------------
+
+// DEFECT: fires again on the tick after it fired.
+class CFiresTwice : public platformtest::CFakeWatchdog
+{
+public:
+	bool Arm( unsigned seconds, void ( *fire )( void * ), void *context ) override
+	{
+		m_fire = fire;
+		m_context = context;
+		return CFakeWatchdog::Arm( seconds, &CFiresTwice::Wrapped, this );
+	}
+	void Tick( unsigned ms )
+	{
+		if ( m_again )
+		{
+			m_again = false;
+			m_fire( m_context ); // the defect: a second fire
+		}
+		Advance( ms );
+	}
+
+private:
+	static void Wrapped( void *self )
+	{
+		CFiresTwice *me = static_cast<CFiresTwice *>( self );
+		me->m_fire( me->m_context );
+		me->m_again = true;
+	}
+	void ( *m_fire )( void * ) = nullptr;
+	void *m_context = nullptr;
+	bool m_again = false;
+};
+
+// DEFECT: Disarm does nothing.
+class CIgnoresDisarm : public platformtest::CFakeWatchdog
+{
+public:
+	void Disarm() override {}
+};
+
+// DEFECT: re-arming keeps the first callback.
+class CKeepsFirstCallback : public platformtest::CFakeWatchdog
+{
+public:
+	bool Arm( unsigned seconds, void ( *fire )( void * ), void *context ) override
+	{
+		if ( m_first == nullptr && fire != nullptr && seconds != 0 )
+		{
+			m_first = fire;
+			m_firstContext = context;
+		}
+		return CFakeWatchdog::Arm( seconds, m_first != nullptr ? m_first : fire,
+		    m_first != nullptr ? m_firstContext : context );
+	}
+	void ( *m_first )( void * ) = nullptr;
+	void *m_firstContext = nullptr;
+};
+
+// DEFECT: time runs twice as fast, so it fires early.
+class CFiresEarly : public platformtest::CFakeWatchdog
+{
+public:
+	void Tick( unsigned ms ) { Advance( ms * 2 ); }
+};
+
+// DEFECT: unsupported, yet Arm reports success and fires.
+class CClaimsWhenUnsupported : public platformtest::CFakeWatchdog
+{
+public:
+	CClaimsWhenUnsupported() : CFakeWatchdog( false ) {}
+	bool Arm( unsigned, void ( *fire )( void * ), void *context ) override
+	{
+		if ( fire != nullptr )
+		{
+			fire( context );
+		}
+		return true;
+	}
+};
+
+template <typename T> bool StackCaught()
+{
+	T capture;
+	return platformtest::RunStackCaptureConformance( capture ).failures > 0;
+}
+
+template <typename T> bool WatchdogCaught()
+{
+	T watchdog;
+	return platformtest::RunWatchdogConformance( watchdog, [&]( unsigned ms ) { watchdog.Advance( ms ); } )
+	           .failures > 0;
+}
+
+template <typename T> bool WatchdogTickCaught()
+{
+	T watchdog;
+	return platformtest::RunWatchdogConformance( watchdog, [&]( unsigned ms ) { watchdog.Tick( ms ); } )
+	           .failures > 0;
+}
+
 template <typename T> bool OutputCaught()
 {
 	T output;
@@ -233,6 +412,16 @@ int main()
 	    { ReporterCaught<CNullValueRefused>, "null-value-refused" },
 	    { ReporterCaught<CReusedId>, "reused-report-id" },
 	    { ReporterCaught<CUnbounded>, "no-annotation-capacity" },
+	    { StackCaught<COwnFrame>, "stack-includes-own-frame" },
+	    { StackCaught<CReversed>, "stack-outermost-first" },
+	    { StackCaught<COverrun>, "stack-ignores-max" },
+	    { StackCaught<CNullFrames>, "stack-null-buffer" },
+	    { StackCaught<CUnstable>, "stack-unstable" },
+	    { WatchdogTickCaught<CFiresTwice>, "watchdog-fires-twice" },
+	    { WatchdogCaught<CIgnoresDisarm>, "watchdog-ignores-disarm" },
+	    { WatchdogCaught<CKeepsFirstCallback>, "watchdog-rearm-keeps-old" },
+	    { WatchdogTickCaught<CFiresEarly>, "watchdog-fires-early" },
+	    { WatchdogCaught<CClaimsWhenUnsupported>, "watchdog-claims-when-unsupported" },
 	};
 	for ( const Case &c : cases )
 	{

@@ -21,10 +21,6 @@
 #endif
 
 
-#if defined( LINUX ) && defined( PLATFORM_GLIBC )
-#include <execinfo.h>
-#endif
-
 #include "tier0/valve_on.h"
 #include "foundation_facade.h"
 
@@ -33,31 +29,18 @@
 
 #if !defined( ENABLE_RUNTIME_STACK_TRANSLATION ) //disable the whole toolset
 
-#if defined( LINUX ) && defined( PLATFORM_GLIBC )
-
+// Tier 0's stack capture (R103): the provider's frames start at this function,
+// as glibc's backtrace() did; the skip count was never applied here. Platforms
+// other than glibc used to return no frames at all.
 int GetCallStack( void **pReturnAddressesOut, int iArrayCount, int iSkipCount )
 {
-	return backtrace( pReturnAddressesOut, iArrayCount );
+	return tier0_facade::StackCapture().CaptureStack( pReturnAddressesOut, iArrayCount );
 }
 
 int GetCallStack_Fast( void **pReturnAddressesOut, int iArrayCount, int iSkipCount )
 {
-	return backtrace( pReturnAddressesOut, iArrayCount );
+	return tier0_facade::StackCapture().CaptureStack( pReturnAddressesOut, iArrayCount );
 }
-
-#else
-
-int GetCallStack( void **pReturnAddressesOut, int iArrayCount, int iSkipCount )
-{
-	return 0;
-}
-
-int GetCallStack_Fast( void **pReturnAddressesOut, int iArrayCount, int iSkipCount )
-{
-	return 0;
-}
-
-#endif
 
 //where we'll find our PDB's for win32. Translation will not work until this has been called once (even if with NULL)
 void SetStackTranslationSymbolSearchPath( const char *szSemicolonSeparatedList )

@@ -136,6 +136,22 @@ int ChildMode( const char *mode, const char *arg )
 		threads.reset();
 		return 0;
 	}
+	if ( std::strcmp( mode, "--exception-callback" ) == 0 )
+	{
+		static std::string target;
+		target = std::string( arg ) + "/callback.txt";
+		platform::SetUnhandledExceptionCallback( []( unsigned long code, void *pointers ) {
+			FILE *f = std::fopen( target.c_str(), "w" );
+			if ( f != nullptr )
+			{
+				std::fprintf( f, "%08lx %d\n", code, pointers != nullptr );
+				std::fclose( f );
+			}
+		} );
+		volatile int *nowhere = nullptr;
+		*nowhere = 1;
+		return 0;
+	}
 	if ( std::strcmp( mode, "--crash" ) == 0 )
 	{
 		auto reporter = platform::CreateWin32CrashReporter( arg, true );
@@ -469,6 +485,19 @@ void DiagnosticsSuites()
 	}
 	NATIVE_CHECK( crash.find( "reason: exception 0xc0000005\n" ) != std::string::npos );
 	NATIVE_CHECK( crash.find( "annotation build=r26-native\n" ) != std::string::npos );
+
+	// Stack capture, the (unsupported) watchdog, and the exception callback (R103).
+	{
+		auto capture = platform::CreateWin32StackCapture();
+		Tally( "win32.stack-capture", platformtest::RunStackCaptureConformance( *capture ) );
+		auto watchdog = platform::CreateWin32Watchdog();
+		Tally( "win32.watchdog[unsupported]",
+		    platformtest::RunWatchdogConformance( *watchdog, []( unsigned ms ) { Sleep( ms ); } ) );
+		NATIVE_CHECK( RunMode( L"--exception-callback", wdir ) == EXCEPTION_ACCESS_VIOLATION );
+		NATIVE_CHECK( !ReadText( dir + "/callback.txt" ).empty() );
+		NATIVE_CHECK( ReadText( dir + "/callback.txt" ).find( "c0000005" ) != std::string::npos );
+		DeleteFileA( ( dir + "/callback.txt" ).c_str() );
+	}
 
 	// Teardown: one filter owner at a time, and destruction restores whatever
 	// filter was installed before (the C runtime installs its own).
