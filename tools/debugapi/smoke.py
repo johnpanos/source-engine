@@ -18,8 +18,6 @@ import datetime
 import json
 import os
 from pathlib import Path
-import signal
-import subprocess
 import sys
 import tempfile
 import time
@@ -32,6 +30,9 @@ sys.path.insert(0, str(ROOT / "tools" / "quality"))
 import client as api  # noqa: E402
 import conformance  # noqa: E402
 import portal_boot  # noqa: E402
+
+sys.path.insert(0, str(ROOT / "tools" / "kiln"))
+import sepipe_loader  # noqa: E402
 
 SCHEMA = "debugapi-smoke-evidence/v1"
 
@@ -143,8 +144,7 @@ def client_scenario(session, checks, args, output):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument("--build", type=Path, required=True)
+    sepipe_loader.add_arguments(parser, "portal")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--map", default="testchmb_a_00")
     parser.add_argument("--renderer", default="native-vulkan")
@@ -164,32 +164,30 @@ def main(argv=None):
     evidence = {"schema": SCHEMA, "status": "fail",
                 "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "source": conformance.source_identity(conformance.repo_root()),
-                "runtime": str(args.runtime.resolve()), "build": str(args.build.resolve()),
+                "client": [args.profile, args.flavor],
                 "map": args.map, "renderer": args.renderer, "socket": args.socket}
     checks = Checks()
     process = None
     try:
         stage = output / "runtime"
-        evidence["staging"] = portal_boot.stage_runtime(args.runtime, stage)
-        evidence["build_overrides"] = portal_boot.install_build(args.build, stage)
+        # The client profile's package in this private runtime (RFC 0027).
+        built = sepipe_loader.session().build(args.profile, flavor=args.flavor, up_to="package",
+                                              runtime=str(stage))
+        evidence["staging"] = {item["name"]: item["summary"] for item in built["stages"]}
         executable = stage / "hl2_launcher"
         evidence["executables"] = {str(path.relative_to(stage)): portal_boot.sha256(path)
                                    for path in [executable] + sorted((stage / "bin").glob("*.so"))}
-        command = [str(executable), "-game", "portal", "-windowed", "-w", "1024", "-h", "768",
+        command = ["./hl2_launcher", "-game", "portal", "-windowed", "-w", "1024", "-h", "768",
                    "-multirun", "-novid", "-insecure", "-console", "-condebug", "-dev",
                    "-physics", args.physics, "-renderer", args.renderer,
                    "-debugapi", "unix:" + args.socket, "+volume", "0"]
         evidence["command"] = command
-        environment = os.environ.copy()
-        environment["LD_LIBRARY_PATH"] = str(stage / "bin") + ":" + environment.get("LD_LIBRARY_PATH", "")
-        environment["SteamAppId"] = environment["SteamGameId"] = "400"
-        # SDL3 offscreen: real GPU rendering, no window on the user's desktop.
-        environment["SDL_VIDEODRIVER"] = environment["SDL_VIDEO_DRIVER"] = "offscreen"
-        environment.pop("DISPLAY", None)
-        environment.pop("WAYLAND_DISPLAY", None)
-        log = (output / "stdout.log").open("wb")
-        process = subprocess.Popen(command, cwd=stage, env=environment, stdout=log,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
+        # Through kiln.api: the profile's program from the private runtime, the
+        # headless display session (SDL3 offscreen, no window on the desktop).
+        process = sepipe_loader.Run(sepipe_loader.load(), sepipe_loader.session(), "run",
+                                    args.profile, flavor=args.flavor, runtime=str(stage),
+                                    exact_arguments=command[1:], display="none",
+                                    log=str(output / "stdout.log"))
         deadline = time.monotonic() + args.timeout
         with api.DebugApiClient.connect_unix(args.socket, timeout=120) as session:
             evidence["connected_after_seconds"] = round(args.timeout - (deadline - time.monotonic()), 3)
@@ -198,10 +196,9 @@ def main(argv=None):
             checks.check("quit is acknowledged", quit_result is not None)
             checks.check("the server closes the connection at teardown",
                          session.wait_closed(timeout=60))
-        try:
-            returncode = process.wait(timeout=max(1.0, deadline - time.monotonic()))
-        except subprocess.TimeoutExpired:
-            returncode = None
+        while process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.2)
+        returncode = process.poll()
         evidence["returncode"] = returncode
         checks.check("the engine exits cleanly after quit", returncode == 0, returncode)
         checks.check("the socket file is removed at shutdown", not Path(args.socket).exists())
@@ -209,8 +206,7 @@ def main(argv=None):
         checks.check("session completed", False, "%s: %s" % (type(error).__name__, error))
     finally:
         if process is not None and process.poll() is None:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
+            process.stop()
         evidence["checks"] = checks.results
         evidence["status"] = "pass" if checks.results and not checks.failures else "fail"
         evidence["finished_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
