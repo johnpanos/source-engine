@@ -18,19 +18,42 @@ const CHUNK = 1 << 20;
 // The console, to the page and (harness) the server.
 const lines = [];
 let sent = 0;
+// The engine holds this thread for long stretches (loading reads content
+// synchronously), so a timer alone would hold the console back until it
+// yields: say() posts synchronously too, at most every 250 ms.
+let flushed = 0;
+const started = performance.now();
 function say(text) {
-	lines.push(text);
+	lines.push(((performance.now() - started) / 1000).toFixed(1).padStart(7) + ' ' + text);
 	if (!harness)
 		console.log(text);
+	else if (performance.now() - flushed > 250)
+		flush(true);
 }
-function flush() {
+function flush(sync) {
+	flushed = performance.now();
 	if (harness && sent < lines.length) {
 		const chunk = lines.slice(sent);
 		sent = lines.length;
-		fetch('/log', { method: 'POST', body: chunk.join('\n') + '\n', keepalive: true });
+		const body = chunk.join('\n') + '\n';
+		if (sync) {
+			const xhr = new XMLHttpRequest();
+			xhr.open('POST', '/log', false);
+			xhr.send(body);
+		} else {
+			fetch('/log', { method: 'POST', body, keepalive: true });
+		}
 	}
 }
-setInterval(flush, 250);
+setInterval(() => flush(false), 250);
+// While the engine is suspended this thread is free: a heartbeat shows the
+// page is alive, whether the browser counts it visible (a hidden page's
+// timers, and so the engine's yields, are throttled) and how far the
+// engine's own frames have got.
+let beats = 0;
+if (harness)
+	setInterval(() => say('page: alive ' + (++beats * 5) + ' s, ' + document.visibilityState +
+                      (document.hasFocus() ? ', focused' : '')), 5000);
 function finish(code) {
 	flush();
 	if (harness)
@@ -42,19 +65,25 @@ addEventListener('unhandledrejection', (e) => { say('[rejection] ' + (e.reason &
 
 // A byte range of a content file, synchronously: the browser allows a
 // synchronous request on this thread only as text, so the bytes come as
-// x-user-defined characters (each char code's low byte).
+// x-user-defined characters (each char code's low byte). The decoder sniffs a
+// byte-order mark ahead of that charset (a UTF-16 file would come back as
+// half as many characters), so the server puts one zero byte first (pad=1)
+// and the text never starts with one.
 function fetchRange(url, start, end) {
 	const xhr = new XMLHttpRequest();
-	xhr.open('GET', url, false);
+	xhr.open('GET', url + '?pad=1', false);
 	xhr.setRequestHeader('Range', 'bytes=' + start + '-' + end);
 	xhr.overrideMimeType('text/plain; charset=x-user-defined');
 	xhr.send(null);
 	if (xhr.status !== 206 && xhr.status !== 200)
 		throw new Error('content ' + url + ': HTTP ' + xhr.status);
 	const text = xhr.responseText;
-	const bytes = new Uint8Array(text.length);
-	for (let i = 0; i < text.length; ++i)
-		bytes[i] = text.charCodeAt(i) & 0xff;
+	if (text.length !== end - start + 2)
+		throw new Error('content ' + url + ': ' + (text.length - 1) + ' bytes for range ' +
+		                start + '-' + end);
+	const bytes = new Uint8Array(text.length - 1);
+	for (let i = 1; i < text.length; ++i)
+		bytes[i - 1] = text.charCodeAt(i) & 0xff;
 	return bytes;
 }
 
@@ -83,6 +112,9 @@ function lazyFile(module, parent, name, url, size) {
 			const data = chunk(Math.floor(at / CHUNK));
 			const from = at % CHUNK;
 			const n = Math.min(total - done, data.length - from);
+			if (!(n > 0))
+				throw new Error('content ' + url + ': chunk at ' + at + ' holds ' + data.length +
+				                ' bytes (file ' + size + ', read ' + position + '+' + length + ')');
 			buffer.set(data.subarray(from, from + n), offset + done);
 			done += n;
 		}

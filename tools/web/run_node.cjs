@@ -43,6 +43,11 @@ createSourceEngine({
 }).then(async (module) => {
 	// With JSPI, main returns a promise; exit() ends it with an ExitStatus.
 	try {
+		// RUN_NODE_EXIT_AFTER=<s>: a clean exit after that long, so --cpu-prof
+		// writes its profile even when the engine never returns (the thread is
+		// free while the engine is suspended).
+		if (process.env.RUN_NODE_EXIT_AFTER)
+			setTimeout(() => process.exit(124), Number(process.env.RUN_NODE_EXIT_AFTER) * 1000).unref();
 		await module.callMain(args);
 	} catch (error) {
 		if (!(error && error.name === 'ExitStatus'))

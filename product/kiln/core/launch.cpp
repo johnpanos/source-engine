@@ -375,14 +375,31 @@ foundation::Expected<LaunchPlan, Error> Session::PlanLaunch( const PlayRequest &
 			    Expand( Strings( peer.Find( "arguments" ) ), variables, "launch.peers." + *name );
 			if ( !peerArguments )
 				return foundation::MakeUnexpected( peerArguments.Error() );
+			LaunchPlan::Peer entry;
+			entry.name = *name;
+			// A peer with its own executable (the web page's server and its
+			// browser) runs it with its own arguments as given; a host program
+			// named without a path is found on PATH.
+			if ( const std::string *own = peer.FindString( "executable" ) )
+			{
+				std::string missing;
+				auto peerProgram = Substitute( *own, variables, missing );
+				if ( !peerProgram )
+					return foundation::MakeUnexpected(
+					    Fail( "launch", "launch.peers." + *name + ".executable: \"{" + missing +
+					                        "}\" is not a variable" ) );
+				entry.argv.push_back( OnPath( *peerProgram ) );
+				entry.argv.insert(
+				    entry.argv.end(), peerArguments.Value().begin(), peerArguments.Value().end() );
+				plan.peers.push_back( std::move( entry ) );
+				continue;
+			}
 			Variables peerVariables = variables;
 			peerVariables["args"] = peerArguments.Value();
 			auto peerArgv =
 			    Expand( Strings( launch->Find( "arguments" ) ), peerVariables, "launch.arguments" );
 			if ( !peerArgv )
 				return foundation::MakeUnexpected( peerArgv.Error() );
-			LaunchPlan::Peer entry;
-			entry.name = *name;
 			entry.argv.push_back( plan.argv.front() );
 			entry.argv.insert( entry.argv.end(), peerArgv.Value().begin(), peerArgv.Value().end() );
 			plan.peers.push_back( std::move( entry ) );

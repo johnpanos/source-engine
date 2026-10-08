@@ -997,7 +997,12 @@ public:
 		if ( s_frame == s_captureFrame + 1 )
 		{
 			const char *path = CommandLine()->ParmValue( "-pica_capture_path", "sdmc:/source_pica.ppm" );
-			Msg( "pica: capture %s %s\n", path, pica::CaptureTopScreen( path ) ? "ok" : "failed" );
+			// stdout, as the stats below: the harnesses (the web page hands the
+			// file back on this line) read it, and engine spew stops reaching
+			// stdout once the console exists.
+			printf(
+			    "pica: capture %s %s\n", path, pica::CaptureTopScreen( path ) ? "ok" : "failed" );
+			fflush( stdout );
 		}
 		// Straight to stdout (console.log on the 3DS), not through the engine's
 		// spew, which stops reaching stdout once the console exists.

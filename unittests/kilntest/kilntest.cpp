@@ -29,12 +29,14 @@
 #include "../../platform/posix/tool_process_provider.h"
 
 #include <algorithm>
+#include <signal.h>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <thread>
 #include <iostream>
 #include <map>
 #include <string>
@@ -1163,6 +1165,48 @@ void PackagerUnitChecks( const Workbench &bench, platform::IToolProcessProvider 
 }
 } // namespace
 
+// browser-page: the run's status is the server's (the page's report), the
+// browser stops with it, and a browser closed first ends the run as 130.
+// The server stand-in listens on the port, then exits with a status; the
+// browser stand-in sleeps.
+void BrowserPageChecks( platform::IProcessSpawner &spawner )
+{
+	const auto request =
+	    []( platform::IProcessSpawner &with, const std::string &server, const std::string &browser )
+	{
+		product::RunRequest run;
+		run.spawner = &with;
+		run.facts = { { "port", "18731" }, { "timeout", "20" } };
+		product::LaunchSpec serve, open;
+		serve.name = "server";
+		serve.argv = { "python3", "-c", server };
+		serve.workingDirectory = "/";
+		open.name = "browser";
+		open.argv = { "sh", "-c", browser };
+		open.workingDirectory = "/";
+		run.launches = { serve, open };
+		return run;
+	};
+	const std::string listenThen =
+	    "import socket,time,sys\n"
+	    "s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)\n"
+	    "s.bind(('127.0.0.1',18731));s.listen(4)\n";
+	auto provider = product::CreateBrowserPageRunProvider();
+	const auto start = std::chrono::steady_clock::now();
+	auto reported =
+	    provider->Run( request( spawner, listenThen + "time.sleep(1.5);sys.exit(7)", "sleep 30" ) );
+	const double seconds =
+	    std::chrono::duration<double>( std::chrono::steady_clock::now() - start ).count();
+	Check( reported && reported.Value() == 7, "browser-page: the run's status is the server's" );
+	Check( seconds < 10.0, "browser-page: the browser stops when the server ends" );
+	auto closed = provider->Run( request( spawner, listenThen + "time.sleep(30)", "sleep 0.5" ) );
+	Check( closed && closed.Value() == 130,
+	    "browser-page: a browser closed first ends the run (130)" );
+	auto dead = provider->Run( request( spawner, "import sys;sys.exit(3)", "sleep 30" ) );
+	Check( !dead && dead.Error().code == "exited",
+	    "browser-page: a server that never listens fails by name" );
+}
+
 int main()
 {
 	const fs::path root =
@@ -1221,6 +1265,41 @@ int main()
 		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kSilentStart ), *spawner,
 		                   bench.scratch / "run-bad5" ),
 		    "N8", "bad run provider: does not report its programs' starts" );
+		BrowserPageChecks( *spawner );
+		{
+			// A wrapper that exits on SIGTERM while its child ignores it (the
+			// private display's dbus-run-session and its compositor): the
+			// child must not outlive Terminate.
+			const fs::path marker = bench.scratch / "wrapped-child.pid";
+			std::string spawnError;
+			auto wrapper =
+			    spawner->Spawn( { { "sh", "-c",
+			                          "sh -c 'trap \"\" TERM; echo $$ > " + marker.string() +
+			                              "; while :; do sleep 1; done' & wait" },
+			                        "/", {}, {} },
+			        spawnError );
+			for ( int i = 0; i < 100 && !fs::exists( marker ); ++i )
+				std::this_thread::sleep_for( std::chrono::milliseconds( 20 ) );
+			std::ifstream pidFile( marker );
+			long child = 0;
+			pidFile >> child;
+			spawner->Terminate( wrapper, 500 );
+			// Gone, or a zombie its new parent has not reaped yet.
+			const auto stopped = [&]
+			{
+				std::ifstream stat( "/proc/" + std::to_string( child ) + "/stat" );
+				std::string pid, name, state;
+				return !( stat >> pid >> name >> state ) || state == "Z";
+			};
+			for ( int i = 0; i < 50 && child > 0 && !stopped(); ++i )
+				std::this_thread::sleep_for( std::chrono::milliseconds( 20 ) ); // SIGKILL lands
+			if ( !( child > 0 && stopped() ) )
+				std::fprintf( stderr, "spawn group check: child %ld pgid %d leader %lld\n", child,
+				    child > 0 ? getpgid( static_cast<pid_t>( child ) ) : -1,
+				    static_cast<long long>( wrapper.id ) );
+			Check( child > 0 && stopped(),
+			    "spawn: Terminate stops the whole group, not only its leader" );
+		}
 		std::string error;
 		auto missing = spawner->Spawn( { { "/nonexistent/program" }, "/", {}, {} }, error );
 		Check( missing.id < 0 && error.find( "/nonexistent/program" ) != std::string::npos,

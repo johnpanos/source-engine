@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "portal-wasm32-webgpu-v2",
-  "description": "Portal for the browser (RFC 0029): a statically composed WebAssembly client (Emscripten, wasm32) whose render core uses the WebGPU adapter over the browser's webgpu.h (the pinned Dawn release's emdawnwebgpu port). The engine runs in a worker on an OffscreenCanvas page (tools/web); tools/web/run_node.cjs is its Node lane. No legacy-stream renderer exists on WebGPU yet, so the shader API is the null provider.",
+  "description": "Portal for the browser (RFC 0029): a statically composed WebAssembly client (Emscripten, wasm32) whose render core uses the WebGPU adapter over the browser's webgpu.h (the pinned Dawn release's emdawnwebgpu port). The engine runs in a worker on an OffscreenCanvas page (tools/web); tools/web/run_node.cjs is its Node lane. The shader API is the core shader API (materialsystem/shaderapipica), which draws every material through the render core on WebGPU and presents to the page's canvas.",
   "aliases": [
     "portal@wasm32"
   ],
@@ -22,7 +22,7 @@
     "build_type": "release",
     "disable_warns": true,
     "static_composition": true,
-    "render_backend": "legacy",
+    "render_backend": "core",
     "platform_provider": "sdl3",
     "build_games": "portal",
     "render_core_webgpu": true,
@@ -102,7 +102,7 @@
   },
   "launch": {
     "display_session": "user",
-    "run": "single",
+    "run": "browser-page",
     "game": "portal",
     "default_map": "testchmb_a_01",
     "executable": "{root}/tools/web/serve.py",
@@ -112,30 +112,70 @@
       ],
       "height": [
         "720"
+      ],
+      "port": [
+        "8080"
+      ],
+      "web_out": [
+        "{runtime}/../web-session"
+      ],
+      "web_profile": [
+        "{runtime}/../web-profile"
       ]
     },
-    "arguments": [
-      "--build",
-      "{runtime}",
-      "--content",
-      "{runtime}",
-      "--open",
-      "--",
-      "-game",
-      "portal",
-      "-novid",
-      "-noip",
-      "-w",
-      "{width}",
-      "-h",
-      "{height}",
-      "+r_core_world",
-      "1",
-      "+r_core_dynamic_draws",
-      "1",
-      "{args}",
-      "+map",
-      "{map}"
-    ]
+    "arguments": [],
+    "peers": [
+      {
+        "name": "server",
+        "executable": "{root}/tools/web/serve.py",
+        "arguments": [
+          "--build",
+          "{runtime}",
+          "--content",
+          "{runtime}",
+          "--port",
+          "{port}",
+          "--out",
+          "{web_out}",
+          "--firefox-profile",
+          "{web_profile}",
+          "--",
+          "-game",
+          "portal",
+          "-novid",
+          "-noip",
+          "-w",
+          "{width}",
+          "-h",
+          "{height}",
+          "+r_core_world",
+          "1",
+          "+r_core_dynamic_draws",
+          "1",
+          "{args}",
+          "+map",
+          "{map}"
+        ]
+      },
+      {
+        "name": "browser",
+        "executable": "firefox",
+        "arguments": [
+          "--no-remote",
+          "--new-instance",
+          "--profile",
+          "{web_profile}",
+          "http://127.0.0.1:{port}/"
+        ]
+      }
+    ],
+    "facts": {
+      "port": "{port}",
+      "timeout": "60"
+    },
+    "switches": {},
+    "environment": {
+      "MOZ_ENABLE_WAYLAND": "1"
+    }
   }
 }

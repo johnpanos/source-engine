@@ -197,7 +197,7 @@ struct BacktraceState
 	int count = 0;
 };
 
-_Unwind_Reason_Code CollectFrame( _Unwind_Context *context, void *arg )
+[[maybe_unused]] _Unwind_Reason_Code CollectFrame( _Unwind_Context *context, void *arg )
 {
 	BacktraceState &state = *static_cast<BacktraceState *>( arg );
 	const std::uintptr_t ip = static_cast<std::uintptr_t>( _Unwind_GetIP( context ) );
@@ -422,7 +422,9 @@ private:
 		}
 		text.Append( "backtrace:\n" );
 		BacktraceState frames;
+#if !defined( __EMSCRIPTEN__ ) // the WebAssembly stack cannot be walked: no frames
 		_Unwind_Backtrace( CollectFrame, &frames );
+#endif
 		for ( int i = 0; i < frames.count; ++i )
 		{
 			text.Append( "  0x" );
@@ -510,7 +512,7 @@ struct StackState
 	int skip;
 };
 
-_Unwind_Reason_Code CollectStackFrame( _Unwind_Context *context, void *arg )
+[[maybe_unused]] _Unwind_Reason_Code CollectStackFrame( _Unwind_Context *context, void *arg )
 {
 	StackState &state = *static_cast<StackState *>( arg );
 	const std::uintptr_t ip = static_cast<std::uintptr_t>( _Unwind_GetIP( context ) );
@@ -538,7 +540,9 @@ public:
 		}
 		// The first frame reported is this function's own.
 		StackState state{ frames, maxFrames, 0, 1 };
+#if !defined( __EMSCRIPTEN__ ) // the WebAssembly stack cannot be walked: no frames
 		_Unwind_Backtrace( CollectStackFrame, &state );
+#endif
 		return state.count;
 	}
 };

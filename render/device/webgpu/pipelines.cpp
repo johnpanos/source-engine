@@ -12,6 +12,9 @@
 
 #include <bit>
 #include <charconv>
+#include <string_view>
+#include <optional>
+#include <map>
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
@@ -492,6 +495,78 @@ const GroupLayout *WebGpuDevice::CachedLayout(
 	return &m_GroupLayouts.emplace( key, std::move( layout ) ).first->second;
 }
 
+// The WGSL with every module-scope override as a const: `@id(N) override x :
+// T = d;` takes values[N] (or d), and a derived `override y : T = e;` keeps e.
+// Lines are rewritten in place; nothing else in the text changes.
+static std::string SpecializeOverrides(
+    std::string_view text, const std::map<std::uint32_t, std::string> &values )
+{
+	std::string out;
+	out.reserve( text.size() );
+	size_t at = 0;
+	while ( at < text.size() )
+	{
+		const size_t eol = std::min( text.find( '\n', at ), text.size() );
+		std::string_view line = text.substr( at, eol - at );
+		at = eol + 1;
+		std::optional<std::uint32_t> id;
+		std::string_view rest = line;
+		if ( rest.starts_with( "@id(" ) )
+		{
+			const size_t close = rest.find( ')' );
+			std::uint32_t n = 0;
+			if ( close == std::string_view::npos ||
+			     std::from_chars( rest.data() + 4, rest.data() + close, n ).ec != std::errc() )
+			{
+				out.append( line ).push_back( '\n' );
+				continue;
+			}
+			id = n;
+			rest = rest.substr( close + 1 );
+			while ( !rest.empty() && rest.front() == ' ' )
+				rest.remove_prefix( 1 );
+		}
+		if ( !rest.starts_with( "override " ) )
+		{
+			out.append( line ).push_back( '\n' );
+			continue;
+		}
+		std::string_view declaration = rest.substr( 9 ); // "x : T = d;"
+		const auto value = id ? values.find( *id ) : values.end();
+		if ( value != values.end() )
+		{
+			const size_t assign = declaration.find( '=' );
+			const size_t semicolon = declaration.rfind( ';' );
+			const std::string_view head =
+			    declaration.substr( 0, std::min( assign, semicolon ) ); // "x : T "
+			out.append( "const " ).append( head );
+			if ( !head.empty() && head.back() != ' ' )
+				out.push_back( ' ' );
+			out.append( "= " ).append( value->second ).append( ";\n" );
+		}
+		else if ( declaration.find( ": bool" ) != std::string_view::npos )
+		{
+			// Boolean | and & as || and && (the same values without side
+			// effects): WGSL compilers before naga 30 cannot evaluate the
+			// former in a const expression, and tint writes them for SPIR-V's
+			// logical operations.
+			std::string rewritten( declaration );
+			for ( size_t p = 0; ( p = rewritten.find( " | ", p ) ) != std::string::npos; p += 4 )
+				rewritten.replace( p, 3, " || " );
+			for ( size_t p = 0; ( p = rewritten.find( " & ", p ) ) != std::string::npos; p += 4 )
+				rewritten.replace( p, 3, " && " );
+			out.append( "const " ).append( rewritten ).push_back( '\n' );
+		}
+		else
+		{
+			out.append( "const " ).append( declaration ).push_back( '\n' );
+		}
+	}
+	if ( !text.empty() && text.back() != '\n' && !out.empty() )
+		out.pop_back();
+	return out;
+}
+
 DeviceResult<void> WebGpuDevice::BuildShader( const ShaderArtifactView &artifact,
     const PipelineDesc &desc, ShaderModule &module, ArtifactHeader &header,
     std::deque<std::string> &keys, std::vector<WGPUConstantEntry> &constants )
@@ -501,17 +576,13 @@ DeviceResult<void> WebGpuDevice::BuildShader( const ShaderArtifactView &artifact
 	    reinterpret_cast<const char *>( artifact.code.data() ), artifact.code.size() );
 	if ( !ReadArtifactHeader( text, artifact.stage, header ) )
 		return Fail( DeviceStatus::kInvalidDescription, op );
-	WGPUShaderSourceWGSL source = WGPU_SHADER_SOURCE_WGSL_INIT;
-	source.code = View( text );
-	WGPUShaderModuleDescriptor descriptor = WGPU_SHADER_MODULE_DESCRIPTOR_INIT;
-	descriptor.nextInChain = &source.chain;
-	descriptor.label = View( desc.debugName );
-	wgpuDevicePushErrorScope( m_Device, WGPUErrorFilter_Validation );
-	module.Reset( wgpuDeviceCreateShaderModule( m_Device, &descriptor ) );
-	if ( !ScopeClean( m_Instance, m_Device, "WGSL module" ) || !module )
-		return Fail( DeviceStatus::kInternal, op );
 	// D20: each constant this stage declares takes its value with its type;
-	// ids it does not declare are ignored.
+	// ids it does not declare are ignored. The values are written into the
+	// WGSL (each override becomes a const) rather than passed as pipeline
+	// constants: browsers' WGSL compilers differ in how well they specialize
+	// overrides (Firefox's refuses the surface programs' derived overrides),
+	// while const expressions are core WGSL every implementation evaluates.
+	std::map<std::uint32_t, std::string> values;
 	for ( const SpecializationConstant &constant : desc.constants )
 	{
 		if ( constant.stage != artifact.stage )
@@ -523,31 +594,59 @@ DeviceResult<void> WebGpuDevice::BuildShader( const ShaderArtifactView &artifact
 		    } );
 		if ( declared == header.overrides.end() )
 			continue;
-		double value = 0.0;
+		std::string literal;
 		switch ( declared->type )
 		{
 		case OverrideLine::Type::kBool:
-			value = constant.value != 0 ? 1.0 : 0.0;
+			literal = constant.value != 0 ? "true" : "false";
 			break;
 		case OverrideLine::Type::kInt:
-			value = static_cast<double>( static_cast<std::int32_t>( constant.value ) );
+			literal = std::to_string( static_cast<std::int32_t>( constant.value ) ) + "i";
 			break;
 		case OverrideLine::Type::kUint:
-			value = static_cast<double>( constant.value );
+			literal = std::to_string( constant.value ) + "u";
 			break;
 		case OverrideLine::Type::kFloat:
-			value = static_cast<double>( std::bit_cast<float>( constant.value ) );
+		{
+			char digits[32];
+			const auto written = std::to_chars(
+			    digits, digits + sizeof( digits ), std::bit_cast<float>( constant.value ) );
+			literal = std::string( digits, written.ptr ) + "f";
 			break;
 		}
+		}
 		if ( std::getenv( "SOURCE_WEBGPU_LOG_CONSTANTS" ) )
-			std::fprintf( stderr, "render.device.webgpu: %.*s constant %u = %g\n",
-			    int( desc.debugName.size() ), desc.debugName.data(), constant.id, value );
-		keys.push_back( std::to_string( constant.id ) );
-		WGPUConstantEntry entry = WGPU_CONSTANT_ENTRY_INIT;
-		entry.key = View( keys.back() );
-		entry.value = value;
-		constants.push_back( entry );
+			std::fprintf( stderr, "render.device.webgpu: %.*s constant %u = %s\n",
+			    int( desc.debugName.size() ), desc.debugName.data(), constant.id, literal.c_str() );
+		values[constant.id] = std::move( literal );
 	}
+	const std::string specialized = SpecializeOverrides( text, values );
+	// SOURCE_WEBGPU_DUMP_WGSL=<dir>: each module's specialized WGSL, to check it
+	// with another WGSL compiler (naga, tint).
+	if ( const char *dump = std::getenv( "SOURCE_WEBGPU_DUMP_WGSL" ) )
+	{
+		static int s_dumped = 0;
+		const std::string path = std::string( dump ) + "/" + std::to_string( ++s_dumped ) + "-" +
+		                         std::string( desc.debugName ) +
+		                         ( artifact.stage == ShaderStage::kFragment ? ".frag" : ".other" ) +
+		                         ".wgsl";
+		if ( FILE *f = std::fopen( path.c_str(), "wb" ) )
+		{
+			std::fwrite( specialized.data(), 1, specialized.size(), f );
+			std::fclose( f );
+		}
+	}
+	WGPUShaderSourceWGSL source = WGPU_SHADER_SOURCE_WGSL_INIT;
+	source.code = View( specialized );
+	WGPUShaderModuleDescriptor descriptor = WGPU_SHADER_MODULE_DESCRIPTOR_INIT;
+	descriptor.nextInChain = &source.chain;
+	descriptor.label = View( desc.debugName );
+	wgpuDevicePushErrorScope( m_Device, WGPUErrorFilter_Validation );
+	module.Reset( wgpuDeviceCreateShaderModule( m_Device, &descriptor ) );
+	if ( !ScopeClean( m_Instance, m_Device, "WGSL module" ) || !module )
+		return Fail( DeviceStatus::kInternal, op );
+	(void)keys;
+	(void)constants;
 	return {};
 }
 

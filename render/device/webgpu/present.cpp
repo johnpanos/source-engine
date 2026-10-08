@@ -8,6 +8,10 @@
 
 #include "webgpu_device.h"
 
+#if defined( __EMSCRIPTEN__ )
+#include <emscripten/html5.h>
+#endif
+
 #include <cstdio>
 #include <mutex>
 
@@ -44,6 +48,12 @@ bool WebGpuDevice::PresentToCanvas(
 	{
 		// RGBA8 (a canvas format every browser offers), so the frame copies
 		// onto it as it is.
+#if defined( __EMSCRIPTEN__ )
+		// The canvas's backing store is the frame's size: the browser sizes
+		// the surface's textures from it, and a page's canvas (or SDL's window
+		// on it) may start at 0x0.
+		(void)emscripten_set_canvas_element_size( selector, int( width ), int( height ) );
+#endif
 		WGPUSurfaceConfiguration configuration = WGPU_SURFACE_CONFIGURATION_INIT;
 		configuration.device = m_Device;
 		configuration.format = WGPUTextureFormat_RGBA8Unorm;
