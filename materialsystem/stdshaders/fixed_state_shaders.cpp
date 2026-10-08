@@ -112,9 +112,11 @@ bool IsSixteenBitPerChannel( ITexture *texture )
 struct Default
 {
 	int extra = -1; // -1 ends the list
-	ShaderParamType_t type = SHADER_PARAM_TYPE_FLOAT; // FLOAT or VEC2
+	ShaderParamType_t type = SHADER_PARAM_TYPE_FLOAT; // FLOAT, INTEGER, VEC2 or VEC4
 	float x = 0.0f;
 	float y = 0.0f;
+	float z = 0.0f;
+	float w = 0.0f;
 };
 
 // A base parameter the row redeclares (SHADER_PARAM_OVERRIDE): its default,
@@ -155,7 +157,7 @@ struct FixedStateRow
 	Load loads[kMaxLoads];         // index -1 ends the list
 	Step steps[kMaxSteps];         // Op::End ends the list
 	int initFlags = 0;             // MATERIAL_VAR_* set at init
-	Default defaults[5] = {};
+	Default defaults[10] = {};
 	Override overrides[2] = {};
 	// A SHADER_FALLBACK block's answer, as opposed to a DEFINE_FALLBACK_SHADER
 	// alias (fallback above): the shader exists in its own right.
@@ -380,6 +382,30 @@ const FixedStateRow kRows[] = {
 	        { Op::BlendFunc, SHADER_BLEND_ONE, SHADER_BLEND_ZERO, When::NotFlag,
 	            MATERIAL_VAR_TRANSLUCENT },
 	        { Op::DefaultFog }, { Op::Format, VERTEX_POSITION, 2 } } },
+	{ "Aftershock", "Aftershock_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "Aftershock_dx9", nullptr, 0, MATERIAL_VAR2_SUPPORTS_HW_SKINNING |
+	        MATERIAL_VAR2_NEEDS_TANGENT_SPACES | MATERIAL_VAR2_NEEDS_POWER_OF_TWO_FRAME_BUFFER_TEXTURE,
+	    { { "$COLORTINT", SHADER_PARAM_TYPE_COLOR, "[1 1 1]", "Color tint" },
+	        { "$REFRACTAMOUNT", F, "2", "" },
+	        { "$NORMALMAP", T, "models/shadertest/shader1_normal", "normal map" },
+	        { "$BUMPFRAME", I, "0", "frame number for $bumpmap" },
+	        { "$BUMPTRANSFORM", SHADER_PARAM_TYPE_MATRIX,
+	            "center .5 .5 scale 1 1 rotate 0 translate 0 0", "$bumpmap texcoord transform" },
+	        { "$SILHOUETTETHICKNESS", F, "1", "" },
+	        { "$SILHOUETTECOLOR", SHADER_PARAM_TYPE_COLOR, "[1 1 1]", "Silhouette color tint" },
+	        { "$GROUNDMIN", F, "1", "" }, { "$GROUNDMAX", F, "1", "" },
+	        { "$BLURAMOUNT", F, "1", "" }, { "$TIME", F, "0.0", "Needs CurrentTime Proxy" } },
+	    -1, 0, { { true, 2, true } },
+	    { { Op::Format, VERTEX_POSITION | VERTEX_NORMAL | VERTEX_FORMAT_COMPRESSED, 1 },
+	        { Op::Texture, SHADER_SAMPLER0 }, { Op::SrgbRead, SHADER_SAMPLER0, 1 },
+	        { Op::Texture, SHADER_SAMPLER1 }, { Op::SrgbRead, SHADER_SAMPLER1, 0 },
+	        { Op::SrgbWrite, 1 },
+	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA },
+	        { Op::DepthWrites, 0 }, { Op::AlphaWrites, 0 } },
+	    MATERIAL_VAR_TRANSLUCENT,
+	    { { 1, F, 0.1f }, { 0, SHADER_PARAM_TYPE_VEC4, 1.0f, 1.0f, 1.0f, 1.0f }, { 3, I, 0.0f },
+	        { 5, F, 0.2f }, { 6, SHADER_PARAM_TYPE_VEC4, 0.3f, 0.3f, 0.5f, 1.0f }, { 7, F, -0.3f },
+	        { 8, F, -0.1f }, { 9, F, 0.01f }, { 10, F, 0.0f } } },
 	{ "EyeGlint", "EyeGlint_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
 	{ "EyeGlint_dx9", nullptr, 0, 0, NO_PARAMS, -1, 0, NO_LOADS,
 	    { { Op::DepthWrites, 0, 0 }, { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ONE },
@@ -465,6 +491,10 @@ protected:
 				continue;
 			if ( value.type == SHADER_PARAM_TYPE_VEC2 )
 				var->SetVecValue( value.x, value.y );
+			else if ( value.type == SHADER_PARAM_TYPE_VEC4 )
+				var->SetVecValue( value.x, value.y, value.z, value.w );
+			else if ( value.type == SHADER_PARAM_TYPE_INTEGER )
+				var->SetIntValue( int( value.x ) );
 			else
 				var->SetFloatValue( value.x );
 		}
