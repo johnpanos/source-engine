@@ -30,11 +30,6 @@ BEGIN_VS_SHADER_FLAGS( FilmDust_dx9, "Help for FilmDust", SHADER_NOT_EDITABLE )
 
 	SHADER_FALLBACK
 	{
-		// Requires DX9 + above
-		if ( g_pHardwareConfig->GetDXSupportLevel() < 90)
-		{
-			return "FilmDust_DX8";
-		}
 		return 0;
 	}
 

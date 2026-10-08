@@ -39,7 +39,7 @@ constexpr VmtShaderRow kShaders[] = {
     { "sprite_dx9", "unlit",
         "sprites: an unlit textured quad whose orientation and render mode are parameters "
         "(sprite_vs20/sprite_ps20b)" },
-    { "spritecard_dx8", "unlit",
+    { "spritecard", "unlit",
         "particle cards: the unlit point with SpriteCard's terms (frame blend, "
         "$overbrightfactor, $addself, $mod2x, depth feathering); render.sprite-card.v1 "
         "builds the corners from the card records (spritecard_vsxx/splinecard_vsxx)" },

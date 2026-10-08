@@ -29,9 +29,6 @@
 
 #define DEFAULT_PARTICLE_FEATHERING_ENABLED 1
 
-#ifdef STDSHADER_DX8_DLL_EXPORT
-DEFINE_FALLBACK_SHADER( Spritecard, Spritecard_DX8 )
-#endif
 
 int GetDefaultDepthFeatheringValue( void ) //Allow the command-line to go against the default soft-particle value
 {
@@ -151,22 +148,12 @@ SHADER_INIT_PARAMS()
 
 SHADER_FALLBACK
 {
-	if ( g_pHardwareConfig->GetDXSupportLevel() < 90 )
-		return "SpriteCard_DX8";
-#ifdef STDSHADER_DX8_DLL_EXPORT
-	// STDSHADER_DX8_DLL_EXPORT
-	if ( g_pHardwareConfig->GetDXSupportLevel() < 80 )
-		return "Wireframe";
-#endif
 	return 0;
 }
 
 SHADER_INIT
 {
 	const bool bDX8 = false;
-#ifdef STDSHADER_DX8_DLL_EXPORT
-	const bool bDX8 = true;
-#endif
 
 	SET_FLAGS2( MATERIAL_VAR2_LIGHTING_VERTEX_LIT );
 
@@ -189,9 +176,6 @@ SHADER_INIT
 SHADER_DRAW
 {
 	const bool bDX8 = false;
-#ifdef STDSHADER_DX8_DLL_EXPORT
-	const bool bDX8 = true;
-#endif
 	bool bUseRampTexture = (! bDX8 ) && ( params[RAMPTEXTURE]->IsDefined() );
 	bool bZoomSeq2 = (! bDX8 ) && ( ( params[ZOOMANIMATESEQ2]->GetFloatValue()) > 1.0 );
 	bool bDepthBlend = (! bDX8 ) && ( params[DEPTHBLEND]->GetIntValue() != 0 );

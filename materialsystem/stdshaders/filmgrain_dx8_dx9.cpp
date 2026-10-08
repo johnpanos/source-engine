@@ -30,12 +30,6 @@ BEGIN_VS_SHADER_FLAGS( FilmGrain_dx9, "Help for FilmGrain", SHADER_NOT_EDITABLE 
 
 	SHADER_FALLBACK
 	{
-		// Requires DX9 + above
-		if ( g_pHardwareConfig->GetDXSupportLevel() < 90)
-		{
-				return "FilmGrain_dx8";
-		}
-
 		return 0;
 	}
 

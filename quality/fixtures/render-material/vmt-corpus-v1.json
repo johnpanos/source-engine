@@ -61,7 +61,7 @@
     "materials/tools/toolsskyfog.vmt: unknown-shader (SkyFog)",
     "materials/vgui/screens/vgui_overlay.vmt: malformed (material line 12: expected a name or key before '{')"
    ],
-   "digest": "98b7222a6566e7b2a5c88cced195ff5f1c9f716107a91c7e06cdd2327d2b916b"
+   "digest": "36bf3fd42ae1a9782196770fedad39abd27e7868a24a2a53e2d15d1c8b42d78e"
   },
   "portal2": {
    "materials": 3738,
@@ -99,7 +99,7 @@
     "materials/engine/simpleworldmodel.vmt: unknown-shader (worldimposter)",
     "materials/models/props_foliage/urban_trees_branches02_dry.vmt: missing-include (materials/models/props_foliage/tree_include_dryleaves.vmt)"
    ],
-   "digest": "a342e0fa477d592a49bffd27079a0d59c6bc1a50f18f1821cd8a61ded6210ab8"
+   "digest": "0a30da1c806de753a276b5b1dca76cc42d388fd6798cb8e8aab2f1cb27b58f72"
   }
  }
 }

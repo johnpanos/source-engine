@@ -67,7 +67,7 @@ bool IsSprite( const MaterialDesc &material )
 // SpriteCard's particle cards (render.sprite-card.v1).
 bool IsSpriteCard( const MaterialDesc &material )
 {
-	return material.legacyShader == "spritecard_dx8";
+	return material.legacyShader == "spritecard";
 }
 
 // The Black shader's surfaces: the unlit point with a zero tint.

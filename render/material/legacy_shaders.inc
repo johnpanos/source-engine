@@ -109,7 +109,7 @@ constexpr LegacyShaderName kLegacyShaders[] = {
 	{ "splinerope", "cable_dx9" },
 	{ "sprite", "sprite_dx9" },
 	{ "sprite_dx9", "" },
-	{ "spritecard", "spritecard_dx8" },
+	{ "spritecard", "" },
 	{ "teeth", "teeth_dx9" },
 	{ "teeth_dx9", "" },
 	{ "treeleaf", "" },
