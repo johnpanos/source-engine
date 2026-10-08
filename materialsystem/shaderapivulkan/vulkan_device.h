@@ -34,7 +34,6 @@
 #include "vulkan_adapter.h"
 #include "vulkan_compute.h"
 #include "vulkan_debug_utils.h"
-#include "vulkan_descriptor_groups.h"
 #include "vulkan_frame_stats.h"
 #include "vulkan_shader_library.h"
 #include "vulkan_surface_host.h"
@@ -1558,8 +1557,6 @@ private:
 
 	uint32_t m_framesInFlight = 2;
 	uint32_t m_descriptorSetLimit = 0;
-	// The PBR and GI stages' frame and material sets (vulkan_descriptor_groups.h).
-	CGroupedDescriptors m_groupedDescriptors;
 	uint32_t m_currentFrame = 0;
 	std::vector<VkSemaphore> m_imageAvailable;
 	std::vector<VkSemaphore> m_renderFinished; // per swapchain image (GrowRenderFinished)

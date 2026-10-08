@@ -8706,40 +8706,6 @@
       "expect": "pass"
     },
     {
-      "id": "render.grouped-descriptors",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0001",
-      "kind": "positive",
-      "profile": "linux-native-vulkan-gpu",
-      "result_protocol": "checks-v1",
-      "description": "The PBR and GI stages' descriptor sets grouped by update frequency (vulkan_descriptor_groups.h) on a headless device: equal requests in a frame slot share a set, another view, sampler or group gets its own, slots are independent and recycle only at their BeginFrame, a frame beyond one pool grows the slot's pools, Invalidate forgets the reuse table; the seeded view-only reuse key is caught; validation-clean with the layer",
-      "sources": [
-        "unittests/shaderapivulkantest/test_descriptor_groups.cpp",
-        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
-        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
-        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
-        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp",
-        "render/device/port.cpp",
-        "render/device/encoder.cpp",
-        "render/device/validation.cpp",
-        "render/device/vulkan/device.cpp",
-        "render/device/vulkan/fsr_features.cpp",
-        "render/device/vulkan/encoder.cpp",
-        "render/device/vulkan/host_device.cpp",
-        "render/device/vulkan/instance.cpp",
-        "render/device/vulkan/memory.cpp",
-        "render/device/vulkan/pipelines.cpp",
-        "render/device/vulkan/resources.cpp",
-        "render/device/vulkan/transitions.cpp",
-        "render/device/vulkan/upload_ring.cpp"
-      ],
-      "extra_flags": [
-        "-pthread",
-        "-isystemdependencies/vulkan-memory-allocator/include"
-      ],
-      "expect": "pass"
-    },
-    {
       "id": "render.gpu-runner.zero-checks",
       "domain": "Q-PRESENTATION",
       "rfc": "0011",
@@ -8751,7 +8717,6 @@
         "materialsystem/shaderapivulkan/vulkan_device.cpp",
         "materialsystem/shaderapivulkan/vulkan_compute.cpp",
         "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
-        "materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp",
         "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
         "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
         "texturecontainer/block_decode.cpp",

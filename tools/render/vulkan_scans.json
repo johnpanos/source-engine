@@ -1,12 +1,7 @@
 {
   "schema": "render-vulkan-scans/v1",
   "note": "Reviewed by the RFC 0016 K1 agent (2026-09-28). allocation_exceptions: test fixtures under unittests/ that allocate raw memory on their device (product code can never be excepted). idle_waits: every vkDeviceWaitIdle/vkQueueWaitIdle call site keyed by path and enclosing function (Class::Method); class is teardown, mode-change, loss-recovery, port-wait-idle or test-fixture. Entries with pending true (class frame-path) are sites still on a frame path; they fail the scan until replaced. K1 replaced the frame-path waits: one-time uploads and readbacks (EndSingleTimeCommands, ReadSceneDepth, ReadWorldMeshBytes) signal the adapter's timeline and release their staging behind its value or wait for their own value; world-mesh replacement (UploadWorldMesh, ReleaseWorldMesh) releases the old buffers behind the newest submitted value; a sampler-state change writes fresh descriptor sets and retires the old ones behind the newest submitted frame; the render.backend.v1 provider (render/device/vulkan/backend_v1/) waits for timeline values.",
-  "allocation_exceptions": [
-    {
-      "path": "unittests/shaderapivulkantest/test_descriptor_groups.cpp",
-      "reason": "test fixture: creates its own raw VkDevice and 4x4 sampled images to check the grouped descriptor-set layouts of vulkan_descriptor_groups against the device limit; no product code path"
-    }
-  ],
+  "allocation_exceptions": [],
   "idle_waits": [
     {
       "path": "materialsystem/shaderapivulkan/vulkan_device.cpp",
@@ -73,13 +68,6 @@
     },
     {
       "path": "unittests/shaderapivulkantest/test_compute.cpp",
-      "function": "main",
-      "count": 1,
-      "class": "test-fixture",
-      "reason": "test fixture teardown before destroying its own device"
-    },
-    {
-      "path": "unittests/shaderapivulkantest/test_descriptor_groups.cpp",
       "function": "main",
       "count": 1,
       "class": "test-fixture",

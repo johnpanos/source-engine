@@ -1805,7 +1805,6 @@ void CVulkanContext::SetAnisotropicLevel( int level )
 	}
 	// A new sampler may reuse a destroyed one's handle: forget grouped sets
 	// keyed by the old ones.
-	m_groupedDescriptors.Invalidate();
 	m_anisotropyLevel = selected;
 }
 
@@ -3836,7 +3835,6 @@ void CVulkanContext::DestroyDynamicMesh()
 		vkDestroyPipeline( m_device, entry.second, nullptr );
 	m_portalPipelines.clear();
 	DestroyDepthToAlpha();
-	m_groupedDescriptors.Shutdown();
 	for ( VkShaderModule *module : { &m_portalVert, &m_portalFrag } )
 	{
 		if ( *module != VK_NULL_HANDLE )
@@ -4385,7 +4383,6 @@ bool CVulkanContext::PrepareFrame( bool *outSkip, std::string *outError )
 	RetireCompletedTextures();
 	ReadSlotGpuTime( m_currentFrame );
 	// The slot's grouped sets are no longer read: they return to its pools.
-	m_groupedDescriptors.BeginFrame( m_currentFrame );
 
 	uint32_t imageIndex = 0;
 	VkResult r;

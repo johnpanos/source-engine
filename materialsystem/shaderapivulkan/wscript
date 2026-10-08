@@ -45,7 +45,6 @@ def build(bld):
 		'vulkan_device.cpp',
 		'vulkan_mesh_layout.cpp',
 		'vulkan_adapter.cpp',
-		'vulkan_descriptor_groups.cpp',
 		'vulkan_scene_capture.cpp',
 		'vulkan_world_lightmap.cpp',
 		'vulkan_world_reflection_probes.cpp',

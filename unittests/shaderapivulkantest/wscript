@@ -33,7 +33,6 @@ def build(bld):
 			'../../materialsystem/shaderapivulkan/vulkan_device.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_compute.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_adapter.cpp',
-			'../../materialsystem/shaderapivulkan/vulkan_descriptor_groups.cpp',
 			'../../materialsystem/shaderapivulkan/vulkan_scene_capture.cpp'],
 		target='native_vulkan_bringup_conformance',
 		name='native_vulkan_bringup_conformance',
