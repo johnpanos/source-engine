@@ -9,6 +9,8 @@
 //              the sealed stable topological order. Used for validation and as
 //              the canonical order in three-mode equivalence tests.
 //            * ParallelExecutor      - a bounded worker pool (parallel_executor.h).
+//            * TaskExecutor          - the same scheduler on a borrowed
+//              IWorkerBackend's tasks (task_executor.h); the product executor.
 //
 //          Dependency semantics (RFC 0003 "Job state, errors, and cancellation"):
 //            * A Success prerequisite that did not Succeed cancels its consumer;
@@ -86,8 +88,8 @@ struct RunOptions
 	// host pump point). When false and the graph carries MainThread work with no
 	// other eligible servicer, the run is a detectable stall rather than a hang
 	// (RFC 0003 "Sequences and physical affinity"). Executors that model no
-	// affinity (Deterministic) ignore this. Pooled runs affine/blocking work on
-	// the pumping caller, never on its compute backend.
+	// affinity (Deterministic) ignore this. TaskExecutor runs affine/blocking
+	// work on the pumping caller, never on its compute backend.
 	bool pumpMainThread = true;
 
 	// Runner bindings (RFC 0003: an execution lane is a binding to a runner
@@ -97,9 +99,10 @@ struct RunOptions
 	// the scheduling mutex like any job. A caller that already is the runner
 	// (its thread, or its sequence) services the lane itself. A job the runner
 	// refuses, or drops at shutdown, resolves as unserviceable (a stall), so the
-	// run returns instead of hanging. Runners must outlive Execute. Inline mode
-	// (no workers), DeterministicExecutor and the wave-based PooledExecutor
-	// service these lanes on the caller as before and ignore bindings.
+	// run returns instead of hanging. Runners must outlive Execute.
+	// TaskExecutor honors them the same way. Inline mode (no workers) and
+	// DeterministicExecutor service these lanes on the caller and ignore
+	// bindings.
 	platform::ISingleThreadTaskRunner *mainThreadRunner = nullptr;
 	platform::ISequencedTaskRunner *blockingRunner = nullptr;
 };

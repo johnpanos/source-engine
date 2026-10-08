@@ -26,9 +26,11 @@
 #include "jobsystem/job_graph.h"
 #include "jobsystem/parallel_batch.h"
 #include "jobsystem/parallel_executor.h"
-#include "jobsystem/pooled_executor.h"
+#include "jobsystem/task_executor.h"
+#include "jobsystem/thread_worker_backend.h"
 #include "jobsystem/worker_backend.h"
 #include "testing/conformance_result.h"
+#include "wave_executor_reference.h"
 
 #include <algorithm>
 #include <atomic>
@@ -64,107 +66,10 @@ long long g_checks = 0;
 	} while ( 0 )
 
 //-----------------------------------------------------------------------------
-// Persistent worker pool backend. Workers park between calls so the benchmark
-// measures scheduler dispatch, not thread creation. The caller participates.
-// The completion counter is released by each participant and acquired by the
-// caller: every body write happens-before ParallelFor returns.
+// Persistent worker threads (ThreadWorkerBackend): workers park between tasks
+// so the benchmark measures scheduler dispatch, not thread creation.
 //-----------------------------------------------------------------------------
-class PoolBackend final : public IWorkerBackend
-{
-public:
-	explicit PoolBackend( int workers ) : m_workers( workers < 0 ? 0 : workers )
-	{
-		for ( int i = 0; i < m_workers; ++i )
-			m_threads.emplace_back(
-			    [this]
-			    {
-				    WorkerMain();
-			    } );
-	}
-
-	~PoolBackend() override
-	{
-		{
-			std::lock_guard<std::mutex> lk( m_mtx );
-			m_quit = true;
-		}
-		m_cv.notify_all();
-		for ( std::thread &t : m_threads )
-			t.join();
-	}
-
-	int WorkerCount() const override { return m_workers; }
-
-	void ParallelFor( int n, const std::function<void( int )> &body ) override
-	{
-		if ( n <= 0 )
-			return;
-		if ( m_workers == 0 || n == 1 )
-		{
-			for ( int i = 0; i < n; ++i )
-				body( i );
-			return;
-		}
-		{
-			std::lock_guard<std::mutex> lk( m_mtx );
-			m_body = &body;
-			m_count = n;
-			m_next.store( 0, std::memory_order_relaxed );
-			m_pending.store( m_workers, std::memory_order_relaxed );
-			++m_generation;
-		}
-		m_cv.notify_all();
-		Drain();
-		// Wait for every worker to leave this generation before the borrowed
-		// body goes out of scope.
-		while ( m_pending.load( std::memory_order_acquire ) != 0 )
-			std::this_thread::yield();
-	}
-
-private:
-	void Drain()
-	{
-		for ( ;; )
-		{
-			const int i = m_next.fetch_add( 1, std::memory_order_relaxed );
-			if ( i >= m_count )
-				return;
-			( *m_body )( i );
-		}
-	}
-
-	void WorkerMain()
-	{
-		uint64_t seen = 0;
-		for ( ;; )
-		{
-			{
-				std::unique_lock<std::mutex> lk( m_mtx );
-				m_cv.wait( lk,
-				    [&]
-				    {
-					    return m_quit || m_generation != seen;
-				    } );
-				if ( m_quit )
-					return;
-				seen = m_generation;
-			}
-			Drain();
-			m_pending.fetch_sub( 1, std::memory_order_acq_rel );
-		}
-	}
-
-	const int m_workers;
-	std::vector<std::thread> m_threads;
-	std::mutex m_mtx;
-	std::condition_variable m_cv;
-	bool m_quit = false;
-	uint64_t m_generation = 0;
-	const std::function<void( int )> *m_body = nullptr;
-	int m_count = 0;
-	std::atomic<int> m_next{ 0 };
-	std::atomic<int> m_pending{ 0 };
-};
+using PoolBackend = jobsystem::ThreadWorkerBackend;
 
 //-----------------------------------------------------------------------------
 // Measurement
@@ -475,9 +380,18 @@ void BenchExecutors()
 	for ( int workers : { 0, 1, 4 } )
 	{
 		PoolBackend backend( workers );
-		PooledExecutor ex( &backend );
+		TaskExecutor ex( &backend );
 		char label[32];
-		std::snprintf( label, sizeof( label ), "pooled.w%d", workers );
+		std::snprintf( label, sizeof( label ), "task.w%d", workers );
+		BenchExecutor( label, ex, { 16u, 256u, 2048u }, { 0u, 256u } );
+	}
+	// The retired wave executor on the same backend: the J1 reference.
+	for ( int workers : { 1, 4 } )
+	{
+		PoolBackend backend( workers );
+		jobsystemtest::WaveExecutorReference ex( &backend );
+		char label[32];
+		std::snprintf( label, sizeof( label ), "wave.w%d", workers );
 		BenchExecutor( label, ex, { 16u, 256u, 2048u }, { 0u, 256u } );
 	}
 

@@ -16,7 +16,7 @@
 
 #include "jobsystem/frame_graph.h"
 #include "jobsystem/graph_executor.h"
-#include "jobsystem/pooled_executor.h"
+#include "jobsystem/task_executor.h"
 #include "jobsystem/pilot_particles.h"
 #include "vstdlib/jobgraph_pool_bridge.h"
 #include "vstdlib/jobthread.h"
@@ -113,7 +113,7 @@ static void Test_RealPoolParticleEquivalence()
 		CHECK( sealed.HasValue() );
 		if ( !sealed.HasValue() ) continue;
 		RunOptions opts; opts.frame = fc.Frame();
-		RunResult r = PooledExecutor( pool.backend ).Execute( sealed.Value(), opts );
+		RunResult r = TaskExecutor( pool.backend ).Execute( sealed.Value(), opts );
 		CHECK( r.AllSucceeded() );
 		CHECK( StatesEqual( s, ref ) ); // engine-pool result == serial reference
 	}
@@ -133,7 +133,7 @@ static void Test_RealPoolMatchesDeterministic()
 	{
 		std::vector<int> runs; JobGraphBuilder b; BuildStressGraph( b, runs, layers, width );
 		SealedGraph g = b.Seal().Value();
-		RunResult r = PooledExecutor( pool.backend ).Execute( g, RunOptions{} );
+		RunResult r = TaskExecutor( pool.backend ).Execute( g, RunOptions{} );
 		CHECK( r.states == serial.states );
 		CHECK( r.succeeded == serial.succeeded );
 		bool once = true; for ( int x : runs ) if ( x != 1 ) once = false;
@@ -156,7 +156,7 @@ static void Test_RealPoolFailurePropagation()
 	b.AddDependency( bh, dh, DependencyKind::Success );
 	b.AddDependency( a, ch, DependencyKind::Terminal );
 	SealedGraph g = b.Seal().Value();
-	RunResult r = PooledExecutor( pool.backend ).Execute( g, RunOptions{} );
+	RunResult r = TaskExecutor( pool.backend ).Execute( g, RunOptions{} );
 	CHECK( r.states[a.id] == JobState::Failed );
 	CHECK( r.states[bh.id] == JobState::Canceled );
 	CHECK( r.states[dh.id] == JobState::Canceled );
@@ -170,14 +170,14 @@ static void Test_RealPoolZeroWorkersInline()
 	CHECK( pool.backend->WorkerCount() == 0 );
 	std::vector<int> runs; JobGraphBuilder b; BuildStressGraph( b, runs, 4, 4 );
 	SealedGraph g = b.Seal().Value();
-	RunResult r = PooledExecutor( pool.backend ).Execute( g, RunOptions{} );
+	RunResult r = TaskExecutor( pool.backend ).Execute( g, RunOptions{} );
 	CHECK( r.succeeded == g.JobCount() );
 	for ( int x : runs ) CHECK( x == 1 );
 }
 
-// The engine pool bridge overlaps a wave's main-thread jobs with its compute
-// jobs: each waits for the other to start, which only concurrent execution
-// satisfies before the deadline.
+// The engine pool bridge overlaps the caller's main-thread jobs with compute
+// jobs on runner tasks: each waits for the other to start, which only
+// concurrent execution satisfies before the deadline.
 static bool AwaitFlag( const std::atomic<bool> &flag )
 {
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds( 5 );
@@ -218,9 +218,56 @@ static void Test_RealPoolOverlapsCallerJobs()
 		SealedGraph g = b.Seal().Value();
 		RunOptions options;
 		options.pumpMainThread = true;
-		RunResult r = PooledExecutor( pool.backend ).Execute( g, options );
+		RunResult r = TaskExecutor( pool.backend ).Execute( g, options );
 		CHECK( r.AllSucceeded() );
 		CHECK( computeSaw.load() && mainSaw.load() );
+	}
+}
+
+// J1 on the real engine pool: a chain behind a short root finishes while an
+// independent long job still runs. The long job waits for the chain's end, so
+// a wave executor (the chain's second job waits for the first wave, which
+// holds the long job) misses the deadline; a continuous one does not.
+static void Test_RealPoolRunsWithoutWaves()
+{
+	RealPool pool( 3 );
+	for ( int round = 0; round < 10; ++round )
+	{
+		std::atomic<bool> chainDone( false );
+		std::atomic<bool> longSaw( false );
+		JobGraphBuilder b;
+		JobDesc wait;
+		wait.name = "long";
+		wait.function = [&]( JobRunContext & )
+		{
+			longSaw = AwaitFlag( chainDone );
+		};
+		b.AddJob( wait );
+		JobHandle previous;
+		for ( int i = 0; i < 4; ++i )
+		{
+			JobDesc link;
+			link.name = "chain";
+			if ( i == 3 )
+				link.function = [&]( JobRunContext & )
+				{
+					chainDone = true;
+				};
+			else
+				link.function = []( JobRunContext & ) {};
+			const JobHandle h = b.AddJob( link );
+			if ( previous.IsValid() )
+				b.AddDependency( previous, h );
+			previous = h;
+		}
+		TaskRunStats stats;
+		RunResult r =
+		    TaskExecutor( pool.backend ).Execute( b.Seal().Value(), RunOptions{}, &stats );
+		CHECK( r.AllSucceeded() );
+		CHECK( longSaw.load() );
+		CHECK( stats.tasksRan + stats.tasksWithdrawn == stats.tasksPosted );
+		CHECK( stats.uncoveredReady == 0 );
+		CHECK( stats.peakRunners <= 3 );
 	}
 }
 
@@ -249,19 +296,26 @@ struct ComputeProbe
 		self = std::this_thread::get_id();
 		onComputeWorker = IsThreadPoolWorkerThread( g_pThreadPool );
 		nestedBefore = ComputePoolWorkerBackendNestedCalls( backend );
-		backend->ParallelFor( 16,
-		    [this]( int )
-		    {
-			    std::lock_guard<std::mutex> lock( mutex );
-			    bodyThreads.insert( std::this_thread::get_id() );
-			    ++bodies;
-		    } );
+		JobGraphBuilder fan;
+		for ( int i = 0; i < 16; ++i )
+		{
+			JobDesc body;
+			body.name = "probe.body";
+			body.function = [this]( JobRunContext & )
+			{
+				std::lock_guard<std::mutex> lock( mutex );
+				bodyThreads.insert( std::this_thread::get_id() );
+				++bodies;
+			};
+			fan.AddJob( body );
+		}
+		TaskExecutor( backend ).Execute( fan.Seal().Value(), RunOptions{} );
 		std::vector<int> runs;
 		JobGraphBuilder b;
 		BuildStressGraph( b, runs, 3, 6 );
 		SealedGraph g = b.Seal().Value();
 		graphJobs = g.JobCount();
-		graph = PooledExecutor( backend ).Execute( g, RunOptions{} );
+		graph = TaskExecutor( backend ).Execute( g, RunOptions{} );
 		nestedAfter = ComputePoolWorkerBackendNestedCalls( backend );
 		done = true;
 	}
@@ -278,13 +332,23 @@ static void Test_ComputePoolFollowsEnginePool()
 {
 	IWorkerBackend *backend = CreateComputePoolWorkerBackend();
 	CHECK( backend->WorkerCount() == 0 ); // not started: inline
+	CHECK( backend->PostTask( []( void * ) {}, nullptr ) == nullptr ); // refused
 	int inlineRuns = 0;
-	backend->ParallelFor( 8,
-	    [&]( int )
-	    {
-		    ++inlineRuns;
-	    } );
+	JobGraphBuilder ib;
+	for ( int i = 0; i < 8; ++i )
+	{
+		JobDesc d;
+		d.name = "inline";
+		d.function = [&]( JobRunContext & )
+		{
+			++inlineRuns;
+		};
+		ib.AddJob( d );
+	}
+	TaskRunStats inlineStats;
+	TaskExecutor( backend ).Execute( ib.Seal().Value(), RunOptions{}, &inlineStats );
 	CHECK( inlineRuns == 8 );
+	CHECK( inlineStats.inlineRun && inlineStats.tasksPosted == 0 );
 
 	StartComputePool( 3 );
 	CHECK( backend->WorkerCount() == 3 );
@@ -299,7 +363,7 @@ static void Test_ComputePoolFollowsEnginePool()
 		JobGraphBuilder b;
 		BuildStressGraph( b, runs, 6, 8 );
 		SealedGraph g = b.Seal().Value();
-		RunResult r = PooledExecutor( backend ).Execute( g, RunOptions{} );
+		RunResult r = TaskExecutor( backend ).Execute( g, RunOptions{} );
 		CHECK( r.states == serial.states );
 		bool once = true;
 		for ( int x : runs )
@@ -328,7 +392,7 @@ static void Test_ComputePoolNestedCallRunsInline()
 	// Every body ran on the calling worker, and the call was counted.
 	CHECK( probe.bodies == 16 );
 	CHECK( probe.bodyThreads.size() == 1 && *probe.bodyThreads.begin() == probe.self );
-	// The graph ran inline too: its waves' ParallelForWithCaller calls counted.
+	// Both graphs ran inline, and each run was counted once.
 	CHECK( probe.graph.succeeded == probe.graphJobs );
 	CHECK( probe.nestedAfter > probe.nestedBefore + 1 );
 	job->Release();
@@ -379,6 +443,7 @@ int main()
 	RUN( Test_RealPoolFailurePropagation );
 	RUN( Test_RealPoolZeroWorkersInline );
 	RUN( Test_RealPoolOverlapsCallerJobs );
+	RUN( Test_RealPoolRunsWithoutWaves );
 	RUN( Test_ComputePoolFollowsEnginePool );
 	RUN( Test_ComputePoolNestedCallRunsInline );
 	RUN( Test_ComputePoolFromAnotherPoolStaysPooled );

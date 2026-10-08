@@ -985,3 +985,170 @@ world pass; the remaining views that draw per surface (prepass, models,
 shadows); per-instance data through `kIndirectFirstInstance` in a product
 shader; the pooled executor still records two-queue graphs on graphics;
 Fold7 and Apple runs.
+
+## R94: one task system (2026-10-07)
+
+User goal: "Implement R94 with a rock solid ratchet - we need a pure task
+system", in the shared tree (no worktree). Row R94 (RFC 0003 phase I, goals
+J1–J7) moves from `planned` to `active`. Then (user direction during the
+slice): "Instead of micro benchmarks let's have a focus on real world intro4
+demo".
+
+### What changed
+
+- **The backend runs tasks only.** `IWorkerBackend` (`public/jobsystem/worker_backend.h`,
+  still C++11-clean) is `WorkerCount`, `PostTask`, `SettleTask` and
+  `ShouldRunInline`. `ParallelFor` and `ParallelForWithCaller` are deleted,
+  so no scheduler can be built on a barrier. `SettleTask` withdraws a task
+  that has not started or waits for one that has; a refused post leaves the
+  work to the scheduler. The engine pool bridge (`vstdlib/jobgraph_pool_bridge.cpp`)
+  posts one `CJob` per task (`QueueCall`) and settles it with `Abort` under
+  the job's lock; a graph entered on one of the compute pool's own workers
+  still runs inline and is counted.
+- **`TaskExecutor`** (`public/jobsystem/task_executor.h`) is the product
+  executor. It is `ParallelExecutor`'s scheduler (one implementation in
+  `jobsystem/parallel_executor.cpp`: lanes, stall rules, runner bindings,
+  terminal states) with runner tasks in place of dedicated threads. A job is
+  ready the moment its last prerequisite resolves. Runners drain the ready
+  queue and return their worker when it is empty, so no borrowed worker parks
+  inside a graph. Whenever ready compute work exceeds the runners that will
+  look at the queue, more runners are posted, up to the backend's worker
+  count (J1's invariant; `TaskRunStats::uncoveredReady` counts violations).
+  The caller helps with compute and is the only servicer of main-thread and
+  blocking work, so progress never depends on the backend starting a task.
+  At the end, unstarted runners are withdrawn and started ones waited for: no
+  task touches a run after `Execute` returns. Two measured refinements: the
+  caller counts as the first servicer (a lone job, a chain or a
+  one-participant batch posts nothing), and a long ready queue is taken in a
+  guided share of at most 32 jobs per lock.
+- **`PooledExecutor` is deleted**, with its three product callers moved to
+  `TaskExecutor`: `ExecuteParallelBatch` (particles, bones, entity packing,
+  query cache, portal carving, emit conversion), `DeclaredFrameGraph`
+  (`cl_render_start_graph`), and the render core's pooled culling. In a
+  declared frame graph a batch now overlaps every host node its declarations
+  leave unordered, including nodes that become ready after the batch starts
+  (J2's unit oracle).
+- **`ThreadWorkerBackend`** (`public/jobsystem/thread_worker_backend.h`): a
+  backend over its own threads for test and tool roots. Eleven test backends
+  that implemented `ParallelFor` now use it or implement tasks.
+- **J5 control:** `-compute_workers N` sizes the engine's `CmpJob` compute
+  pool (`engine/host.cpp`); 0 runs every graph inline. `-threads` still sizes
+  only the global pool.
+- **J3 runtime census:** the engine's `thread_census` console command lists
+  the process's live threads by OS name (pool indices stripped).
+  `tools/quality/thread_census.py run|check|sensitivity` boots the product,
+  classifies every thread against `quality/budgets/thread-census-v1.json`
+  (declared owners: main, compute pool, MatQueue, filesystem I/O, the save
+  lane, SDL audio, driver and device threads, each with a reason), requires
+  exactly N `CmpJob` workers under `-compute_workers N`, and holds the
+  undeclared threads to an exact shrink-only list.
+- **The ratchet** (`tools/quality/jobs_ratchet.py`, `tools/quality/jobs_ratchet.json`).
+  Invariants that are zero and that `--write` refuses to record: no wave
+  executor or fork/join hook (`PooledExecutor`, `ParallelForWithCaller`) in
+  first-party code; no `ParallelFor` in the job system or its pool bridge;
+  `IWorkerBackend`'s virtual functions are exactly its four; no
+  thread-owning executor (`ParallelExecutor`, `DynamicScope`,
+  `ThreadWorkerBackend`) constructed outside the job system and its tests.
+  Exact per-file ratchets: `thread-create` outside J3's declared owners (J3
+  needs 0), host-side `fork-join` calls, blocking `pool-wait`s, and
+  `unaudited-node` (serial host-frame phases and `FRAME_DOMAIN_ALL`
+  declarations: J6's host-graph census). A count that grows fails, and so
+  does one that shrinks without being recorded; a declared owner needs a
+  reason and a live site. Comments, string literals and `#define` bodies do
+  not count.
+
+### Evidence (Linux desktop, g++ 16.2.1 and clang++ 22.1.8)
+
+| Check | Result |
+| --- | --- |
+| `jobsystem.continuous` | 30,697 checks pass. 1,000 seeded graphs at budgets 1, 2 and 4 (4,500 compared runs, 1,500 cancellation-race runs checked for exactly-once) equal `DeterministicExecutor` (pumped) or `ParallelExecutor` (unpumped stalls). J1 oracles reject the retired wave executor 10/10 and a one-runner executor 10/10; a success-only executor fails equivalence on 85 of 149 graphs. Delayed, refused, never-started and run-inside-post tasks; no task outlives `Execute`; `uncoveredReady` 0 on every run |
+| `jobsystem.continuous.tsan` | clean under clang ThreadSanitizer (30,697 checks) |
+| Mutations of `TaskExecutor` | caught: runner budget 1 (saturation oracle), posting under the scheduling lock (deadlock, timeout), returning without settling (lifetime oracle, 6,289 failures), a caller that never helps (deadlock on never-started tasks, timeout), runners that park in the run (timeout). Survives: a runner that exits after one job; its reservations are posted by the next dispatcher, so it is still continuous scheduling (an equivalent mutant) |
+| `jobsystem.declaredframe` | 223 checks; the J2 oracle (a batch item waits for a host node that becomes ready after the batch starts) passes, and fails 10/10 with the wave executor swapped in |
+| Q-JOBS (`--domain Q-JOBS`) | 17 of 17 runnable suites pass; TSan lanes pass under `CONFORMANCE_TSAN=1 --cxx clang++` |
+| `corpus.jobs.pool-bridge` | 220 checks on the real `CThreadPool`, including the J1 no-wave oracle |
+| `jobs.ratchet` / `.sensitivity` | 23 and 37 checks; recorded 129 sites in 49 files (thread-create 38, fork-join 32, pool-wait 32, unaudited-node 27), 31 thread-create sites in 15 declared owner files; every invariant at 0 |
+| `thread_census.py` | `testchmb_a_00` headless native Vulkan: CmpJob 3 by default, and exactly 0, 1 and 2 under `-compute_workers 0/1/2`; undeclared recorded: `AchievementSave` 1, `QueuedPacketSen` 1, 2 unnamed threads (J3 needs 0); sensitivity 13 checks |
+| Portal boots | `testchmb_a_00` passes with the default pool and `-compute_workers 0`, `1`, `2` |
+| Toolchain ABI fixture | the C++11 consumer implements the task backend; `toolchain.abi.v1.md` updated |
+
+**Microbenchmarks** (bazzite, Ryzen 7 3700X; `jobsystempoolgraphbench` on the
+real engine pool against the retired wave algorithm, separate processes,
+ABBA, median of 4). The continuous executor wins where its design says it
+should: layered graphs with work run in 0.72–0.83 of the time. Shapes with
+real work per job (4,096 steps) are at parity, 1.00–1.13. Small fan-outs of
+short jobs are slower: 8- and 64-item batches of 256-step items at 2.3x and
+1.8x, chains of empty jobs at 2.2x (about 20 ns per job). A start-time trace
+puts the batch gap in ramp-up: the task executor's runners reach their first
+job 5.8–7.1 µs after `Execute` starts, against 1.5–2.9 µs. Not fixed in this
+slice; the in-game demo below is the judge (user direction). One pitfall is
+recorded: alternating the two executors inside one process biased whichever
+ran second, so only separate-process runs are reported.
+
+### The intro4 demo (real-world judge, user direction)
+
+`quality/workloads/portal2-intro4-demo-v1` (the user's `sp_a1_intro4_relit`
+recording, sha256 `d88908c2…`) on bazzite: Ryzen 7 3700X (16 threads), RTX
+3070, NVIDIA driver, fullscreen 2560x1440 on the desktop compositor (60 Hz
+display), with the workload's settings (FSR built in, `r_temporal_scale 0`,
+`mat_antialias 0`, `mat_queue_mode 2`, `r_core_world 1`) and `play.sh`'s job
+flags (`+cl_render_start_graph 2 +sv_querycache_job_graph 2 -vkemitparallel 1`).
+Each run is judged by `demo_frames.analyze` (demo played, settings queried,
+playback window, extent); all runs complete with no failures.
+
+**Matched builds.** The baseline is `git archive HEAD`; the candidate is the
+same archive with only this slice's files. Both were configured from
+`build-p2-fsr`'s stored options (identical configuration caches) and built
+in scratch, so other sessions' uncommitted work is in neither. The installs
+differ in `libengine`, `liblauncher`, `libtier0` and `libvstdlib`. Both ran
+from hardlinked copies of the box's deployment, with every file the game
+writes unshared. Warm-up run per side, then 8 ABBA rounds.
+
+| Metric (median over 8 runs of each run's value) | baseline (wave) | candidate (task) | ratio |
+| --- | --- | --- | --- |
+| frame interval, median | 16.67 ms | 16.66 ms | 1.000 |
+| frame interval, p99 | 42.18 ms | 42.01 ms | 0.996 |
+| CPU critical path, median / p95 | 7.34 / 28.00 ms | 7.34 / 28.05 ms | 1.000 / 1.002 |
+| engine (main thread), median / p95 | 1.81 / 7.13 ms | 1.82 / 7.08 ms | 1.007 / 0.992 |
+| command recording, median | 1.88 ms | 1.89 ms | 1.006 |
+| GPU render, median | 12.21 ms | 12.19 ms | 0.998 |
+| 1% low | 19.05 fps | 19.25 fps | 1.010 |
+| frames over 50 ms | 4 | 3 | |
+
+The new task system is neutral on this demo: every metric is within run-to-
+run spread. Both sides are bimodal in the tail (some runs have about half the
+frames over 34 ms of the others, with about 0.7 ms less GPU time in those
+frames), and the mode does not follow the build or the run order, so it is
+GPU state, not the scheduler. The demo's frame is GPU- and present-bound
+(long frames: about 27 ms of CPU critical path, mostly acquire and present
+waits, against about 4 ms of engine work), and its job graphs carry little
+work, which is also why the microbenchmarks' small-batch gaps do not show.
+
+**J5 on the demo** (candidate, 3 ABBA rounds): `-compute_workers 3` (the
+default), `1` and `0` (serial) are indistinguishable: engine median 1.80 /
+1.78 / 1.77 ms, CPU median 7.26 / 7.27 / 7.33 ms, GPU 12.17 / 12.14 / 12.15
+ms, p99 43.2 / 42.5 / 43.0 ms. Pooled is no slower than serial. On this
+workload it is no faster either, which is the measure of how little of the
+intro4 frame runs as jobs today (J6's target).
+
+Reproduction: build the two archives as above; on bazzite,
+`~/r94demo/run.sh <base|cand> <label> [args]` plays the demo fullscreen and
+copies `frames.jsonl` and `console.log` to `~/r94demo/results`; the
+summaries come from `demo_frames.analyze` over each run.
+
+### Not done
+
+- J2's product evidence: a frame trace showing unordered declared nodes
+  overlapping at least once per 100 frames (the unit oracle passes).
+- J4: queueing, wake and join time on a product frame's critical path
+  against the pooled work it runs (5 % rule).
+- The Fold7 and iPhone rows of J3 and J5; the J7 ratchet.
+- Small fan-outs of short jobs ramp up slower than the wave executor did
+  (above); not visible in the demo, and the next candidate fix (a bounded
+  spin on the scheduling lock before blocking) is unmeasured, so it is not
+  applied.
+- Work stealing between runners: not added. The ready queue stays one
+  synchronized queue, as RFC 0003 requires until a stealing deque has its
+  own correctness and performance evidence; the demo gives no reason yet.
+- `thread-create` (38 sites) and the runtime census's 4 undeclared threads
+  must reach 0 for J3; `unaudited-node` (27) shrinks with J6.

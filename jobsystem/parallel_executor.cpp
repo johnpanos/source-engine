@@ -15,9 +15,18 @@
 //          resolve under the scheduling mutex like any other job. A job the
 //          runner refuses or drops unrun resolves as stuck.
 //
+//          Two worker sources share this one scheduler. ParallelExecutor owns
+//          dedicated compute/blocking threads that sleep on the run between
+//          jobs. TaskExecutor (task_executor.h) borrows an IWorkerBackend and
+//          drains the compute queue with runner tasks that never sleep: a
+//          runner exits when the queue is empty, and Dispatch posts new
+//          runners whenever ready compute work exceeds the runners that will
+//          still look at the queue (RFC 0003 J1).
+//
 //=============================================================================//
 
 #include "jobsystem/parallel_executor.h"
+#include "jobsystem/task_executor.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -62,8 +71,10 @@ enum class Role : uint8_t
 	Blocking,
 	Main,
 	Inline,
-	Waiter,  // the caller without a pump: waits for completion only
-	External // a bound runner's task; takes no work from the ready queues
+	Waiter,   // the caller without a pump: waits for completion only
+	External, // a bound runner's task; takes no work from the ready queues
+	Runner,   // a TaskExecutor runner task: compute only, never sleeps
+	Helper    // a TaskExecutor caller without a pump: compute only
 };
 
 // Servicers sleep on the condition variable of their slot, so new work wakes
@@ -119,6 +130,23 @@ struct RunState
 	platform::ITaskRunner *mainRunner = nullptr;
 	platform::ITaskRunner *blockingRunner = nullptr;
 
+	// Task mode (TaskExecutor): runner tasks posted to a borrowed backend drain
+	// the compute queue. A reserved runner counts in runners, seeking and
+	// starting until its task starts (or its post is refused); a started
+	// runner counts in seeking whenever it will look at the queue before it
+	// exits. Every count is guarded by mtx.
+	IWorkerBackend *tasks = nullptr;
+	uint32_t taskBudget = 0; // most runner tasks at once
+	uint32_t runners = 0;    // reserved or started, not exited
+	uint32_t seeking = 0;    // will look at the compute queue (includes starting)
+	uint32_t starting = 0;   // reserved or posted, not started
+	uint32_t toPost = 0;     // reserved, not yet handed to PostTask
+	uint32_t posting = 0;    // handed to PostTask, result not yet recorded
+	bool refused = false;    // a post was refused in this run
+	std::vector<void *> tickets;
+	std::condition_variable postsDone; // the caller: no post in flight
+	TaskRunStats stats;
+
 	uint32_t total = 0;
 	uint32_t resolved = 0; // terminal OR stuck; the loop ends at resolved==total
 	uint32_t succeeded = 0, failed = 0, canceled = 0, executed = 0, unresolved = 0;
@@ -143,6 +171,11 @@ struct RunState
 		mainPumps = false;
 		mainRunner = nullptr;
 		blockingRunner = nullptr;
+		tasks = nullptr;
+		taskBudget = runners = seeking = starting = toPost = posting = 0;
+		refused = false;
+		tickets.clear();
+		stats = TaskRunStats{};
 		total = n;
 		resolved = 0;
 		succeeded = failed = canceled = executed = unresolved = 0;
@@ -228,6 +261,9 @@ struct RunState
 			       ( mainServicesBlocking && !readyBlocking.empty() );
 		case Role::Inline:
 			return !readyMain.empty() || !readyBlocking.empty() || !readyCompute.empty();
+		case Role::Runner:
+		case Role::Helper:
+			return !readyCompute.empty();
 		case Role::Waiter:
 		default:
 			return false;
@@ -265,6 +301,9 @@ struct RunState
 				return true;
 			if ( take( readyBlocking, out ) )
 				return true;
+			return take( readyCompute, out );
+		case Role::Runner:
+		case Role::Helper:
 			return take( readyCompute, out );
 		case Role::Waiter:
 		default:
@@ -319,6 +358,11 @@ struct RunState
 		}
 		if ( self == Role::Inline )
 			return; // the only servicer
+		if ( tasks )
+		{
+			DispatchTasks( self );
+			return;
+		}
 		size_t compute = readyCompute.size();
 		size_t blocking = readyBlocking.size();
 		size_t main = readyMain.size();
@@ -352,6 +396,56 @@ struct RunState
 		if ( mainCanHelp && !mainWoken && self != Role::Main && mainPumps )
 			WakeOne( kSlotMain );
 	}
+
+	// Dispatch in task mode. Reserve runners (posted by DispatchAndPost after
+	// the lock is released) until every ready compute job has a runner that
+	// will look at the queue, up to the budget. The caller helps with compute
+	// work no started runner covers, so progress never waits for the backend
+	// to start a task, and it services its own lanes.
+	void DispatchTasks( Role self )
+	{
+		size_t compute = readyCompute.size();
+		size_t blocking = readyBlocking.size();
+		size_t main = readyMain.size();
+		switch ( self )
+		{
+		case Role::Main:
+			if ( main )
+				--main;
+			else if ( compute )
+				--compute;
+			else if ( mainServicesBlocking && blocking )
+				--blocking;
+			break;
+		case Role::Helper:
+			compute -= compute ? 1 : 0;
+			break;
+		default:
+			break; // a runner is in seeking; External takes nothing
+		}
+		while ( compute > seeking && runners < taskBudget )
+		{
+			++runners;
+			++seeking;
+			++starting;
+			++toPost;
+		}
+		if ( runners > stats.peakRunners )
+			stats.peakRunners = runners;
+		// J1: past this point every ready compute job has a looking runner,
+		// or the budget is spent, or the backend refused a runner.
+		if ( compute > seeking && runners < taskBudget && !refused )
+			++stats.uncoveredReady;
+
+		const bool callerAwake = self == Role::Main || self == Role::Helper;
+		if ( callerAwake )
+			return;
+		const size_t started = seeking - starting;
+		const bool callerWork = compute > started || ( mainPumps && main ) ||
+		                        ( mainPumps && mainServicesBlocking && blocking );
+		if ( callerWork )
+			WakeOne( kSlotMain );
+	}
 };
 
 void Trace( RunState &rs, uint32_t id, JobState s )
@@ -365,6 +459,64 @@ void Trace( RunState &rs, uint32_t id, JobState s )
 
 void EnqueueLocked( RunState &rs, uint32_t id );
 void RunBoundJob( RunState &rs, uint32_t id );
+void RunnerTask( void *context );
+
+// Dispatch, then hand the runners it reserved to the backend. PostTask runs
+// without the scheduling lock: the backend may start the task, which takes
+// the lock, before PostTask returns. A refusal releases every outstanding
+// reservation and leaves the work to the caller, which helps with compute.
+void DispatchAndPost( RunState &rs, std::unique_lock<std::mutex> &lk, Role self )
+{
+	rs.Dispatch( self );
+	while ( rs.toPost > 0 )
+	{
+		if ( rs.resolved == rs.total )
+		{
+			// Nothing left for a runner to find.
+			rs.runners -= rs.toPost;
+			rs.seeking -= rs.toPost;
+			rs.starting -= rs.toPost;
+			rs.toPost = 0;
+			break;
+		}
+		// Hand every reservation to the backend in one unlocked span, then
+		// record the tickets under one relock: started runners never queue
+		// on the scheduling lock behind the poster between posts.
+		constexpr uint32_t kMaxBatch = 16;
+		void *tickets[kMaxBatch];
+		const uint32_t count = rs.toPost < kMaxBatch ? rs.toPost : kMaxBatch;
+		rs.toPost -= count;
+		rs.posting += count;
+		lk.unlock();
+		uint32_t accepted = 0;
+		for ( ; accepted < count; ++accepted )
+		{
+			tickets[accepted] = rs.tasks->PostTask( &RunnerTask, &rs );
+			if ( !tickets[accepted] )
+				break;
+		}
+		lk.lock();
+		rs.posting -= count;
+		for ( uint32_t i = 0; i < accepted; ++i )
+			rs.tickets.push_back( tickets[i] );
+		rs.stats.tasksPosted += accepted;
+		if ( accepted == count )
+			continue;
+		// Refused: release this batch's unposted reservations and every
+		// later one; the caller, which helps with compute, does the work.
+		const uint32_t released = ( count - accepted ) + rs.toPost;
+		rs.runners -= released;
+		rs.seeking -= released;
+		rs.starting -= released;
+		rs.toPost = 0;
+		rs.refused = true;
+		rs.stats.tasksRefused++;
+		if ( self != Role::Main && self != Role::Helper )
+			rs.WakeOne( kSlotMain );
+	}
+	if ( rs.tasks && rs.posting == 0 && rs.resolved == rs.total )
+		rs.postsDone.notify_all();
+}
 
 // Called with the lock held. Resolve a job (terminal or stuck) and activate
 // dependents whose last prerequisite just resolved. The caller dispatches
@@ -454,9 +606,9 @@ struct BoundJob
 		if ( expected != kAccepted )
 			return; // it ran
 		// Accepted, then destroyed without running (runner shutdown).
-		std::lock_guard<std::mutex> lk( rs->mtx );
+		std::unique_lock<std::mutex> lk( rs->mtx );
 		ResolveLocked( *rs, id, JobState::Admitted, /*asStuck=*/true );
-		rs->Dispatch( Role::External );
+		DispatchAndPost( *rs, lk, Role::External );
 	}
 
 	void operator()()
@@ -507,59 +659,132 @@ void RunBoundJob( RunState &rs, uint32_t id )
 		terminal = ctx.Failed() ? JobState::Failed : JobState::Succeeded;
 		lk.lock();
 		if ( job.function )
+		{
 			rs.executed++;
+			rs.stats.jobsOnBound++;
+		}
 	}
 	Trace( rs, id, terminal );
 	ResolveLocked( rs, id, terminal, /*asStuck=*/false );
-	rs.Dispatch( Role::External );
+	DispatchAndPost( rs, lk, Role::External );
 	// The unlock is this task's last access to the run: the caller returns
 	// only after it observes every job resolved under this mutex.
 }
 
-// One servicer pass for a given role. Returns when the whole graph is resolved.
+// One servicer pass for a given role. Returns when the whole graph is resolved,
+// or, for a runner task, as soon as the compute queue is empty.
 void ServiceLoop( RunState &rs, Role role )
 {
 	const int slot = SlotOf( role );
+	const bool runner = role == Role::Runner;
 	std::unique_lock<std::mutex> lk( rs.mtx );
+	if ( runner )
+	{
+		--rs.starting;
+		rs.stats.tasksRan++;
+	}
 	for ( ;; )
 	{
-		while ( rs.resolved != rs.total && !rs.CanServe( role ) )
-			rs.Sleep( lk, slot );
-		if ( rs.resolved == rs.total )
-			return;
+		if ( runner )
+		{
+			if ( rs.resolved == rs.total || !rs.CanServe( role ) )
+			{
+				// The unlock below is this task's last access to the run.
+				--rs.seeking;
+				--rs.runners;
+				return;
+			}
+		}
+		else
+		{
+			while ( rs.resolved != rs.total && !rs.CanServe( role ) )
+				rs.Sleep( lk, slot );
+			if ( rs.resolved == rs.total )
+				return;
+		}
 
 		uint32_t id = 0;
 		if ( !rs.Pop( role, id ) )
 			continue;
+		if ( runner )
+			--rs.seeking;
 
-		const bool doCancel = rs.willCancel[id] || rs.GlobalCancel();
-		if ( doCancel )
+		// In task mode, a servicer that finds a long compute queue claims a
+		// guided share of it with this job (at most kMaxChunk), so a wide
+		// graph of small jobs takes the scheduling lock once per share rather
+		// than twice per job. The share is the queue divided among every
+		// thread that will look at it (live runners and the caller), so the
+		// others still find work; a short queue (a chain, a small fan-out)
+		// is taken one job at a time, which keeps dependents' latency.
+		constexpr size_t kMaxChunk = 32;
+		uint32_t chunk[kMaxChunk];
+		bool cancel[kMaxChunk];
+		size_t count = 1;
+		chunk[0] = id;
+		if ( rs.tasks && LaneOf( rs.graph->GetJob( id ).executor.kind ) == Lane::Compute )
 		{
-			Trace( rs, id, JobState::Canceled );
-			ResolveLocked( rs, id, JobState::Canceled, /*asStuck=*/false );
-			rs.Dispatch( role );
-			continue;
+			const size_t lookers = (size_t)rs.seeking + 2; // this thread and one more
+			size_t share = rs.readyCompute.size() / lookers;
+			if ( share > kMaxChunk - 1 )
+				share = kMaxChunk - 1;
+			for ( ; share > 0; --share, ++count )
+			{
+				chunk[count] = rs.readyCompute.back();
+				rs.readyCompute.pop_back();
+			}
 		}
+		for ( size_t i = 0; i < count; ++i )
+			cancel[i] = rs.willCancel[chunk[i]] != 0;
 
-		// Run outside the lock. The lock released here (and re-acquired in
-		// ResolveLocked) publishes this job's writes to later dequeuers.
-		const SealedGraph::Job &job = rs.graph->GetJob( id );
-		JobState terminal;
+		// Run outside the lock. The lock released here, and re-acquired to
+		// resolve the share, publishes these jobs' writes to later dequeuers.
+		// A cancellation published while the share runs cancels the jobs not
+		// yet started, as it would had they been popped one by one.
+		JobState terminal[kMaxChunk];
+		bool ran[kMaxChunk];
+		lk.unlock();
+		for ( size_t i = 0; i < count; ++i )
 		{
-			Trace( rs, id, JobState::Running );
-			lk.unlock();
-			JobRunContext ctx( rs.opts->frame, id );
+			ran[i] = false;
+			if ( cancel[i] || rs.GlobalCancel() )
+			{
+				terminal[i] = JobState::Canceled;
+				continue;
+			}
+			const SealedGraph::Job &job = rs.graph->GetJob( chunk[i] );
+			Trace( rs, chunk[i], JobState::Running );
+			JobRunContext ctx( rs.opts->frame, chunk[i] );
 			if ( job.function )
+			{
 				job.function( ctx );
-			terminal = ctx.Failed() ? JobState::Failed : JobState::Succeeded;
-			lk.lock();
-			if ( job.function )
-				rs.executed++;
+				ran[i] = true;
+			}
+			terminal[i] = ctx.Failed() ? JobState::Failed : JobState::Succeeded;
 		}
-		Trace( rs, id, terminal );
-		ResolveLocked( rs, id, terminal, /*asStuck=*/false );
-		rs.Dispatch( role );
+		lk.lock();
+		for ( size_t i = 0; i < count; ++i )
+		{
+			if ( ran[i] )
+			{
+				rs.executed++;
+				if ( runner )
+					rs.stats.jobsOnRunners++;
+				else
+					rs.stats.jobsOnCaller++;
+			}
+			Trace( rs, chunk[i], terminal[i] );
+			ResolveLocked( rs, chunk[i], terminal[i], /*asStuck=*/false );
+		}
+		if ( runner )
+			++rs.seeking;
+		DispatchAndPost( rs, lk, role );
 	}
+}
+
+// A TaskExecutor runner: drain the compute queue, then return the worker.
+void RunnerTask( void *context )
+{
+	ServiceLoop( *static_cast<RunState *>( context ), Role::Runner );
 }
 
 // Inline mode: the caller is the only servicer and no other thread can see
@@ -583,6 +808,7 @@ void InlineLoop( RunState &rs )
 		{
 			job.function( ctx );
 			rs.executed++;
+			rs.stats.jobsOnCaller++;
 		}
 		const JobState terminal = ctx.Failed() ? JobState::Failed : JobState::Succeeded;
 		Trace( rs, id, terminal );
@@ -884,6 +1110,114 @@ RunResult ParallelExecutor::Execute( const SealedGraph &graph, const RunOptions 
 	ServiceCaller( rs, rs.mainPumps );
 	for ( auto &t : workers )
 		t.join();
+	return Collect( rs );
+}
+
+//-----------------------------------------------------------------------------
+// TaskExecutor: the same scheduler, with runner tasks on a borrowed backend in
+// place of dedicated threads.
+//-----------------------------------------------------------------------------
+namespace
+{
+// Run state storage is reused per thread, so a frame's repeated batches do
+// not allocate. A nested Execute on the same thread leases another entry.
+std::vector<std::unique_ptr<RunState>> &FreeRunStates()
+{
+	thread_local std::vector<std::unique_ptr<RunState>> t_free;
+	return t_free;
+}
+
+struct RunStateLease
+{
+	RunStateLease()
+	{
+		std::vector<std::unique_ptr<RunState>> &free = FreeRunStates();
+		if ( free.empty() )
+		{
+			rs = std::make_unique<RunState>();
+			return;
+		}
+		rs = std::move( free.back() );
+		free.pop_back();
+	}
+	~RunStateLease()
+	{
+		constexpr size_t kMaxCachedRuns = 4;
+		std::vector<std::unique_ptr<RunState>> &free = FreeRunStates();
+		if ( free.size() < kMaxCachedRuns )
+			free.push_back( std::move( rs ) );
+	}
+	RunStateLease( const RunStateLease & ) = delete;
+	RunStateLease &operator=( const RunStateLease & ) = delete;
+
+	std::unique_ptr<RunState> rs;
+};
+} // namespace
+
+RunResult TaskExecutor::Execute(
+    const SealedGraph &graph, const RunOptions &opts, TaskRunStats *stats )
+{
+	const uint32_t n = graph.JobCount();
+	const int workers = m_backend ? m_backend->WorkerCount() : 0;
+	const bool inlineMode = n == 0 || workers <= 0 || m_backend->ShouldRunInline();
+
+	RunStateLease lease;
+	RunState &rs = *lease.rs;
+	if ( inlineMode )
+	{
+		// Everything on the caller; the inline role services every lane.
+		Prepare( rs, graph, opts, /*inlineMode=*/true, /*haveBlocking=*/false );
+		InlineLoop( rs );
+		rs.stats.inlineRun = true;
+		if ( stats )
+			*stats = rs.stats;
+		return Collect( rs );
+	}
+
+	// No blocking lane: the pumping caller services BlockingIO work, as with
+	// a ParallelExecutor that has no blocking workers.
+	Prepare( rs, graph, opts, /*inlineMode=*/false, /*haveBlocking=*/false );
+	const Role callerRole = rs.mainPumps ? Role::Main : Role::Helper;
+	{
+		std::unique_lock<std::mutex> lk( rs.mtx );
+		rs.tasks = m_backend;
+		rs.taskBudget = (uint32_t)workers;
+		rs.stats.budget = rs.taskBudget;
+		// The caller enters its service loop next and takes the first job it
+		// may run, so it counts as a servicer here: a lone ready job, a chain
+		// or a one-participant batch posts no runner at all.
+		DispatchAndPost( rs, lk, callerRole );
+	}
+	ServiceLoop( rs, callerRole );
+
+	// Every job is resolved. Wait for posts still in flight, then withdraw the
+	// runners that never started and wait for the rest to return, so no task
+	// touches this run after Execute returns.
+	std::vector<void *> tickets;
+	{
+		std::unique_lock<std::mutex> lk( rs.mtx );
+		rs.postsDone.wait( lk,
+		    [&]
+		    {
+			    return rs.posting == 0 && rs.toPost == 0;
+		    } );
+		tickets.swap( rs.tickets );
+	}
+	uint32_t withdrawn = 0;
+	for ( void *ticket : tickets )
+	{
+		if ( !m_backend->SettleTask( ticket ) )
+			++withdrawn;
+	}
+	{
+		std::lock_guard<std::mutex> lk( rs.mtx );
+		rs.stats.tasksWithdrawn = withdrawn;
+		rs.tasks = nullptr;
+		if ( stats )
+			*stats = rs.stats;
+	}
+	tickets.clear();
+	rs.tickets.swap( tickets ); // keep the capacity for the next run
 	return Collect( rs );
 }
 

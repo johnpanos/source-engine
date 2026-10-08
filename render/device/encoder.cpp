@@ -236,4 +236,16 @@ void CommandEncoder::WriteTimestamp( BufferId buffer, std::uint64_t offset )
 		backend->WriteTimestamp( buffer, offset );
 }
 
+void CommandEncoder::BeginOcclusionQuery( BufferId buffer, std::uint64_t offset )
+{
+	if ( IEncoderBackend *backend = Enter() )
+		backend->BeginOcclusionQuery( buffer, offset );
+}
+
+void CommandEncoder::EndOcclusionQuery()
+{
+	if ( IEncoderBackend *backend = Enter() )
+		backend->EndOcclusionQuery();
+}
+
 } // namespace render::device

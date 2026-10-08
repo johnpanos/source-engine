@@ -202,6 +202,7 @@ struct AdapterChoice
 	bool multiDrawIndirect = false;    // D30: drawCount above 1
 	bool imageCubeArray = false;       // D32: cube-array image views
 	bool fillModeNonSolid = false;     // D38: VK_POLYGON_MODE_LINE
+	bool occlusionQueryPrecise = false; // D43: exact occlusion sample counts
 	bool drawIndirectCount = false;    // D31: Vulkan 1.2's drawIndirectCount
 	bool drawIndirectFirstInstance = false; // D30: nonzero firstInstance in records
 	bool memoryBudget = false; // VK_EXT_memory_budget was enabled for VMA
@@ -412,6 +413,8 @@ enum class Op : std::uint8_t
 	kEndLabel,
 	kSetDrawConstants,
 	kWriteTimestamp, // D23: buffer a, at offset
+	kBeginOcclusionQuery, // D43: buffer a, at offset
+	kEndOcclusionQuery,
 	kComputeInterop, // private compute bridge with declared texture accesses
 	kNative,         // host work (host_device.h RecordNative)
 	kSectionBegin,   // port commands host work runs (host_device.h BeginSection)
@@ -521,6 +524,8 @@ public:
 	void BeginLabel( std::string_view label ) override;
 	void EndLabel() override;
 	void WriteTimestamp( BufferId buffer, std::uint64_t offset ) override;
+	void BeginOcclusionQuery( BufferId buffer, std::uint64_t offset ) override;
+	void EndOcclusionQuery() override;
 	bool HasError() const override { return m_Error; }
 
 	bool Complete() const { return !m_Error && !m_Rendering && m_Labels == 0 && !m_InSection; }
@@ -736,6 +741,9 @@ private:
 		// D23: the submission's timestamps, reset at its start.
 		VkQueryPool queries = VK_NULL_HANDLE;
 		std::uint32_t queryCapacity = 0;
+		// D43: the submission's occlusion queries, reset at its start.
+		VkQueryPool occlusion = VK_NULL_HANDLE;
+		std::uint32_t occlusionCapacity = 0;
 	};
 
 	// Per-encoder validation state (Submit rejects before anything records).
@@ -746,6 +754,7 @@ private:
 		std::uint64_t vertexSlots = 0;
 		bool index = false;
 		bool rendering = false;
+		bool occlusionOpen = false; // D43: a query open in this rendering scope
 		std::vector<Format> colors;
 		Format depth = Format::kUnknown;
 		std::uint32_t samples = 0;

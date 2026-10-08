@@ -21,16 +21,19 @@ Obligations:
   member offsets in the C++11 and C++20 units: `BatchDesc`,
   `MapContainerStatus`, `MapLumpInfo` and `MapContainerOpenOptions`. On LP64
   they also match the frozen table in `abi_checks.h`, because a change there is
-  an unversioned ABI change whichever dialect made it. Standard types that
-  cross a facade (`std::function<void( int )>` through
-  `IWorkerBackend::ParallelFor`, and `std::string` as the libstdc++ dual-ABI
-  witness) have the same size and alignment.
+  an unversioned ABI change whichever dialect made it. Standard types keep
+  the same size and alignment: `std::function<void( int )>` (it crossed
+  `IWorkerBackend::ParallelFor` until RFC 0003 phase I, 2026-10-07, and stays
+  as a standard-type witness) and `std::string`, the libstdc++ dual-ABI
+  witness. `IWorkerBackend` now runs tasks given as a function pointer and a
+  context (`PostTask`, `SettleTask`), so no standard type crosses the
+  jobsystem facade.
 - **Dialect identity.** Each unit's records carry its `__cplusplus`: exactly
   `201103L` for the consumer and at least `202002L` for the engine. A fixture
   that silently compiled both sides in one dialect would prove nothing, so it
   fails.
 - **Calls both ways.** C++20 code calls through a vtable the C++11 consumer
-  implements (`IWorkerBackend`, `IMapByteSource`). The C++11 consumer calls
+  implements (`IWorkerBackend`, from several threads, and `IMapByteSource`). The C++11 consumer calls
   C++20 entry points and vtables (`ExecuteParallelBatch`, `IMapContainer`).
   Values cross in both directions with their documented results. In serial
   and parallel mode, every batch item is processed with the expected result

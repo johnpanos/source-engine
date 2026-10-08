@@ -122,6 +122,9 @@ DeviceResult<void> VulkanDevice::Initialize()
 		m_Facts.capabilities.Add( Capability::kCubeArrays );
 	if ( m_Adapter.fillModeNonSolid )
 		m_Facts.capabilities.Add( Capability::kFillModeLines );
+	// D43: occlusion queries where they count exactly.
+	if ( m_Adapter.occlusionQueryPrecise )
+		m_Facts.capabilities.Add( Capability::kOcclusionQueries );
 	// D30/D31: indirect draws where the device enables them.
 	if ( m_Adapter.multiDrawIndirect )
 		m_Facts.capabilities.Add( Capability::kMultiDrawIndirect );
@@ -256,6 +259,8 @@ struct RequiredFeatures
 			head.features.imageCubeArray = VK_TRUE;
 		if ( adapter.fillModeNonSolid )
 			head.features.fillModeNonSolid = VK_TRUE;
+		if ( adapter.occlusionQueryPrecise )
+			head.features.occlusionQueryPrecise = VK_TRUE;
 		if ( adapter.drawIndirectFirstInstance )
 			head.features.drawIndirectFirstInstance = VK_TRUE;
 		if ( auto *have =
@@ -625,12 +630,16 @@ void VulkanDevice::DestroyLogical()
 		vkDestroyCommandPool( m_Device, context.pool, nullptr );
 		if ( context.queries != VK_NULL_HANDLE )
 			vkDestroyQueryPool( m_Device, context.queries, nullptr );
+		if ( context.occlusion != VK_NULL_HANDLE )
+			vkDestroyQueryPool( m_Device, context.occlusion, nullptr );
 	}
 	for ( CommandContext &context : m_InFlight )
 	{
 		vkDestroyCommandPool( m_Device, context.pool, nullptr );
 		if ( context.queries != VK_NULL_HANDLE )
 			vkDestroyQueryPool( m_Device, context.queries, nullptr );
+		if ( context.occlusion != VK_NULL_HANDLE )
+			vkDestroyQueryPool( m_Device, context.occlusion, nullptr );
 		for ( HostBuffer &staging : context.staging )
 			DestroyHostBuffer( staging );
 		for ( VkFramebuffer framebuffer : context.framebuffers )
@@ -835,6 +844,8 @@ void VulkanDevice::RecycleCompleted()
 			vkDestroyCommandPool( m_Device, context.pool, nullptr );
 			if ( context.queries != VK_NULL_HANDLE )
 				vkDestroyQueryPool( m_Device, context.queries, nullptr );
+			if ( context.occlusion != VK_NULL_HANDLE )
+				vkDestroyQueryPool( m_Device, context.occlusion, nullptr );
 		}
 	}
 	m_Ring.Retire( completed );

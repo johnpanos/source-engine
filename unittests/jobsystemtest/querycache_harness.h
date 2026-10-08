@@ -21,6 +21,7 @@
 #define QUERYCACHE_HARNESS_H
 
 #include "game/shared/querycache_maintenance.h"
+#include "jobsystem/thread_worker_backend.h"
 #include "jobsystem/parallel_batch.h"
 #include "jobsystem/worker_backend.h"
 
@@ -413,26 +414,8 @@ inline const char *ModeName( Mode mode )
 	return "?";
 }
 
-// Real threads per dispatch; the return is the join barrier.
-class ThreadBackend final : public jobsystem::IWorkerBackend
-{
-public:
-	explicit ThreadBackend( int workers ) : m_workers( workers ) {}
-	void ParallelFor( int count, const std::function<void( int )> &body ) override
-	{
-		std::vector<std::thread> threads;
-		for ( int index = 1; index < count; ++index )
-			threads.emplace_back( body, index );
-		if ( count > 0 )
-			body( 0 );
-		for ( auto &thread : threads )
-			thread.join();
-	}
-	int WorkerCount() const override { return m_workers; }
-
-private:
-	int m_workers;
-};
+// The jobs.graph thread backend: tasks on its own threads.
+using ThreadBackend = jobsystem::ThreadWorkerBackend;
 
 typedef QueryCacheMaintenance::Item_t<Entry> Item;
 typedef QueryCacheMaintenance::Split_t<Entry> Split;

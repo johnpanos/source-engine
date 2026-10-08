@@ -291,6 +291,9 @@ private:
 			m_L->RSSetViewports( 1, &viewport );
 			break;
 		}
+		case Op::kBeginOcclusionQuery:
+		case Op::kEndOcclusionQuery:
+			break; // D43 is unclaimed: refused at Submit
 		case Op::kWriteTimestamp:
 		{
 			BufferRecord &b = B( command.a );

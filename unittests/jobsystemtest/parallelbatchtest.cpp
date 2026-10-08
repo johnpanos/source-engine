@@ -38,8 +38,10 @@ void Check( bool condition, const char *expression, int line )
 
 #define CHECK( condition ) Check( ( condition ), #condition, __LINE__ )
 
-// The backend refuses recursive dispatch on one of its own participants. A
-// broken nested-batch adapter fails its item oracle instead of hanging the suite.
+// One thread per task, started at the post and joined at the settle. A nested
+// run that reaches the backend from inside a task (ShouldRunInline called on
+// a task thread) is counted: the batch adapter must keep nested batches
+// serial before they get there.
 thread_local bool g_inBackend = false;
 
 class ThreadBackend final : public jobsystem::IWorkerBackend
@@ -47,38 +49,50 @@ class ThreadBackend final : public jobsystem::IWorkerBackend
 public:
 	explicit ThreadBackend( int workers ) : m_workers( workers ) {}
 
-	void ParallelFor( int count, const std::function<void( int )> &body ) override
+	int WorkerCount() const override { return m_workers; }
+
+	void *PostTask( jobsystem::WorkerTaskFn task, void *context ) override
 	{
+		if ( m_workers <= 0 )
+			return nullptr;
 		++calls;
-		if ( g_inBackend )
-		{
-			++recursiveCalls;
-			return;
-		}
-		largestDispatch = std::max( largestDispatch, count );
-		std::vector<std::thread> threads;
-		auto invoke = [&]( int index )
-		{
-			g_inBackend = true;
-			body( index );
-			g_inBackend = false;
-		};
-		for ( int index = 1; index < count; ++index )
-			threads.emplace_back( invoke, index );
-		if ( count > 0 )
-			invoke( 0 );
-		for ( auto &thread : threads )
-			thread.join();
+		return new std::thread(
+		    [this, task, context]
+		    {
+			    const int running = ++m_running;
+			    int peak = largestDispatch.load();
+			    while ( running > peak && !largestDispatch.compare_exchange_weak( peak, running ) )
+			    {
+			    }
+			    g_inBackend = true;
+			    task( context );
+			    g_inBackend = false;
+			    --m_running;
+		    } );
 	}
 
-	int WorkerCount() const override { return m_workers; }
+	bool SettleTask( void *ticket ) override
+	{
+		auto *thread = static_cast<std::thread *>( ticket );
+		thread->join();
+		delete thread;
+		return true;
+	}
+
+	bool ShouldRunInline() override
+	{
+		if ( g_inBackend )
+			++recursiveCalls;
+		return false;
+	}
 
 	std::atomic<unsigned> calls{ 0 };
 	std::atomic<unsigned> recursiveCalls{ 0 };
-	int largestDispatch = 0;
+	std::atomic<int> largestDispatch{ 0 };
 
 private:
 	int m_workers;
+	std::atomic<int> m_running{ 0 };
 };
 
 thread_local std::vector<const void *> g_hookOwners;

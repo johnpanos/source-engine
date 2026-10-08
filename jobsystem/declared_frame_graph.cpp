@@ -13,8 +13,10 @@
 //          every conflicting node; the runners, which are mutually
 //          unordered, declare nothing.
 //
-//          The pooled executor runs in waves, so a batch overlaps the host
-//          nodes that become ready in the same wave as its runners.
+//          The pooled run uses TaskExecutor, which starts each job as soon as
+//          its prerequisites resolve, so a batch runs at the same time as every
+//          host node the declarations leave unordered against it (RFC 0003
+//          J2), not only the ones that became ready with it.
 //
 //=============================================================================//
 
@@ -31,7 +33,7 @@
 
 #include "jobsystem/graph_executor.h"
 #include "jobsystem/job_graph.h"
-#include "jobsystem/pooled_executor.h"
+#include "jobsystem/task_executor.h"
 #include "jobsystem/worker_backend.h"
 #include "batch_depth.h"
 
@@ -72,7 +74,8 @@ bool ValidNode( const FrameNodeDesc &node )
 struct DeclaredFrameGraph::Impl
 {
 	// Per-run state of one batch node. The cursor only reserves indices; the
-	// executor's wave barriers publish the item outputs.
+	// executor's scheduling lock and the batch's join job publish the item
+	// outputs to the nodes ordered after it.
 	struct BatchState
 	{
 		std::mutex prepare; // the first runner reads the count under it
@@ -372,7 +375,7 @@ DeclaredFrameRun DeclaredFrameGraph::Run(
 	RunOptions options;
 	options.pumpMainThread = true;
 	if ( pooled )
-		PooledExecutor( backend ).Execute( *m_impl->sealed, options );
+		TaskExecutor( backend ).Execute( *m_impl->sealed, options );
 	else
 		DeterministicExecutor().Execute( *m_impl->sealed, options );
 

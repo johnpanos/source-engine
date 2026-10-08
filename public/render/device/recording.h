@@ -60,6 +60,8 @@ enum class Op : std::uint8_t
 	kBeginLabel,
 	kEndLabel,
 	kWriteTimestamp, // D23: buffer a, at offset
+	kBeginOcclusionQuery, // D43: buffer a, at offset
+	kEndOcclusionQuery,
 	// D30/D31: records in buffer a at offset, count = draw count (maximum),
 	// first = stride; the count's buffer b at copy.destinationOffset.
 	kDrawIndexedIndirect,
@@ -159,6 +161,8 @@ public:
 	void BeginLabel( std::string_view label ) override;
 	void EndLabel() override;
 	void WriteTimestamp( BufferId buffer, std::uint64_t offset ) override;
+	void BeginOcclusionQuery( BufferId buffer, std::uint64_t offset ) override;
+	void EndOcclusionQuery() override;
 	bool HasError() const override { return m_Error; }
 
 	// Recorded without error, outside rendering, every label closed.
@@ -290,8 +294,9 @@ bool Validate( const std::vector<Command> &commands,
     std::unordered_map<std::uint64_t, ResourceUsage> &states, const IRecordedResources &resources );
 
 // The submission-wide rules after every list validated: indirect draws need
-// their capabilities (D30/D31), timestamps need kTimestamps (D23) and end
-// the submission with their buffer in kCopyDestination. kUnsupported or
+// their capabilities (D30/D31), timestamps need kTimestamps (D23) and
+// occlusion queries kOcclusionQueries (D43), and both end the submission
+// with their buffer in kCopyDestination. kUnsupported or
 // kInvalidState, or nullopt when the submission may run.
 std::optional<DeviceStatus> CheckSubmission( std::span<const RecordingEncoder *const> encoders,
     CapabilitySet capabilities, const std::unordered_map<std::uint64_t, ResourceUsage> &states );

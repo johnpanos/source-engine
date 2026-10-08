@@ -12,6 +12,7 @@
 //
 //=============================================================================//
 
+#include "jobsystem/thread_worker_backend.h"
 #include "jobsystem/declared_frame_graph.h"
 #include "jobsystem/worker_backend.h"
 #include "testing/conformance_result.h"
@@ -50,40 +51,8 @@ static const char *g_test = "";
 		function();                                                                                \
 	} while ( 0 )
 
-// Workers start before the caller's jobs, like the engine pool bridge.
-class ThreadBackend final : public IWorkerBackend
-{
-public:
-	explicit ThreadBackend( int workers ) : m_workers( workers ) {}
-
-	int WorkerCount() const override { return m_workers; }
-
-	void ParallelFor( int count, const std::function<void( int )> &body ) override
-	{
-		ParallelForWithCaller( count, body, [] {} );
-	}
-
-	void ParallelForWithCaller( int count, const std::function<void( int )> &body,
-	    const std::function<void()> &caller ) override
-	{
-		std::atomic<int> next( 0 );
-		auto drain = [&]
-		{
-			for ( int i = next++; i < count; i = next++ )
-				body( i );
-		};
-		std::vector<std::thread> threads;
-		for ( int worker = 0; worker < m_workers; ++worker )
-			threads.emplace_back( drain );
-		caller();
-		drain();
-		for ( std::thread &thread : threads )
-			thread.join();
-	}
-
-private:
-	int m_workers;
-};
+// The jobs.graph thread backend: tasks on its own threads.
+using ThreadBackend = jobsystem::ThreadWorkerBackend;
 
 static bool AwaitFlag( const std::atomic<bool> &flag, int ms = 5000 )
 {
@@ -197,12 +166,14 @@ enum Domain
 	D_INPUT = 1,
 	D_ITEMS,
 	D_UNRELATED,
+	D_UNRELATED_LATER,
 };
 
 static const FrameAccess kWriteInput[] = { { D_INPUT, true } };
 static const FrameAccess kBatchAccess[] = { { D_INPUT, false }, { D_ITEMS, true } };
 static const FrameAccess kReadItems[] = { { D_ITEMS, false } };
 static const FrameAccess kUnrelated[] = { { D_UNRELATED, true } };
+static const FrameAccess kUnrelatedLater[] = { { D_UNRELATED_LATER, true } };
 static const FrameAccess kAll[] = { { FRAME_DOMAIN_ALL, true } };
 
 //-----------------------------------------------------------------------------
@@ -295,6 +266,46 @@ static void Test_PooledOverlapsUnorderedNodes()
 		CHECK( itemSaw.load() && hostSaw.load() );
 		CHECK( recorder.hostOffCaller == 0 );
 		CHECK( recorder.events.front() == "gather" && recorder.events.back() == "commit" );
+	}
+}
+
+// RFC 0003 J2: a batch overlaps a host node that becomes ready only after an
+// earlier host node ends, not just the nodes that became ready with it. The
+// item waits for the second unrelated host node to start. A wave executor
+// runs that node in the wave after the batch's and misses the deadline.
+static void Test_PooledOverlapsLaterHostNodes()
+{
+	for ( int round = 0; round < 10; ++round )
+	{
+		Recorder recorder;
+		std::atomic<bool> laterStarted( false ), itemSaw( false );
+		HostNode gather = { &recorder, "gather", {} };
+		HostNode unrelated = { &recorder, "unrelated", {} };
+		HostNode later = { &recorder, "later", [&]
+		    {
+			    laterStarted = true;
+		    } };
+		HostNode commit = { &recorder, "commit", {} };
+		BatchNode batch;
+		batch.recorder = &recorder;
+		batch.items = 1;
+		batch.record = false;
+		batch.body = [&]( unsigned )
+		{
+			itemSaw = AwaitFlag( laterStarted );
+		};
+		const FrameNodeDesc nodes[] = { Host( gather, kWriteInput, 1 ),
+		    Batch( "compute", batch, kBatchAccess, 2 ), Host( unrelated, kUnrelated, 1 ),
+		    Host( later, kUnrelatedLater, 1 ), Host( commit, kReadItems, 1 ) };
+		DeclaredFrameGraph graph;
+		ThreadBackend backend( 2 );
+		DeclaredFrameRun run = graph.Run( nodes, 5, &backend, FRAME_GRAPH_POOLED );
+		CHECK( run.valid && run.batchItemsRun == 1 && run.hostNodesRun == 4 );
+		CHECK( graph.MayOverlap( 1, 3 ) );
+		CHECK( itemSaw.load() );
+		CHECK( recorder.hostOffCaller == 0 );
+		const std::vector<std::string> hosts = { "gather", "unrelated", "later", "commit" };
+		CHECK( recorder.events == hosts );
 	}
 }
 
@@ -438,6 +449,7 @@ int main()
 	RUN( Test_SerialIsArrayOrder );
 	RUN( Test_AllDomainOrdersEverything );
 	RUN( Test_PooledOverlapsUnorderedNodes );
+	RUN( Test_PooledOverlapsLaterHostNodes );
 	RUN( Test_PooledPublishesToConflictingNodes );
 	RUN( Test_EmptyBatchRunsNoHooks );
 	RUN( Test_NestedBatchRunsInline );

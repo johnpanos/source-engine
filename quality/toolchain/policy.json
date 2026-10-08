@@ -262,7 +262,7 @@
       "dialect": "cxx20",
       "rfc": "0001"
     },
-    "jobsystempooledtest": {
+    "jobsystemtaskexectest": {
       "dialect": "cxx20",
       "rfc": "0003"
     },
@@ -307,6 +307,10 @@
       "rfc": "0003"
     },
     "jobsystembridgetest": {
+      "dialect": "cxx20",
+      "rfc": "0003"
+    },
+    "jobsystempoolgraphbench": {
       "dialect": "cxx20",
       "rfc": "0003"
     },

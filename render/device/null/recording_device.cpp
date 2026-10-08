@@ -503,6 +503,20 @@ public:
 		command.copy.destinationOffset = offset;
 		Push( std::move( command ) );
 	}
+	void BeginOcclusionQuery( BufferId buffer, std::uint64_t offset ) override
+	{
+		Command command;
+		command.op = RecordedOp::kBeginOcclusionQuery;
+		command.a = buffer.value;
+		command.copy.destinationOffset = offset;
+		Push( std::move( command ) );
+	}
+	void EndOcclusionQuery() override
+	{
+		Command command;
+		command.op = RecordedOp::kEndOcclusionQuery;
+		Push( std::move( command ) );
+	}
 	bool HasError() const override { return m_Error; }
 
 	bool Complete() const { return !m_Error && !m_Rendering && m_Labels == 0; }
@@ -1538,6 +1552,11 @@ DeviceResult<CompletionToken> RecordingDevice::Submit(
 				return Fail( DeviceStatus::kUnsupported, op );
 			if ( command.op == RecordedOp::kDrawIndexedIndirectCount &&
 			     !m_Facts.capabilities.Has( Capability::kDrawIndirectCount ) )
+				return Fail( DeviceStatus::kUnsupported, op );
+			// D43: the null device rasterizes nothing, so it claims no
+			// occlusion queries.
+			if ( command.op == RecordedOp::kBeginOcclusionQuery ||
+			     command.op == RecordedOp::kEndOcclusionQuery )
 				return Fail( DeviceStatus::kUnsupported, op );
 			if ( command.op != RecordedOp::kWriteTimestamp )
 				continue;

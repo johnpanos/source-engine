@@ -38,7 +38,8 @@ def build(bld):
 		( 'jobsystemthreadpooltest', 'threadpooltest.cpp', ['vstdlib', 'tier1', 'tier0'] + dl_log ),
 		# Pool/CTSQueue microbenchmarks; old-API only, so it also builds against older trees.
 		( 'jobsystemthreadpoolbench', 'threadpoolbench.cpp', ['vstdlib', 'tier1', 'tier0'] + dl_log ),
-		( 'jobsystempooledtest', 'pooledexecutortest.cpp', ['jobsystem'] ),
+		# J1: TaskExecutor, the product executor (jobsystem.continuous).
+		( 'jobsystemtaskexectest', 'taskexecutortest.cpp', ['jobsystem'] ),
 		( 'jobsystemdeclaredframetest', 'declaredframetest.cpp', ['jobsystem'] ),
 		# Client render-start blocks vs the legacy OnRenderStart (recording stand-ins).
 		( 'jobsystemrenderstarttest', 'renderstarttest.cpp', ['jobsystem'] ),
@@ -52,6 +53,8 @@ def build(bld):
 		# Microbenchmarks: validated smoke run by default, --full for numbers.
 		( 'jobsystembench',       'jobsystembench.cpp',      ['jobsystem'] ),
 		( 'jobsystembridgetest',  'enginebridgetest.cpp', ['jobsystem', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
+		# TaskExecutor vs the retired wave executor on the real engine pool (J4); run on the benchmark runner.
+		( 'jobsystempoolgraphbench', 'poolgraphbench.cpp', ['jobsystem', 'vstdlib', 'tier1', 'tier0'] + dl_log ),
 		# The engine pool as a platform.task-runner.v1 runner (R10-POOLRUNNER).
 		( 'jobsystempoolrunnertest', 'poolrunnertest.cpp', ['vstdlib', 'platform_runners_legacyabi', 'tier1', 'tier0'] + dl_log ),
 		# Portal carving: real mathlib clipping through the C++11 game-facing facade.
@@ -67,7 +70,7 @@ def build(bld):
 			target       = target,
 			name         = target,
 			features     = 'c cxx cxxprogram',
-			includes     = includes + (['../../public/tier0'] if target in cxx11 + [ 'jobsystempoolrunnertest', 'jobsystembridgetest' ] else []) +
+			includes     = includes + (['../../public/tier0'] if target in cxx11 + [ 'jobsystempoolrunnertest', 'jobsystembridgetest', 'jobsystempoolgraphbench' ] else []) +
 				(['../..'] if target == 'jobsystemportalcarvetest' else []),
 			defines      = [],
 			linkflags    = linkflags,

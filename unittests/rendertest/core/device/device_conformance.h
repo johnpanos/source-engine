@@ -2156,6 +2156,165 @@ inline void Timestamps( Suite &s )
 	(void)device->Release( local, last.value_or( CompletionToken{} ) );
 }
 
+// D43 occlusion queries: with kOcclusionQueries, the samples of the draws
+// between Begin and End that pass the depth test, exactly: a half-screen
+// draw over cleared depth passes half the samples, a full-screen draw at the
+// same depth then passes only the other half (kLess), and a third passes
+// none. A query begun outside rendering, a nested one, one left open at
+// EndRendering, an End with none open and an unaligned offset are refused
+// (kInvalidState). Without the capability a submission with one fails
+// kUnsupported.
+inline void OcclusionQueries( Suite &s )
+{
+	auto device = s.Create();
+	if ( !device )
+		return;
+	const bool claimed = device->Facts().capabilities.Has( Capability::kOcclusionQueries );
+	constexpr std::uint32_t kSize = 8;
+	const BufferId counts =
+	    s.Buffer( *device, 32, { ResourceUsage::kCopyDestination }, MemoryKind::kReadback );
+	const ColorPipeline full = MakeColorPipeline( s, *device, shaders::kFullScreenVertex, true );
+	const ColorPipeline half = MakeColorPipeline( s, *device, shaders::kTopHalfVertex, true );
+	if ( !s.That( full.ok && half.ok, "D43", "depth-tested fixture pipelines are created" ) )
+		return;
+	const float color[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	const BufferId uniform =
+	    s.Buffer( *device, 256, { ResourceUsage::kCopyDestination, ResourceUsage::kUniform } );
+	const BindGroupEntry entry[] = { { 0, uniform, 0, 16, {}, {} } };
+	auto fullGroup = device->CreateBindGroup( { full.layouts[2], entry } );
+	auto halfGroup = device->CreateBindGroup( { half.layouts[2], entry } );
+	TextureDesc target;
+	target.format = Format::kRGBA8Unorm;
+	target.width = target.height = kSize;
+	target.usages = { ResourceUsage::kColorAttachment };
+	auto colorTarget = device->CreateTexture( target );
+	target.format = FixtureDepth( *device );
+	target.usages = { ResourceUsage::kDepthWrite };
+	auto depthTarget = device->CreateTexture( target );
+	if ( !s.That( fullGroup && halfGroup && colorTarget && depthTarget, "D43",
+	         "the fixture's targets and groups are created" ) )
+		return;
+	const ColorAttachment attachments[] = {
+	    { colorTarget.Value(), LoadOp::kClear, StoreOp::kStore, { 0, 0, 0, 1 }, {} } };
+	RenderingDesc rendering;
+	rendering.colors = attachments;
+	rendering.depth = DepthAttachment{ depthTarget.Value(), LoadOp::kClear, StoreOp::kStore, 1.0f };
+	rendering.width = rendering.height = kSize;
+	auto begin = [&]( CommandEncoder &e )
+	{
+		e.TransitionBuffer( uniform, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.WriteBuffer(
+		    uniform, 0, { reinterpret_cast<const std::byte *>( color ), sizeof( color ) } );
+		e.TransitionBuffer( uniform, ResourceUsage::kCopyDestination, ResourceUsage::kUniform );
+		e.TransitionBuffer( counts, ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.TransitionTexture(
+		    colorTarget.Value(), ResourceUsage::kUndefined, ResourceUsage::kColorAttachment );
+		e.TransitionTexture(
+		    depthTarget.Value(), ResourceUsage::kUndefined, ResourceUsage::kDepthWrite );
+	};
+	auto draw = [&]( CommandEncoder &e, const ColorPipeline &pipeline, BindGroupId group )
+	{
+		e.SetPipeline( pipeline.pipeline );
+		e.SetBindGroup( BindGroupRole::kMaterial, group );
+		e.SetViewport( { 0, 0, float( kSize ), float( kSize ), 0, 1 } );
+		e.Draw( 3 );
+	};
+	auto encoder = device->BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	CommandEncoder &e = encoder.Value();
+	begin( e );
+	e.BeginRendering( rendering );
+	e.BeginOcclusionQuery( counts, 0 );
+	draw( e, half, halfGroup.Value() );
+	e.EndOcclusionQuery();
+	e.BeginOcclusionQuery( counts, 8 );
+	draw( e, full, fullGroup.Value() );
+	e.EndOcclusionQuery();
+	e.BeginOcclusionQuery( counts, 16 );
+	draw( e, full, fullGroup.Value() );
+	e.EndOcclusionQuery();
+	e.EndRendering();
+	auto submitted = device->Submit( QueueKind::kGraphics, { &e, 1 }, {} );
+	auto release = [&]( CompletionToken after )
+	{
+		for ( ResourceId resource :
+		    { ResourceId( colorTarget.Value() ), ResourceId( depthTarget.Value() ),
+		        ResourceId( counts ), ResourceId( uniform ) } )
+			(void)device->Release( resource, after );
+	};
+	if ( !claimed )
+	{
+		s.That( !submitted && submitted.Error().status == DeviceStatus::kUnsupported, "D43",
+		    "without the capability an occlusion query fails its submission kUnsupported" );
+		release( CompletionToken{} );
+		return;
+	}
+	s.That( submitted.HasValue(), "D43", "three queries in one rendering scope submit" );
+	std::uint64_t n[3] = { ~0ull, ~0ull, ~0ull };
+	const bool finished = submitted && s.Finish( *device, submitted.Value() ) &&
+	                      device->ReadBuffer( counts, 0, std::as_writable_bytes( std::span( n ) ) );
+	const std::uint64_t pixels = kSize * kSize;
+	s.That( finished && n[0] == pixels / 2, "D43",
+	    "a half-screen draw over cleared depth passes half the samples" );
+	s.That( finished && n[1] == pixels / 2, "D43",
+	    "a full-screen draw at the same depth passes only the uncovered half (kLess)" );
+	s.That( finished && n[2] == 0, "D43", "a draw behind everything passes no sample" );
+
+	// Placement and buffer rules.
+	auto refuse = [&]( const char *what, auto &&record )
+	{
+		auto bad = device->BeginEncoder( QueueKind::kGraphics );
+		if ( !bad )
+			return;
+		begin( bad.Value() );
+		record( bad.Value() );
+		auto result = device->Submit( QueueKind::kGraphics, { &bad.Value(), 1 }, {} );
+		s.That( !result && result.Error().status == DeviceStatus::kInvalidState, "D43", what );
+	};
+	refuse( "a query begun outside rendering is refused",
+	    [&]( CommandEncoder &b )
+	    {
+		    b.BeginOcclusionQuery( counts, 0 );
+		    b.BeginRendering( rendering );
+		    b.EndOcclusionQuery();
+		    b.EndRendering();
+	    } );
+	refuse( "a nested query is refused",
+	    [&]( CommandEncoder &b )
+	    {
+		    b.BeginRendering( rendering );
+		    b.BeginOcclusionQuery( counts, 0 );
+		    b.BeginOcclusionQuery( counts, 8 );
+		    b.EndOcclusionQuery();
+		    b.EndOcclusionQuery();
+		    b.EndRendering();
+	    } );
+	refuse( "a query left open at EndRendering is refused",
+	    [&]( CommandEncoder &b )
+	    {
+		    b.BeginRendering( rendering );
+		    b.BeginOcclusionQuery( counts, 0 );
+		    b.EndRendering();
+	    } );
+	refuse( "an End with no query open is refused",
+	    [&]( CommandEncoder &b )
+	    {
+		    b.BeginRendering( rendering );
+		    b.EndOcclusionQuery();
+		    b.EndRendering();
+	    } );
+	refuse( "a query at an unaligned offset is refused",
+	    [&]( CommandEncoder &b )
+	    {
+		    b.BeginRendering( rendering );
+		    b.BeginOcclusionQuery( counts, 4 );
+		    b.EndOcclusionQuery();
+		    b.EndRendering();
+	    } );
+	release( submitted.Value() );
+}
+
 // D40: ETC1 and ETC1A4, under kTextureCompressionETC1, follow D19's rules
 // for block-compressed formats (SampledClauses decodes a block on
 // rasterizing adapters).
@@ -3191,6 +3350,7 @@ inline void RunDeviceConformance( testing::Checks &checks, const DeviceDriver &d
 	detail::RegionCopies( suite );
 	detail::TextureCopies( suite );
 	detail::Timestamps( suite );
+	detail::OcclusionQueries( suite );
 	detail::IndirectDraws( suite );
 	detail::CubeArrays( suite );
 	detail::FillModeLines( suite );

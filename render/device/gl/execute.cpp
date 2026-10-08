@@ -287,6 +287,9 @@ private:
 		case Op::kEndLabel:
 			m_Gl.PopDebugGroup();
 			break;
+		case Op::kBeginOcclusionQuery:
+		case Op::kEndOcclusionQuery:
+			break; // D43 is unclaimed: refused at Submit
 		case Op::kWriteTimestamp:
 		{
 			// The GPU writes the result into the buffer when it is available.

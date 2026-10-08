@@ -2,7 +2,7 @@
 //
 // Purpose: Executor reuse/concurrency stress (RFC 0003 Phase C, Q-JOBS). Seeded
 //          random graphs with mixed lanes, failures, Terminal cleanup edges and
-//          cancellation run on long-lived ParallelExecutor and PooledExecutor
+//          cancellation run on long-lived ParallelExecutor and TaskExecutor
 //          instances and must match DeterministicExecutor's terminal states,
 //          exactly-once execution and producer-before-consumer publication.
 //          It also exercises the same executor from several threads at once
@@ -20,7 +20,8 @@
 #include "jobsystem/job_graph.h"
 #include "jobsystem/parallel_batch.h"
 #include "jobsystem/parallel_executor.h"
-#include "jobsystem/pooled_executor.h"
+#include "jobsystem/task_executor.h"
+#include "jobsystem/thread_worker_backend.h"
 #include "jobsystem/worker_backend.h"
 #include "testing/conformance_result.h"
 
@@ -64,95 +65,6 @@ struct Rng
 	}
 	uint32_t Below( uint32_t n ) { return n ? Next() % n : 0; }
 	bool Chance( uint32_t percent ) { return Below( 100 ) < percent; }
-};
-
-// A persistent-thread backend (the caller participates), so pooled runs also
-// reuse workers across waves and runs.
-class PoolBackend final : public IWorkerBackend
-{
-public:
-	explicit PoolBackend( int workers ) : m_workers( workers )
-	{
-		for ( int i = 0; i < m_workers; ++i )
-			m_threads.emplace_back(
-			    [this]
-			    {
-				    WorkerMain();
-			    } );
-	}
-
-	~PoolBackend() override
-	{
-		{
-			std::lock_guard<std::mutex> lk( m_mtx );
-			m_quit = true;
-		}
-		m_cv.notify_all();
-		for ( std::thread &t : m_threads )
-			t.join();
-	}
-
-	int WorkerCount() const override { return m_workers; }
-
-	void ParallelFor( int n, const std::function<void( int )> &body ) override
-	{
-		std::unique_lock<std::mutex> lk( m_mtx );
-		m_body = &body;
-		m_count = n;
-		m_next = 0;
-		m_left = n;
-		++m_generation;
-		m_cv.notify_all();
-		Drain( lk );
-		m_done.wait( lk,
-		    [&]
-		    {
-			    return m_left == 0;
-		    } );
-		m_body = nullptr;
-	}
-
-private:
-	void Drain( std::unique_lock<std::mutex> &lk )
-	{
-		while ( m_body && m_next < m_count )
-		{
-			const int i = m_next++;
-			const std::function<void( int )> *body = m_body;
-			lk.unlock();
-			( *body )( i );
-			lk.lock();
-			if ( --m_left == 0 )
-				m_done.notify_all();
-		}
-	}
-
-	void WorkerMain()
-	{
-		uint64_t seen = 0;
-		std::unique_lock<std::mutex> lk( m_mtx );
-		for ( ;; )
-		{
-			m_cv.wait( lk,
-			    [&]
-			    {
-				    return m_quit || m_generation != seen;
-			    } );
-			if ( m_quit )
-				return;
-			seen = m_generation;
-			Drain( lk );
-		}
-	}
-
-	const int m_workers;
-	std::vector<std::thread> m_threads;
-	std::mutex m_mtx;
-	std::condition_variable m_cv, m_done;
-	bool m_quit = false;
-	uint64_t m_generation = 0;
-	const std::function<void( int )> *m_body = nullptr;
-	int m_count = 0, m_next = 0, m_left = 0;
 };
 
 // A random graph plus per-run instrumentation that proves publication: each
@@ -265,10 +177,9 @@ std::vector<uint32_t> ReferenceValues( Instance &inst, RunResult &out )
 void TestRandomReuse()
 {
 	ParallelExecutor p0( 0 ), p1( 1 ), p4( 4, 1 ), p3( 3 );
-	PoolBackend backend( 3 );
-	PooledExecutor pooled( &backend );
-	PooledExecutor pooledInline( nullptr );
-	IGraphExecutor *executors[] = { &p0, &p1, &p4, &p3, &pooled, &pooledInline };
+	ThreadWorkerBackend backend( 3 ), single( 1 );
+	TaskExecutor tasks( &backend ), tasksSingle( &single ), tasksInline( nullptr );
+	IGraphExecutor *executors[] = { &p0, &p1, &p4, &p3, &tasks, &tasksSingle, &tasksInline };
 	for ( uint64_t seed = 1; seed <= 600; ++seed )
 	{
 		auto inst = MakeInstance( seed, /*affine=*/seed % 2 == 0 );
@@ -284,9 +195,8 @@ void TestRandomReuse()
 
 // Several threads share one executor: one run owns its workers, the others
 // must still complete correctly on their own.
-void TestConcurrentExecute()
+void TestConcurrentExecuteOn( IGraphExecutor &shared )
 {
-	ParallelExecutor shared( 3, 1 );
 	std::vector<std::unique_ptr<Instance>> insts;
 	std::vector<RunResult> expected( 4 );
 	std::vector<std::vector<uint32_t>> values( 4 );
@@ -312,10 +222,20 @@ void TestConcurrentExecute()
 		t.join();
 }
 
-// A job re-enters the executor that is running it.
-void TestNestedExecute()
+void TestConcurrentExecute()
 {
-	ParallelExecutor ex( 2 );
+	ParallelExecutor shared( 3, 1 );
+	TestConcurrentExecuteOn( shared );
+	ThreadWorkerBackend backend( 3 );
+	TaskExecutor tasks( &backend );
+	TestConcurrentExecuteOn( tasks );
+}
+
+// A job re-enters the executor that is running it. On a TaskExecutor the job
+// may run on one of the backend's workers (the inner run is inline there) or
+// on the caller (the inner run posts its own runners).
+void TestNestedExecuteOn( IGraphExecutor &ex )
+{
 	auto inner = MakeInstance( 77, true );
 	RunResult innerExpected;
 	const std::vector<uint32_t> innerValues = ReferenceValues( *inner, innerExpected );
@@ -346,6 +266,15 @@ void TestNestedExecute()
 	CHECK( nestedOk.load() == 50 );
 }
 
+void TestNestedExecute()
+{
+	ParallelExecutor ex( 2 );
+	TestNestedExecuteOn( ex );
+	ThreadWorkerBackend backend( 2 );
+	TaskExecutor tasks( &backend );
+	TestNestedExecuteOn( tasks );
+}
+
 // Copies are independent executors with the same configuration; an executor
 // that never ran must destroy cleanly, as must one destroyed right after use.
 void TestCopiesAndLifetime()
@@ -370,9 +299,8 @@ void TestCopiesAndLifetime()
 
 // A graph with no pump and main-thread work stalls identically on every run of
 // a reused pool, and cancellation observed mid-run cancels the remainder.
-void TestStallAndCancelReuse()
+void TestStallAndCancelReuseOn( IGraphExecutor &ex )
 {
-	ParallelExecutor ex( 2, 0 );
 	JobGraphBuilder b;
 	JobDesc main;
 	main.name = "main";
@@ -429,6 +357,15 @@ void TestStallAndCancelReuse()
 		RunResult r = ex.Execute( cg.Value(), opts );
 		CHECK( r.succeeded == 1 && r.canceled == 15 && r.executed == 1 );
 	}
+}
+
+void TestStallAndCancelReuse()
+{
+	ParallelExecutor ex( 2, 0 );
+	TestStallAndCancelReuseOn( ex );
+	ThreadWorkerBackend backend( 2 );
+	TaskExecutor tasks( &backend );
+	TestStallAndCancelReuseOn( tasks );
 }
 
 // Children spawn further children (with dependencies on already-admitted ones)
@@ -581,7 +518,7 @@ bool ProbeOk( const BatchProbe &p )
 
 void TestBatchGraphCache()
 {
-	PoolBackend backend( 3 );
+	ThreadWorkerBackend backend( 3 );
 	for ( BatchMode mode : { BatchMode::Serial, BatchMode::Parallel } )
 	{
 		for ( int round = 0; round < 50; ++round )

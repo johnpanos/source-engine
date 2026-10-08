@@ -985,11 +985,14 @@ void DescriptorClauses( testing::Checks &checks )
 		                         .Remove( Capability::kIndirectFirstInstance )
 		                         .Remove( Capability::kCubeArrays )
 		                         .Remove( Capability::kFillModeLines )
+		                         .Remove( Capability::kOcclusionQueries )
 		                         .Remove( Capability::kAsyncCompute ) ==
-		                     CapabilitySet{ Capability::kCompute, Capability::kStorageBuffers },
-		    "vulkan.facts name the backend and adapter and claim only compute and storage "
+		                     CapabilitySet{ Capability::kCompute, Capability::kStorageBuffers,
+		                         Capability::kFloatTargets },
+		    "vulkan.facts name the backend and adapter and claim only compute, storage and float "
+		    "targets (D39) "
 		    "(and external images where the driver exports dmabufs, D18, BC formats, D19, "
-		    "timestamps, D23, indirect draws, D30 and D31, cube arrays, D36, line fill, D38, and async compute "
+		    "timestamps, D23, indirect draws, D30 and D31, cube arrays, D36, line fill, D38, occlusion queries, D43, and async compute "
 		    "where "
 		    "the device has them)" );
 		const bool async = facts.capabilities.Has( Capability::kAsyncCompute );

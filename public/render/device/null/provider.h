@@ -35,7 +35,11 @@ struct NullOptions
 {
 	// Everything but external images: the null device has no memory another
 	// API could import (clause D18).
-	CapabilitySet capabilities = CapabilitySet::All().Remove( Capability::kExternalImages );
+	// No external images, and no occlusion queries (D43): the device
+	// rasterizes nothing, so it cannot count samples.
+	CapabilitySet capabilities = CapabilitySet::All()
+	                                 .Remove( Capability::kExternalImages )
+	                                 .Remove( Capability::kOcclusionQueries );
 	ArtifactFormat artifactFormat = ArtifactFormat::kSpirv;
 	CompletionMode completion = CompletionMode::kOnPoll;
 	std::uint64_t uploadRingBytes = 1u << 20;
@@ -73,6 +77,8 @@ enum class RecordedOp : std::uint8_t
 	kEndLabel,
 	kSetDrawConstants,        // count: the bytes written
 	kWriteTimestamp,          // D23: count is the tick written
+	kBeginOcclusionQuery,     // D43 (unclaimed: the submission fails kUnsupported)
+	kEndOcclusionQuery,
 	kDrawIndexedIndirect,     // D30: count is the draw count
 	kDrawIndexedIndirectCount // D31: count is the maximum draw count
 };

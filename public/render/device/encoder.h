@@ -194,6 +194,8 @@ public:
 	virtual void BeginLabel( std::string_view label ) = 0;
 	virtual void EndLabel() = 0;
 	virtual void WriteTimestamp( BufferId buffer, std::uint64_t offset ) = 0;
+	virtual void BeginOcclusionQuery( BufferId buffer, std::uint64_t offset ) = 0;
+	virtual void EndOcclusionQuery() = 0;
 
 	// True once any recorded call was invalid; Submit then fails.
 	virtual bool HasError() const = 0;
@@ -291,6 +293,16 @@ public:
 	// a multiple of 8. Timestamps of one queue do not decrease in submission
 	// order. Without the capability the submission fails (kUnsupported).
 	void WriteTimestamp( BufferId buffer, std::uint64_t offset );
+	// D43 (Capability::kOcclusionQueries): the number of samples of the draws
+	// recorded between Begin and End that pass the depth and stencil tests,
+	// exactly (not merely nonzero), as a 64-bit value at `offset` of `buffer`
+	// once the submission completes. Begin and End are inside one rendering
+	// scope, at most one query is open, and queries do not nest. The buffer
+	// is kReadback memory in kCopyDestination here and at the end of the
+	// submission; the offset is a multiple of 8. Without the capability the
+	// submission fails (kUnsupported).
+	void BeginOcclusionQuery( BufferId buffer, std::uint64_t offset );
+	void EndOcclusionQuery();
 
 	// The observer of this encoder's labels (null: none); not owned.
 	void SetLabelObserver( ILabelObserver *observer ) { m_LabelObserver = observer; }

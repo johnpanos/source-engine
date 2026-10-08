@@ -2,13 +2,12 @@
 //
 // Purpose: Legacy thread-pool bridge implementation (RFC 0003, Phase C / R20).
 //
-//          Adapts the real engine CThreadPool to the scheduler's IWorkerBackend.
-//          Each call owns its runners and joins only its own queued work.
+//          Adapts the real engine CThreadPool to the scheduler's IWorkerBackend:
+//          each posted task is one CJob, settled by its poster alone.
 //
 //=============================================================================//
 
 #include <atomic>
-#include <vector>
 
 #include "vstdlib/jobgraph_pool_bridge.h"
 #include "vstdlib/jobgraph_frame.h"
@@ -36,63 +35,34 @@ public:
 	}
 	virtual ~CThreadPoolWorkerBackend() {}
 
-	virtual void ParallelFor( int n, const std::function<void( int )> &body )
+	// A runner task of the graph scheduler, as one CJob on the pool. Calls
+	// from the pool's own workers are accepted: that is how a running task
+	// asks for more help. The scheduler never posts under its own lock, so a
+	// full shared queue that runs the job on its posting worker is safe.
+	virtual void *PostTask( jobsystem::WorkerTaskFn task, void *context )
 	{
-		if ( n <= 0 )
-			return;
-
-		// No workers, or a single item: run inline. Avoids pool overhead and the
-		// documented risk of helping unrelated queued work while waiting.
-		const int nWorkers = WorkerCount();
-		if ( !m_pPool || nWorkers <= 0 || n == 1 || NestedOnOwnWorker() )
-		{
-			for ( int i = 0; i < n; ++i )
-				body( i );
-			return;
-		}
-
-		// This call owns every runner and callback borrow. Queue at most one
-		// runner per available worker, including a pool with just one worker.
-		// The caller claims only this call's indices and never helps other jobs.
-		const int nRunners = n - 1 < nWorkers ? n - 1 : nWorkers;
-		std::vector<CJob *> jobs;
-		jobs.reserve( (size_t)nRunners );
-		ParallelRun run( (unsigned)n, body );
-		for ( int i = 0; i < nRunners; ++i )
-			jobs.push_back( m_pPool->QueueCall( &run, &ParallelRun::Run ) );
-
-		run.Run();
-		JoinRunners( jobs );
+		if ( !task || !m_pPool || WorkerCount() <= 0 )
+			return NULL;
+		return m_pPool->QueueCall( task, context );
 	}
 
-	// Workers start on body() before the caller runs caller(); the caller then
-	// claims whatever body() indices remain and joins. Only this call's runners
-	// are queued and joined.
-	virtual void ParallelForWithCaller(
-	    int n, const std::function<void( int )> &body, const std::function<void()> &caller )
+	// Abort withdraws a job no worker has claimed, or waits for a claimed one
+	// under its mutex. Acquire the recursive job mutex explicitly: Abort's
+	// finished fast path alone is not a publication barrier for an
+	// already-completed callback.
+	virtual bool SettleTask( void *ticket )
 	{
-		const int nWorkers = WorkerCount();
-		if ( n <= 0 || !m_pPool || nWorkers <= 0 || NestedOnOwnWorker() )
-		{
-			caller();
-			for ( int i = 0; i < n; ++i )
-				body( i );
-			return;
-		}
-
-		// The caller is busy with caller() first, so queue a runner per index
-		// up to the worker count.
-		const int nRunners = n < nWorkers ? n : nWorkers;
-		std::vector<CJob *> jobs;
-		jobs.reserve( (size_t)nRunners );
-		ParallelRun run( (unsigned)n, body );
-		for ( int i = 0; i < nRunners; ++i )
-			jobs.push_back( m_pPool->QueueCall( &run, &ParallelRun::Run ) );
-
-		caller();
-		run.Run();
-		JoinRunners( jobs );
+		CJob *job = static_cast<CJob *>( ticket );
+		job->Lock();
+		const JobStatus_t status = job->Abort();
+		job->Unlock();
+		job->Release();
+		return status != JOB_STATUS_ABORTED;
 	}
+
+	// A graph entered on one of the pool's own workers runs inline and is
+	// counted, instead of posting runners behind the job that waits for them.
+	virtual bool ShouldRunInline() { return NestedOnOwnWorker(); }
 
 	virtual int WorkerCount() const
 	{
@@ -115,49 +85,6 @@ private:
 		return true;
 	}
 
-	static void JoinRunners( std::vector<CJob *> &jobs )
-	{
-		for ( CJob *job : jobs )
-		{
-			// Abort cancels unclaimed runners or joins a running one. Acquire the
-			// recursive job mutex explicitly: Abort's finished fast path alone
-			// is not a publication barrier for an already-completed callback.
-			job->Lock();
-			job->Abort();
-			job->Unlock();
-			job->Release();
-		}
-	}
-
-	class ParallelRun
-	{
-	public:
-		ParallelRun( unsigned count, const std::function<void( int )> &body )
-		    : m_count( count ), m_body( body ), m_next( 0 )
-		{
-		}
-
-		void Run()
-		{
-			for ( ;; )
-			{
-				// The cursor assigns disjoint indices only. Queue publication and
-				// the owning CJob mutex publish inputs/outputs, not this counter.
-				const unsigned index = m_next.fetch_add( 1, std::memory_order_relaxed );
-				if ( index >= m_count )
-					return;
-				m_body( (int)index );
-			}
-		}
-
-	private:
-		const unsigned m_count;
-		const std::function<void( int )> &m_body;
-		// count <= INT_MAX and there are at most count claimants, so the final
-		// unsuccessful claims cannot overflow this unsigned counter.
-		std::atomic<unsigned> m_next;
-	};
-
 	const int m_nWorkers;
 	const bool m_bInlineOnOwnWorkers;
 	std::atomic<unsigned> m_nNestedCalls;
@@ -167,8 +94,8 @@ VSTDLIB_INTERFACE bool RunThreadPoolJobBatch(
     IThreadPool *pool, const jobsystem::BatchDesc &desc, jobsystem::BatchMode mode )
 {
 	// Stack-owned binding permits concurrent calls and borrows the same process
-	// worker budget. Each backend invocation runs only its own callbacks on the
-	// caller and joins/aborts only its own CJobs; no unrelated queue is drained.
+	// worker budget. Each run settles only its own CJobs; no unrelated queue is
+	// drained.
 	CThreadPoolWorkerBackend backend( pool, pool ? pool->NumThreads() : 0 );
 	return jobsystem::ExecuteParallelBatch( desc, &backend, mode );
 }

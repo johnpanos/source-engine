@@ -14,6 +14,7 @@
 //===========================================================================//
 
 #include "particles/particle_operator_strength.h"
+#include "jobsystem/thread_worker_backend.h"
 #include "jobsystem/parallel_batch.h"
 #include "jobsystem/worker_backend.h"
 #include "testing/conformance_result.h"
@@ -349,27 +350,8 @@ void CheckAbsentFieldsAreNoOps()
 // system instance with retail modulation (br_train_effects.pcf's seeded
 // operators), simulated over 150 ticks.
 //-----------------------------------------------------------------------------
-class ThreadBackend final : public jobsystem::IWorkerBackend
-{
-public:
-	explicit ThreadBackend( int workers ) : m_workers( workers ) {}
-
-	void ParallelFor( int count, const std::function<void( int )> &body ) override
-	{
-		std::vector<std::thread> threads;
-		for ( int index = 1; index < count; ++index )
-			threads.emplace_back( body, index );
-		if ( count > 0 )
-			body( 0 );
-		for ( auto &thread : threads )
-			thread.join();
-	}
-
-	int WorkerCount() const override { return m_workers; }
-
-private:
-	int m_workers;
-};
+// The jobs.graph thread backend: tasks on its own threads.
+using ThreadBackend = jobsystem::ThreadWorkerBackend;
 
 constexpr unsigned kInstances = 257;
 constexpr int kTicks = 150;

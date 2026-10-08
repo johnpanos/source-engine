@@ -407,14 +407,14 @@
       "kind": "positive",
       "profile": "linux-host-corpus",
       "migration": "R20",
-      "description": "Job graphs on the real engine CThreadPool through vstdlib/jobgraph_pool_bridge (RFC/0003-progress.md): pooled particle frames equal the serial reference, graph states equal the deterministic executor, failures cancel dependents, and caller jobs overlap compute jobs; and the process compute pool as the borrowed backend roots lend providers (CreateComputePoolWorkerBackend, the render core's culling since 2026-09-28): it follows the pool the engine starts and stops, leaves it running when destroyed, runs a call made on one of the pool's own workers inline and counts it (RFC 0003's forbidden nested wait), and keeps a call from another pool's worker (the MatQueue pool's place) pooled and uncounted. Runs the Waf-built test from the --tests tree.",
+      "description": "Job graphs on the real engine CThreadPool through vstdlib/jobgraph_pool_bridge (RFC/0003-progress.md): pooled particle frames equal the serial reference, graph states equal the deterministic executor, failures cancel dependents, and caller jobs overlap compute jobs on runner tasks, and a chain behind a short root finishes beside a long job (RFC 0003 J1: TaskExecutor on the real pool runs without waves, every run with uncoveredReady 0); and the process compute pool as the borrowed backend roots lend providers (CreateComputePoolWorkerBackend, the render core's culling since 2026-09-28): it follows the pool the engine starts and stops, leaves it running when destroyed, runs a call made on one of the pool's own workers inline and counts it (RFC 0003's forbidden nested wait), and keeps a call from another pool's worker (the MatQueue pool's place) pooled and uncounted. Runs the Waf-built test from the --tests tree.",
       "command": [
         "sh",
         "-c",
         "LD_LIBRARY_PATH=build-r03-tests/tier0:build-r03-tests/tier1:build-r03-tests/vstdlib exec build-r03-tests/unittests/jobsystemtest/jobsystembridgetest"
       ],
       "result_protocol": "checks-v1",
-      "min_checks": 168,
+      "min_checks": 220,
       "timeout_seconds": 300,
       "requires": [
         "path:build-r03-tests/unittests/jobsystemtest/jobsystembridgetest"
@@ -1535,14 +1535,17 @@
       "expect": "pass"
     },
     {
-      "id": "jobsystem.pooled",
+      "id": "jobsystem.continuous",
       "domain": "Q-JOBS",
       "rfc": "0003",
-      "migration": "JOB-BATCH-001",
+      "migration": "R94",
       "contract": "RFC/0003-dependency-aware-job-system.md",
       "kind": "positive",
       "profile": "linux-headless-core",
+      "description": "RFC 0003 phase I J1 (RFC/0003-progress.md, R94): TaskExecutor, the product graph executor, on task-only IWorkerBackends. Lane, stall, inline, cancellation, failure and publication contracts; a chain behind a short root finishes beside a long job (no wave barrier) and later-level work starts beside a running job (no parked runner slot), with the retired wave executor and a one-runner executor rejected by both oracles; runners return their worker while the graph still runs; 1,000 seeded graphs at budgets 1, 2 and 4 equal DeterministicExecutor (pumped) or ParallelExecutor (unpumped stalls), with a success-only executor rejected; delayed, refused, never-started and run-inside-post tasks; no task outlives Execute; concurrent callers; uncoveredReady == 0 and posted == ran + withdrawn on every run; wake latency p99 printed.",
       "result_protocol": "checks-v1",
+      "min_checks": 30000,
+      "timeout_seconds": 600,
       "extra_flags": [
         "-pthread"
       ],
@@ -1550,9 +1553,153 @@
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
         "jobsystem/parallel_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
-        "unittests/jobsystemtest/pooledexecutortest.cpp"
+        "jobsystem/thread_worker_backend.cpp",
+        "unittests/jobsystemtest/taskexecutortest.cpp"
       ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobsystem.continuous.tsan",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "R94",
+      "contract": "RFC/0003-dependency-aware-job-system.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "jobsystem.continuous under ThreadSanitizer. Needs a compiler with a TSan runtime: CONFORMANCE_TSAN=1 python3 tools/quality/conformance.py check --cxx clang++ --suite jobsystem.continuous.tsan",
+      "result_protocol": "checks-v1",
+      "min_checks": 30000,
+      "timeout_seconds": 1800,
+      "extra_flags": [
+        "-pthread",
+        "-fsanitize=thread",
+        "-O1",
+        "-g"
+      ],
+      "sources": [
+        "jobsystem/job_graph.cpp",
+        "jobsystem/deterministic_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
+        "unittests/jobsystemtest/taskexecutortest.cpp"
+      ],
+      "requires": [
+        "env:CONFORMANCE_TSAN"
+      ],
+      "optional": true,
+      "expect": "pass"
+    },
+    {
+      "id": "jobs.ratchet",
+      "domain": "Q-ARCH",
+      "rfc": "0003",
+      "migration": "R94",
+      "contract": "tools/quality/jobs_ratchet.py",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0003 phase I ratchet: one task system. Invariants at zero that --write cannot record: no wave executor or fork/join backend hook (PooledExecutor, ParallelForWithCaller), no ParallelFor in the job system or its pool bridge, IWorkerBackend's virtuals exactly WorkerCount/PostTask/SettleTask/ShouldRunInline, no thread-owning executor (ParallelExecutor, DynamicScope, ThreadWorkerBackend) outside the job system and its tests. Exact shrink-only counts per file of threads started outside RFC 0003 J3's declared owners (J3 needs 0), host-side fork/joins, blocking pool waits and unaudited host-frame nodes (J6), equal to tools/quality/jobs_ratchet.json; declared owners need a reason and a live site.",
+      "command": [
+        "{python}",
+        "tools/quality/jobs_ratchet.py",
+        "check"
+      ],
+      "sources": [
+        "tools/quality/jobs_ratchet.py",
+        "tools/quality/jobs_ratchet.json",
+        "tools/render/retirement_scans.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 8,
+      "timeout_seconds": 300,
+      "requires": [
+        "executable:git"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.jobs.thread-census",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "R94",
+      "contract": "tools/quality/thread_census.py",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "RFC 0003 J3 runtime thread census (RFC/0003-progress.md, R94): boots testchmb_a_00 headless on native Vulkan from the ./play tree, runs the engine's thread_census command after the map loads, and classifies every live thread against quality/budgets/thread-census-v1.json's declared owners (main, compute pool, MatQueue, filesystem I/O, save lane, SDL audio, driver and device threads). Undeclared threads equal the recorded shrink-only list exactly (J3 needs it empty); with -compute_workers 2 the census shows exactly 2 CmpJob workers (J5's control).",
+      "command": [
+        "{python}",
+        "tools/quality/thread_census.py",
+        "run",
+        "--runtime",
+        "run/runtime",
+        "--build",
+        "build",
+        "--compute-workers",
+        "2",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 14,
+      "timeout_seconds": 900,
+      "requires": [
+        "path:build/engine/libengine.so",
+        "path:run/runtime",
+        "vulkan-device:gpu"
+      ],
+      "sources": [
+        "tools/quality/thread_census.py",
+        "quality/budgets/thread-census-v1.json",
+        "tools/quality/portal_boot.py",
+        "engine/host.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "jobs.thread-census.sensitivity",
+      "domain": "Q-JOBS",
+      "rfc": "0003",
+      "migration": "R94",
+      "contract": "tools/quality/thread_census.py",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Seeded censuses for the RFC 0003 J3 thread census: a new provider thread, an extra unnamed thread, a grown undeclared count, a stale ratchet, a CmpJob count that differs from -compute_workers, a missing or wrong total, a missing main thread, an empty log and an owner without a reason each fail; a clean census passes and --write records a shrink.",
+      "command": [
+        "{python}",
+        "tools/quality/thread_census.py",
+        "sensitivity"
+      ],
+      "sources": [
+        "tools/quality/thread_census.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 13,
+      "timeout_seconds": 600,
+      "expect": "pass"
+    },
+    {
+      "id": "jobs.ratchet.sensitivity",
+      "domain": "Q-ARCH",
+      "rfc": "0003",
+      "migration": "R94",
+      "contract": "tools/quality/jobs_ratchet.py",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "Seeded faults for the RFC 0003 phase I ratchet in private temporary trees: each invariant (a wave executor, a fork/join hook, a ParallelFor in the job system, an extra, missing or deleted backend virtual, a thread-owning executor on the stack or the heap) fails and is refused by --write; a new or grown site in each ratchet category, a CThread subclass, a stale ratchet, a stale declaration, a declaration without a reason or with an unknown category, tampered totals, a recorded invariant and a missing ratchet each fail; #define bodies, comments, declared owners, the job system's own definitions, tests and utils/ are not counted; a clean tree passes.",
+      "command": [
+        "{python}",
+        "tools/quality/jobs_ratchet.py",
+        "sensitivity"
+      ],
+      "sources": [
+        "tools/quality/jobs_ratchet.py",
+        "tools/render/retirement_scans.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 37,
+      "timeout_seconds": 600,
       "expect": "pass"
     },
     {
@@ -1570,7 +1717,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "unittests/jobsystemtest/parallelbatchtest.cpp"
       ],
@@ -1588,7 +1736,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
@@ -1612,7 +1761,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
@@ -1644,7 +1794,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "mapcontainer/probe_volume.cpp",
         "mapcontainer/radiosity_transfer.cpp",
@@ -1678,7 +1829,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "unittests/shaderapivulkantest/test_emit_convert_batch.cpp"
       ],
@@ -1699,7 +1851,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "unittests/shaderapivulkantest/test_emit_convert_batch.cpp"
       ],
@@ -1728,7 +1881,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "unittests/shaderapivulkantest/test_emit_convert_batch.cpp"
       ],
@@ -1762,7 +1916,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "unittests/jobsystemtest/querycachemaintenancetest.cpp"
       ],
@@ -1783,7 +1938,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "unittests/jobsystemtest/querycachemaintenance_sensitivity.cpp"
       ],
@@ -1937,7 +2093,7 @@
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
         "jobsystem/parallel_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/dynamic_scope.cpp",
         "jobsystem/parallel_batch.cpp",
         "unittests/jobsystemtest/executorstresstest.cpp"
@@ -1999,7 +2155,7 @@
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
         "jobsystem/parallel_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "jobsystem/declared_frame_graph.cpp",
         "unittests/jobsystemtest/declaredframetest.cpp"
@@ -2025,7 +2181,7 @@
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
         "jobsystem/parallel_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "jobsystem/declared_frame_graph.cpp",
         "unittests/jobsystemtest/renderstarttest.cpp"
@@ -2068,7 +2224,7 @@
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
         "jobsystem/parallel_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "jobsystem/dynamic_scope.cpp",
         "unittests/jobsystemtest/jobsystembench.cpp"
@@ -3140,7 +3296,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "unittests/particlestest/test_operator_strength.cpp"
       ],
@@ -3163,7 +3320,8 @@
       "sources": [
         "jobsystem/job_graph.cpp",
         "jobsystem/deterministic_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/parallel_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "jobsystem/parallel_batch.cpp",
         "unittests/particlestest/test_operator_strength.cpp"
       ],
@@ -7983,7 +8141,8 @@
           "sources": [
             "jobsystem/job_graph.cpp",
             "jobsystem/deterministic_executor.cpp",
-            "jobsystem/pooled_executor.cpp",
+            "jobsystem/parallel_executor.cpp",
+            "jobsystem/thread_worker_backend.cpp",
             "jobsystem/parallel_batch.cpp",
             "unittests/toolchaintest/boundary_layout_unit.cpp"
           ]
@@ -8075,7 +8234,8 @@
           "sources": [
             "jobsystem/job_graph.cpp",
             "jobsystem/deterministic_executor.cpp",
-            "jobsystem/pooled_executor.cpp",
+            "jobsystem/parallel_executor.cpp",
+            "jobsystem/thread_worker_backend.cpp",
             "jobsystem/parallel_batch.cpp",
             "unittests/toolchaintest/boundary_layout_unit.cpp"
           ]
@@ -8122,7 +8282,8 @@
           "sources": [
             "jobsystem/job_graph.cpp",
             "jobsystem/deterministic_executor.cpp",
-            "jobsystem/pooled_executor.cpp",
+            "jobsystem/parallel_executor.cpp",
+            "jobsystem/thread_worker_backend.cpp",
             "jobsystem/parallel_batch.cpp",
             "unittests/toolchaintest/boundary_layout_unit.cpp"
           ]
@@ -15889,7 +16050,7 @@
         "kvtext/keyvalues.cpp",
         "render/legacy/queued_capabilities.cpp",
         "jobsystem/parallel_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "render/composition/render_core.cpp",
         "render/composition/core_world.cpp",
         "render/pass/ssr/ssr.cpp",
@@ -15999,7 +16160,7 @@
         "kvtext/keyvalues.cpp",
         "render/legacy/queued_capabilities.cpp",
         "jobsystem/parallel_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "render/composition/render_core.cpp",
         "render/composition/core_world.cpp",
         "render/pass/ssr/ssr.cpp",
@@ -16112,7 +16273,7 @@
         "kvtext/keyvalues.cpp",
         "render/legacy/queued_capabilities.cpp",
         "jobsystem/parallel_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "render/composition/render_core.cpp",
         "render/composition/core_world.cpp",
         "render/pass/ssr/ssr.cpp",
@@ -16234,7 +16395,7 @@
         "kvtext/keyvalues.cpp",
         "render/legacy/queued_capabilities.cpp",
         "jobsystem/parallel_executor.cpp",
-        "jobsystem/pooled_executor.cpp",
+        "jobsystem/thread_worker_backend.cpp",
         "render/composition/render_core.cpp",
         "render/composition/core_world.cpp",
         "render/pass/ssr/ssr.cpp",

@@ -171,6 +171,8 @@ private:
 		// Refused before replay: no compute, timestamps or indirect draws.
 		case Op::kDispatch:
 		case Op::kWriteTimestamp:
+		case Op::kBeginOcclusionQuery:
+		case Op::kEndOcclusionQuery:
 		case Op::kDrawIndexedIndirect:
 		case Op::kDrawIndexedIndirectCount:
 			break;

@@ -4,8 +4,9 @@
 //          (toolchain.abi.v1). Built in the fixture-only legacy-cxx11 dialect,
 //          as a prebuilt mod or plugin would be, and linked with the real
 //          jobsystem sources built as C++20. It implements IWorkerBackend (a
-//          vtable called from C++20) and drives ExecuteParallelBatch (C++20
-//          called from C++11), passing std::function and BatchDesc across.
+//          task vtable called from C++20, from several threads) and drives
+//          ExecuteParallelBatch (C++20 called from C++11), passing BatchDesc
+//          and function pointers across.
 //
 //=============================================================================//
 
@@ -15,7 +16,6 @@
 #include "jobsystem/worker_backend.h"
 
 #include <atomic>
-#include <functional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -30,28 +30,35 @@ int toolchaintest::g_failures = 0;
 namespace
 {
 
+// One thread per task, joined when the C++20 scheduler settles it.
 class ThreadBackend : public jobsystem::IWorkerBackend
 {
 public:
 	explicit ThreadBackend( int workers ) : m_workers( workers ), m_calls( 0 ) {}
 
-	virtual void ParallelFor( int n, const std::function<void( int )> &body )
+	virtual int WorkerCount() const { return m_workers; }
+
+	virtual void *PostTask( jobsystem::WorkerTaskFn task, void *context )
 	{
 		++m_calls;
-		std::vector<std::thread> threads;
-		for ( int i = 0; i < n; ++i )
-			threads.push_back( std::thread( [&body, i]() { body( i ); } ) );
-		for ( size_t i = 0; i < threads.size(); ++i )
-			threads[i].join();
+		return new std::thread( task, context );
 	}
 
-	virtual int WorkerCount() const { return m_workers; }
+	virtual bool SettleTask( void *ticket )
+	{
+		std::thread *thread = static_cast<std::thread *>( ticket );
+		thread->join();
+		delete thread;
+		return true;
+	}
+
+	virtual bool ShouldRunInline() { return false; }
 
 	int Calls() const { return m_calls; }
 
 private:
 	int m_workers;
-	int m_calls;
+	std::atomic<int> m_calls;
 };
 
 struct BatchState

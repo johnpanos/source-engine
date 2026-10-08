@@ -5,7 +5,7 @@
 //=============================================================================//
 
 #include "jobsystem/parallel_batch.h"
-#include "jobsystem/pooled_executor.h"
+#include "jobsystem/task_executor.h"
 #include "batch_depth.h"
 
 #include <algorithm>
@@ -57,8 +57,8 @@ struct BatchRun
 	const BatchDesc &desc;
 	unsigned participants;
 	// Only index reservation uses this atomic. Input publication and
-	// completion visibility come from the backend's fork/join contract, not
-	// the cursor. The cursor never passes count, so it cannot wrap.
+	// completion visibility come from the executor (its scheduling lock and
+	// the join job), not the cursor. The cursor never passes count, so it cannot wrap.
 	std::atomic<uint64_t> next{ 0 };
 
 	// Guided self-scheduling: claim a contiguous range sized to a fraction of
@@ -196,7 +196,7 @@ bool ExecuteParallelBatch( const BatchDesc &desc, IWorkerBackend *backend, Batch
 	if ( serial )
 		DeterministicExecutor().Execute( *graph, options );
 	else
-		PooledExecutor( backend ).Execute( *graph, options );
+		TaskExecutor( backend ).Execute( *graph, options );
 	return true;
 }
 

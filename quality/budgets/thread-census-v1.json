@@ -1,0 +1,49 @@
+{
+  "schema": "thread-census/v1",
+  "rfc": "0003",
+  "row": "R94",
+  "policy": "RFC 0003 J3: every live thread of a running product belongs to a declared owner. Owners are name patterns (OS thread names with the pool index stripped, as tier0 names pool workers) with an owner and a reason. The executable's name is the main thread, once. Everything else is undeclared and only shrinks (tools/quality/thread_census.py --write after review); J3 needs undeclared empty. Driver and platform-library threads depend on the runner's GPU and devices, so a new runner may add a declared pattern with its reason.",
+  "main_thread": "hl2_launcher",
+  "owners": [
+    {
+      "pattern": "^CmpJob$",
+      "owner": "compute pool",
+      "reason": "the engine compute pool the root lends to job graphs (RFC 0003 capacity policy); its size is -compute_workers"
+    },
+    {
+      "pattern": "^MatQueue$",
+      "owner": "MatQueue",
+      "reason": "the material system's queued render sequence (mat_queue_mode 2)"
+    },
+    {
+      "pattern": "^IOJob$",
+      "owner": "filesystem I/O",
+      "reason": "the filesystem's async I/O pool"
+    },
+    {
+      "pattern": "^SaveJob$",
+      "owner": "declared blocking lane",
+      "reason": "the save/restore pool: blocking file writes kept off the compute pool"
+    },
+    {
+      "pattern": "^SDL.*Audio|^SDLPw",
+      "owner": "audio",
+      "reason": "SDL3's audio device and PipeWire threads"
+    },
+    {
+      "pattern": ":disk\\$$",
+      "owner": "driver",
+      "reason": "Mesa's shader disk-cache threads (named <exe prefix>:disk$)"
+    },
+    {
+      "pattern": "^libusb",
+      "owner": "device",
+      "reason": "libusb event threads behind SDL3's HID gamepad support"
+    }
+  ],
+  "undeclared": {
+    "AchievementSave": 1,
+    "QueuedPacketSen": 1,
+    "hl2_launcher (unnamed)": 2
+  }
+}

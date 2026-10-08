@@ -1,0 +1,181 @@
+{
+  "declared": {
+    "thread-create": {
+      "filesystem/filesystem_async.cpp": "RFC 0003 J3 declared owner: filesystem I/O threads",
+      "jobsystem/dynamic_scope.cpp": "RFC 0003 J3 declared owner: DynamicScope's own workers, for tests and tools; the thread-executor invariant keeps it out of products",
+      "jobsystem/parallel_executor.cpp": "RFC 0003 J3 declared owner: ParallelExecutor's own threads, for tests and tools; the thread-executor invariant keeps it out of products",
+      "jobsystem/thread_worker_backend.cpp": "RFC 0003 J3 declared owner: ThreadWorkerBackend's own threads, for test and tool roots; the thread-executor invariant keeps it out of products",
+      "materialsystem/cmaterialsystem.cpp": "RFC 0003 J3 declared owner: the MatQueue render-sequence pool",
+      "platform/runners/thread_task_runner.cpp": "RFC 0003 J3 declared owner: ThreadTaskRunner: the declared blocking lane (platform.task-runner.v1)",
+      "platform/runners/thread_task_runner.h": "RFC 0003 J3 declared owner: ThreadTaskRunner's thread member",
+      "public/jobsystem/dynamic_scope.h": "RFC 0003 J3 declared owner: DynamicScope's worker member",
+      "public/tier0/threadtools.h": "RFC 0003 J3 declared owner: the thread primitives' declarations",
+      "public/tier0/threadtools.inl": "RFC 0003 J3 declared owner: the thread primitives' inline definitions",
+      "public/vstdlib/jobthread.h": "RFC 0003 J3 declared owner: the engine thread pool's interface (CreateThreadPool)",
+      "tier0/thread.cpp": "RFC 0003 J3 declared owner: the thread primitives (POSIX CThread implementation)",
+      "tier0/threadtools.cpp": "RFC 0003 J3 declared owner: the thread primitives (ThreadCreate, CThread) every owner uses",
+      "vstdlib/jobgraph_pool_bridge.cpp": "RFC 0003 J3 declared owner: CreateThreadPoolWorkerBackend: a private pool a test or tool root asks for; products lend the compute pool",
+      "vstdlib/jobthread.cpp": "RFC 0003 J3 declared owner: the engine thread pool: the compute pool (CmpJob) and the MatQueue pool"
+    }
+  },
+  "files": {
+    "bitmap/float_bm4.cpp": {
+      "thread-create": 1
+    },
+    "bitmap/float_bm_bilateral_filter.cpp": {
+      "thread-create": 1
+    },
+    "common/valve_ipc_win32.h": {
+      "thread-create": 1
+    },
+    "dedicated/console/TextConsoleUnix.cpp": {
+      "thread-create": 1
+    },
+    "dedicated/console/conproc.cpp": {
+      "thread-create": 1
+    },
+    "engine/gl_lightmap.cpp": {
+      "fork-join": 1
+    },
+    "engine/host.cpp": {
+      "pool-wait": 1
+    },
+    "engine/host_frame_phases.h": {
+      "pool-wait": 1,
+      "unaudited-node": 26
+    },
+    "engine/host_saverestore.cpp": {
+      "thread-create": 1
+    },
+    "engine/indirect_light_host.cpp": {
+      "fork-join": 2
+    },
+    "engine/net_ws_queued_packet_sender.cpp": {
+      "thread-create": 1
+    },
+    "engine/sv_packedentities.cpp": {
+      "fork-join": 1
+    },
+    "engine/sv_uploadgamestats.cpp": {
+      "thread-create": 1
+    },
+    "engine/sys_dll.cpp": {
+      "thread-create": 1
+    },
+    "filesystem/filetracker.cpp": {
+      "thread-create": 1
+    },
+    "game/client/c_baseanimating.cpp": {
+      "fork-join": 1
+    },
+    "game/client/client_render_start_steps.h": {
+      "unaudited-node": 1
+    },
+    "game/client/particlemgr.cpp": {
+      "fork-join": 2
+    },
+    "game/client/portal2/gameui/portal2/uigamedata_storage.cpp": {
+      "thread-create": 1
+    },
+    "game/client/viewrender.cpp": {
+      "fork-join": 2
+    },
+    "game/server/ai_basenpc.cpp": {
+      "pool-wait": 1
+    },
+    "game/shared/achievementmgr.cpp": {
+      "thread-create": 1
+    },
+    "game/shared/querycache.cpp": {
+      "fork-join": 1
+    },
+    "gameui/BasePanel.cpp": {
+      "thread-create": 1
+    },
+    "hammer/ScenePreviewDlg.cpp": {
+      "thread-create": 1
+    },
+    "hammer/bsplightingthread.cpp": {
+      "thread-create": 1
+    },
+    "hammer/hammer.cpp": {
+      "thread-create": 1
+    },
+    "inputsystem/gyro_sensor.cpp": {
+      "thread-create": 1
+    },
+    "matchmaking/matchmakingqos.cpp": {
+      "thread-create": 1
+    },
+    "materialsystem/cmaterialsystem.cpp": {
+      "pool-wait": 5
+    },
+    "materialsystem/shaderapivulkan/shaderapivulkan.cpp": {
+      "fork-join": 1
+    },
+    "materialsystem/texturemanager.cpp": {
+      "thread-create": 2
+    },
+    "public/gcsdk/workthreadpool.h": {
+      "thread-create": 1
+    },
+    "public/panorama/data/imageloader.h": {
+      "thread-create": 1
+    },
+    "public/render/direct_occlusion.h": {
+      "fork-join": 4
+    },
+    "public/render/indirect_light.h": {
+      "fork-join": 4
+    },
+    "public/render/indirect_radiosity.h": {
+      "fork-join": 1
+    },
+    "public/render/indirect_sdf.h": {
+      "fork-join": 1
+    },
+    "public/vstdlib/jobthread.h": {
+      "fork-join": 11,
+      "pool-wait": 16
+    },
+    "replay/shared_replaycontext.cpp": {
+      "pool-wait": 1,
+      "thread-create": 1
+    },
+    "replay/sv_filepublish.cpp": {
+      "pool-wait": 1
+    },
+    "replay/sv_fileservercleanup.cpp": {
+      "pool-wait": 1
+    },
+    "tier0/cpumonitoring.cpp": {
+      "thread-create": 2
+    },
+    "tier0/tslist.cpp": {
+      "thread-create": 9
+    },
+    "tier0/vcrmode.cpp": {
+      "thread-create": 2
+    },
+    "tier0/vcrmode_posix.cpp": {
+      "thread-create": 1
+    },
+    "tier1/interface.cpp": {
+      "thread-create": 1
+    },
+    "vphysics_box3d/pool_step_scheduler.cpp": {
+      "pool-wait": 1
+    },
+    "vstdlib/jobthread.cpp": {
+      "pool-wait": 4
+    }
+  },
+  "note": "RFC 0003 phase I (R94): work outside the one task system, per file and category. Only shrinks; rewrite with `jobs_ratchet.py check --write` after review. J3 needs thread-create at 0; J6 shrinks unaudited-node. Declared owners are listed with a reason.",
+  "schema": "jobs-ratchet/v1",
+  "totals": {
+    "fork-join": 32,
+    "pool-wait": 32,
+    "thread-create": 38,
+    "unaudited-node": 27
+  }
+}

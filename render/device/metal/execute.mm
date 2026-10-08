@@ -230,6 +230,8 @@ private:
 				m_Labels.pop_back();
 			break;
 		case Op::kWriteTimestamp:
+		case Op::kBeginOcclusionQuery:
+		case Op::kEndOcclusionQuery:
 		case Op::kDrawIndexedIndirectCount:
 			break; // refused at Submit (unclaimed capabilities)
 		}

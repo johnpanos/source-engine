@@ -44,6 +44,7 @@ enum class Defect
 	kAttachesBlocks,      // D19: creates a block-compressed attachment without it
 	kDropsRegionOrigin,   // D22: copies every buffer-to-texture region to (0, 0)
 	kDropsTimestamps,     // D23: records no timestamp
+	kDropsOcclusion,      // D43: records no occlusion query
 	kClampsIndirectDraws, // D30: draws only the records that fit, instead of failing
 	kIgnoresCountOffset,  // D31: reads the count at offset 0 whatever was asked
 	kCollapsesCubeLayers  // D36: copies every cube-array face to its cube's layer 0..5
@@ -176,6 +177,16 @@ public:
 	{
 		if ( m_Defect != Defect::kDropsTimestamps )
 			m_Inner->WriteTimestamp( buffer, offset );
+	}
+	void BeginOcclusionQuery( BufferId buffer, std::uint64_t offset ) override
+	{
+		if ( m_Defect != Defect::kDropsOcclusion )
+			m_Inner->BeginOcclusionQuery( buffer, offset );
+	}
+	void EndOcclusionQuery() override
+	{
+		if ( m_Defect != Defect::kDropsOcclusion )
+			m_Inner->EndOcclusionQuery();
 	}
 	bool HasError() const override { return m_Inner->HasError(); }
 
@@ -411,6 +422,7 @@ int main()
 	    { Defect::kAttachesBlocks, "under-test.D19 " },
 	    { Defect::kDropsRegionOrigin, "under-test.D22 " },
 	    { Defect::kDropsTimestamps, "under-test.D23 " },
+	    { Defect::kDropsOcclusion, "under-test.D43 " },
 	    { Defect::kAcceptsBadComparison, "under-test.D24 " },
 	    { Defect::kDropsInitialUpload, "under-test.D25 " },
 	    { Defect::kClampsIndirectDraws, "under-test.D30 " },

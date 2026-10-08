@@ -46,8 +46,8 @@ enum FrameNodeKind
 // different i may run at the same time. count is read once per run, by the
 // first runner (on any thread), after every node the batch depends on and
 // before any item. begin/end (optional) bracket each participating runner on
-// its own thread. The pooled executor runs in waves: a batch overlaps the host
-// nodes that become ready together with it.
+// its own thread. The pooled mode runs on TaskExecutor: a batch overlaps every
+// host node that its declarations leave unordered against it.
 struct FrameNodeDesc
 {
 	const char *name; // stable, non-empty

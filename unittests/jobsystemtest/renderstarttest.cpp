@@ -30,6 +30,7 @@
 #include <thread>
 #include <vector>
 
+#include "jobsystem/thread_worker_backend.h"
 #include "jobsystem/declared_frame_graph.h"
 #include "jobsystem/worker_backend.h"
 #include "testing/conformance_result.h"
@@ -343,37 +344,8 @@ struct CReplayRagdollCache
 #include "renderstart_legacy_oracle.h" // OnRenderStart (legacy)
 #include "../../game/client/client_render_start_steps.h"
 
-// Workers start before the caller's host nodes, like the engine pool bridge.
-class ThreadBackend final : public jobsystem::IWorkerBackend
-{
-public:
-	explicit ThreadBackend( int workers ) : m_workers( workers ) {}
-	int WorkerCount() const override { return m_workers; }
-	void ParallelFor( int count, const std::function<void( int )> &body ) override
-	{
-		ParallelForWithCaller( count, body, [] {} );
-	}
-	void ParallelForWithCaller( int count, const std::function<void( int )> &body,
-	    const std::function<void()> &caller ) override
-	{
-		std::atomic<int> next( 0 );
-		auto drain = [&]
-		{
-			for ( int i = next++; i < count; i = next++ )
-				body( i );
-		};
-		std::vector<std::thread> threads;
-		for ( int w = 0; w < m_workers; ++w )
-			threads.emplace_back( drain );
-		caller();
-		drain();
-		for ( std::thread &t : threads )
-			t.join();
-	}
-
-private:
-	int m_workers;
-};
+// The jobs.graph thread backend: tasks on its own threads.
+using ThreadBackend = jobsystem::ThreadWorkerBackend;
 
 enum Path
 {

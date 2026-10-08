@@ -369,6 +369,22 @@ void RecordingEncoder::WriteTimestamp( BufferId buffer, std::uint64_t offset )
 	Push( std::move( command ) );
 }
 
+void RecordingEncoder::BeginOcclusionQuery( BufferId buffer, std::uint64_t offset )
+{
+	Command command;
+	command.op = Op::kBeginOcclusionQuery;
+	command.a = buffer.value;
+	command.offset = offset;
+	Push( std::move( command ) );
+}
+
+void RecordingEncoder::EndOcclusionQuery()
+{
+	Command command;
+	command.op = Op::kEndOcclusionQuery;
+	Push( std::move( command ) );
+}
+
 // Validation --------------------------------------------------------------------
 
 std::uint32_t TextureView::Width( std::uint32_t mip ) const
@@ -392,6 +408,7 @@ struct ValidationState
 	Format depth = Format::kUnknown;
 	std::uint32_t samples = 0;
 	bool rendering = false;
+	bool occlusionOpen = false; // D43: a query open in this rendering scope
 	std::uint32_t vertexSlots = 0;
 	bool index = false;
 	DrawConstantCoverage constants; // D16
@@ -608,6 +625,9 @@ bool Validate( const std::vector<Command> &commands,
 			break;
 		}
 		case Op::kEndRendering:
+			// D43: a query ends inside the rendering scope it began in.
+			if ( v.occlusionOpen )
+				return false;
 			v.rendering = false;
 			break;
 		case Op::kSetPipeline:
@@ -660,6 +680,23 @@ bool Validate( const std::vector<Command> &commands,
 				return false;
 			break;
 		}
+		case Op::kBeginOcclusionQuery:
+		{
+			// D43: inside rendering, none open, kReadback memory in
+			// kCopyDestination, 8-byte aligned.
+			const std::optional<BufferView> b = buffer( command.a, ResourceUsage::kCopyDestination );
+			if ( !v.rendering || v.occlusionOpen || !b || b->desc.memory != MemoryKind::kReadback ||
+			     command.offset % 8 != 0 || command.offset > b->desc.size ||
+			     b->desc.size - command.offset < 8 )
+				return false;
+			v.occlusionOpen = true;
+			break;
+		}
+		case Op::kEndOcclusionQuery:
+			if ( !v.rendering || !v.occlusionOpen )
+				return false;
+			v.occlusionOpen = false;
+			break;
 		case Op::kSetViewport:
 		case Op::kBeginLabel:
 		case Op::kEndLabel:
@@ -702,9 +739,11 @@ std::optional<DeviceStatus> CheckSubmission( std::span<const RecordingEncoder *c
 			     ( command.op == Op::kDrawIndexedIndirectCount &&
 			         !capabilities.Has( Capability::kDrawIndirectCount ) ) )
 				return DeviceStatus::kUnsupported;
-			if ( command.op != Op::kWriteTimestamp )
+			if ( command.op != Op::kWriteTimestamp && command.op != Op::kBeginOcclusionQuery )
 				continue;
-			if ( !capabilities.Has( Capability::kTimestamps ) )
+			if ( !capabilities.Has( command.op == Op::kWriteTimestamp
+			                            ? Capability::kTimestamps
+			                            : Capability::kOcclusionQueries ) )
 				return DeviceStatus::kUnsupported;
 			const auto found = states.find( command.a );
 			if ( found == states.end() || found->second != ResourceUsage::kCopyDestination )

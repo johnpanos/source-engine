@@ -706,7 +706,7 @@ marks no implementation gate done.
 | 83 / R45 | Independent collision decoding/cooking; 0004 F second gate | R40, R44 | Legacy/native format corpus and tool compatibility pass without IVP code; dependency audit clean; schema and old-content policy explicit | planned |
 | 84 / R46 | Tier-global/domain retirement; 0001 rank 21 | R39, R41, R42, R43, R45 | All declared domain cohorts use explicit ownership; old globals have zero consumers; cohesive targets pass architecture/product gates; tiers removed only when empty | planned |
 | 85 / R93 | LAN discovery and Portal 2 co-op pairing; 0017 G0–G6 | R06, R10 (Apple/Android gates also R29) | `platform.lan-discovery.v1` suite catches its bad providers; Linux mDNS provider passes its fuzz corpus and coexists with Avahi; two `play_p2` processes pair through the real PC co-op menus (required UI-driven test) and reach a shared map, with wrong-code and lobby-full negative controls; Apple providers pass on device or stay unverified (optional runner); Android passes on the Fold7, or the row stays `partial` | planned ([RFC 0017](RFC/0017-lan-discovery-and-coop-pairing.md); rank is an agent placement, 2026-09-28, movable by the user) |
-| 86 / R94 | Frame-wide scheduling; 0003 I (goals J1–J5; J6–J7 ratchets) | R20, R21 | One continuous ready-driven executor on the engine pool in products (no wave barriers); declared regions overlap across host nodes; thread census shows no first-party compute threads outside declared owners; scheduling at most 5 % of pooled critical-path work; 1- and 2-worker configurations hold their budgets on desktop, the Fold7 and the iPhone; J6/J7 shrink-only ratchets installed | planned ([RFC 0003 goals](RFC/0003-dependency-aware-job-system.md#frame-wide-scheduling-goals-amended-2026-09-28); rank is an agent placement, 2026-09-28, movable by the user) |
+| 86 / R94 | Frame-wide scheduling; 0003 I (goals J1–J5; J6–J7 ratchets) | R20, R21 | One continuous ready-driven executor on the engine pool in products (no wave barriers); declared regions overlap across host nodes; thread census shows no first-party compute threads outside declared owners; scheduling at most 5 % of pooled critical-path work; 1- and 2-worker configurations hold their budgets on desktop, the Fold7 and the iPhone; J6/J7 shrink-only ratchets installed | active ([R94 record](RFC/0003-progress.md#r94-one-task-system-2026-10-07), 2026-10-07, user goal "a pure task system" with "a rock solid ratchet": `IWorkerBackend` runs tasks only and `PooledExecutor` is deleted; `TaskExecutor` (continuous, runners that never park) is the one product executor; `jobsystem.continuous` with bad executors and a TSan lane (J1), the J2 unit oracle, the runtime thread census with `-compute_workers` (J3, J5) and the `jobs_ratchet.py` invariants and ratchets (J3 static, J6) installed; J2 product trace, J4 critical-path overhead, Fold7/iPhone rows and the J7 ratchet open; rank is an agent placement, 2026-09-28, movable by the user) |
 
 R39–R46 describe completion gates, not a reason to retain dead code until late.
 Delete each unused adapter/global/queue when its bounded cohort has passed its
@@ -1143,10 +1143,12 @@ Keep the table concise and link details below or from the domain progress file.
     queued modes; K5 "Pooled recording"; K9 "Recording scales" (4 workers at
     most 0.6x of 1 on desktop) and "Render off the main thread". R89 and R91
     done conditions now name them.
-  - Nothing new is implemented, and no row changes state. Tools named
-    *proposed* in the RFCs (`jobsystem.continuous`, the thread census,
-    `-render-core-record`, a `CmpJob` worker-count control) are not
-    installed.
+  - Nothing new was implemented then. Since 2026-10-07 (R94 `active`,
+    [record](RFC/0003-progress.md#r94-one-task-system-2026-10-07)):
+    `jobsystem.continuous`, the thread census
+    (`tools/quality/thread_census.py`), the `CmpJob` worker-count control
+    (`-compute_workers`) and the phase I ratchet (`tools/quality/jobs_ratchet.py`)
+    are installed; `-render-core-record` is still proposed.
 - R95–R96 (RFC 0016 lighting model, K11–K12): added 2026-09-28 at the
   user's direction ("Source 2 quality"; "get the hard parts done first, and
   then integrate them"; renders outside the game with the render core are

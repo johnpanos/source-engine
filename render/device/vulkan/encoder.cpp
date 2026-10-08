@@ -428,6 +428,22 @@ void VulkanEncoder::WriteTimestamp( BufferId buffer, std::uint64_t offset )
 	Push( command );
 }
 
+void VulkanEncoder::BeginOcclusionQuery( BufferId buffer, std::uint64_t offset )
+{
+	Command command;
+	command.op = Op::kBeginOcclusionQuery;
+	command.a = buffer.value;
+	command.offset = offset;
+	Push( command );
+}
+
+void VulkanEncoder::EndOcclusionQuery()
+{
+	Command command;
+	command.op = Op::kEndOcclusionQuery;
+	Push( command );
+}
+
 void VulkanEncoder::EndLabel()
 {
 	if ( m_Labels == 0 )
@@ -696,6 +712,9 @@ bool VulkanDevice::Validate(
 			break;
 		}
 		case Op::kEndRendering:
+			// D43: a query ends inside the rendering scope it began in.
+			if ( v.occlusionOpen )
+				return false;
 			v.rendering = false;
 			break;
 		case Op::kSetPipeline:
@@ -810,6 +829,23 @@ bool VulkanDevice::Validate(
 				return false;
 			break;
 		}
+		case Op::kBeginOcclusionQuery:
+		{
+			// D43: inside rendering, none open, kReadback memory in
+			// kCopyDestination, 8-byte aligned.
+			const BufferRecord *b = buffer( command.a, ResourceUsage::kCopyDestination );
+			if ( !v.rendering || v.occlusionOpen || !b || b->desc.memory != MemoryKind::kReadback ||
+			     command.offset % 8 != 0 || command.offset > b->desc.size ||
+			     b->desc.size - command.offset < 8 )
+				return false;
+			v.occlusionOpen = true;
+			break;
+		}
+		case Op::kEndOcclusionQuery:
+			if ( !v.rendering || !v.occlusionOpen )
+				return false;
+			v.occlusionOpen = false;
+			break;
 		case Op::kSetViewport:
 		case Op::kBeginLabel:
 		case Op::kEndLabel:
@@ -857,6 +893,8 @@ public:
 
 	// D23: the submission's timestamps and the pool they are written to.
 	void SetQueries( VkQueryPool queries ) { m_Queries = queries; }
+	// D43: the submission's occlusion queries.
+	void SetOcclusion( VkQueryPool occlusion ) { m_Occlusion = occlusion; }
 
 	// The framebuffers this translation created, for its submission to own.
 	std::vector<VkFramebuffer> TakeFramebuffers() { return std::move( m_Framebuffers ); }
@@ -872,6 +910,14 @@ public:
 			Access( timestamp.buffer, true );
 			vkCmdCopyQueryPoolResults( m_Cmd, m_Queries, timestamp.query, 1, buffer->buffer,
 			    timestamp.offset, sizeof( std::uint64_t ),
+			    VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT );
+		}
+		for ( const PendingTimestamp &query : m_OcclusionResults )
+		{
+			const BufferRecord *buffer = m_D.LiveBuffer( query.buffer );
+			Access( query.buffer, true );
+			vkCmdCopyQueryPoolResults( m_Cmd, m_Occlusion, query.query, 1, buffer->buffer,
+			    query.offset, sizeof( std::uint64_t ),
 			    VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT );
 		}
 		VkMemoryBarrier2 barrier{};
@@ -1572,6 +1618,15 @@ private:
 			    m_Cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, m_Queries, m_NextQuery );
 			m_Timestamps.push_back( { m_NextQuery++, command.a, command.offset } );
 			break;
+		case Op::kBeginOcclusionQuery:
+			// D43: exact sample counts (occlusionQueryPrecise, required for
+			// the capability).
+			vkCmdBeginQuery( m_Cmd, m_Occlusion, m_NextOcclusion, VK_QUERY_CONTROL_PRECISE_BIT );
+			m_OcclusionResults.push_back( { m_NextOcclusion, command.a, command.offset } );
+			break;
+		case Op::kEndOcclusionQuery:
+			vkCmdEndQuery( m_Cmd, m_Occlusion, m_NextOcclusion++ );
+			break;
 		}
 	}
 
@@ -1646,6 +1701,9 @@ private:
 	VkQueryPool m_Queries = VK_NULL_HANDLE;
 	std::uint32_t m_NextQuery = 0;
 	std::vector<PendingTimestamp> m_Timestamps;
+	VkQueryPool m_Occlusion = VK_NULL_HANDLE; // D43
+	std::uint32_t m_NextOcclusion = 0;
+	std::vector<PendingTimestamp> m_OcclusionResults;
 	std::vector<VkFramebuffer> m_Framebuffers;
 	bool m_RenderPass = false; // the open pass is a render pass (fallback)
 	// The host work being translated and its sections ([first, end) command
@@ -1766,6 +1824,7 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	// D23: timestamps need the capability, and each buffer ends the
 	// submission in kCopyDestination (their copies run at its end).
 	std::uint32_t timestamps = 0;
+	std::uint32_t occlusionQueries = 0; // D43
 	for ( VulkanEncoder *encoder : recorded )
 	{
 		for ( const Command &command : encoder->Commands() )
@@ -1783,16 +1842,19 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 			         command.op == Op::kDrawIndexed || command.op == Op::kDrawIndexedIndirect ||
 			         command.op == Op::kDrawIndexedIndirectCount ||
 			         command.op == Op::kNative || command.op == Op::kSectionBegin ||
-			         command.op == Op::kComputeInterop || command.op == Op::kWriteTimestamp ) )
+			         command.op == Op::kComputeInterop || command.op == Op::kWriteTimestamp ||
+			         command.op == Op::kBeginOcclusionQuery ) )
 				return Fail( DeviceStatus::kUnsupported, op );
-			if ( command.op != Op::kWriteTimestamp )
+			if ( command.op != Op::kWriteTimestamp && command.op != Op::kBeginOcclusionQuery )
 				continue;
-			if ( !m_Facts.capabilities.Has( Capability::kTimestamps ) )
+			const bool timestamp = command.op == Op::kWriteTimestamp;
+			if ( !m_Facts.capabilities.Has(
+			         timestamp ? Capability::kTimestamps : Capability::kOcclusionQueries ) )
 				return Fail( DeviceStatus::kUnsupported, op );
 			const auto found = states.find( command.a );
 			if ( found == states.end() || found->second != ResourceUsage::kCopyDestination )
 				return Fail( DeviceStatus::kInvalidState, op );
-			++timestamps;
+			( timestamp ? timestamps : occlusionQueries ) += 1;
 		}
 	}
 
@@ -1817,6 +1879,8 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 			vkDestroyCommandPool( m_Device, context.pool, nullptr );
 			if ( context.queries != VK_NULL_HANDLE )
 				vkDestroyQueryPool( m_Device, context.queries, nullptr );
+			if ( context.occlusion != VK_NULL_HANDLE )
+				vkDestroyQueryPool( m_Device, context.occlusion, nullptr );
 		}
 		return Fail( StatusOf( result ), op, result );
 	};
@@ -1842,6 +1906,28 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 		}
 		context.queryCapacity = capacity;
 	}
+	if ( occlusionQueries > context.occlusionCapacity )
+	{
+		if ( context.occlusion != VK_NULL_HANDLE )
+			vkDestroyQueryPool( m_Device, context.occlusion, nullptr );
+		context.occlusion = VK_NULL_HANDLE;
+		context.occlusionCapacity = 0;
+		std::uint32_t capacity = 64;
+		while ( capacity < occlusionQueries )
+			capacity *= 2;
+		VkQueryPoolCreateInfo queryInfo{};
+		queryInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+		queryInfo.queryType = VK_QUERY_TYPE_OCCLUSION;
+		queryInfo.queryCount = capacity;
+		const VkResult created =
+		    vkCreateQueryPool( m_Device, &queryInfo, nullptr, &context.occlusion );
+		if ( created != VK_SUCCESS )
+		{
+			context.occlusion = VK_NULL_HANDLE;
+			return giveBack( created );
+		}
+		context.occlusionCapacity = capacity;
+	}
 
 	VkCommandBufferBeginInfo begin{};
 	begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1854,6 +1940,11 @@ DeviceResult<CompletionToken> VulkanDevice::Submit(
 	{
 		vkCmdResetQueryPool( context.buffer, context.queries, 0, timestamps );
 		translator.SetQueries( context.queries );
+	}
+	if ( occlusionQueries > 0 )
+	{
+		vkCmdResetQueryPool( context.buffer, context.occlusion, 0, occlusionQueries );
+		translator.SetOcclusion( context.occlusion );
 	}
 	m_Translating = &translator;
 	bool translated = true;

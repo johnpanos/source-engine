@@ -115,6 +115,8 @@ const char *CapabilityName( Capability capability )
 		return "texture-compression-etc1";
 	case Capability::kPackedRGBA4:
 		return "packed-rgba4";
+	case Capability::kOcclusionQueries:
+		return "occlusion-queries";
 	case Capability::kCount:
 		break;
 	}

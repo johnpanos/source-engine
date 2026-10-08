@@ -124,6 +124,7 @@
 #include "steam/isteamremotestorage.h"
 #if defined( LINUX )
 #include <locale.h>
+#include <dirent.h>
 
 #ifdef USE_SDL
 #include "SDL.h"
@@ -576,6 +577,51 @@ CON_COMMAND( threadpool_run_tests, "" )
 	}
 }
 #endif
+
+// RFC 0003 J3 thread census: every live thread of this process by OS name,
+// pool indices stripped (tier0 names pool workers <pool><index>), one
+// "threadcensus <count> <name>" line each and a total.
+// tools/quality/thread_census.py compares them with the declared owners.
+CON_COMMAND( thread_census, "List the process's live threads by name (RFC 0003 J3)" )
+{
+#if defined( LINUX )
+	CUtlVector<CUtlString> names;
+	if ( DIR *pDir = opendir( "/proc/self/task" ) )
+	{
+		while ( struct dirent *pEntry = readdir( pDir ) )
+		{
+			if ( pEntry->d_name[0] == '.' )
+				continue;
+			char path[64];
+			Q_snprintf( path, sizeof( path ), "/proc/self/task/%s/comm", pEntry->d_name );
+			char name[64] = "";
+			if ( FILE *pFile = fopen( path, "r" ) )
+			{
+				if ( !fgets( name, sizeof( name ), pFile ) )
+					name[0] = '\0';
+				fclose( pFile );
+			}
+			int len = Q_strlen( name );
+			while ( len > 0 && ( name[len - 1] == '\n' || ( name[len - 1] >= '0' && name[len - 1] <= '9' ) ) )
+				name[--len] = '\0';
+			names.AddToTail( CUtlString( len ? name : "?" ) );
+		}
+		closedir( pDir );
+	}
+	names.Sort( []( const CUtlString *a, const CUtlString *b ) { return Q_strcmp( a->Get(), b->Get() ); } );
+	for ( int i = 0; i < names.Count(); )
+	{
+		int j = i;
+		while ( j < names.Count() && names[j] == names[i] )
+			++j;
+		Msg( "threadcensus %d %s\n", j - i, names[i].Get() );
+		i = j;
+	}
+	Msg( "threadcensus total %d\n", names.Count() );
+#else
+	Msg( "threadcensus unsupported\n" );
+#endif
+}
 
 //-----------------------------------------------------------------------------
 
@@ -3914,7 +3960,13 @@ void Host_Init( bool bDedicated )
 	}
 
 	ThreadPoolStartParams_t startParams;
-	
+	// RFC 0003 J5: -compute_workers N sizes the compute pool (CmpJob) that
+	// roots lend to job graphs; 0 runs every graph inline on its caller (the
+	// serial configuration). -threads sizes only the global pool.
+	const int nComputeWorkers = CommandLine()->ParmValue( "-compute_workers", -1 );
+	if ( nComputeWorkers >= 0 )
+		startParams.nThreads = nComputeWorkers;
+
 	if ( g_pThreadPool )
 		g_pThreadPool->Start( startParams, "CmpJob" );
 
