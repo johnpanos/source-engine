@@ -267,6 +267,26 @@ std::optional<std::string> UnreadVariable( const MaterialDesc &material )
 			continue;
 		if ( dormant( key ) )
 			continue;
+		// UnlitGeneric shares vertexlit_and_unlit_generic's declarations, and
+		// its unlit combos read no Phong parameter: whatever InitParams left in
+		// them (the video services' materials) cannot change a pixel.
+		if ( material.family == "unlit" && key.size() > 6 &&
+		     std::string_view( key ).substr( 0, 6 ) == "$phong" )
+			continue;
+		// unlitgeneric_dx9.cpp's distance-coded alpha group is read only with
+		// $distancealpha, and it has no lighting for $lightwarptexture to warp.
+		static constexpr std::string_view kDistanceGroup[] = { "$softedges",
+		    "$scaleedgesoftnessbasedonscreenres", "$edgesoftnessstart", "$edgesoftnessend",
+		    "$glow", "$glowcolor", "$glowalpha", "$glowstart", "$glowend", "$glowx", "$glowy",
+		    "$outline", "$outlinecolor", "$outlinealpha", "$outlinestart0", "$outlinestart1",
+		    "$outlineend0", "$outlineend1", "$scaleoutlinesoftnessbasedonscreenres",
+		    "$distancealphafromdetail" };
+		if ( material.family == "unlit" &&
+		     ( SameKey( key, "$lightwarptexture" ) ||
+		         ( !enabled( "$distancealpha" ) &&
+		             std::any_of( std::begin( kDistanceGroup ), std::end( kDistanceGroup ),
+		                 [&]( std::string_view name ) { return SameKey( key, name ); } ) ) ) )
+			continue;
 		// Refract never reads $alpha: refract_ps2x writes the normal map's
 		// alpha (times the vertex alpha with $vertexcolormodulate), and
 		// refract_dx9_helper.cpp enables no blend that $alpha modulates (only
@@ -322,6 +342,11 @@ bool ViewRenderTarget( const MaterialDesc &material, const MaterialValue &value 
 	// _rt_Camera earlier in the frame (CViewRender::DrawMonitors).
 	if ( material.family == "unlit" && value.parameter == "basetexture" &&
 	     SameKey( value.text, "_rt_Camera" ) )
+		return true;
+	// Portal 2's menu composites (console/rt_background, rt_foreground): the
+	// frame the client copied into _rt_FullFrameFB.
+	if ( material.family == "unlit" && value.parameter == "basetexture" &&
+	     SameKey( value.text, "_rt_FullFrameFB" ) )
 		return true;
 	return material.family == "water" &&
 	       ( ( value.parameter == "reflecttexture" &&

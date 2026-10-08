@@ -60,7 +60,7 @@ static void CoreWorldModeChanged( IConVar *variable, const char *, float previou
 		GL_RebuildLightmaps();
 }
 
-static ConVar r_core_world( "r_core_world", "0", FCVAR_CHEAT,
+static ConVar r_core_world( "r_core_world", "1", FCVAR_CHEAT,
     "RFC 0016: core-only Forward+ shading (1). Legacy shader draws are rejected, and "
     "unsupported cohorts are reported rather than rendered by a fallback. 3 is the "
     "negative control: legacy skips them and the core does not draw them",
@@ -1091,9 +1091,12 @@ bool RenderCoreWorldDraw_Takes( SurfaceHandle_t surfID )
 	return state.loaded && index >= 0 && index < state.takes.Count() && state.takes[index];
 }
 
+// Every frame is the core's, with or without a map (menus, loading screens):
+// the legacy stream's draws reach the core or are refused by name (RFC 0016
+// K9; user goal 2026-10-08, deleting the legacy renderer).
 bool RenderCoreWorldDraw_OnlyCore()
 {
-	return r_core_world.GetInt() == 1 && State().loaded && RenderCoreHost_World();
+	return r_core_world.GetInt() == 1 && RenderCoreHost_World();
 }
 
 bool RenderCoreWorldDraw_StageOwnsRuntimeLighting()

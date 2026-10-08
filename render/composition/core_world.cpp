@@ -2227,13 +2227,12 @@ void CoreWorld::OnStage( frame::Stage, std::uint32_t depth )
 	m_ViewDepth = depth;
 }
 
+// No stage slot: the legacy UI exception at the top-level HUD is retired
+// (the screen UI is the core's, render.ui-draw-list.v1), so a core-only frame
+// stays core-only to its present.
 std::uint32_t CoreWorld::SlotStages() const
 {
-	const frame::DebugControls &debug = m_Renderer.AppliedDebug();
-	return m_CoreOnly && !frame::PixelViewActive( debug ) &&
-	               debug.legacy != frame::DebugLegacy::kSkip
-	           ? 1u << static_cast<std::uint32_t>( frame::Stage::kHud )
-	           : 0u;
+	return 0u;
 }
 
 void CoreWorld::EndFrame()
@@ -2273,8 +2272,11 @@ void CoreWorld::BeginFrame()
 		return;
 	if ( legacy::ICorePassSlots *slots = m_Frontend.CorePassSlots() )
 	{
-		const std::uint32_t effects = SlotStages() ? legacy::kCorePassCustomEffects : 0;
-		slots->MarkSlot( legacy::kCorePassForwarded | legacy::kCorePassLegacyOff | effects );
+		const frame::DebugControls &applied = m_Renderer.AppliedDebug();
+		const bool effects = m_CoreOnly && !frame::PixelViewActive( applied ) &&
+		                     applied.legacy != frame::DebugLegacy::kSkip;
+		slots->MarkSlot( legacy::kCorePassForwarded | legacy::kCorePassLegacyOff |
+		                 ( effects ? legacy::kCorePassCustomEffects : 0u ) );
 	}
 }
 
@@ -2768,6 +2770,9 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		    eye, draw.ambientCube, std::span( draw.lights, draw.lightCount ) );
 	}
 	view.dynamicDraws.push_back( std::move( geometry ) );
+	// Without a map (menus, loading screens) the pass draws on an empty world.
+	if ( !m_Pass.HasWorld() )
+		m_Pass.SetWorld( pass::world::WorldData() );
 	const std::uint32_t tag = m_Pass.QueueView( std::move( view ) );
 	if ( tag )
 	{

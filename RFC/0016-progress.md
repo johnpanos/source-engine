@@ -13284,3 +13284,24 @@ portal's far view reads dark against legacy: to be compared next.
     stream records.
   - The cause is not found. An earlier all-hatch `testchmb_a_00` capture may
     be the same defect. Parity blocker to keep chasing.
+- **The core draws every client frame** (user goal 2026-10-08, "deleting as
+  much of the legacy renderer as possible", with parity):
+  - `r_core_world` defaults to 1.
+  - Core-only no longer needs a loaded map, so menus and loading screens are
+    the core's too.
+  - The top-level HUD exception (`kCorePassLegacyHud`) is retired: the
+    screen UI is on the core, so a core-only frame stays core-only to its
+    present. The custom-effects bit is set from the same conditions as
+    before.
+  - The mesh hand-off draws on an empty world when no map is loaded.
+  - Portal 2's menu composites read `_rt_FullFrameFB`, now an allowed unlit
+    view render target.
+  - UnlitGeneric's Phong group, distance-coded alpha group (without
+    `$distancealpha`) and `$lightwarptexture` are inert on the unlit family:
+    the video services' materials leave them defined.
+  - Census, both games, 19 views: 0 legacy-stream draws and nothing dropped
+    (the menu video included); boots pass.
+  - Lab material suites are unchanged (the cable check's pre-existing
+    failure aside).
+  - Not new: Portal 1's `--map-after-start` capture is black on the legacy
+    renderer too, so it is not caused by this change.
