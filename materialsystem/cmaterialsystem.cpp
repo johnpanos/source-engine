@@ -5337,6 +5337,46 @@ CMatCallQueue *CMaterialSystem::GetRenderCallQueue()
 	return pRenderContext ? pRenderContext->GetCallQueueInternal() : NULL;
 }
 
+// Frozen-path: core plumbing (RFC 0016 K9, R91) - loads every material a list
+// file names (one material name per line, without "materials/" or ".vmt") and
+// precaches it, so mat_dump_material_state then covers a whole corpus rather
+// than the materials one view happened to load: the oracle of the
+// parameter-only shader provider that replaces stdshaders.
+CON_COMMAND( mat_load_material_list, "mat_load_material_list <file>: load and precache every "
+                                     "material the file names (R91 provider oracle)" )
+{
+	if ( args.ArgC() < 2 )
+	{
+		Msg( "usage: mat_load_material_list <file>\n" );
+		return;
+	}
+	CUtlBuffer text( 0, 0, CUtlBuffer::TEXT_BUFFER );
+	if ( !g_pFullFileSystem->ReadFile( args.Arg( 1 ), NULL, text ) )
+	{
+		Warning( "mat_load_material_list: cannot read %s\n", args.Arg( 1 ) );
+		return;
+	}
+	int loaded = 0, missing = 0;
+	char name[MAX_PATH];
+	while ( text.IsValid() && text.GetBytesRemaining() > 0 )
+	{
+		text.GetLine( name, sizeof( name ) );
+		V_StripTrailingWhitespace( name );
+		if ( !name[0] )
+			continue;
+		IMaterial *material = g_MaterialSystem.FindMaterial( name, TEXTURE_GROUP_OTHER, false );
+		if ( !material || material->IsErrorMaterial() )
+		{
+			++missing;
+			continue;
+		}
+		material->IncrementReferenceCount();
+		static_cast<IMaterialInternal *>( material )->Precache();
+		++loaded;
+	}
+	Msg( "mat_load_material_list: %d loaded, %d missing\n", loaded, missing );
+}
+
 // Frozen-path: core plumbing (RFC 0016 K9, R91 migration M2's oracle) - the
 // load-time state the shader library leaves on every material, one sorted
 // JSON line per material, so a changed shader library is judged against the
@@ -5381,6 +5421,10 @@ CON_COMMAND( mat_dump_material_state, "mat_dump_material_state <file>: every loa
 			CUtlString value( params[p]->GetStringValue() );
 			value = value.Replace( "\\", "/" );
 			value = value.Replace( "\"", "'" );
+			// Control characters (a value read across lines) would break the line.
+			for ( char *c = value.GetForModify(); c && *c; ++c )
+				if ( (unsigned char)*c < 0x20 )
+					*c = ' ';
 			CUtlString item;
 			item.Format( "%s\"%s\":\"%s\"", p ? "," : "", params[p]->GetName(), value.Get() );
 			line += item;
