@@ -13159,3 +13159,11 @@ portal's far view reads dark against legacy: to be compared next.
     pixel beyond animation noise, on the core and on the legacy renderer
     alike. A scene where a blob shadow is visible is still needed for a
     matched game capture.
+- **Blended displacement floors** (WorldVertexTransition_DX9:
+  `nature/blendwhitefloor_dirt02`, `metal/blendblackfloormetal_dirt02`) were
+  dropped. The core claims the two-layer material, but the backend gave
+  WorldVertexTransition no typed mesh kind, so in product core-only mode it
+  never reached the core. It now takes `kLightmappedSurface`, as
+  LightmappedGeneric does.
+  - `sp_a2_laser_intro`: no longer dropped, 0 core refusals; the floor
+    matches the legacy renderer's frame by eye.

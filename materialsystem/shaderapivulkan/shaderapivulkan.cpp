@@ -4641,8 +4641,12 @@ static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
 		     !V_stricmp( shader, "SplineRope" ) )
 			return CoreMeshKind::kCable;
 		// Frozen-path: capture moving brush surfaces after their material proxies run.
+		// Frozen-path: core progress (RFC 0016 K8) - WorldVertexTransition's
+		// blended displacements take the same lightmapped surface point.
 		if ( !V_stricmp( shader, "LightmappedGeneric" ) ||
-		     !V_stricmp( shader, "LightmappedGeneric_DX9" ) )
+		     !V_stricmp( shader, "LightmappedGeneric_DX9" ) ||
+		     !V_stricmp( shader, "WorldVertexTransition" ) ||
+		     !V_stricmp( shader, "WorldVertexTransition_DX9" ) )
 			return CoreMeshKind::kLightmappedSurface;
 		if ( material->GetMaterialVarFlag( MATERIAL_VAR_DECAL ) ||
 		     !V_stricmp( shader, "DecalModulate" ) || !V_stricmp( shader, "DecalModulate_dx9" ) )
