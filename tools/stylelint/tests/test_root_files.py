@@ -39,11 +39,11 @@ class RootFilesTests(unittest.TestCase):
             self.assertEqual([], root_files.violations(entries, pending={}))
 
     def test_seeded_stray_root_file_is_caught(self):
-        directory, root = git_repository(["wscript", "play_p2", "fix_paths.py"])
+        directory, root = git_repository(["wscript", "BC7.patch", "fix_paths.py"])
         with directory:
             problems = root_files.violations(root_files.tracked_root_entries(root), pending={})
         self.assertEqual(2, len(problems))
-        self.assertTrue(any(p.startswith("play_p2:") for p in problems))
+        self.assertTrue(any(p.startswith("BC7.patch:") for p in problems))
         self.assertTrue(any(p.startswith("fix_paths.py:") for p in problems))
 
     def test_a_pending_entry_for_a_deleted_file_fails(self):
