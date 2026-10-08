@@ -13469,3 +13469,37 @@ queries, (f) HDR, gamma and capture presentation (source-engine-14's
 presenter); then the desktop client moves to the core shader API and
 shaderapivulkan's replay of copies, clears and core sections, presentation
 and texture management can go.
+
+### Next: one parameter-only shader provider in place of stdshaders (design, not started)
+
+After M2 steps 1 to 8 (stdshaders 657 → 113 files, 91,155 → 15,622 lines)
+every remaining line of `materialsystem/stdshaders` is load-time behaviour
+the material system still calls through `IShader`:
+
+1. parameter lists (`BEGIN_SHADER_PARAMS`: name, type, default, help, flags);
+2. `SHADER_INIT_PARAMS`: defaults and flags derived from other parameters
+   (`$translucent`, `$additive`, `$selfillum`, `$envmap`, `MATERIAL_VAR2_*`);
+3. `SHADER_INIT`: which parameters load as textures, with which flags
+   (sRGB, normal map, cube);
+4. the snapshot (`SHADER_DRAW` under `SHADOW_STATE`): blend, depth write and
+   test, alpha test, vertex format, `IsTranslucent`/`IsAlphaTested`.
+
+Plan (agent decision, recorded so the slices stay bounded):
+
+- Data, not code: a table per shader under `render/material/` (one owner,
+  shared with the core's VMT importer, which already reads these keys),
+  generated once from the live shaders by an extraction tool that loads
+  `stdshader_dx9`, enumerates every shader and parameter through `IShader`,
+  and records 1 and the observable results of 2 to 4 over the Portal and
+  Portal 2 VMT corpus. Rules that the corpus does not cover stay as code in a
+  small rule set per family, each with a material-dump case.
+- One `IShader` implementation (`render.legacy-provider`'s built-in provider,
+  the `BuiltinShaderProvider` seam) serves every table row; mods' shader DLLs
+  keep loading through the same seam.
+- Oracle: `mat_dump_material_state` per view (19 census views) must stay
+  structurally identical, plus a whole-corpus dump (all 9,738 materials
+  loaded headless) compared field by field before and after; any difference
+  blocks the family's slice.
+- Order: families by material count in the corpus (unlit, lightmapped,
+  vertex-lit and skin, decals, refract and water, then the post and engine
+  shaders), each slice deleting its stdshaders sources when its dump matches.
