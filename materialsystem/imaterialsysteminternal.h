@@ -32,6 +32,11 @@ public:
 		MEM_ALLOC_CREDIT_( "CMatCallQueue.m_Allocator" );
 #ifdef SWDS
 		m_Allocator.Init( 2*1024, 0, 0, 16 );
+#elif defined( PLATFORM_3DS )
+		// The 3DS runs the material system unqueued (mat_queue_mode 0), so
+		// calls are never queued; with no virtual memory a stack is
+		// allocated whole (two of these were 2 MB of the heap).
+		m_Allocator.Init( 64*1024, 64*1024, 64*1024, 16 );
 #else
 		m_Allocator.Init(  8*1024*1024, 64*1024, 256*1024, 16 );
 #endif

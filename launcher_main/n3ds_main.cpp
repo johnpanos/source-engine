@@ -38,7 +38,7 @@ extern "C" u32 __ctru_linear_heap_size;
 // rings and the render core's buffers. With the model meshes here (they left
 // the main heap, about 10 MB in sp_a1_intro4), the intro4 demo keeps ~7.5 MB
 // of 26 free and the main heap ~14 MB of its 89 (2026-10-07).
-u32 __ctru_linear_heap_size = 26u * 1024u * 1024u;
+u32 __ctru_linear_heap_size = 21u * 1024u * 1024u;
 // The main thread's stack, which libctru's startup (stack_adjust.s) moves to
 // the heap: Source's frames (map loading, the material system) need far more
 // than the kernel's default stack.

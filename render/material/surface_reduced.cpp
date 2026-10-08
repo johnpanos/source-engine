@@ -97,11 +97,9 @@ struct Refused
 
 constexpr Refused kRefusedTerms[] = {
     { kSurfaceWater, "water (no refraction or reflection on the PICA200)" },
-    { kSurfaceTransmission, "transmission (no scene colour on the PICA200)" },
     { kSurfaceDepthNormal, "the depth-normal prepass (no such pass on the PICA200)" },
     { kSurfaceRsm, "reflective shadow maps" },
-    { kSurfaceSsrTargets, "screen-space reflection targets" },
-    { kSurfaceDepthOnly, "depth-only passes" } };
+    { kSurfaceSsrTargets, "screen-space reflection targets" } };
 
 } // namespace
 
@@ -127,8 +125,6 @@ ReducedPoint ReduceSurface( const SurfaceVariant &variant )
 		return refuse( "temporal history (no motion vectors on the PICA200)" );
 	if ( variant.energy )
 		return refuse( "the energy point (flow fields need a programmable fragment stage)" );
-	if ( variant.cable )
-		return refuse( "the cable point (ribbon shading needs a programmable fragment stage)" );
 	if ( variant.portalMask )
 		return refuse( "portal masks (the stencil portal path is not reduced yet)" );
 	if ( variant.instanced )
@@ -139,6 +135,10 @@ ReducedPoint ReduceSurface( const SurfaceVariant &variant )
 	for ( const Dropped &dropped : kDroppedTerms )
 		if ( variant.terms & dropped.term )
 			point.dropped.push_back( dropped.name );
+	// A cable keeps its texture and its captured vertex light (the vertex
+	// colour) and loses its ribbon shading (the bump map's round lighting).
+	if ( variant.cable )
+		point.dropped.push_back( "cable ribbon shading (the captured vertex light is kept)" );
 	// Foliage keeps its shape and loses its motion (the reduced vertex
 	// programs deform nothing).
 	if ( variant.treeSwayMode != 0 )
@@ -152,6 +152,23 @@ ReducedPoint ReduceSurface( const SurfaceVariant &variant )
 	{
 		f.alphaTest = pf::test::kGreaterEqual;
 		f.alphaReference = std::uint8_t( std::min<int>( variant.alphaTestReference, 255 ) );
+	}
+	// Transmission without a scene colour to read (RFC 0026): the pane at zero
+	// warp, which is the background times $refracttint (the full model's
+	// render.lab.transmission oracle). Half the tint through kModulate2x
+	// (2 src dst; ReducedPipeline), refraction and the tint texture dropped.
+	if ( variant.terms & kSurfaceTransmission )
+	{
+		point.dropped.push_back( "refraction (the pane is the background times its tint)" );
+		f.stages.push_back( FromMaterial(
+		    Stage( pf::source::kConstant, pf::source::kConstant, pf::combine::kReplace ),
+		    kReducedTintOffset ) );
+		pf::CombinerStage half =
+		    Stage( pf::source::kPrevious, pf::source::kConstant, pf::combine::kModulate );
+		half.constantColor = 0x80808080u;
+		f.stages.push_back( half );
+		point.vertex = ReducedVertex::kFlat;
+		return point;
 	}
 	// A modulating decal draws its factors unlit (the blend multiplies them).
 	if ( variant.decalModulate )
@@ -375,8 +392,9 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ReducedPipeline(
 	desc.topology = PrimitiveTopology::kTriangleList;
 	desc.raster.cull = variant.drawState.cull;
 	const bool depth = m_DepthFormat != Format::kUnknown && !variant.ignoreDepth;
-	desc.depthStencil = {
-	    depth, depth && variant.blend == BlendMode::kOpaque, CompareOp::kLessEqual };
+	const bool transmission = ( variant.terms & kSurfaceTransmission ) != 0;
+	desc.depthStencil = { depth, depth && variant.blend == BlendMode::kOpaque && !transmission,
+	    CompareOp::kLessEqual };
 	desc.depthStencil.stencil = variant.drawState.stencil;
 	if ( variant.drawState.overrideDepth )
 	{
@@ -386,10 +404,15 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::ReducedPipeline(
 		    variant.drawState.depthTest ? variant.drawState.depthCompare : CompareOp::kAlways;
 	}
 	const Format colors[] = { m_ColorFormat };
-	const BlendMode blends[] = { variant.blend };
-	const std::uint8_t writes[] = {
-	    std::uint8_t( ( variant.alphaWrite ? kColorWriteAll : kColorWriteAll & ~kColorWriteAlpha ) &
-	                  variant.drawState.colorWrite ) };
+	const BlendMode blends[] = { transmission ? BlendMode::kModulate2x : variant.blend };
+	// A depth-only pass (kSurfaceDepthOnly, WriteZ) writes no colour, as the
+	// full program's does.
+	const bool depthOnly = ( variant.terms & kSurfaceDepthOnly ) != 0;
+	const std::uint8_t writes[] = { depthOnly ? std::uint8_t( 0 )
+	                                          : std::uint8_t( ( variant.alphaWrite
+	                                                                  ? kColorWriteAll
+	                                                                  : kColorWriteAll & ~kColorWriteAlpha ) &
+	                                                variant.drawState.colorWrite ) };
 	desc.colorFormats = colors;
 	desc.blends = blends;
 	desc.colorWriteMasks = writes;

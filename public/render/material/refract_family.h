@@ -32,6 +32,12 @@ struct RefractClaim
 	bool local = false;
 	bool translucent = false;
 	bool ignoreDepth = false; // $ignorez
+	// No scene colour to read (a program without one, the reduced 3DS model):
+	// the pane at zero warp and the normal map unread. A screen-space pane is
+	// the background times its tint (the transmission term); a $localrefract
+	// pane its base texture unwarped (the base point, no transmission term).
+	// sceneColor is then false.
+	bool zeroWarp = false;
 	SurfaceConstants constants;
 
 	device::BlendMode Blend() const
@@ -45,7 +51,8 @@ struct RefractClaim
 	{
 		SurfaceVariant variant;
 		variant.layout = SurfaceVertexLayout::kModel;
-		variant.terms = kSurfacePbr | kSurfaceTransmission | kSurfaceBump;
+		variant.terms = zeroWarp && local ? kSurfacePbr
+		                                  : kSurfacePbr | kSurfaceTransmission | kSurfaceBump;
 		variant.blend = Blend();
 		variant.alphaWrite = false;
 		variant.ignoreDepth = ignoreDepth;
@@ -55,7 +62,8 @@ struct RefractClaim
 
 // Only the simple Refract_DX90 model point: one normal map, screen displacement,
 // tint, optional blur and an optional native reflection probe. The caller must
-// own a linear scene-color snapshot behind this draw.
+// own a linear scene-color snapshot behind this draw, or say it has none
+// (sceneColorAvailable false): the claim is then the zero-warp pane.
 RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable,
     bool usesNativeProbe, bool nativeReflectionProbes );
 

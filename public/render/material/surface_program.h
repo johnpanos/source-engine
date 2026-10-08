@@ -873,6 +873,9 @@ public:
 	// material constants and base texture, and the draw's lightmap page and
 	// model lighting; the group builders fill those alone.
 	bool Reduced() const { return m_Reduced; }
+	// Whether its points can read the view's scene colour (a refraction
+	// snapshot): not the reduced model's (the PICA200 has none).
+	bool ReadsSceneColor() const { return !m_Reduced; }
 
 private:
 	explicit SurfaceProgram( device::IRenderDevice2 &device ) : m_Device( device ) {}

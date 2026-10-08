@@ -634,6 +634,9 @@ struct WorldPass::State
 	// ReadsMeshStreams: set once the world resolver exists (render sequence),
 	// read by the frontend's handoff on any thread.
 	std::atomic<bool> meshStreams{ false };
+	// Whether the program reads the view's scene colour (refraction): false
+	// for the reduced model, once its resolver exists; true until then.
+	std::atomic<bool> sceneColor{ true };
 	std::span<const std::uint32_t> fragmentModule; // SetSurfaceFragmentModule
 	// The last screen output written on this sequence. Another camera or output
 	// invalidates reuse even when a format's own prepass textures still exist.
@@ -672,6 +675,7 @@ struct WorldPass::State
 		MappedMaterial material;
 		bool claimStage = false;
 		bool claimReflection = false;
+		bool claimSceneColor = true; // State::sceneColor when claimed
 		std::string claimError; // empty: claimed
 		bool requiresDepthAlpha = false;
 		// A claimed SpriteCard's card terms (render.sprite-card.v1).
@@ -982,7 +986,8 @@ void WorldPass::SetWorld( WorldData data )
 			// probes and clustered direct light instead of a lightmap page.
 			auto blend =
 			    source.mesh
-			        ? material::ClaimForMesh( claimed.desc, data.reflection.has_value(), true )
+			        ? material::ClaimForMesh( claimed.desc, data.reflection.has_value(),
+			              s.sceneColor.load( std::memory_order_relaxed ) )
 			        : material::ClaimForDrawing( claimed.desc, data.stage != nullptr, nullptr,
 			              data.reflection.has_value() );
 			if ( !blend )
@@ -1564,15 +1569,18 @@ std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
 		if ( auto at = mapped.find( key ); at != mapped.end() )
 			found = at->second;
 	}
-	if ( found && found->claimStage == stage && found->claimReflection == reflection )
+	const bool readsSceneColor = sceneColor.load( std::memory_order_relaxed );
+	if ( found && found->claimStage == stage && found->claimReflection == reflection &&
+	     found->claimSceneColor == readsSceneColor )
 		return found;
-	auto entry = std::make_shared<MappedEntry>( MappedEntry{
-	    found ? found->material : MapWorldMaterial( source ), stage, reflection, {}, false, {} } );
+	auto entry = std::make_shared<MappedEntry>( MappedEntry{ found ? found->material : MapWorldMaterial( source ),
+	    stage, reflection, readsSceneColor, {}, false, {} } );
 	if ( entry->material )
 	{
 		const material::MaterialDesc &desc = entry->material.Value().desc;
-		// Scene color is the target's (the composition's capture), on any map.
-		auto claim = source.mesh ? material::ClaimForMesh( desc, reflection, true )
+		// Scene color is the target's (the composition's capture), on any map
+		// whose program reads one (State::sceneColor).
+		auto claim = source.mesh ? material::ClaimForMesh( desc, reflection, readsSceneColor )
 		                         : material::ClaimForDrawing(
 		                               desc, stage, &entry->requiresDepthAlpha, reflection );
 		if ( !claim )
@@ -2354,6 +2362,7 @@ void WorldPass::RecordBatch(
 		}
 		r.resolver = std::move( resolver ).Value();
 		s.meshStreams.store( r.resolver->Program().Reduced(), std::memory_order_relaxed );
+		s.sceneColor.store( r.resolver->Program().ReadsSceneColor(), std::memory_order_relaxed );
 		prewarmResolver( *r.resolver, "world" );
 		// The resolver's points draw with the scene terms the stage supports,
 		// and none without one, as the model resolver's do: a plain map's
@@ -2362,7 +2371,7 @@ void WorldPass::RecordBatch(
 		// (ClaimForDrawing's worldPbr) asks for the stage itself.
 		r.resolver->SetWorldPbr(
 		    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
-		r.resolver->SetSceneColorAvailable( true );
+		r.resolver->SetSceneColorAvailable( r.resolver->Program().ReadsSceneColor() );
 		r.materials.resize( world->materials.size() );
 	}
 	if ( ( !view.staticInstances.empty() || !view.posedModels.empty() ) && !r.modelResolver )
@@ -2378,7 +2387,7 @@ void WorldPass::RecordBatch(
 		r.modelResolver = std::move( resolver ).Value();
 		r.modelResolver->SetWorldPbr(
 		    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
-		r.modelResolver->SetSceneColorAvailable( true );
+		r.modelResolver->SetSceneColorAvailable( r.modelResolver->Program().ReadsSceneColor() );
 		r.modelMaterials.resize( world->materials.size() );
 		prewarmResolver( *r.modelResolver, "model" );
 	}

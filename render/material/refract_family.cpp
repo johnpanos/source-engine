@@ -62,12 +62,14 @@ RefractClaim ClaimRefract( const ParameterBlock &block, bool sceneColorAvailable
 		return claim;
 	}
 	claim.sceneColor = !claim.baseTexture;
-	if ( claim.sceneColor && !sceneColorAvailable )
+	// Without a scene colour (or a screen to read the base texture at), every
+	// point is drawn at zero warp (RefractClaim::zeroWarp).
+	if ( !sceneColorAvailable )
 	{
-		claim.reason = "Refract needs the view's linear scene color";
-		return claim;
+		claim.sceneColor = false;
+		claim.zeroWarp = true;
 	}
-	if ( !detail::TextureBound( block, "normalmap" ) )
+	if ( !claim.zeroWarp && !detail::TextureBound( block, "normalmap" ) )
 	{
 		claim.reason = "Refract needs $normalmap";
 		return claim;

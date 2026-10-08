@@ -45,6 +45,7 @@
 #include "pica_renderer.h"
 #include "renderparm.h"
 #include "pixelwriter.h"
+#include "render/legacy/core_mesh_kind.h"
 #include "render/legacy/core_passes.h"
 #include "render/legacy/material_flag_keys.h"
 #include "itextureinternal.h"
@@ -132,13 +133,17 @@ public:
 	IMaterial* GetMaterial();
 
 	// A static prop's baked vertex lighting (studiorender binds it per draw):
-	// this backend draws it fullbright, and the draw stays off the render
-	// core's model point (RFC 0026 P3: model lighting is the dynamic models').
+	// its colour mesh's record colours from nVertexOffset, which the render
+	// core's baked vertex light point reads (EmitSurfaceToCore).
 	void SetColorMesh( IMesh *pColorMesh, int nVertexOffset )
 	{
 		m_bHasColorMesh = pColorMesh != NULL;
+		m_pColorMesh = static_cast<CEmptyMesh *>( pColorMesh );
+		m_nColorMeshOffset = nVertexOffset;
 	}
 	bool m_bHasColorMesh = false;
+	CEmptyMesh *m_pColorMesh = nullptr;
+	int m_nColorMeshOffset = 0;
 
 
 	virtual int IndexCount() const
@@ -182,8 +187,12 @@ private:
 	// RFC 0026 P3: a VertexLitGeneric draw handed to the render core's model
 	// point (reduced model lighting); false leaves it to this backend.
 	bool EmitToCore( int firstIndex, int indexCount );
-	void DumpDraw( const float *clip, const pica::DrawState &state, const char *textureName, int textureWidth, int textureHeight, const pica::Vertex *vertices,
-		const unsigned short *indices, int count ) const;
+	// Every other bound material's draw handed to its render core point
+	// (core_mesh_kind.h): world-space vertices built per draw, as the native
+	// Vulkan frontend's; false when the core refuses it.
+	bool EmitSurfaceToCore( int firstIndex, int indexCount, render::legacy::CoreMeshKind kind );
+	const std::vector<std::uint16_t> *CoreTriangleList( const CEmptyMesh &src, int firstIndex,
+		int indexCount, bool cacheable, std::vector<std::uint16_t> &triangles );
 
 	bool m_bIsDynamic;
 	// The triangles EmitToCore built from this mesh's contents (CoreCache), valid while
@@ -241,6 +250,12 @@ private:
 	// 2026-10-07).
 	float *m_pWideTexCoords = nullptr;
 	int m_nWideTexCoordCapacity = 0;
+	// Texture coordinate 1 of a dynamic mesh (a decal's or overlay's lightmap
+	// coordinates), every component of it (TexCoordSize( 1 ) per vertex, CPU
+	// memory): the record has no room, and the render core's lightmapped
+	// points read the first two (EmitSurfaceToCore's world vertices).
+	float *m_pTexCoord1 = nullptr;
+	int m_nTexCoord1Capacity = 0;
 	int m_nModifyFirstVertex = 0;
 	int m_nModifyVertexCount = 0;
 	bool WideTexCoords() const { return TexCoordSize( 0, m_Format ) > 2; }
@@ -324,6 +339,8 @@ CUtlVector<PicaSnapshot> g_Snapshots;
 CUtlVector<PicaTexture *> g_Textures; // index = handle - 1
 ShaderAPITextureHandle_t g_ModifyTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
 ShaderAPITextureHandle_t g_BoundTextures[16];
+// The lightmap page BindStandardTexture put on sampler 1 (else invalid).
+ShaderAPITextureHandle_t g_BoundLightmap = INVALID_SHADERAPI_TEXTURE_HANDLE;
 IMaterialInternal *g_pBoundMaterial = NULL;
 // Model lighting as studiorender sets it (SetAmbientLightCube, SetLight): the
 // render core's model point reads it at each draw (RFC 0026 P3).
@@ -337,10 +354,8 @@ int g_CurrentSnapshot = -1;
 bool g_bDrawingToBackBuffer = true;
 // R in the low byte, A in the high one (pica::Clear's rgba).
 unsigned int g_ClearColor = 0xFF000000;
-// The presented frame number, and the frame whose draws are listed
-// (-pica_dump_draws <frame>; each draw's material, size, texture and NDC bounds).
+// The presented frame number.
 int g_PicaFrame = 0;
-int g_PicaDumpFrame = -1;
 ShaderViewport_t g_Viewport;
 Matrix4 g_Stacks[kStackCount][kStackDepth];
 int g_StackTop[kStackCount];
@@ -409,6 +424,8 @@ struct DrawPathCounters
 	unsigned overrunDraws = 0;   // refused: a count past the mesh's buffer
 	unsigned wideTexCoordLocks = 0; // locks of a 3- or 4-component texcoord 0
 	unsigned coreMeshDraws = 0;  // model draws the render core took (EmitToCore)
+	unsigned errorMaterialDraws = 0; // draws with the error material, dropped
+	unsigned refusedDraws = 0;   // draws the render core refused, dropped
 };
 // Texture path counters since startup.
 struct TexturePathCounters
@@ -845,7 +862,6 @@ public:
 		}
 		// A capture the boot harness asks for: -pica_capture <frame> <path>.
 		static int s_captureFrame = CommandLine()->ParmValue( "-pica_capture", -1 );
-		g_PicaDumpFrame = CommandLine()->ParmValue( "-pica_dump_draws", -1 );
 		const int s_frame = ++g_PicaFrame;
 		if ( s_frame == s_captureFrame + 1 )
 		{
@@ -866,20 +882,20 @@ public:
 				(unsigned)( linearSpaceFree() / 1024 ) );
 		}
 		if ( s_frame % 120 == 1 )
-			printf( "pica: frame %d draws %u triangles %u textures %u KB meshes %u KB rings %u/%u KB ring overflows %u blend refusals %u submits %u | "
-				"mesh draws %u primlist %u empty %u material %u passes %u target skips %u clears %u overrun draws %u wide texcoords %u core meshes %u\n", s_frame,
-				(unsigned)stats.draws, (unsigned)stats.triangles, (unsigned)( stats.textureBytes / 1024 ), (unsigned)( stats.meshBytes / 1024 ), (unsigned)( stats.ringPeak[0] / 1024 ), (unsigned)( stats.ringPeak[1] / 1024 ),
-				(unsigned)stats.ringOverflows, (unsigned)stats.blendRefusals, (unsigned)stats.submits, g_Counters.meshDraws, g_Counters.primListDraws,
+			printf( "pica: frame %d textures %u KB meshes %u KB submits %u | "
+				"mesh draws %u primlist %u empty %u material %u passes %u target skips %u clears %u overrun draws %u wide texcoords %u core meshes %u refused %u error material %u\n", s_frame,
+				(unsigned)( stats.textureBytes / 1024 ), (unsigned)( stats.meshBytes / 1024 ),
+				(unsigned)stats.submits, g_Counters.meshDraws, g_Counters.primListDraws,
 				g_Counters.primListEmpty, g_Counters.materialDraws,
-				g_Counters.renderPasses, g_Counters.targetSkips, g_Counters.clears, g_Counters.overrunDraws, g_Counters.wideTexCoordLocks, g_Counters.coreMeshDraws );
+				g_Counters.renderPasses, g_Counters.targetSkips, g_Counters.clears, g_Counters.overrunDraws, g_Counters.wideTexCoordLocks, g_Counters.coreMeshDraws,
+				g_Counters.refusedDraws, g_Counters.errorMaterialDraws );
 		if ( s_frame % 120 == 1 )
 			printf( "pica: textures: images %u rejected %u convert failed %u uploads %u failed %u "
 				"corrupted %u\n",
 				g_TextureCounters.images, g_TextureCounters.rejected, g_TextureCounters.convertFailed,
 				g_TextureCounters.uploads, g_TextureCounters.uploadFailed, g_TextureCounters.corrupted );
-		if ( s_frame % 120 == 1 && ( stats.targetSwitches || stats.feedbackRefusals ) )
-			printf( "pica: frame %d target switches %u feedback refusals %u\n", s_frame,
-				(unsigned)stats.targetSwitches, (unsigned)stats.feedbackRefusals );
+		if ( s_frame % 120 == 1 && stats.targetSwitches )
+			printf( "pica: frame %d target switches %u\n", s_frame, (unsigned)stats.targetSwitches );
 		g_Counters = DrawPathCounters();
 	}
 	virtual bool AddView( void* hwnd );
@@ -1534,6 +1550,11 @@ public:
 	{
 		// The material system binds its own texture (lightmap, white, ...).
 		ShaderUtil()->BindStandardTexture( stage, id );
+		// A lightmap page on sampler 1 is what a lightmapped surface's core
+		// draw reads (CoreMeshDraw::lightmapPage); BindTexture clears it.
+		if ( stage == SHADER_SAMPLER1 && ( id == TEXTURE_LIGHTMAP || id == TEXTURE_LIGHTMAP_BUMPED ||
+			id == TEXTURE_LIGHTMAP_FULLBRIGHT || id == TEXTURE_LIGHTMAP_BUMPED_FULLBRIGHT ) )
+			g_BoundLightmap = g_BoundTextures[1];
 	}
 
 	virtual void BindStandardVertexTexture( VertexTextureSampler_t stage, StandardTextureId_t id )
@@ -2324,6 +2345,7 @@ CEmptyMesh::~CEmptyMesh()
 	delete[] m_pWideTexCoords;
 	FreeStorage( m_pNormals );
 	FreeStorage( m_pSkinSlots );
+	delete[] m_pTexCoord1;
 }
 
 bool CEmptyMesh::EnsureWideTexCoords()
@@ -2513,6 +2535,13 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 		desc.m_pTexCoord[0] = base->uv;
 		desc.m_VertexSize_TexCoord[0] = stride;
 	}
+	if ( m_pTexCoord1 && first + nVertexCount <= m_nTexCoord1Capacity )
+	{
+		const int size = TexCoordSize( 1, m_Format );
+		memset( m_pTexCoord1 + first * size, 0, nVertexCount * size * sizeof( float ) );
+		desc.m_pTexCoord[1] = m_pTexCoord1 + first * size;
+		desc.m_VertexSize_TexCoord[1] = size * sizeof( float );
+	}
 	if ( skinned )
 	{
 		memset( m_pBoneWeights + first * 2, 0, nVertexCount * 2 * sizeof( float ) );
@@ -2593,6 +2622,12 @@ void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, i
 		{
 			vdesc.m_pNormal = m_pNormals + firstVertex * 3;
 			vdesc.m_VertexSize_Normal = 3 * sizeof( float );
+		}
+		if ( m_pTexCoord1 && firstVertex + numVerts <= m_nTexCoord1Capacity )
+		{
+			const int size = TexCoordSize( 1, m_Format );
+			vdesc.m_pTexCoord[1] = m_pTexCoord1 + firstVertex * size;
+			vdesc.m_VertexSize_TexCoord[1] = size * sizeof( float );
 		}
 		if ( WideTexCoords() && EnsureWideTexCoords() )
 		{
@@ -2742,6 +2777,20 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 		FreeStorage( m_pNormals );
 		m_pNormals = normals;
 		m_nNormalCapacity = capacity;
+	}
+	// Dynamic meshes only (decals, overlays): the static world meshes'
+	// copy would be megabytes the core never reads (it draws the world
+	// from the map's own data).
+	if ( m_bIsDynamic && TexCoordSize( 1, m_Format ) >= 2 )
+	{
+		const int size = TexCoordSize( 1, m_Format );
+		float *coords = new float[capacity * size];
+		memset( coords, 0, capacity * size * sizeof( float ) );
+		if ( m_pTexCoord1 )
+			memcpy( coords, m_pTexCoord1, m_nTexCoord1Capacity * size * sizeof( float ) );
+		delete[] m_pTexCoord1;
+		m_pTexCoord1 = coords;
+		m_nTexCoord1Capacity = capacity;
 	}
 	return true;
 }
@@ -2936,6 +2985,106 @@ const MaterialVariables &VariablesFor( IMaterialInternal *material )
 
 } // namespace
 
+// The range's triangles for the render core: counterclockwise (legacy
+// meshes face clockwise) and 16-bit (meshes are at most 65535 vertices, and
+// the PICA200 reads 16-bit indices as they are). A static mesh's come from its
+// cache (CoreCache); else they are built into `triangles`. Null for a range
+// with no valid triangle.
+const std::vector<std::uint16_t> *CEmptyMesh::CoreTriangleList( const CEmptyMesh &src, int firstIndex,
+	int indexCount, bool cacheable, std::vector<std::uint16_t> &triangles )
+{
+	// Triangles, counterclockwise for the core (legacy meshes face clockwise).
+	// 16-bit: the mesh is at most 65535 vertices (checked above), and the
+	// PICA200 reads 16-bit indices as they are (CoreMeshDraw::indices16).
+	const std::vector<std::uint16_t> *drawTriangles = nullptr;
+	if ( cacheable )
+	{
+		CoreCache &cache = *m_pCoreCache;
+		if ( cache.triangleRevision != m_nContentRevision )
+		{
+			cache.triangles.clear();
+			cache.triangleRevision = m_nContentRevision;
+			cache.Account();
+		}
+		for ( std::size_t i = 0; i < cache.triangles.size(); ++i )
+		{
+			CoreTriangles &t = cache.triangles[i];
+			if ( t.first != firstIndex || t.count != indexCount )
+				continue;
+			if ( t.source == &src && t.sourceRevision == src.m_nContentRevision )
+				drawTriangles = &t.indices;
+			else
+			{
+				cache.triangles.erase( cache.triangles.begin() + i );
+				cache.Account();
+			}
+			break;
+		}
+	}
+	if ( !drawTriangles )
+	{
+		const bool indexed = m_nIndices > 0 && indexCount > 0;
+		const int count = indexed ? ( firstIndex + indexCount <= m_nIndices ? indexCount : 0 ) : src.m_nVertices;
+		auto element = [&]( int i ) { return indexed ? int( m_pIndices[firstIndex + i] ) : i; };
+		triangles.reserve( size_t( count > 0 ? count : 0 ) * 3 );
+		bool valid = count > 0;
+		auto triangle = [&]( int a, int b, int c )
+		{
+			if ( a < 0 || b < 0 || c < 0 || a >= src.m_nVertices || b >= src.m_nVertices || c >= src.m_nVertices )
+			{
+				valid = false;
+				return;
+			}
+			if ( a != b && b != c && a != c )
+			{
+				triangles.push_back( std::uint16_t( a ) );
+				triangles.push_back( std::uint16_t( c ) );
+				triangles.push_back( std::uint16_t( b ) );
+			}
+		};
+		if ( m_Type == MATERIAL_TRIANGLES )
+		{
+			if ( count % 3 )
+				return nullptr;
+			for ( int i = 0; i < count; i += 3 )
+				triangle( element( i ), element( i + 1 ), element( i + 2 ) );
+		}
+		else if ( m_Type == MATERIAL_TRIANGLE_STRIP )
+		{
+			for ( int i = 0; i + 2 < count; ++i )
+				triangle( element( i + ( i & 1 ) ), element( i + 1 - ( i & 1 ) ), element( i + 2 ) );
+		}
+		else if ( m_Type == MATERIAL_QUADS || m_Type == MATERIAL_INSTANCED_QUADS )
+		{
+			// Two triangles a quad (VGUI's and the sprites' meshes).
+			for ( int i = 0; i + 3 < count; i += 4 )
+			{
+				triangle( element( i ), element( i + 1 ), element( i + 2 ) );
+				triangle( element( i ), element( i + 2 ), element( i + 3 ) );
+			}
+		}
+		else if ( m_Type == MATERIAL_POLYGON )
+		{
+			for ( int i = 1; i + 1 < count; ++i )
+				triangle( element( 0 ), element( i ), element( i + 1 ) );
+		}
+		else
+			return nullptr;
+		if ( !valid || triangles.empty() )
+			return nullptr;
+		drawTriangles = &triangles;
+		if ( cacheable && CoreCacheRoom( triangles.size() * sizeof( std::uint16_t ) ) )
+		{
+			triangles.shrink_to_fit();
+			m_pCoreCache->triangles.push_back(
+				CoreTriangles{ firstIndex, indexCount, &src, src.m_nContentRevision, std::move( triangles ) } );
+			m_pCoreCache->Account();
+			drawTriangles = &m_pCoreCache->triangles.back().indices;
+		}
+	}
+	return drawTriangles;
+}
+
 // The palette slots of this mesh's skinned vertices (m_pSkinSlots): each
 // bone a vertex weighs, in first-use order, gets a slot of the GPU-skinning
 // palette (at most kMaxReducedBones); a bone without weight or out of range
@@ -2989,6 +3138,93 @@ bool CEmptyMesh::SkinSlots()
 	return count > 0;
 }
 
+// Source's model lighting at the draw (studiorender's SetAmbientLightCube
+// and SetLight) for the core's mesh point.
+static void FillModelLighting( render::legacy::CoreMeshDraw &draw )
+{
+	draw.modelLighting = true;
+	memcpy( draw.ambientCube, g_AmbientCube, sizeof( draw.ambientCube ) );
+	for ( int i = 0; i < kPicaMaxLights && draw.lightCount < render::material::kMaxModelLights; ++i )
+	{
+		const LightDesc_t &desc = g_Lights[i];
+		if ( desc.m_Type == MATERIAL_LIGHT_DISABLE )
+			continue;
+		render::material::ModelLightDesc &light = draw.lights[draw.lightCount++];
+		light.type = desc.m_Type == MATERIAL_LIGHT_SPOT ? render::material::ModelLightType::kSpot
+			: desc.m_Type == MATERIAL_LIGHT_DIRECTIONAL ? render::material::ModelLightType::kDirectional
+			: render::material::ModelLightType::kPoint;
+		light.color[0] = desc.m_Color.x;
+		light.color[1] = desc.m_Color.y;
+		light.color[2] = desc.m_Color.z;
+		light.position[0] = desc.m_Position.x;
+		light.position[1] = desc.m_Position.y;
+		light.position[2] = desc.m_Position.z;
+		light.direction[0] = desc.m_Direction.x;
+		light.direction[1] = desc.m_Direction.y;
+		light.direction[2] = desc.m_Direction.z;
+		light.attenuation[0] = desc.m_Attenuation0;
+		light.attenuation[1] = desc.m_Attenuation1;
+		light.attenuation[2] = desc.m_Attenuation2;
+		light.theta = desc.m_Theta;
+		light.phi = desc.m_Phi;
+		light.falloff = desc.m_Falloff;
+	}
+}
+
+// A core draw's view (RFC 0026): the material system's matrices as the
+// core's row-major, column-vector ones (FamilyDrawConstants: the transposes
+// of the stacks' row-vector matrices) and the current viewport.
+static void FillCoreView( render::legacy::CoreMeshDraw &draw, const float *model )
+{
+	float viewProj[16];
+	Mul( Top( kStackView ), Top( kStackProjection ), viewProj );
+	const float *view = Top( kStackView );
+	const float *projection = Top( kStackProjection );
+	for ( int row = 0; row < 4; ++row )
+		for ( int col = 0; col < 4; ++col )
+		{
+			draw.toClip[row * 4 + col] = viewProj[col * 4 + row];
+			draw.worldToView[row * 4 + col] = view[col * 4 + row];
+			draw.viewToClip[row * 4 + col] = projection[col * 4 + row];
+			draw.modelToWorld[row * 4 + col] = model[col * 4 + row];
+		}
+	int vx = 0, vy = 0, vw = pica::kScreenWidth, vh = pica::kScreenHeight;
+	ShaderViewport_t viewport;
+	g_ShaderAPIEmpty.GetViewports( &viewport, 1 );
+	if ( viewport.m_nWidth > 0 && viewport.m_nHeight > 0 )
+	{
+		vx = viewport.m_nTopLeftX;
+		vy = viewport.m_nTopLeftY;
+		vw = viewport.m_nWidth;
+		vh = viewport.m_nHeight;
+	}
+	draw.viewport = { float( vx ), float( vy ), float( vw ), float( vh ), 0.0f, 1.0f };
+}
+
+// Queues a core draw at this point of the stream (its slot). The core holds
+// each draw's geometry until the recording that reads it is submitted: past
+// 1.5 MB or 64 draws, submit and go on, so a frame of draws never holds the
+// 3DS's memory at once. False when the core refused it.
+static bool QueueCore( const render::legacy::CoreMeshDraw &draw, std::size_t geometryBytes )
+{
+	const std::uint32_t tag = g_CorePassRecorder->QueueMesh( draw );
+	if ( !tag )
+		return false;
+	g_PicaCorePassSlots.MarkSlot( tag );
+	// Each queued draw is also a queued view of the core's (tens of KB of
+	// heap until recorded): a frame of many draws flushes by count too.
+	static std::size_t s_pendingBytes = 0;
+	static unsigned s_pendingDraws = 0;
+	s_pendingBytes += geometryBytes;
+	if ( s_pendingBytes > ( 3u << 19 ) || ++s_pendingDraws >= 64 )
+	{
+		pica::FlushRecording();
+		s_pendingBytes = 0;
+		s_pendingDraws = 0;
+	}
+	return true;
+}
+
 bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 {
 	static unsigned s_reasons = 0;
@@ -3030,82 +3266,11 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	if ( cacheable && !m_pCoreCache )
 		m_pCoreCache = std::make_unique<CoreCache>();
 
-	// Triangles, counterclockwise for the core (legacy meshes face clockwise).
-	// 16-bit: the mesh is at most 65535 vertices (checked above), and the
-	// PICA200 reads 16-bit indices as they are (CoreMeshDraw::indices16).
 	std::vector<std::uint16_t> triangles;
-	const std::vector<std::uint16_t> *drawTriangles = nullptr;
-	if ( cacheable )
-	{
-		CoreCache &cache = *m_pCoreCache;
-		if ( cache.triangleRevision != m_nContentRevision )
-		{
-			cache.triangles.clear();
-			cache.triangleRevision = m_nContentRevision;
-			cache.Account();
-		}
-		for ( std::size_t i = 0; i < cache.triangles.size(); ++i )
-		{
-			CoreTriangles &t = cache.triangles[i];
-			if ( t.first != firstIndex || t.count != indexCount )
-				continue;
-			if ( t.source == &src && t.sourceRevision == src.m_nContentRevision )
-				drawTriangles = &t.indices;
-			else
-			{
-				cache.triangles.erase( cache.triangles.begin() + i );
-				cache.Account();
-			}
-			break;
-		}
-	}
+	const std::vector<std::uint16_t> *drawTriangles =
+		CoreTriangleList( src, firstIndex, indexCount, cacheable, triangles );
 	if ( !drawTriangles )
-	{
-		const bool indexed = m_nIndices > 0 && indexCount > 0;
-		const int count = indexed ? ( firstIndex + indexCount <= m_nIndices ? indexCount : 0 ) : src.m_nVertices;
-		auto element = [&]( int i ) { return indexed ? int( m_pIndices[firstIndex + i] ) : i; };
-		triangles.reserve( size_t( count > 0 ? count : 0 ) * 3 );
-		bool valid = count > 0;
-		auto triangle = [&]( int a, int b, int c )
-		{
-			if ( a < 0 || b < 0 || c < 0 || a >= src.m_nVertices || b >= src.m_nVertices || c >= src.m_nVertices )
-			{
-				valid = false;
-				return;
-			}
-			if ( a != b && b != c && a != c )
-			{
-				triangles.push_back( std::uint16_t( a ) );
-				triangles.push_back( std::uint16_t( c ) );
-				triangles.push_back( std::uint16_t( b ) );
-			}
-		};
-		if ( m_Type == MATERIAL_TRIANGLES )
-		{
-			if ( count % 3 )
-				return false;
-			for ( int i = 0; i < count; i += 3 )
-				triangle( element( i ), element( i + 1 ), element( i + 2 ) );
-		}
-		else if ( m_Type == MATERIAL_TRIANGLE_STRIP )
-		{
-			for ( int i = 0; i + 2 < count; ++i )
-				triangle( element( i + ( i & 1 ) ), element( i + 1 - ( i & 1 ) ), element( i + 2 ) );
-		}
-		else
-			return false;
-		if ( !valid || triangles.empty() )
-			return false;
-		drawTriangles = &triangles;
-		if ( cacheable && CoreCacheRoom( triangles.size() * sizeof( std::uint16_t ) ) )
-		{
-			triangles.shrink_to_fit();
-			m_pCoreCache->triangles.push_back(
-				CoreTriangles{ firstIndex, indexCount, &src, src.m_nContentRevision, std::move( triangles ) } );
-			m_pCoreCache->Account();
-			drawTriangles = &m_pCoreCache->triangles.back().indices;
-		}
-	}
+		return false;
 
 	// World-space positions and normals: skinned by the bones, else by the model.
 	const bool skinned = src.m_pBoneWeights && g_MaxBone > 0;
@@ -3295,58 +3460,8 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	draw.indices16 = drawTriangles->data();
 	draw.indexCount = std::uint32_t( drawTriangles->size() );
 	draw.mesh = true;
-	draw.modelLighting = true;
-	memcpy( draw.ambientCube, g_AmbientCube, sizeof( draw.ambientCube ) );
-	for ( int i = 0; i < kPicaMaxLights && draw.lightCount < render::material::kMaxModelLights; ++i )
-	{
-		const LightDesc_t &desc = g_Lights[i];
-		if ( desc.m_Type == MATERIAL_LIGHT_DISABLE )
-			continue;
-		render::material::ModelLightDesc &light = draw.lights[draw.lightCount++];
-		light.type = desc.m_Type == MATERIAL_LIGHT_SPOT ? render::material::ModelLightType::kSpot
-			: desc.m_Type == MATERIAL_LIGHT_DIRECTIONAL ? render::material::ModelLightType::kDirectional
-			: render::material::ModelLightType::kPoint;
-		light.color[0] = desc.m_Color.x;
-		light.color[1] = desc.m_Color.y;
-		light.color[2] = desc.m_Color.z;
-		light.position[0] = desc.m_Position.x;
-		light.position[1] = desc.m_Position.y;
-		light.position[2] = desc.m_Position.z;
-		light.direction[0] = desc.m_Direction.x;
-		light.direction[1] = desc.m_Direction.y;
-		light.direction[2] = desc.m_Direction.z;
-		light.attenuation[0] = desc.m_Attenuation0;
-		light.attenuation[1] = desc.m_Attenuation1;
-		light.attenuation[2] = desc.m_Attenuation2;
-		light.theta = desc.m_Theta;
-		light.phi = desc.m_Phi;
-		light.falloff = desc.m_Falloff;
-	}
-	// Row-major, column vectors (FamilyDrawConstants): the transposes of the
-	// stacks' row-vector matrices; positions are already world space.
-	float viewProj[16];
-	Mul( Top( kStackView ), Top( kStackProjection ), viewProj );
-	const float *view = Top( kStackView );
-	const float *projection = Top( kStackProjection );
-	for ( int row = 0; row < 4; ++row )
-		for ( int col = 0; col < 4; ++col )
-		{
-			draw.toClip[row * 4 + col] = viewProj[col * 4 + row];
-			draw.worldToView[row * 4 + col] = view[col * 4 + row];
-			draw.viewToClip[row * 4 + col] = projection[col * 4 + row];
-			draw.modelToWorld[row * 4 + col] = model[col * 4 + row];
-		}
-	int vx = 0, vy = 0, vw = pica::kScreenWidth, vh = pica::kScreenHeight;
-	ShaderViewport_t viewport;
-	g_ShaderAPIEmpty.GetViewports( &viewport, 1 );
-	if ( viewport.m_nWidth > 0 && viewport.m_nHeight > 0 )
-	{
-		vx = viewport.m_nTopLeftX;
-		vy = viewport.m_nTopLeftY;
-		vw = viewport.m_nWidth;
-		vh = viewport.m_nHeight;
-	}
-	draw.viewport = { float( vx ), float( vy ), float( vw ), float( vh ), 0.0f, 1.0f };
+	FillModelLighting( draw );
+	FillCoreView( draw, model );
 	// The core takes the arrays (no copy); their sizes are counted first.
 	// Cached triangles are lent (the core copies them); built ones are taken.
 	const std::size_t geometryBytes = vertices.size() * sizeof( render::material::SurfaceWorldVertex ) +
@@ -3355,20 +3470,8 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		draw.takeVertices = &vertices;
 	if ( drawTriangles == &triangles )
 		draw.takeIndices16 = &triangles;
-	const std::uint32_t tag = g_CorePassRecorder->QueueMesh( draw );
-	if ( !tag )
+	if ( !QueueCore( draw, geometryBytes ) )
 		return skip( 4, "QueueMesh refused it" );
-	g_PicaCorePassSlots.MarkSlot( tag );
-	// The core holds each model draw's geometry (72 bytes a vertex) until the
-	// recording that reads it is submitted: past 1.5 MB, submit and go on, so
-	// a frame of models never holds the 3DS's linear memory at once.
-	static std::size_t s_pendingBytes = 0;
-	s_pendingBytes += geometryBytes;
-	if ( s_pendingBytes > ( 3u << 19 ) )
-	{
-		pica::FlushRecording();
-		s_pendingBytes = 0;
-	}
 	static unsigned s_taken = 0;
 	if ( ++s_taken % 50 == 0 && s_taken <= 2000 )
 	{
@@ -3377,6 +3480,151 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 			(unsigned)( heap.uordblks / 1024 ), g_PicaFrame );
 	}
 	return true;
+}
+
+bool CEmptyMesh::EmitSurfaceToCore( int firstIndex, int indexCount, render::legacy::CoreMeshKind kind )
+{
+	using render::legacy::CoreMeshKind;
+	if ( !g_CorePassRecorder || !g_pBoundMaterial || !g_CorePassRecorder->AcceptsMeshes() )
+		return false;
+	const CEmptyMesh &src = m_pVertexSource ? *m_pVertexSource : *this;
+	if ( !src.m_pVertices || src.m_nVertices <= 0 || src.m_nVertices > 0xFFFF || indexCount > 3 * 0xFFFF )
+		return false;
+	const bool cacheable = !m_bIsDynamic && !src.m_bIsDynamic;
+	if ( cacheable && !m_pCoreCache )
+		m_pCoreCache = std::make_unique<CoreCache>();
+	std::vector<std::uint16_t> triangles;
+	const std::vector<std::uint16_t> *drawTriangles =
+		CoreTriangleList( src, firstIndex, indexCount, cacheable, triangles );
+	if ( !drawTriangles )
+		return false;
+
+	// Only the vertices the range uses (a world mesh's shared source holds up
+	// to 65535 of them): [first, last], the triangles rebased onto it.
+	int first = 0xFFFF, last = 0;
+	for ( std::uint16_t index : *drawTriangles )
+	{
+		first = std::min<int>( first, index );
+		last = std::max<int>( last, index );
+	}
+	if ( first > 0 )
+	{
+		if ( drawTriangles != &triangles )
+			triangles = *drawTriangles;
+		for ( std::uint16_t &index : triangles )
+			index = std::uint16_t( index - first );
+		drawTriangles = &triangles;
+	}
+
+	// World space, as the core's dynamic draws are: skinned by the bones,
+	// else by the model matrix (row vectors, D3D).
+	const float *model = Top( kStackModel );
+	const bool skinned = src.m_pBoneWeights && g_MaxBone > 0;
+	const bool normals = src.m_pNormals && src.m_nVertices <= src.m_nNormalCapacity;
+	const bool lightmapUv = src.m_pTexCoord1 && src.m_nVertices <= src.m_nTexCoord1Capacity;
+	const int lightmapStride = lightmapUv ? TexCoordSize( 1, src.m_Format ) : 0;
+	const CEmptyMesh *colors = m_pColorMesh && m_pColorMesh->m_pVertices &&
+			m_nColorMeshOffset + src.m_nVertices <= m_pColorMesh->m_nVertices
+		? m_pColorMesh
+		: nullptr;
+	std::vector<render::material::SurfaceWorldVertex> vertices;
+	vertices.reserve( last - first + 1 );
+	for ( int i = first; i <= last; ++i )
+	{
+		const pica::Vertex &in = src.m_pVertices[i];
+		const float zero[3] = { 0.0f, 0.0f, 1.0f };
+		const float *n = normals ? src.m_pNormals + i * 3 : zero;
+		float pos[3] = { 0, 0, 0 }, normal[3] = { 0, 0, 0 };
+		if ( skinned )
+		{
+			const float *w = src.m_pBoneWeights + i * 2;
+			const unsigned char *b = src.m_pBoneIndices + i * 4;
+			const float weights[3] = { w[0], w[1], 1.0f - w[0] - w[1] };
+			for ( int k = 0; k < 3; ++k )
+			{
+				if ( weights[k] <= 0.0f || b[k] >= kMaxBones )
+					continue;
+				const float *m = g_Bones[b[k]];
+				for ( int r = 0; r < 3; ++r )
+				{
+					pos[r] += weights[k] * ( m[r * 4] * in.pos[0] + m[r * 4 + 1] * in.pos[1] + m[r * 4 + 2] * in.pos[2] + m[r * 4 + 3] );
+					normal[r] += weights[k] * ( m[r * 4] * n[0] + m[r * 4 + 1] * n[1] + m[r * 4 + 2] * n[2] );
+				}
+			}
+		}
+		else
+		{
+			for ( int j = 0; j < 3; ++j )
+			{
+				pos[j] = in.pos[0] * model[j] + in.pos[1] * model[4 + j] + in.pos[2] * model[8 + j] + model[12 + j];
+				normal[j] = n[0] * model[j] + n[1] * model[4 + j] + n[2] * model[8 + j];
+			}
+		}
+		const float length = sqrtf( normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2] );
+		const std::uint8_t *c = colors ? colors->m_pVertices[m_nColorMeshOffset + i].color : in.color;
+		render::material::SurfaceWorldVertex out;
+		for ( int j = 0; j < 3; ++j )
+		{
+			out.position[j] = pos[j];
+			out.normal[j] = length > 0.0f ? normal[j] / length : ( j == 2 ? 1.0f : 0.0f );
+		}
+		out.uv[0] = in.uv[0];
+		out.uv[1] = in.uv[1];
+		if ( lightmapUv )
+		{
+			out.lightmapUv[0] = src.m_pTexCoord1[i * lightmapStride];
+			out.lightmapUv[1] = src.m_pTexCoord1[i * lightmapStride + 1];
+		}
+		// The record's colour is B G R A.
+		out.color[0] = c[2];
+		out.color[1] = c[1];
+		out.color[2] = c[0];
+		out.color[3] = c[3];
+		vertices.push_back( out );
+	}
+
+	const MaterialVariables &material = VariablesFor( g_pBoundMaterial );
+	render::legacy::CoreMeshDraw draw;
+	draw.kind = kind;
+	draw.name = g_pBoundMaterial->GetName();
+	draw.shader = g_pBoundMaterial->GetShaderName();
+	draw.variables = material.variables.data();
+	draw.variableCount = std::uint32_t( material.variables.size() );
+	draw.materialRevision = material.revision;
+	draw.vertices = vertices.data();
+	draw.vertexCount = std::uint32_t( vertices.size() );
+	draw.indices16 = drawTriangles->data();
+	draw.indexCount = std::uint32_t( drawTriangles->size() );
+	// The model and refraction points are the mesh points (CoreMeshDraw::mesh);
+	// a model surface reads Source's model lighting or its baked colours.
+	const bool modelSurface = kind == CoreMeshKind::kModelSurface;
+	draw.mesh = modelSurface || kind == CoreMeshKind::kTransmission;
+	draw.staticVertexLighting = modelSurface && colors;
+	if ( modelSurface && !colors )
+		FillModelLighting( draw );
+	if ( g_BoundLightmap != INVALID_SHADERAPI_TEXTURE_HANDLE && lightmapUv )
+	{
+		draw.lightmapPage = int( g_BoundLightmap );
+		draw.capturedLightmap = true;
+	}
+	static const float kIdentity[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	FillCoreView( draw, kIdentity );
+	const std::size_t geometryBytes = vertices.size() * sizeof( vertices[0] ) +
+		drawTriangles->size() * sizeof( std::uint16_t );
+	draw.takeVertices = &vertices;
+	if ( drawTriangles == &triangles )
+		draw.takeIndices16 = &triangles;
+	if ( QueueCore( draw, geometryBytes ) )
+		return true;
+	// Each refused shader named once.
+	static std::unordered_map<std::string, bool> s_refused;
+	std::string key = std::string( draw.shader ) + " " + draw.name;
+	if ( !s_refused[key] )
+	{
+		s_refused[key] = true;
+		printf( "pica: the core refused a %s draw (%s)\n", draw.shader, draw.name );
+	}
+	return false;
 }
 
 void CEmptyMesh::DrawRange( int firstIndex, int indexCount )
@@ -3389,170 +3637,36 @@ void CEmptyMesh::DrawRange( int firstIndex, int indexCount )
 		++g_Counters.overrunDraws;
 		return;
 	}
-	if ( EmitToCore( firstIndex, indexCount ) )
+	// Every draw goes to its render core point (core_mesh_kind.h): model
+	// surfaces through EmitToCore (the frontend's buffers read in place),
+	// everything else with world-space vertices.
+	// The error material stands in for a material or model the content lacks:
+	// nothing draws it (named once per shader API).
+	if ( g_pBoundMaterial && g_pBoundMaterial->IsErrorMaterial() )
+	{
+		static bool s_said = false;
+		if ( !s_said )
+		{
+			s_said = true;
+			printf( "pica: draws with the error material (missing content) are dropped\n" );
+		}
+		++g_Counters.errorMaterialDraws;
+		return;
+	}
+	const render::legacy::CoreMeshKind kind = g_pBoundMaterial
+		? render::legacy::CoreMeshKindFor( g_pBoundMaterial )
+		: render::legacy::CoreMeshKind::kSurface;
+	if ( ( kind == render::legacy::CoreMeshKind::kModelSurface && EmitToCore( firstIndex, indexCount ) ) ||
+		EmitSurfaceToCore( firstIndex, indexCount, kind ) )
 	{
 		++g_Counters.coreMeshDraws;
 		return;
 	}
-	pica::Primitive primitive = pica::Primitive::kTriangles;
-	switch ( m_Type )
-	{
-	case MATERIAL_TRIANGLES:
-	case MATERIAL_QUADS:
-	case MATERIAL_POLYGON:
-	case MATERIAL_INSTANCED_QUADS:
-		break;
-	case MATERIAL_TRIANGLE_STRIP:
-		primitive = pica::Primitive::kTriangleStrip;
-		break;
-	default:
-		return; // lines and points: the PICA draws triangles only
-	}
-
-	const PicaSnapshot *snapshot = ( g_CurrentSnapshot >= 0 && g_CurrentSnapshot < g_Snapshots.Count() ) ?
-		&g_Snapshots[g_CurrentSnapshot] : NULL;
-	pica::DrawState state = snapshot ? snapshot->state : pica::DrawState();
-	memcpy( state.tint, g_Modulation, sizeof( state.tint ) );
-	PicaTexture *texture = TextureFor( g_BoundTextures[0] );
-	if ( texture && texture->dirty )
-		UploadTexture( *texture );
-
-	// clip = (model) * view * projection.
-	float viewProj[16], clip[16];
-	Mul( Top( kStackView ), Top( kStackProjection ), viewProj );
-
-	const pica::Vertex *vertices = src.m_pVertices;
-	const bool skinned = src.m_pBoneWeights && g_MaxBone > 0;
-	if ( skinned || src.m_bIsDynamic )
-	{
-		// Transient copy: the dynamic mesh is rewritten by the next draw, and
-		// skinning writes world-space positions.
-		pica::Vertex *copy = static_cast<pica::Vertex *>(
-			pica::AllocTransient( pica::Memory::kVertices, src.m_nVertices * sizeof( pica::Vertex ) ) );
-		if ( !copy )
-			return;
-		memcpy( copy, src.m_pVertices, src.m_nVertices * sizeof( pica::Vertex ) );
-		if ( skinned )
-		{
-			for ( int i = 0; i < src.m_nVertices; ++i )
-			{
-				const float *w = src.m_pBoneWeights + i * 2;
-				const unsigned char *b = src.m_pBoneIndices + i * 4;
-				const float weights[3] = { w[0], w[1], 1.0f - w[0] - w[1] };
-				const float *p = src.m_pVertices[i].pos;
-				float out[3] = { 0.0f, 0.0f, 0.0f };
-				for ( int k = 0; k < 3; ++k )
-				{
-					if ( weights[k] <= 0.0f || b[k] >= kMaxBones )
-						continue;
-					const float *m = g_Bones[b[k]];
-					for ( int r = 0; r < 3; ++r )
-						out[r] += weights[k] * ( m[r * 4 + 0] * p[0] + m[r * 4 + 1] * p[1] + m[r * 4 + 2] * p[2] + m[r * 4 + 3] );
-				}
-				memcpy( copy[i].pos, out, sizeof( out ) );
-			}
-			memcpy( clip, viewProj, sizeof( clip ) );
-		}
-		pica::FlushLinear( copy, src.m_nVertices * sizeof( pica::Vertex ) );
-		vertices = copy;
-	}
-	if ( !skinned )
-		Mul( Top( kStackModel ), viewProj, clip );
-
-	const unsigned short *indices = NULL;
-	int count = 0;
-	if ( m_nIndices > 0 && indexCount > 0 )
-	{
-		if ( firstIndex + indexCount > m_nIndices )
-			indexCount = m_nIndices - firstIndex;
-		if ( indexCount <= 0 )
-			return;
-		if ( m_bIsDynamic )
-		{
-			unsigned short *copy = static_cast<unsigned short *>(
-				pica::AllocTransient( pica::Memory::kIndices, indexCount * sizeof( unsigned short ) ) );
-			if ( !copy )
-				return;
-			memcpy( copy, m_pIndices + firstIndex, indexCount * sizeof( unsigned short ) );
-			pica::FlushLinear( copy, indexCount * sizeof( unsigned short ) );
-			indices = copy;
-		}
-		else
-			indices = m_pIndices + firstIndex;
-		count = indexCount;
-	}
-	else if ( m_Type == MATERIAL_QUADS || m_Type == MATERIAL_POLYGON )
-	{
-		// Unindexed quads and polygons: generate triangles.
-		const bool quads = m_Type == MATERIAL_QUADS;
-		const int triangles = quads ? ( src.m_nVertices / 4 ) * 2 : src.m_nVertices - 2;
-		if ( triangles <= 0 )
-			return;
-		unsigned short *generated = static_cast<unsigned short *>(
-			pica::AllocTransient( pica::Memory::kIndices, triangles * 3 * sizeof( unsigned short ) ) );
-		if ( !generated )
-			return;
-		int n = 0;
-		if ( quads )
-			for ( int q = 0; q + 3 < src.m_nVertices; q += 4 )
-			{
-				const unsigned short quad[6] = { (unsigned short)q, (unsigned short)( q + 1 ), (unsigned short)( q + 2 ),
-					(unsigned short)q, (unsigned short)( q + 2 ), (unsigned short)( q + 3 ) };
-				memcpy( generated + n, quad, sizeof( quad ) );
-				n += 6;
-			}
-		else
-			for ( int t = 1; t + 1 < src.m_nVertices; ++t )
-			{
-				generated[n++] = 0;
-				generated[n++] = (unsigned short)t;
-				generated[n++] = (unsigned short)( t + 1 );
-			}
-		pica::FlushLinear( generated, n * sizeof( unsigned short ) );
-		indices = generated;
-		count = n;
-	}
-	if ( g_PicaFrame == g_PicaDumpFrame )
-		DumpDraw( clip, state, texture ? texture->name : "", texture ? texture->width : 0, texture ? texture->height : 0, vertices, indices, count );
-	pica::Draw( clip, state, texture ? &texture->gpu : NULL, vertices, src.m_nVertices, indices, count, primitive );
+	// The render core draws everything (RFC 0026): a draw it refuses (named
+	// once by EmitSurfaceToCore) is dropped and counted, never drawn another way.
+	++g_Counters.refusedDraws;
 }
 
-// One line per draw of the -pica_dump_draws frame: what it draws and where
-// its vertices land in normalized device coordinates (row-vector clip).
-void CEmptyMesh::DumpDraw( const float *clip, const pica::DrawState &state, const char *textureName, int textureWidth, int textureHeight, const pica::Vertex *vertices,
-	const unsigned short *indices, int count ) const
-{
-	const CEmptyMesh &src = m_pVertexSource ? *m_pVertexSource : *this;
-	float lo[2] = { 1e30f, 1e30f }, hi[2] = { -1e30f, -1e30f };
-	int behind = 0;
-	const int n = indices ? count : src.m_nVertices;
-	for ( int k = 0; k < n; ++k )
-	{
-		const int i = indices ? indices[k] : k;
-		if ( i >= src.m_nVertices )
-			continue;
-		const float *p = vertices[i].pos;
-		float c[4];
-		for ( int j = 0; j < 4; ++j )
-			c[j] = p[0] * clip[j] + p[1] * clip[4 + j] + p[2] * clip[8 + j] + clip[12 + j];
-		if ( c[3] <= 1e-6f )
-		{
-			++behind;
-			continue;
-		}
-		for ( int j = 0; j < 2; ++j )
-		{
-			lo[j] = Min( lo[j], c[j] / c[3] );
-			hi[j] = Max( hi[j], c[j] / c[3] );
-		}
-	}
-	printf( "pica draw: %s prims %d tex %s %dx%d ndc x %.2f..%.2f y %.2f..%.2f behind %d color %02x%02x%02x%02x blend %d %d/%d atest %d/%d snap %d\n",
-		g_pBoundMaterial ? g_pBoundMaterial->GetName() : "(none)", indices ? count / 3 : src.m_nVertices,
-		textureName, textureWidth, textureHeight, lo[0], hi[0], lo[1], hi[1], behind,
-		src.m_nVertices ? vertices[0].color[0] : 0, src.m_nVertices ? vertices[0].color[1] : 0,
-		src.m_nVertices ? vertices[0].color[2] : 0, src.m_nVertices ? vertices[0].color[3] : 0,
-		state.blend, int( state.src ), int( state.dst ), state.alphaTest, state.alphaRef, g_CurrentSnapshot );
-}
 
 // Copy verts and/or indices to a mesh builder. This only works for temp meshes!
 void CEmptyMesh::CopyToMeshBuilder( 
@@ -4731,6 +4845,8 @@ void CShaderAPIEmpty::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t tex
 {
 	if ( stage >= 0 && stage < 16 )
 		g_BoundTextures[stage] = textureHandle;
+	if ( stage == SHADER_SAMPLER1 )
+		g_BoundLightmap = INVALID_SHADERAPI_TEXTURE_HANDLE;
 }
 
 void CShaderAPIEmpty::ClearColor3ub( unsigned char r, unsigned char g, unsigned char b )

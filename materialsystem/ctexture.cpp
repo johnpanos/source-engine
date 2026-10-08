@@ -178,6 +178,13 @@ static int  ComputeActualMipCount( const TexDimensions_t& actualDims, unsigned i
 static int  ComputeMipSkipCount( const char* pName, const TexDimensions_t& mappingDims, bool bIgnorePicmip, IVTFTexture *pOptVTFTexture, unsigned int nFlags, int nDesiredDimensionLimit, unsigned short* pOutStreamedMips, TextureLODControlSettings_t* pInOutCachedFileLodSettings, TexDimensions_t* pOptOutActualDims, TexDimensions_t* pOptOutAllocatedDims, unsigned int* pOptOutStripFlags  );
 static int  GetOptimalReadBuffer( CUtlBuffer *pOutOptimalBuffer, FileHandle_t hFile, int nFileSize );
 static void FreeOptimalReadBuffer( int nMaxSize );
+// The texture read buffer kept between loads (up to this size): none on the
+// 3DS, whose heap cannot spare a cached 2 MB block.
+#if defined( PLATFORM_3DS )
+static constexpr int kKeptReadBufferBytes = 0;
+#else
+static constexpr int kKeptReadBufferBytes = 6 * 1024 * 1024;
+#endif
 
 //-----------------------------------------------------------------------------
 // Use Warning to show texture flags.
@@ -3858,7 +3865,7 @@ void CTexture::ReconstructTexture( bool bCopyFromCurrent )
 	free( pResolvedFilename );
 
 	// the pc can afford to persist a large buffer
-	FreeOptimalReadBuffer( 6*1024*1024 );
+	FreeOptimalReadBuffer( kKeptReadBufferBytes );
 }
 
 void CTexture::GetCacheFilename( char* pOutBuffer, int nBufferSize ) const
@@ -4316,7 +4323,7 @@ bool SLoadTextureBitsFromFile( IVTFTexture **ppOutVtfTexture, FileHandle_t hFile
 	// NOTE: Skipping mip levels here will cause the size to be changed
 	bool bRetVal = ( *ppOutVtfTexture )->UnserializeEx( buf, false, nForceFlags, nMipSkipCount );
 
-	FreeOptimalReadBuffer( 6*1024*1024 );
+	FreeOptimalReadBuffer( kKeptReadBufferBytes );
 
 	if ( !bRetVal )
 	{

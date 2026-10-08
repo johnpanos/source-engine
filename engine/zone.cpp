@@ -137,8 +137,9 @@ void Memory_Init( void )
     int nMaxBytes = 128*1024*1024;
 #elif defined( PLATFORM_3DS )
 	// The hunk holds the loaded map; with no virtual memory it is allocated
-	// whole, and 3DS maps are small.
-	int nMaxBytes = 12*1024*1024;
+	// whole, and 3DS maps are small: sp_a1_intro4 uses 3.7 MB of it
+	// (`memory`), so 6 MB leaves headroom and gives the heap back the rest.
+	int nMaxBytes = 6*1024*1024;
 #else
 	int nMaxBytes = 48*1024*1024;
 #endif

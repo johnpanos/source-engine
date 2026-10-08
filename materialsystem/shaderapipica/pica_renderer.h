@@ -1,22 +1,22 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// The 3DS shader API's renderer: draws textured, vertex-colored geometry
-// through render.device.pica, the render core's PICA200 adapter (RFC 0026
-// P5); nothing here reaches citro3d. It borrows the render core's device
-// (BindDevice) and owns a 400x240 colour and
-// depth target in screen orientation, per-frame rings of transient vertex
-// and index data, and the device buffers behind the shader API's meshes.
+// The 3DS shader API's frame on render.device.pica, the render core's
+// PICA200 adapter (RFC 0026); nothing here reaches citro3d. The render core
+// draws everything: this borrows the core's device (BindDevice) and owns the
+// frame (a 400x240 colour and depth target in screen orientation, render
+// targets, clears, the core sections the core's passes record into), the
+// shader API's textures and the in-place device buffers behind its model
+// meshes (CoreMeshStreams).
 //
 // Conventions:
-//  * clip space is the port's: D3D's (y up, depth 0 to 1, row 0 at the top),
-//    so the material system's matrices are used as they are; the device's
-//    presenter turns the target onto the top screen;
-//  * vertex colors are D3DCOLOR bytes (B G R A); the vertex program swizzles;
+//  * clip space is the port's: D3D's (y up, depth 0 to 1, row 0 at the top);
+//    the device's presenter turns the target onto the top screen;
+//  * mesh vertex colours are D3DCOLOR bytes (B G R A);
 //  * textures are uploaded in the port's raster layout (row 0 at the top).
 //
 // A frame is recorded into one encoder and submitted at EndFrame (or when a
 // mesh's memory is about to be rewritten while a recorded draw reads it:
-// PrepareWrite). Linear memory is a device upload buffer written in place.
+// PrepareWrite).
 //
 //=============================================================================//
 
@@ -91,12 +91,6 @@ enum class Blend : std::uint8_t
 	kSrcAlphaSaturate
 };
 
-enum class Primitive : std::uint8_t
-{
-	kTriangles,
-	kTriangleStrip
-};
-
 struct DrawState
 {
 	bool depthTest = true;
@@ -142,13 +136,11 @@ public:
 	int Width() const { return m_width; }
 	int Height() const { return m_height; }
 	std::size_t Bytes() const { return m_bytes; }
-	std::uint32_t Group(); // the material bind group drawing it (renderer use)
 	std::uint32_t Id() const { return m_texture; } // the device's TextureId value
 
 private:
 	friend struct TargetAccess;
 	std::uint32_t m_texture; // TextureId
-	std::uint32_t m_group;   // BindGroupId, made on first draw
 	bool m_target = false;
 	// A target's colour usage (render::device::ResourceUsage): the renderer
 	// keeps it current across recordings.
@@ -161,18 +153,11 @@ private:
 
 struct Stats
 {
-	std::uint32_t draws = 0;
-	std::uint32_t triangles = 0;
-	std::uint32_t ringOverflows = 0;
-	std::uint32_t blendRefusals = 0; // D3D factor pairs no port blend mode draws
 	std::uint32_t submits = 0;
 	std::uint32_t submitFailures = 0; // frames the device refused (not presented)
-	std::uint32_t residencyRefusals = 0; // draws whose mesh found no linear memory
 	std::uint32_t targetSwitches = 0;    // SetTarget changes of the drawn target
-	std::uint32_t feedbackRefusals = 0;  // draws that sampled the target they draw into
 	std::size_t textureBytes = 0;
 	std::size_t meshBytes = 0; // linear memory of the meshes (AllocLinear)
-	std::size_t ringPeak[2] = {}; // the most of each transient ring a frame used
 };
 
 // Screen: the top screen, 400x240.
@@ -204,14 +189,11 @@ void Clear( bool color, bool depth, std::uint32_t rgba );
 // Target-space viewport (D3D sense: origin top-left of the target).
 void SetViewport( int x, int y, int width, int height );
 
-// Transient memory for one draw of this frame.
-void *AllocTransient( Memory kind, std::size_t bytes, std::size_t align = 16 );
-// Memory a mesh keeps. inPlace: its one copy is a buffer of the device the
-// CPU writes in place, which legacy draws bind and the render core reads
-// where it is (DeviceBufferOf, CoreMeshStreams); else CPU memory copied to
-// the device when a legacy draw first reads it (and never, when the core
-// draws the mesh from its own data). In-place memory falls back to the
-// copied kind when the device has none left.
+// Memory a mesh keeps. inPlace: its one copy is a buffer of the render
+// core's device the CPU writes in place, which the core reads where it is
+// (DeviceBufferOf, CoreMeshStreams); else CPU memory (the world meshes, which
+// the core draws from the map's own data). In-place memory falls back to CPU
+// memory when the device has none left.
 void *AllocLinear( Memory kind, std::size_t bytes, bool inPlace = false );
 void FreeLinear( void *ptr );
 // Before rewriting memory a recorded draw may read: submits the frame so far.
@@ -221,12 +203,6 @@ void FlushLinear( const void *ptr, std::size_t bytes );
 // draw the current recording makes: the memory then counts as read by it
 // (PrepareWrite submits before rewriting it). False for other memory.
 bool DeviceBufferOf( const void *ptr, render::device::BufferId &buffer, std::uint64_t &offset );
-
-// clipFromObject is the D3D row-vector matrix model * view * projection.
-// vertices and indices are in memory from AllocLinear or AllocTransient.
-void Draw( const float clipFromObject[16], const DrawState &state, Texture *texture,
-    const Vertex *vertices, int vertexCount, const std::uint16_t *indices, int indexCount,
-    Primitive primitive );
 
 // A section of the frame for a render core pass (RFC 0026 P3, the core's
 // passes at slots of this stream): ends this renderer's pass and returns the
