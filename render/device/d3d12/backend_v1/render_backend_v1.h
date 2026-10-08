@@ -26,6 +26,10 @@
 #include "render/device/device.h"
 #include "render/render_backend.h"
 
+// The Windows headers' min and max macros would break std::min and std::max.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <d3d12.h>
 #include <dxgi1_6.h>
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 """The Direct3D 12 adapter's lane (RFC 0024): build render.device.d3d12 and a
-suite with MinGW-w64, and run it under Wine with vkd3d-proton.
+suite with MinGW-w64 (or MSVC under Wine: --compiler msvc), and run it under
+Wine with vkd3d-proton.
 
     python3 tools/render/d3d12_lane.py run [--out DIR]
         the render.device.v2 suite (unittests/rendertest/core/device/
@@ -119,11 +120,21 @@ def finish(entry):
     output, _ = process.communicate()
     if process.returncode != 0:
         obj.unlink(missing_ok=True)
-        raise LaneError("MinGW compile of %s failed: %s" % (source, output.strip()[-4000:]))
+        raise LaneError("compile of %s failed: %s" % (source, output.strip()[-4000:]))
     stamp.write_text(flag_text)
 
 
+COMPILER = "mingw"  # --compiler: mingw (the default) or msvc (MSVC under Wine)
+
+
 def build(out, name, sources, defines=(), with_sdl3=False):
+    """The selected compiler's build of the D3D12 adapter and the suite."""
+    if COMPILER == "msvc":
+        return build_msvc(out / "msvc", name, sources, defines, with_sdl3)
+    return build_mingw(out, name, sources, defines, with_sdl3)
+
+
+def build_mingw(out, name, sources, defines=(), with_sdl3=False):
     out.mkdir(parents=True, exist_ok=True)
     include = generated(out)
     newest_header = max((h.stat().st_mtime for h in include.rglob("*.h")), default=0)
@@ -170,6 +181,83 @@ def build(out, name, sources, defines=(), with_sdl3=False):
     run([MINGW, *outputs, "-static", "-pthread", "-o", str(exe), *libraries,
          "-L" + str(windows / "lib" / "x64"), "-ldxcompiler", "-ld3d12", "-ldxgi", "-ldxguid"],
         "MinGW link")
+    for dll in ("dxcompiler.dll", "dxil.dll"):
+        (out / dll).unlink(missing_ok=True)
+        shutil.copyfile(windows / "bin" / "x64" / dll, out / dll)
+    return exe
+
+
+def msvc_bin():
+    """The pinned MSVC-under-Wine install's x64 tools (tools/windows/msvc_wine.py)."""
+    sys.path.insert(0, str(ROOT / "tools" / "windows"))
+    import msvc_wine
+    directory = msvc_wine.installed(msvc_wine.load_pins())
+    if not directory:
+        raise LaneError("MSVC under Wine is not provisioned: python3 tools/windows/msvc_wine.py "
+                        "provision")
+    return directory / "bin" / "x64"
+
+
+def msvc_dependency_times(path):
+    """Modification times of the includes a /sourceDependencies file lists."""
+    import json
+    if not path.is_file():
+        return [float("inf")]
+    data = json.loads(path.read_text())
+    times = []
+    for name in data.get("Data", {}).get("Includes", []):
+        # cl reports Windows paths (Z:\home\...); the Z: drive is the root.
+        local = Path(name.replace("\\", "/").split(":", 1)[-1]) if ":" in name else Path(name)
+        times.append(local.stat().st_mtime if local.exists() else float("inf"))
+    return times
+
+
+def build_msvc(out, name, sources, defines=(), with_sdl3=False):
+    """build with MSVC under Wine instead of MinGW: the same sources and
+    defines, cl's warnings as errors, the static C runtime."""
+    if with_sdl3:
+        raise LaneError("--sdl3 links the pinned MinGW SDL3; MSVC has no SDL3 pin yet")
+    bindir = msvc_bin()
+    out.mkdir(parents=True, exist_ok=True)
+    include = generated(out)
+    newest_header = max((h.stat().st_mtime for h in include.rglob("*.h")), default=0)
+    files = list(dict.fromkeys(adapter_sources() + list(sources)))
+    exe = out / (name + ".exe")
+    objects = out / "obj-msvc" / name
+    objects.mkdir(parents=True, exist_ok=True)
+    flags = ["/nologo", "/std:c++20", "/permissive-", "/Zc:__cplusplus", "/EHsc", "/O2", "/Z7",
+             "/MT", "/W3", "/WX", "/utf-8", "/D_CRT_SECURE_NO_WARNINGS",
+             "/I" + str(ROOT / "public"), "/I" + str(ROOT),
+             "/I" + str(ROOT / "unittests/rendertest/core/device"),
+             "/I" + str(ROOT / "unittests/rendertest/core/material"),
+             "/I" + str(ROOT / "unittests/rendertest/core/graph"),
+             "/I" + str(include)] + ["/D" + d for d in defines]
+    flag_text = " ".join(flags)
+    env = dict(os.environ, WINEDEBUG="-all")
+    outputs, pending, running = [], [], []
+    for source in files:
+        obj = objects / (source.replace("/", "__") + ".obj")
+        stamp = obj.with_suffix(".flags")
+        deps = obj.with_suffix(".deps.json")
+        stale = (not obj.exists() or not stamp.exists() or stamp.read_text() != flag_text or
+                 obj.stat().st_mtime < max([(ROOT / source).stat().st_mtime, newest_header] +
+                                           msvc_dependency_times(deps)))
+        if stale:
+            pending.append((source, obj, stamp, deps))
+        outputs.append(str(obj))
+    for source, obj, stamp, deps in pending:
+        running.append((source, obj, stamp, flag_text, subprocess.Popen(
+            [str(bindir / "cl"), *flags, "/sourceDependencies", str(deps), "/c",
+             str(ROOT / source), "/Fo" + str(obj)],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)))
+        if len(running) >= (os.cpu_count() or 4):
+            finish(running.pop(0))
+    for entry in running:
+        finish(entry)
+    windows = st.dxc_release("windows")
+    run([str(bindir / "link"), "/nologo", "/DEBUG", "/OUT:" + str(exe), *outputs,
+         "/LIBPATH:" + str(windows / "lib" / "x64"), "dxcompiler.lib", "d3d12.lib", "dxgi.lib",
+         "dxguid.lib"], "MSVC link", env=env)
     for dll in ("dxcompiler.dll", "dxil.dll"):
         (out / dll).unlink(missing_ok=True)
         shutil.copyfile(windows / "bin" / "x64" / dll, out / dll)
@@ -364,12 +452,12 @@ def vkd3d_proton():
 def execute(out, exe, extra_env=(), session=False):
     source = vkd3d_proton()
     for dll in source.glob("*.dll"):
-        target = out / dll.name
+        target = exe.parent / dll.name
         target.unlink(missing_ok=True)  # Proton's files are read-only
         shutil.copyfile(dll, target)
     env = dict(os.environ, WINEPREFIX=str(out / "wineprefix"), WINEDEBUG="-all",
                WINEDLLOVERRIDES="d3d12,d3d12core=n;dxgi=b", VKD3D_DEBUG="none",
-               WINEPATH=str(out))
+               WINEPATH=str(exe.parent))
     for item in extra_env:
         key, _, value = item.partition("=")
         env[key] = value
@@ -425,7 +513,12 @@ def main():
     p.add_argument("--session", action="store_true",
                    help="run inside a private headless compositor (window tests)")
     p.add_argument("sources", nargs="*")
+    for p in sub.choices.values():
+        p.add_argument("--compiler", choices=("mingw", "msvc"), default="mingw",
+                       help="MinGW (default) or MSVC under Wine (tools/windows/msvc_wine.py)")
     args = parser.parse_args()
+    global COMPILER
+    COMPILER = args.compiler
     try:
         if args.command == "sweep":
             sweep(args.out, args.family or ["lightmapped", "pbr"], args.frames, args.remote,

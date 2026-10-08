@@ -657,6 +657,30 @@ def render_generated(header, words_of):
     return "".join(out)
 
 
+# MSVC limits one string literal to 16380 bytes and a concatenation to 65535
+# (C2026); GCC and Clang have no such limit.
+MSVC_LITERAL = 16000
+MSVC_CONCATENATION = 65000
+
+
+def char_array(array, text, delimiter):
+    """`inline constexpr char array[] = ...;` holding text and a NUL, in a form
+    every compiler accepts: adjacent raw literals of at most MSVC_LITERAL
+    characters, or (beyond MSVC's concatenation limit) a brace list of
+    character codes. Both are the same array: the same size and bytes."""
+    if len(text.encode()) <= MSVC_CONCATENATION:
+        chunks = [text[i:i + MSVC_LITERAL] for i in range(0, len(text), MSVC_LITERAL)] or [""]
+        literals = "\n    ".join("R\"%s(%s)%s\"" % (delimiter, chunk, delimiter)
+                                 for chunk in chunks)
+        return "inline constexpr char %s[] =\n    %s;\n\n" % (array, literals)
+    data = list(text.encode()) + [0]
+    # Bytes past ASCII as character literals: a negative number would narrow
+    # where char is unsigned (ARM).
+    rows = [", ".join(str(b) if b < 128 else "'\\x%02x'" % b for b in data[i:i + 32])
+            for i in range(0, len(data), 32)]
+    return "inline constexpr char %s[] = {\n    %s };\n\n" % (array, ",\n    ".join(rows))
+
+
 def render_glsl(header, text_of):
     """The text of a GLSL_GENERATED, GLES_GENERATED, MSL_GENERATED or
     HLSL_GENERATED header; text_of(array) gives each array's GLSL 4.50 (GLSL
@@ -691,8 +715,7 @@ def render_glsl(header, text_of):
         if ")%s\"" % delimiter in text:
             raise ToolchainError("%s: the %s holds the raw string's delimiter" % (array, language))
         out.append("// %s%s\n" % (source, (" " + " ".join(options)) if options else ""))
-        out.append("inline constexpr char %s[] = R\"%s(%s)%s\";\n\n"
-                   % (array, delimiter, text, delimiter))
+        out.append(char_array(array, text, delimiter))
     out.append("} // namespace %s\n\n" % namespace)
     out.append("#endif // %s\n" % guard)
     return "".join(out)

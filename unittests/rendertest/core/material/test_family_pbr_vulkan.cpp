@@ -108,8 +108,10 @@ int main()
 		const char *const base =
 		    "\"PBRMetalRough\" { \"$basetexture\" \"a\" \"$mraotexture\" \"b\" "
 		    "\"$fallbackmaterial\" \"f\" ";
-		checks.That( refused( ( std::string( base ) + "\"$envmap\" \"c\" }" ).c_str(), "envmap" ),
-		    "claim.refuses-an-environment-map-by-name" );
+		// $envmap is env_cubemap, the view's probes, which the point always
+		// reads: the claim takes it (the resolver refuses a named cube).
+		checks.That( !refused( ( std::string( base ) + "\"$envmap\" \"c\" }" ).c_str(), "envmap" ),
+		    "claim.takes-an-environment-map-as-the-views-probes" );
 		{
 			VmtImportContext context;
 			context.resolve = []( std::string_view ) -> std::optional<std::string>
