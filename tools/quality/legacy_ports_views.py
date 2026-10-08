@@ -51,7 +51,7 @@ PAUSE = "pause_menu"
 STARTUP_COMMANDS = ("mat_queue_mode 2", "mat_bumpmap 1", "mat_picmip -1", "r_lod 0",
                     "r_indirect_producer auto", "cl_render_start_graph 2",
                     "sv_querycache_job_graph 2", "portal_carve_job_graph 2")
-ENGINE_ARGS = ("-vkemitparallel", "1", "-physics_shape_inertia")
+ENGINE_ARGS = ("-physics_shape_inertia",)
 WIDTH, HEIGHT = 1920, 1080
 # Frames after each camera move before its screenshot, and after it.
 SETTLE_FRAMES = 45

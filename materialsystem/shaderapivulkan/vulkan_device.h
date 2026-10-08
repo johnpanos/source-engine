@@ -282,33 +282,10 @@ public:
 		m_capturePresented = true;
 	}
 
-	// Dynamic geometry path used by the material system's mesh interface: a
-	// depth-tested position+color pipeline plus a growable host-visible vertex
-	// buffer. Callers queue triangles during a frame; the next BeginFrame uploads
-	// and draws them, then the queue is cleared. This is how IMesh::Draw reaches
-	// the GPU through the backend (roadmap R32 mesh slice).
+	// The frame stream's device resources (samplers, descriptor pool, depth
+	// copies); mesh draws reach the core, not this device.
 	bool InitDynamicMesh( std::string *outError );
 	bool DynamicMeshReady() const { return m_dynamicResourcesReady; }
-	// Append triangle-list vertices as interleaved [x,y,z, r,g,b, u,v] floats,
-	// plus [u,v] lightmap coordinates per vertex when the draw has them (zeros
-	// otherwise). They are stored as one kDynVertexFloats-wide record: position
-	// (0..2), color (3..5), uv (6..7), lightmap uv (8..9), normal (10..12),
-	// tangent (13..16), alpha (17), then for LightmappedGeneric the world tangent
-	// T (18..20) and the bumped lightmap page offset (21, TEXCOORD2.x).
-	enum
-	{
-		kDynVertexFloats = 22
-	};
-	// Record a draw with the current state over geometry an earlier draw of the
-	// same stream already queued (its vertex and index ranges, as a DrawRange
-	// read back after its EndDynamicDraw). Nothing is added to the stream.
-	struct DrawRange
-	{
-		uint32_t firstVertex;
-		uint32_t vertexCount;
-		uint32_t firstIndex;
-		uint32_t indexCount;
-	};
 	// Discard the accumulated frame geometry. Called at frame start (ClearBuffers)
 	// rather than after Present, so the last frame's geometry stays available for
 	// an on-demand screenshot capture (ReadPixels).
@@ -459,13 +436,6 @@ public:
 	bool UploadManagedTextureRegion( int handle, uint32_t x, uint32_t y, uint32_t width,
 	    uint32_t height, const uint8_t *data, size_t dataSize, std::string *outError,
 	    uint32_t level = 0, uint32_t face = 0 );
-	// A managed texture's level-0 size (0 x 0 for an invalid handle).
-	void ManagedTextureSize( int handle, uint32_t *width, uint32_t *height ) const
-	{
-		const bool valid = handle >= 0 && handle < static_cast<int>( m_managedTextures.size() );
-		*width = valid ? m_managedTextures[static_cast<size_t>( handle )].width : 0;
-		*height = valid ? m_managedTextures[static_cast<size_t>( handle )].height : 0;
-	}
 	uint32_t ManagedTextureMipLevels( int handle ) const
 	{
 		return ( handle >= 0 && handle < static_cast<int>( m_managedTextures.size() ) )
@@ -1536,8 +1506,7 @@ private:
 	bool EnsureStreamBuffer( StreamBuffer &stream, VkDeviceSize bytes, VkBufferUsageFlags usage );
 	void DestroyStreamBuffer( StreamBuffer &stream );
 	void ReleaseStreamBufferAfter( uint64_t value, StreamBuffer &stream );
-	// kDynVertexFloats per vertex (QueueDynamicTriangles documents the record).
-	// Index lists of indexed draws, each relative to its draw's first vertex.
+	// Counts the frame streams discarded; core passes key per-stream state by it.
 	uint64_t m_streamEpoch = 1;
 	// The ordered stream of what the legacy interface still issues between the
 	// core's passes: clears, render-target copies, occlusion query markers and

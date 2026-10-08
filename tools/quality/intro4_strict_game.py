@@ -49,8 +49,7 @@ def main():
                 '--map', 'sp_a1_intro4_relit', '--timeout', str(args.timeout),
                 '--map-after-start',
                 '--capture-wait', '120', '--allow-user-display', '--no-mouse',
-                '--physics', 'vphysics_box3d', '--engine-arg=-physics_shape_inertia',
-                '--engine-arg=-vkemitparallel', '--engine-arg=1']
+                '--physics', 'vphysics_box3d', '--engine-arg=-physics_shape_inertia']
         if mode == 'fsr-on':
             boot.extend(['--engine-arg=-fsr', '--engine-arg=-fsr-assets',
                          f'--engine-arg={args.fsr_assets.resolve()}'])

@@ -33,7 +33,6 @@
 #include "render/legacy/core_mesh_kind.h"
 #include "render/legacy/material_flag_keys.h"
 #include "render/material/vmt_matrix.h"
-#include "vulkan_emit_convert.h"
 #include "vulkan_mesh_layout.h"
 #include "vulkan_world_mesh_upload.h"
 #include "render/light_set.h"
@@ -188,20 +187,6 @@ static const render_vulkan::VulkanAdapterCaps &CurrentAdapterCaps()
 static ConVar mat_pix_events( "mat_pix_events", "-1", 0,
     "Engine PIX events gathered as capture labels: -1 auto (1 while labels are on), 0 none, "
     "1 view events, 2 also per-object events" );
-
-// Emit's per-vertex conversion on the engine's compute pool (R32; RFC 0003's
-// synchronous batch). A draw with at least mat_vk_emit_parallel_min_vertices
-// unique vertices converts its slots in chunks (vulkan_emit_convert.h) through
-// RunThreadPoolJobBatch on g_pThreadPool: the calling thread converts chunks
-// too, joins only its own runners and never runs unrelated pool work, so the
-// batch is legal from the main thread (mat_queue_mode 0) and from the material
-// system's render thread (mode 2), which is not a worker of that pool. 0
-// converts every draw serially: the oracle and the rollback.
-static ConVar mat_vk_emit_parallel( "mat_vk_emit_parallel", "0", 0,
-    "Native Vulkan: convert large draws' vertices on the engine job pool (0 serial, 1 pooled)" );
-static ConVar mat_vk_emit_parallel_min_vertices( "mat_vk_emit_parallel_min_vertices", "1024", 0,
-    "Native Vulkan: fewest unique vertices a draw needs for mat_vk_emit_parallel's pooled "
-    "conversion" );
 
 // RFC 0016 K3: the frame runs in the render core's frame graph. The
 // composition root binds the legacy frontend's executor
@@ -4126,74 +4111,6 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 	EmitDirect();
 	g_pRenderMesh = nullptr;
 }
-
-// Reuse of converted geometry within a frame's stream. Portal views, recursion
-// and multipass materials draw the same mesh range several times per frame with
-// the same conversion inputs (the converted vertices are in model or world
-// space, never view space), so a repeat draw can index the vertices the first
-// one queued instead of converting them again. A draw is reused only when every
-// input of EmitToNativeQueue's conversion matches exactly: the meshes (by write
-// revision), range and topology in the key; the constants in `inputs`; and the
-// bone matrices its vertices reference.
-struct EmitReuseKey
-{
-	const void *vertexMesh;
-	uint64_t vertexRevision;
-	const void *indexMesh;
-	uint64_t indexRevision;
-	const void *colorMesh;
-	uint64_t colorRevision;
-	int colorOffset;
-	const void *flexMesh;
-	uint64_t flexRevision;
-	int flexOffset;
-	int first;
-	int count;
-	int numVerts;
-	int primitive;
-	unsigned flags;
-	int skinLightCount;
-	int lightCount;
-
-	bool operator==( const EmitReuseKey &other ) const
-	{
-		return vertexMesh == other.vertexMesh && vertexRevision == other.vertexRevision &&
-		       indexMesh == other.indexMesh && indexRevision == other.indexRevision &&
-		       colorMesh == other.colorMesh && colorRevision == other.colorRevision &&
-		       colorOffset == other.colorOffset && flexMesh == other.flexMesh &&
-		       flexRevision == other.flexRevision && flexOffset == other.flexOffset &&
-		       first == other.first && count == other.count &&
-		       numVerts == other.numVerts && primitive == other.primitive && flags == other.flags &&
-		       skinLightCount == other.skinLightCount && lightCount == other.lightCount;
-	}
-	uint64_t Hash() const
-	{
-		uint64_t h = reinterpret_cast<uintptr_t>( vertexMesh ) * 0x9E3779B97F4A7C15ull;
-		h ^= vertexRevision + 0x632BE59BD9B4E019ull + ( h << 6 ) + ( h >> 2 );
-		h ^= static_cast<uint64_t>( first ) * 0xFF51AFD7ED558CCDull + ( h << 6 ) + ( h >> 2 );
-		h ^= static_cast<uint64_t>( count ) + ( h << 6 ) + ( h >> 2 );
-		return h;
-	}
-};
-
-struct EmitReuseEntry
-{
-	EmitReuseKey key;
-	std::vector<float> inputs;
-	int maxBone;              // highest bone matrix the vertices read; -1 without skinning
-	std::vector<float> bones; // g_BoneMatrices[0..maxBone]
-	render_vulkan::CVulkanContext::DrawRange range;
-};
-
-// Entries of the current stream epoch; a draw converting fewer indices than
-// this is cheaper to convert again than to key.
-static std::vector<EmitReuseEntry> s_emitReuse;
-static std::unordered_multimap<uint64_t, size_t> s_emitReuseIndex;
-static uint64_t s_emitReuseEpoch = 0;
-enum
-{
-	kMinReusedIndices = 96
-};
 
 // Frozen-path: core progress (RFC 0016 K8 particles) - SpriteCard and Portal 2's
 // spline cards build their corners from card records; render.sprite-card.v1

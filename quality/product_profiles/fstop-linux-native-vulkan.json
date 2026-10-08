@@ -37,9 +37,7 @@
         "+sv_querycache_job_graph",
         "2",
         "+portal_carve_job_graph",
-        "2",
-        "-vkemitparallel",
-        "1"
+        "2"
       ],
       "mat_args": [
         "+mat_bumpmap",
