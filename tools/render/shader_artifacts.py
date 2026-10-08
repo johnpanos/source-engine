@@ -75,6 +75,7 @@ declaration.
 """
 
 import argparse
+from collections import Counter
 import concurrent.futures
 import copy
 import fnmatch
@@ -85,6 +86,7 @@ import json
 import os
 from pathlib import Path
 import re
+import struct
 import shutil
 import subprocess
 import sys
@@ -1072,7 +1074,74 @@ def wgsl_binding_line(text, group, binding, space, name, kind):
     return "texture %s %s %d" % (sample, dimension, 1 if multisampled else 0)
 
 
-def wgsl_compile(spirv, stage):
+# WebGPU allows 16 samplers a stage (maxSamplersPerShaderStage); the surface
+# program's fragment stage declares 23. surface_program.cpp binds every
+# sampler of each set below with one state (FrameGroup: linear, clamped to
+# edge; DrawGroup: the lightmap page's), so the WGSL reads each set through
+# its first sampler and declares no other. The port's groups still carry the
+# folded bindings, which the stage does not use.
+# Sets of (group, sampler bindings) per module source prefix; tint names the
+# variables itself, so a set is found by its bindings.
+WGSL_SAMPLER_FOLDS = {
+    "render/material/families/surface": ((0, (2, 4, 6, 8, 10, 12)), (3, (1, 4, 6, 8))),
+}
+
+
+def fold_wgsl_samplers(text, source):
+    """The WGSL with each WGSL_SAMPLER_FOLDS set of the module's source read
+    through its first declared sampler."""
+    folds = next((sets for prefix, sets in WGSL_SAMPLER_FOLDS.items()
+                  if source.startswith(prefix)), ())
+    for group, bindings in folds:
+        declared = []
+        for binding in bindings:
+            match = re.search(r"^[^\n]*@group\(%du?\)\s*@binding\(%du?\)\s*var\s+(\w+)\s*:"
+                              r"\s*sampler\s*;[^\n]*\n" % (group, binding), text, flags=re.M)
+            if match:
+                declared.append(match)
+        for match in declared[1:]:
+            text = text.replace(match.group(0), "", 1)
+            text = re.sub(r"\b%s\b" % match.group(1), declared[0].group(1), text)
+    return text
+
+
+def spirv_bindings(spirv):
+    """(set, binding) of each decorated variable of a SPIR-V module, one
+    entry per variable."""
+    words = struct.unpack("<%dI" % (len(spirv) // 4), spirv)
+    sets, bindings = {}, {}
+    index = 5
+    while index < len(words):
+        count, opcode = words[index] >> 16, words[index] & 0xFFFF
+        if opcode == 71 and count >= 4:  # OpDecorate
+            if words[index + 2] == 34:  # DescriptorSet
+                sets[words[index + 1]] = words[index + 3]
+            elif words[index + 2] == 33:  # Binding
+                bindings[words[index + 1]] = words[index + 3]
+        index += max(count, 1)
+    return [(sets.get(v, 0), b) for v, b in bindings.items()]
+
+
+def wgsl_aliases(spirv, text):
+    """The WGSL bindings tint moved off a binding two SPIR-V variables share
+    (two views of one buffer; WGSL binds one variable a binding): each moved
+    binding mapped to the shared one, whose port entry fills it."""
+    declared = Counter(spirv_bindings(spirv))
+    shared = sorted(key for key, n in declared.items() if n > 1)
+    aliases = {}
+    for match in WGSL_DECLARATION.finditer(text):
+        key = (int(match.group(1)), int(match.group(2)))
+        if key in declared or key == (WEBGPU_DRAW_GROUP, WEBGPU_DRAW_CONSTANTS_BINDING):
+            continue
+        sources = [b for g, b in shared if g == key[0] and b < key[1]]
+        if not sources:
+            raise ArtifactError("the WGSL binds @group(%d) @binding(%d), which the SPIR-V does "
+                                "not declare" % key)
+        aliases[key] = sources[-1]
+    return aliases
+
+
+def wgsl_compile(spirv, stage, source=""):
     """The WGSL artifact of a SPIR-V module for the WebGPU adapter (see the
     contract above), with its header lines."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -1092,7 +1161,8 @@ def wgsl_compile(spirv, stage):
                       not line.rstrip().endswith("internal compiler error:")]
             raise ArtifactError("tint refuses the module: %s" % (
                 errors[0] if errors else detail[0] if detail else "exit %d" % result.returncode))
-        text = out.read_text()
+        text = fold_wgsl_samplers(out.read_text(), source)
+        out.write_text(text)
         info = subprocess.run([str(st.tint().with_name("tint_info")), "--json", str(out)],
                               capture_output=True, text=True)
         if info.returncode != 0:
@@ -1106,6 +1176,7 @@ def wgsl_compile(spirv, stage):
     used = {(b["group"], b["binding"]) for b in entries[0]["bindings"]}
     if "binding_array" in text or "texture_external" in text:
         raise ArtifactError("the WGSL needs binding arrays or external textures")
+    aliases = wgsl_aliases(prepared, text)
     lines = []
     constants = None
     for match in WGSL_DECLARATION.finditer(text):
@@ -1119,6 +1190,15 @@ def wgsl_compile(spirv, stage):
                                  match.group(5))
         if line == "sampler filtering" and (group, binding) in non_filtering:
             line = "sampler non-filtering"
+        if line.split()[0] in ("uniform", "storage", "read-only-storage"):
+            # WebGPU's minimum binding size (a runtime array's struct with one
+            # element), which an empty list's buffer is bound up to.
+            minimum = next((b.get("size", 0) for b in entries[0]["bindings"]
+                            if (b["group"], b["binding"]) == (group, binding)), 0)
+            if minimum:
+                line += " min %d" % minimum
+        if (group, binding) in aliases:
+            line += " alias %d" % aliases[(group, binding)]
         lines.append("%s binding %d %d %s" % (WEBGPU_LINE, group, binding, line))
     if constants:
         size = next(b["size"] for b in entries[0]["bindings"]
@@ -1593,7 +1673,7 @@ def glsl_headers(words, root=ROOT):
 
     def wgsl_text_of(row):
         try:
-            return wgsl_compile(spirv_of(row), STAGES[Path(row[1]).suffix]), None
+            return wgsl_compile(spirv_of(row), STAGES[Path(row[1]).suffix], row[1]), None
         except (ArtifactError, st.ToolchainError) as error:
             return None, str(error)
 

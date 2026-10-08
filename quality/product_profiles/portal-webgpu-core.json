@@ -1,0 +1,21 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal-webgpu-core-v2",
+  "description": "The browser client's renderer on the Linux desktop (RFC 0029): the core shader API (materialsystem/shaderapipica, render backend core) drawing everything through the render core on the WebGPU adapter over the pinned native Dawn, with no Vulkan backend. Its debugging lane: frames are drawn headless and captured with -pica_capture (no native presenter). A different tree.",
+  "extends": [
+    "portal-webgpu.json"
+  ],
+  "aliases": [
+    "portal-webgpu-core@linux-x86_64"
+  ],
+  "configure_options": {
+    "render_backend": "core"
+  },
+  "launch": {
+    "variables": {
+      "renderer": [
+        "pica"
+      ]
+    }
+  }
+}

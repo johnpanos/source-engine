@@ -186,6 +186,11 @@ WebGpuDevice::~WebGpuDevice()
 	m_EmptyGroup.Reset();
 	m_GroupLayouts.clear();
 	m_DepthUploads.clear();
+	if ( m_Surface )
+	{
+		wgpuSurfaceUnconfigure( m_Surface );
+		wgpuSurfaceRelease( m_Surface );
+	}
 	if ( m_Queue )
 		wgpuQueueRelease( m_Queue );
 	if ( m_Device )
@@ -544,6 +549,10 @@ DeviceResult<BufferId> WebGpuDevice::CreateBuffer( const BufferDesc &desc )
 	record.desc = desc;
 	record.desc.debugName = {};
 	record.allocated = ( desc.size + 3 ) & ~std::uint64_t( 3 );
+	// Storage lists get a floor that an empty list is bound up to (BuiltGroup:
+	// WGSL's minimum binding size); WebGPU zero-fills it.
+	if ( desc.usages.Has( ResourceUsage::kStorageRead ) || desc.usages.Has( ResourceUsage::kStorageWrite ) )
+		record.allocated = std::max<std::uint64_t>( record.allocated, 256 );
 	// Copies in and out are always allowed (uploads, the readback copy, the
 	// per-row texture copies); the port's usages add the rest.
 	WGPUBufferUsage usage = WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst;
@@ -871,7 +880,7 @@ WGPUBindGroup WebGpuDevice::BuiltGroup( BindGroupRecord &group, const GroupLayou
 		const auto entry = std::find_if( group.entries.begin(), group.entries.end(),
 		    [&]( const BindGroupEntry &e )
 		    {
-			    return e.binding == line.binding;
+			    return e.binding == line.source;
 		    } );
 		if ( entry == group.entries.end() )
 			return nullptr;
@@ -889,6 +898,11 @@ WGPUBindGroup WebGpuDevice::BuiltGroup( BindGroupRecord &group, const GroupLayou
 			out.buffer = buffer->buffer.Get();
 			out.offset = entry->offset;
 			out.size = entry->size ? entry->size : buffer->desc.size - entry->offset;
+			// WGSL has no empty runtime array: a binding smaller than the
+			// stage's minimum (an empty list) is bound up to it, into the
+			// allocation's zeros (CreateBuffer's floor).
+			if ( out.size < line.minSize && entry->offset + line.minSize <= buffer->allocated )
+				out.size = line.minSize;
 			break;
 		}
 		case BindingLine::Kind::kTexture:
@@ -941,7 +955,7 @@ WGPUBindGroup WebGpuDevice::ConstantsGroup( BindGroupRecord *group, const GroupL
 		const auto entry = std::find_if( group->entries.begin(), group->entries.end(),
 		    [&]( const BindGroupEntry &e )
 		    {
-			    return e.binding == line.binding;
+			    return e.binding == line.source;
 		    } );
 		if ( entry == group->entries.end() )
 			return nullptr;
@@ -953,6 +967,8 @@ WGPUBindGroup WebGpuDevice::ConstantsGroup( BindGroupRecord *group, const GroupL
 			out.buffer = buffer->buffer.Get();
 			out.offset = entry->offset;
 			out.size = entry->size ? entry->size : buffer->desc.size - entry->offset;
+			if ( out.size < line.minSize && entry->offset + line.minSize <= buffer->allocated )
+				out.size = line.minSize; // as BuiltGroup binds an empty list
 		}
 		else if ( entry->texture.IsValid() )
 		{
@@ -1064,15 +1080,25 @@ namespace
 
 // What WebGPU's copy rules cannot express (offsets and sizes in whole words,
 // tightly packed rows of whole words), refused by name before anything runs.
-const char *Inexpressible(
-    const Command &command, const std::unordered_map<std::uint64_t, TextureRecord> &textures )
+const char *Inexpressible( const Command &command,
+    const std::unordered_map<std::uint64_t, TextureRecord> &textures,
+    const std::unordered_map<std::uint64_t, BufferRecord> &buffers )
 {
 	switch ( command.op )
 	{
 	case Op::kWriteBuffer:
-		if ( command.copy.destinationOffset % 4 != 0 || command.bytes.size() % 4 != 0 )
+	{
+		// A write that ends at the buffer's end is padded into the buffer's
+		// whole-word allocation (WriteEnd); any other partial word is refused.
+		const auto buffer = buffers.find( command.a );
+		const bool toEnd = buffer != buffers.end() &&
+		                   command.copy.destinationOffset + command.bytes.size() ==
+		                       buffer->second.desc.size;
+		if ( command.copy.destinationOffset % 4 != 0 ||
+		     ( command.bytes.size() % 4 != 0 && !toEnd ) )
 			return "a buffer write of bytes that are not whole words";
 		break;
+	}
 	case Op::kCopyBuffer:
 		if ( command.copy.sourceOffset % 4 != 0 || command.copy.destinationOffset % 4 != 0 ||
 		     command.copy.size % 4 != 0 )
@@ -1147,7 +1173,7 @@ DeviceResult<CompletionToken> WebGpuDevice::Submit(
 	{
 		for ( const Command &command : encoder->Commands() )
 		{
-			if ( const char *why = Inexpressible( command, m_Textures ) )
+			if ( const char *why = Inexpressible( command, m_Textures, m_Buffers ) )
 			{
 				std::fprintf( stderr, "render.device.webgpu: refused: %s\n", why );
 				return Fail( DeviceStatus::kUnsupported, op );
@@ -1465,6 +1491,13 @@ bool SimulateDeviceLoss( IRenderDevice2 &device )
 	if ( webgpu )
 		webgpu->SimulateLoss();
 	return webgpu != nullptr;
+}
+
+bool PresentToCanvas( IRenderDevice2 &device, TextureId color, std::uint32_t width,
+    std::uint32_t height, const char *selector )
+{
+	WebGpuDevice *webgpu = Of( device );
+	return webgpu && webgpu->PresentToCanvas( color.value, width, height, selector );
 }
 
 bool HoldSubmissions( IRenderDevice2 &device, bool held )

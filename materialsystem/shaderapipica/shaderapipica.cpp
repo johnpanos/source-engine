@@ -56,13 +56,24 @@
 #include <vector>
 #include <malloc.h>
 
+#include "pica_texture.h"
+#if defined( PLATFORM_3DS )
 extern "C" unsigned int linearSpaceFree( void ); // libctru: GPU-visible linear heap
 extern "C" unsigned int __ctru_heap_size; // libctru: the main heap's size
-#include "pica_texture.h"
 
 // libctru's (linked into the program, not into a composed module): the system
 // tick the harness's guest-time profiler stamps its samples with.
 extern "C" unsigned long long svcGetSystemTick( void );
+#else
+// Elsewhere (RFC 0029: the browser) the device's memory is not the heap's,
+// and the profiler's ticks are the 3DS's rate from the platform clock.
+static unsigned int linearSpaceFree( void ) { return 0; }
+static const unsigned int __ctru_heap_size = 0;
+static unsigned long long svcGetSystemTick( void )
+{
+	return (unsigned long long)( Plat_FloatTime() * 268111856.0 );
+}
+#endif
 
 
 //-----------------------------------------------------------------------------
@@ -315,6 +326,10 @@ struct PicaTexture
 	int baseWidth = 0;
 	int baseHeight = 0;
 	char name[48] = ""; // CreateTextures' debug name (-pica_dump_draws)
+	// A cube map (off the 3DS): each face's base level, RGBA8 at cubeSize.
+	bool cube = false;
+	int cubeSize = 0;
+	CUtlVector<unsigned char> cubeFaces[6];
 	bool dirty = false;
 	pica::Texture gpu;
 };
@@ -410,7 +425,12 @@ bool CoreCacheRoom( std::size_t bytes )
 	return false;
 }
 float g_Modulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+#if defined( PLATFORM_3DS )
 int g_TextureSizeCap = 128;
+#else
+// Elsewhere the content's own sizes (RFC 0029: the browser's WebGPU limit).
+int g_TextureSizeCap = 4096;
+#endif
 // Per-present counters of the draw path (printed with the frame stats).
 struct DrawPathCounters
 {
@@ -439,7 +459,11 @@ struct TexturePathCounters
 };
 TexturePathCounters g_TextureCounters;
 DrawPathCounters g_Counters;
+#if defined( PLATFORM_3DS )
 int g_UnmippedSizeCap = 256;
+#else
+int g_UnmippedSizeCap = 4096;
+#endif
 
 void Identity( float *m )
 {
@@ -567,6 +591,21 @@ void UploadTexture( PicaTexture &texture )
 {
 	texture.dirty = false;
 	texture.gpu.Release();
+	if ( texture.cube )
+	{
+		const std::uint8_t *faces[6];
+		for ( int i = 0; i < 6; ++i )
+		{
+			if ( texture.cubeFaces[i].Count() != texture.cubeSize * texture.cubeSize * 4 )
+				return; // a face has not arrived
+			faces[i] = texture.cubeFaces[i].Base();
+		}
+		if ( texture.gpu.UploadCube( texture.cubeSize, faces ) )
+			++g_TextureCounters.uploads;
+		else
+			++g_TextureCounters.uploadFailed;
+		return;
+	}
 	if ( texture.levels.Count() == 0 || texture.baseWidth < 8 || texture.baseHeight < 8 )
 		return;
 	for ( int i = 0; i < texture.levels.Count() && i < texture.levelHashes.Count(); ++i )
@@ -590,7 +629,12 @@ void UploadTexture( PicaTexture &texture )
 	// linear memory of RGBA8, clause D42); RGBA8 for lightmap pages, whose
 	// 2x overbright would show 4-bit steps. -pica_texture_rgba8 uploads
 	// everything as RGBA8 (isolates the ETC1 encoder and the RGBA4 packing).
+#if defined( PLATFORM_3DS )
 	static const bool s_ForceRGBA8 = CommandLine()->FindParm( "-pica_texture_rgba8" ) != 0;
+#else
+	// Other devices take the decoded levels as they are (RGBA8).
+	static const bool s_ForceRGBA8 = true;
+#endif
 	const pica::UploadFormat format =
 	    ( s_ForceRGBA8 || ( !mipped && texture.lightmap ) ) ? pica::UploadFormat::kRGBA8
 	    : !mipped                                          ? pica::UploadFormat::kRGBA4
@@ -2005,6 +2049,10 @@ public:
 	{
 		PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
 		// The PICA200 decodes no sRGB: the reduced model asks for none.
+		// Elsewhere the texture's one (linear) view serves both.
+#if !defined( PLATFORM_3DS )
+		srgb = false;
+#endif
 		if ( !texture || srgb )
 		{
 			printf( "pica: core import of texture %d refused: %s\n", handle,
@@ -2058,7 +2106,12 @@ public:
 		target.color = render::device::TextureId{ section.color };
 		target.depth = render::device::TextureId{ section.depth };
 		target.colorFormat = render::device::Format::kRGBA8Unorm;
-		target.depthFormat = render::device::Format::kD24UnormS8;
+#if !defined( PLATFORM_3DS )
+		// The screen and the render targets are copy sources (pica_renderer),
+		// for the full model's scene-color reads.
+		target.colorCopySource = true;
+#endif
+		target.depthFormat = pica::kDepthFormat;
 		target.width = section.width;
 		target.height = section.height;
 		target.textures = &g_PicaCoreTextures;
@@ -2126,8 +2179,20 @@ extern "C" DLL_EXPORT void PicaShaderBackend_BindCorePassRecorder(
 
 extern "C" DLL_EXPORT void PicaShaderBackend_BindDevice( render::device::IRenderDevice2 *device )
 {
+#if !defined( PLATFORM_3DS )
+	// The fixed display (presentation.fixedDisplay) is the window's size the
+	// launch names: the browser page's canvas (RFC 0029).
+	pica::SetScreenSize( CommandLine()->ParmValue( "-w", 1280 ), CommandLine()->ParmValue( "-h", 720 ) );
+#endif
 	pica::BindDevice( device );
 }
+
+#if !defined( PLATFORM_3DS )
+extern "C" DLL_EXPORT void PicaShaderBackend_BindPresenter( pica::Presenter presenter, void *context )
+{
+	pica::BindPresenter( presenter, context );
+}
+#endif
 
 DLL_EXPORT const render::LegacyShaderProvider *PicaShaderBackend_Describe()
 {
@@ -3656,7 +3721,15 @@ void CEmptyMesh::DrawRange( int firstIndex, int indexCount )
 	const render::legacy::CoreMeshKind kind = g_pBoundMaterial
 		? render::legacy::CoreMeshKindFor( g_pBoundMaterial )
 		: render::legacy::CoreMeshKind::kSurface;
-	if ( ( kind == render::legacy::CoreMeshKind::kModelSurface && EmitToCore( firstIndex, indexCount ) ) ||
+#if defined( PLATFORM_3DS )
+	// The reduced model reads model meshes in place and skins them on the GPU.
+	const bool inPlace = kind == render::legacy::CoreMeshKind::kModelSurface;
+#else
+	// The full model has neither variant: every mesh goes with world-space
+	// vertices, skinned here.
+	const bool inPlace = false;
+#endif
+	if ( ( inPlace && EmitToCore( firstIndex, indexCount ) ) ||
 		EmitSurfaceToCore( firstIndex, indexCount, kind ) )
 	{
 		++g_Counters.coreMeshDraws;
@@ -4873,6 +4946,42 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 {
 	++g_TextureCounters.images;
 	PicaTexture *texture = TextureFor( g_ModifyTexture );
+	if ( texture && texture->cube )
+	{
+		// Each face's base level (smaller levels are not kept), square, at
+		// most the size cap a side.
+		if ( level == 0 && cubeFace == 0 )
+			printf( "pica: cube %s face images %dx%d src format %d data %d\n", texture->name,
+				width, height, (int)srcFormat, imageData != NULL );
+		if ( level != 0 || cubeFace < 0 || cubeFace > 5 || !imageData || width != height )
+		{
+			++g_TextureCounters.rejected;
+			return;
+		}
+		CUtlVector<unsigned char> rgba;
+		rgba.SetCount( width * height * 4 );
+		if ( !ImageLoader::ConvertImageFormat( (const unsigned char *)imageData, srcFormat,
+				rgba.Base(), IMAGE_FORMAT_RGBA8888, width, height ) )
+		{
+			++g_TextureCounters.convertFailed;
+			return;
+		}
+		const int size = Min( width, g_TextureSizeCap );
+		if ( texture->cubeSize != size )
+		{
+			for ( CUtlVector<unsigned char> &face : texture->cubeFaces )
+				face.Purge();
+			texture->cubeSize = size;
+		}
+		CUtlVector<unsigned char> &out = texture->cubeFaces[cubeFace];
+		out.SetCount( size * size * 4 );
+		if ( size == width )
+			memcpy( out.Base(), rgba.Base(), rgba.Count() );
+		else
+			pica::Resample( rgba.Base(), width, height, out.Base(), size, size );
+		texture->dirty = true;
+		return;
+	}
 	if ( !texture || cubeFace != 0 || zOffset != 0 || width <= 0 || height <= 0 ||
 		texture->renderTarget || texture->depth )
 	{
@@ -4996,6 +5105,22 @@ void CShaderAPIEmpty::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 	// which keeps the levels that fit the PICA and encodes them.
 	if ( !pVTF )
 		return;
+#if !defined( PLATFORM_3DS )
+	// The full model's cube maps: each face's base level (TexImage2D's cube path).
+	PicaTexture *target = TextureFor( g_ModifyTexture );
+	if ( target && target->cube )
+	{
+		int width = 0, height = 0, depth = 0;
+		pVTF->ComputeMipLevelDimensions( 0, &width, &height, &depth );
+		for ( int face = 0; face < 6; ++face )
+		{
+			unsigned char *pData = pVTF->ImageData( iVTFFrame, face, 0 );
+			if ( pData )
+				TexImage2D( 0, face, IMAGE_FORMAT_RGBA8888, 0, width, height, pVTF->Format(), false, pData );
+		}
+		return;
+	}
+#endif
 	for ( int level = 0; level < pVTF->MipCount(); ++level )
 	{
 		int width = 0, height = 0, depth = 0;
@@ -5122,6 +5247,10 @@ void CShaderAPIEmpty::CreateTextures(
 		texture->depth = ( flags & TEXTURE_CREATE_DEPTHBUFFER ) != 0;
 		texture->lightmap =
 			pTextureGroupName && V_strcmp( pTextureGroupName, TEXTURE_GROUP_LIGHTMAP ) == 0;
+#if !defined( PLATFORM_3DS )
+		// The full model samples cube maps as cubes (the 3DS keeps face 0).
+		texture->cube = ( flags & TEXTURE_CREATE_CUBEMAP ) != 0;
+#endif
 		V_strncpy( texture->name, pDebugName ? pDebugName : "", sizeof( texture->name ) );
 		pHandles[k] = ShaderAPITextureHandle_t( g_Textures.AddToTail( texture ) + 1 );
 	}

@@ -120,6 +120,9 @@ public:
 	// next level half each side). Replaces any previous image.
 	bool Upload( UploadFormat format, int width, int height, int levelCount,
 	    const std::uint8_t *const *levels );
+	// A cube map (RGBA8, one level, size x size a face): faces[i] is face i
+	// in the port's order (+X, -X, +Y, -Y, +Z, -Z). Replaces any previous image.
+	bool UploadCube( int size, const std::uint8_t *const *faces );
 	// A render target (RGBA8, one level, sides powers of two from 8 to 512):
 	// SetTarget draws into it, later draws sample what it holds. Replaces
 	// any previous image.
@@ -160,9 +163,33 @@ struct Stats
 	std::size_t meshBytes = 0; // linear memory of the meshes (AllocLinear)
 };
 
+// The depth buffers' format: the PICA200's D24S8; elsewhere D32 float, which
+// every WebGPU device has (WebGPU's depth24plus is no copyable 24-bit unorm).
+#if defined( PLATFORM_3DS )
+constexpr render::device::Format kDepthFormat = render::device::Format::kD24UnormS8;
+#else
+constexpr render::device::Format kDepthFormat = render::device::Format::kD32Float;
+#endif
+
+#if defined( PLATFORM_3DS )
 // Screen: the top screen, 400x240.
 constexpr int kScreenWidth = 400;
 constexpr int kScreenHeight = 240;
+#else
+// Screen: the window's back buffer (RFC 0029: the browser's canvas), set
+// before Init by SetScreenSize.
+inline int kScreenWidth = 1280;
+inline int kScreenHeight = 720;
+void SetScreenSize( int width, int height );
+
+// Shows the frame's colour target (RGBA8, width x height) on the screen, after
+// the frame's work on the same queue; the composition root binds the one its
+// device's presentation needs (the WebGPU adapter's canvas). Without one the
+// frame is drawn and not shown (headless).
+using Presenter = bool ( * )( void *context, render::device::IRenderDevice2 &device,
+    std::uint32_t color, std::uint32_t width, std::uint32_t height );
+void BindPresenter( Presenter presenter, void *context );
+#endif
 
 // The render core's device, which the launcher's composition owns (RFC 0026:
 // one device on the 3DS). Bound before Init; it outlives Shutdown.

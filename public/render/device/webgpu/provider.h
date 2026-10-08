@@ -71,6 +71,13 @@ std::uint64_t ValidationErrors( const IRenderDevice2 &device );
 // device, so the loss clause (D7) and Recover() run. False for a device not
 // made by this adapter.
 bool SimulateDeviceLoss( IRenderDevice2 &device );
+// The browser product (RFC 0029): shows `color`, an RGBA8 texture of this
+// device with kCopySource, on the page canvas `selector` (configured as an
+// RGBA8 surface of width x height on first use and when the size changes),
+// after the work submitted so far. The browser shows it when the engine
+// yields to the event loop. False natively (no canvas) or on a failure.
+bool PresentToCanvas( IRenderDevice2 &device, TextureId color, std::uint32_t width,
+    std::uint32_t height, const char *selector );
 // Tests only: while held, submissions are recorded but not handed to the
 // queue; releasing submits them in order (the shared suite's hold, D5/D10).
 bool HoldSubmissions( IRenderDevice2 &device, bool held );

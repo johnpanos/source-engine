@@ -1,8 +1,10 @@
 // The Node lane of the WebAssembly product (RFC 0029 W1/W2): runs a built
 // hl2_launcher.js with a game tree mounted from the host through NODEFS.
 //
-//   node tools/web/run_node.cjs <hl2_launcher.js> <game tree> [engine args...]
+//   node --experimental-wasm-jspi tools/web/run_node.cjs <hl2_launcher.js> <game tree> [engine args...]
 //
+// The pinned SDK's Node (dependencies/emsdk-*/node) runs it; the build uses
+// JSPI, which that Node has behind the flag.
 // The tree is mounted at /game and is the working directory, as the desktop
 // product runs from its runtime directory. Exits with the program's status.
 'use strict';
@@ -38,9 +40,10 @@ createSourceEngine({
 	onExit(status) {
 		process.exitCode = status;
 	},
-}).then((module) => {
+}).then(async (module) => {
+	// With JSPI, main returns a promise; exit() ends it with an ExitStatus.
 	try {
-		module.callMain(args);
+		await module.callMain(args);
 	} catch (error) {
 		if (!(error && error.name === 'ExitStatus'))
 			throw error;

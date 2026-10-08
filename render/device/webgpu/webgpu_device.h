@@ -134,6 +134,8 @@ struct BindingLine
 	};
 	std::uint32_t group = 0;
 	std::uint32_t binding = 0;
+	std::uint32_t source = 0; // the port binding whose entry fills it (an alias's)
+	std::uint32_t minSize = 0; // a buffer's WGSL minimum binding size
 	Kind kind = Kind::kUniform;
 	WGPUTextureSampleType sampleType = WGPUTextureSampleType_Float;
 	WGPUTextureViewDimension dimension = WGPUTextureViewDimension_2D;
@@ -236,6 +238,7 @@ struct BindGroupRecord
 struct PipelineRecord
 {
 	PipelineKind kind = PipelineKind::kGraphics;
+	std::string name; // the port's debug name, for diagnostics
 	RenderPipeline render;
 	ComputePipeline compute;
 	// The pipeline layout's groups, 0..groupCount-1; an unused group in
@@ -307,6 +310,9 @@ public:
 	std::size_t LiveResourceCount() const override;
 
 	std::uint64_t ValidationErrors() const { return m_ValidationErrors.load(); }
+	// present.cpp (RFC 0029): the page canvas's presentation.
+	bool PresentToCanvas(
+	    std::uint64_t texture, std::uint32_t width, std::uint32_t height, const char *selector );
 	void SimulateLoss() { m_State.store( DeviceState::kLost ); }
 	void Hold( bool held );
 
@@ -398,6 +404,8 @@ private:
 
 	WebGpuAdapterOptions m_Options;
 	WGPUInstance m_Instance = nullptr;
+	WGPUSurface m_Surface = nullptr; // the canvas's, configured at m_SurfaceExtent
+	std::uint64_t m_SurfaceExtent = 0;
 	WGPUAdapter m_Adapter = nullptr;
 	WGPUDevice m_Device = nullptr;
 	WGPUQueue m_Queue = nullptr;

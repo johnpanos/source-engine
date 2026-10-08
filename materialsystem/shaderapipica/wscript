@@ -35,7 +35,11 @@ def build(bld):
 		'../'
 	] + bld.env.INCLUDES_SDL2
 
-	libs = ['tier0', 'tier1', 'tier2', 'mathlib', 'bitmap', 'render_device_pica', 'render_device']
+	# bitmap before the libraries it uses (a static link resolves left to right).
+	libs = ['tier0', 'bitmap', 'tier1', 'tier2', 'mathlib', 'render_device']
+	# The 3DS's: its formats and presenter are the PICA device's.
+	if bld.env.N3DS:
+		libs += ['render_device_pica']
 
 	bld.shlib(
 		source   = source,

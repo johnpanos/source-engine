@@ -454,10 +454,14 @@ def configure_emscripten(conf):
 		'-sDEFAULT_PTHREAD_STACK_SIZE=2097152',
 		# The host (tools/web/run_node.mjs, the browser page) mounts the game
 		# content before main: NODEFS in Node, OPFS/fetched files in a browser.
-		'-sFORCE_FILESYSTEM=1', '-lnodefs.js', '-sEXPORTED_RUNTIME_METHODS=FS,NODEFS,ENV,callMain',
+		'-sFORCE_FILESYSTEM=1', '-lnodefs.js', '-sEXPORTED_RUNTIME_METHODS=FS,NODEFS,ENV,callMain,HEAPU8,addRunDependency,removeRunDependency',
+		'-sEXPORTED_FUNCTIONS=_main,_malloc,_free',
 		'-sINVOKE_RUN=0', '-sEXIT_RUNTIME=1', '-sPTHREAD_POOL_SIZE=8',
 		# One factory, createSourceEngine(moduleArgs), for every host.
 		'-sMODULARIZE=1', '-sEXPORT_NAME=createSourceEngine',
+		# The main loop and the WebGPU adapter's waits yield to the event loop
+		# (RFC 0029 decision 7): JavaScript Promise Integration.
+		'-sJSPI',
 		# Function names in stacks (the dev lane's diagnostics).
 		'--profiling-funcs']
 	conf.env.EMSCRIPTEN = True
@@ -634,3 +638,21 @@ def apply_apple_ivp_alloca(self):
 	ivp = self.bld.srcnode.find_node('ivp')
 	if ivp and self.path.is_child_of(ivp):
 		self.env.append_value('CXXFLAGS', ['-include', 'alloca.h'])
+
+@TaskGen.feature('cprogram', 'cxxprogram')
+@TaskGen.after_method('apply_link')
+def add_emscripten_wasm_output(self):
+	"""
+	An Emscripten program is its .js loader and the .wasm beside it: both are
+	the link's outputs, so both install.
+	"""
+	if self.env.DEST_OS != 'emscripten' or not getattr(self, 'link_task', None):
+		return
+	js = self.link_task.outputs[0]
+	if js.name.endswith('.js'):
+		wasm = js.change_ext('.wasm')
+		self.link_task.outputs.append(wasm)
+		install = getattr(self, 'install_task', None)
+		if install and wasm not in install.inputs:
+			install.inputs.append(wasm)
+

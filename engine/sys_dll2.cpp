@@ -104,6 +104,9 @@
 #include "linked_game_modules_internal.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#if defined( PLATFORM_WASM )
+#include <emscripten.h>
+#endif
 #include "tier0/memdbgon.h"
 #include "tier0/memalloc.h"
 
@@ -1645,6 +1648,11 @@ bool CEngineAPI::MainLoop()
 		ActivateEditModeShaders( false );
 
 		eng->Frame();
+#if defined( PLATFORM_WASM )
+		// RFC 0029: the browser shows the canvas, delivers input and runs
+		// WebGPU's callbacks only when the main thread yields (JSPI).
+		emscripten_sleep( 0 );
+#endif
 
 		// Reactivate edit mode shaders (in Edit mode only...)
 		ActivateEditModeShaders( true );

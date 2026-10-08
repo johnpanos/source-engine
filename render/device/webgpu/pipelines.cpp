@@ -172,6 +172,24 @@ bool ReadBinding( std::string_view rest, BindingLine &line )
 	{
 		return false;
 	}
+	// "alias <binding>": the WGSL moved a second view of the port binding
+	// <binding> here (WGSL binds one variable a binding); the group's entry
+	// for <binding> fills it.
+	// Optional: "min <bytes>", the WGSL's minimum binding size (a buffer
+	// smaller than it is bound up to it); "alias <binding>".
+	line.source = line.binding;
+	for ( std::string_view key = Word( rest ); !key.empty(); key = Word( rest ) )
+	{
+		std::uint32_t value = 0;
+		if ( !Number( Word( rest ), value ) )
+			return false;
+		if ( key == "min" )
+			line.minSize = value;
+		else if ( key == "alias" )
+			line.source = value;
+		else
+			return false;
+	}
 	return true;
 }
 
@@ -180,9 +198,10 @@ bool ReadBinding( std::string_view rest, BindingLine &line )
 // samplers (one stage reads a depth texture through it).
 bool Merge( BindingLine &into, const BindingLine &from )
 {
-	if ( into.kind != from.kind )
+	if ( into.kind != from.kind || into.source != from.source )
 		return false;
 	into.visibility |= from.visibility;
+	into.minSize = std::max( into.minSize, from.minSize );
 	if ( into.kind == BindingLine::Kind::kTexture )
 	{
 		if ( into.dimension != from.dimension || into.multisampled != from.multisampled )
@@ -404,7 +423,9 @@ const GroupLayout *WebGpuDevice::CachedLayout(
 	std::string key;
 	for ( const BindingLine &e : entries )
 	{
-		key += std::to_string( e.binding ) + ":" + std::to_string( int( e.kind ) ) + ":" +
+		key += std::to_string( e.binding ) + "<" + std::to_string( e.source ) + "^" +
+		       std::to_string( e.minSize ) + ":" +
+		       std::to_string( int( e.kind ) ) + ":" +
 		       std::to_string( int( e.sampleType ) ) + ":" + std::to_string( int( e.dimension ) ) +
 		       ":" + std::to_string( int( e.multisampled ) ) + ":" +
 		       std::to_string( int( e.sampler ) ) + ":" + std::to_string( int( e.access ) ) + ":" +
@@ -541,6 +562,7 @@ DeviceResult<PipelineId> WebGpuDevice::CreatePipeline( const PipelineDesc &desc 
 
 	PipelineRecord record;
 	record.kind = desc.kind;
+	record.name = std::string( desc.debugName );
 	record.drawConstantBytes = desc.drawConstantBytes;
 	record.colorFormats.assign( desc.colorFormats.begin(), desc.colorFormats.end() );
 	record.depthFormat = desc.depthFormat;

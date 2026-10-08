@@ -34,4 +34,13 @@ class ICorePassRecorder;
 extern "C" void PicaShaderBackend_BindCorePassRecorder(
     render::legacy::ICorePassRecorder *recorder );
 
+// Off the 3DS (RFC 0029: the shader API on any render core device), the
+// presenter that shows each frame's colour target: the root's, for its
+// device's presentation (the WebGPU adapter's canvas). Without one frames
+// are drawn and not shown.
+using PicaShaderBackendPresenter = bool ( * )( void *context,
+    render::device::IRenderDevice2 &device, unsigned int color, unsigned int width,
+    unsigned int height );
+extern "C" void PicaShaderBackend_BindPresenter( PicaShaderBackendPresenter presenter, void *context );
+
 #endif // RENDER_DEVICE_PICA_HOST_BINDING_H

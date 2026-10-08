@@ -279,12 +279,17 @@ bool Replay::Execute( const Command &command )
 	case Op::kWriteBuffer:
 	{
 		EndPasses();
+		// Whole words: a write that ends at the buffer's end (the only partial
+		// word Inexpressible lets through) fills its last word with zeros, in
+		// the allocation's padding.
+		const std::size_t size = AlignUp( command.bytes.size(), 4 );
 		std::memcpy(
 		    m_Uploads.data() + m_UploadCursor, command.bytes.data(), command.bytes.size() );
+		std::memset( m_Uploads.data() + m_UploadCursor + command.bytes.size(), 0,
+		    size - command.bytes.size() );
 		wgpuCommandEncoderCopyBufferToBuffer( m_Commands, m_UploadBuffer, m_UploadCursor,
-		    m_D.ExistingBuffer( command.a )->buffer.Get(), command.copy.destinationOffset,
-		    command.bytes.size() );
-		m_UploadCursor += AlignUp( command.bytes.size(), 4 );
+		    m_D.ExistingBuffer( command.a )->buffer.Get(), command.copy.destinationOffset, size );
+		m_UploadCursor += size;
 		break;
 	}
 	case Op::kCopyBuffer:
@@ -648,8 +653,24 @@ bool Replay::BindGroups( bool compute )
 		}
 		if ( !group )
 		{
+			// Name what is missing: no group bound, or the first binding the
+			// WGSL uses that the bound group lacks (or holds a released resource).
+			const BindGroupRecord *port = m_D.ExistingBindGroup( m_Groups[g] );
+			std::uint32_t missing = ~0u;
+			for ( const BindingLine &line : layout.entries )
+			{
+				if ( !port || std::none_of( port->entries.begin(), port->entries.end(),
+				                  [&]( const BindGroupEntry &e ) { return e.binding == line.source; } ) )
+				{
+					missing = line.binding;
+					break;
+				}
+			}
 			std::fprintf( stderr,
-			    "render.device.webgpu: group %u lacks a binding its pipeline's WGSL uses\n", g );
+			    "render.device.webgpu: group %u lacks a binding its pipeline's WGSL uses (%s %u, "
+			    "pipeline %s)\n",
+			    g, port ? "binding" : "no group bound; first binding", missing,
+			    m_Pipeline ? m_Pipeline->name.c_str() : "?" );
 			return false;
 		}
 		if ( compute )

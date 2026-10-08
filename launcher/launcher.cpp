@@ -105,6 +105,9 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #if defined( LINKED_PICA_BACKEND )
 #include "render/device/pica/host_binding.h"
 #endif
+#if defined( LINKED_PICA_BACKEND ) && defined( LINKED_WEBGPU_DEVICE )
+#include "render/device/webgpu/provider.h"
+#endif
 #include "render/legacy/material_blocks.h"
 #include "render/legacy/stage_markers.h"
 #include "vstdlib/jobgraph_pool_bridge.h"
@@ -1043,6 +1046,17 @@ bool CSourceAppSystemGroup::Create()
 		PicaShaderBackend_BindDevice( binding->device );
 		PicaShaderBackend_BindCorePassRecorder( binding->corePasses );
 #endif
+#if defined( LINKED_PICA_BACKEND ) && defined( LINKED_WEBGPU_DEVICE )
+		// RFC 0029: frames on the WebGPU device show on the page's canvas.
+		PicaShaderBackend_BindPresenter(
+		    []( void *, render::device::IRenderDevice2 &device, unsigned int color,
+		        unsigned int width, unsigned int height )
+		    {
+			    return render::device::webgpu::PresentToCanvas(
+			        device, render::device::TextureId{ color }, width, height, "#canvas" );
+		    },
+		    nullptr );
+#endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 		// RFC 0016 legacy device facade (F1): the material system reports the
 		// adapter the core's Vulkan adapter creates the backend's device on.
@@ -1214,6 +1228,9 @@ void CSourceAppSystemGroup::Destroy()
 	// Every system and module that borrowed the core is gone.
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 	NativeVulkanShaderBackend_BindCorePassRecorder( nullptr );
+#endif
+#if defined( LINKED_PICA_BACKEND ) && defined( LINKED_WEBGPU_DEVICE )
+	PicaShaderBackend_BindPresenter( nullptr, nullptr );
 #endif
 #if defined( LINKED_PICA_BACKEND )
 	PicaShaderBackend_BindCorePassRecorder( nullptr );

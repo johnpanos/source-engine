@@ -304,12 +304,20 @@ def resolve_render_backend(conf):
 		conf.msg('Render backend', conf.options.RENDER_BACKEND)
 		return
 	if conf.env.DEST_OS == 'emscripten':
-		# The browser client (RFC 0029): no legacy-stream renderer exists on
-		# WebGPU yet, so it links the null shader API ('legacy') and the
-		# render core's WebGPU device.
-		if conf.options.RENDER_BACKEND not in ('auto', 'legacy'):
-			conf.fatal('The WebAssembly client requires --render-backend=legacy')
-		conf.options.RENDER_BACKEND = 'legacy'
+		# The browser client (RFC 0029): the render core draws everything
+		# through the core shader API (materialsystem/shaderapipica, as on the
+		# 3DS) on the core's WebGPU device; legacy links the null shader API.
+		if conf.options.RENDER_BACKEND not in ('auto', 'legacy', 'core'):
+			conf.fatal('The WebAssembly client requires --render-backend=core or legacy')
+		if conf.options.RENDER_BACKEND == 'auto':
+			conf.options.RENDER_BACKEND = 'core'
+		conf.msg('Render backend', conf.options.RENDER_BACKEND)
+		return
+	if conf.options.RENDER_BACKEND == 'core':
+		# The core shader API on a desktop: the browser client's renderer on
+		# the native Dawn (its debugging lane).
+		if conf.env.DEST_OS != 'linux' or not client:
+			conf.fatal('--render-backend=core builds a Linux or WebAssembly client')
 		conf.msg('Render backend', conf.options.RENDER_BACKEND)
 		return
 	if conf.options.RENDER_BACKEND == 'auto':
@@ -330,7 +338,7 @@ def resolve_platform_provider(conf):
 	# The resolved name replaces 'auto' so product-profile checks see the
 	# provider actually linked; stored options keep 'auto' and resolve again.
 	if conf.options.PLATFORM_PROVIDER == 'auto':
-		vulkan = conf.options.RENDER_BACKEND == 'native-vulkan'
+		vulkan = conf.options.RENDER_BACKEND in ('native-vulkan', 'core')
 		conf.options.PLATFORM_PROVIDER = 'sdl3' if vulkan or conf.env.APPLE or conf.env.DEST_OS in ('3ds', 'emscripten') else 'sdl2'
 	conf.msg('Window/input provider', conf.options.PLATFORM_PROVIDER)
 
@@ -346,6 +354,11 @@ def define_platform(conf):
 	conf.env.SDL3 = conf.options.PLATFORM_PROVIDER == 'sdl3'
 	conf.env.NATIVE_VULKAN = conf.options.RENDER_BACKEND == 'native-vulkan'
 	conf.env.PICA = conf.options.RENDER_BACKEND == 'pica'
+	# The core shader API (materialsystem/shaderapipica): the 3DS's, and the
+	# same shader API on another render core device (core).
+	conf.env.CORE_SHADER_API = conf.options.RENDER_BACKEND in ('pica', 'core')
+	if conf.options.RENDER_BACKEND == 'core':
+		conf.define('CORE_SHADER_API', 1)
 	if conf.env.DEST_OS == 'emscripten':
 		if conf.options.TOOLS:
 			conf.fatal('The WebAssembly target builds the client, dedicated and test products')
@@ -370,7 +383,7 @@ def define_platform(conf):
 	if conf.env.APPLE and not (conf.env.NATIVE_VULKAN and conf.env.SDL3):
 		conf.fatal('The Apple clients require --platform-provider=sdl3 --render-backend=native-vulkan')
 	if conf.env.DEST_OS not in ('3ds', 'emscripten') and (conf.env.SDL3 or conf.env.NATIVE_VULKAN):
-		if not (conf.env.SDL3 and conf.env.NATIVE_VULKAN):
+		if not (conf.env.SDL3 and (conf.env.NATIVE_VULKAN or conf.options.RENDER_BACKEND == 'core')):
 			conf.fatal('SDL3 and the native Vulkan backend require each other')
 		conf.options.SDL = 1
 		conf.define('USE_SDL3', 1)
@@ -563,10 +576,11 @@ def options(opt):
 		dest='PLATFORM_PROVIDER',
 		help='linked window/input provider; auto selects sdl3 for Vulkan and iOS clients, '
 			'sdl2 for legacy-renderer products [default: %default]')
-	grp.add_option('--render-backend', choices=['auto', 'legacy', 'native-vulkan', 'pica'], default='auto',
+	grp.add_option('--render-backend', choices=['auto', 'legacy', 'native-vulkan', 'pica', 'core'], default='auto',
 		dest='RENDER_BACKEND',
 		help='linked renderer; clients render through native-vulkan, server, test and tool '
-			'products link none (legacy); the 3DS client links pica [default: %default]')
+			'products link none (legacy); the 3DS client links pica; core is the same shader '
+			'API on the render core\'s device (the browser client, RFC 0029) [default: %default]')
 	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal', 'd3d12', 'webgpu', 'pica'], default='null',
 		dest='RENDER_CORE_DEVICE',
 		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
@@ -1220,7 +1234,7 @@ def configure(conf):
 			# A launchable desktop tool module, and the server browser, which
 			# only a desktop platform menu loads; neither is in the product.
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
-		if conf.env.PICA:
+		if conf.env.CORE_SHADER_API:
 			projects['game'] += ['materialsystem/shaderapipica']
 		if conf.env.NATIVE_VULKAN:
 			projects['game'] += ['materialsystem/shaderapivulkan', 'render/bridge/sdl3-vulkan']
@@ -1400,7 +1414,7 @@ def build(bld):
 			# A launchable desktop tool module, and the server browser, which
 			# only a desktop platform menu loads; neither is in the product.
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
-		if bld.env.PICA:
+		if bld.env.CORE_SHADER_API:
 			projects['game'] += ['materialsystem/shaderapipica']
 		if bld.env.NATIVE_VULKAN:
 			projects['game'] += ['materialsystem/shaderapivulkan', 'render/bridge/sdl3-vulkan']

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal (WebAssembly)</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #000; color: #ccc; font: 13px/1.4 system-ui, sans-serif; }
+  #canvas { display: block; margin: 0 auto; background: #000; outline: none; max-width: 100%; }
+  #status { position: fixed; left: 8px; bottom: 8px; opacity: 0.8; pointer-events: none; white-space: pre; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+<div id="status">Loading…</div>
+<script src="/site/engine.js"></script>
+</body>
+</html>

@@ -53,7 +53,7 @@ def build(bld):
 		# owns and lends it (RFC 0016 legacy device facade F3).
 		libs += ['shaderapivulkan', 'render_bridge_sdl3_vulkan']
 		defines += ['LINKED_NATIVE_VULKAN_BACKEND']
-	if bld.env.PICA:
+	if bld.env.CORE_SHADER_API:
 		libs += ['shaderapipica']
 		defines += ['LINKED_PICA_BACKEND']
 	# RFC 0016: this root composes the render core (render.composition). Its
@@ -69,6 +69,8 @@ def build(bld):
 		# link only when named.
 		if bld.env.RENDER_CORE_WEBGPU:
 			libs += ['WEBGPU']
+			if bld.env.CORE_SHADER_API:
+				defines += ['LINKED_WEBGPU_DEVICE']
 		defines += ['LINKED_RENDER_CORE',
 			'RENDER_CORE_DEFAULT_DEVICE="%s"' % bld.env.RENDER_CORE_DEVICE,
 			'RENDER_CORE_FEATURES="%s"' % bld.env.RENDER_CORE_FEATURES,

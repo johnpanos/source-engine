@@ -1,0 +1,46 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal-wasm32-webgpu-v2",
+  "description": "Portal for the browser (RFC 0029): a statically composed WebAssembly client (Emscripten, wasm32) whose render core uses the WebGPU adapter over the browser's webgpu.h (the pinned Dawn release's emdawnwebgpu port). The engine runs in a worker on an OffscreenCanvas page (tools/web); tools/web/run_node.cjs is its Node lane. No legacy-stream renderer exists on WebGPU yet, so the shader API is the null provider.",
+  "aliases": [
+    "portal@wasm32"
+  ],
+  "target": {
+    "product": "portal-client",
+    "os": "emscripten",
+    "architecture": "wasm32"
+  },
+  "toolchain": {
+    "family": "emscripten",
+    "version": "6.0.10",
+    "cc": "emcc",
+    "cxx": "em++",
+    "dialect_policy": "quality/toolchain/policy.json",
+    "build_type": "release"
+  },
+  "configure_options": {
+    "build_type": "release",
+    "disable_warns": true,
+    "static_composition": true,
+    "render_backend": "legacy",
+    "platform_provider": "sdl3",
+    "build_games": "portal",
+    "render_core_webgpu": true,
+    "render_core_device": "webgpu"
+  },
+  "build": {
+    "toolchain": "emscripten",
+    "default_flavor": "dev",
+    "flavors": {
+      "dev": {
+        "description": "The browser client with function names kept for the browser's and Node's stacks",
+        "configure_options": {}
+      }
+    }
+  },
+  "pipeline": {
+    "stages": [
+      "waf-engine"
+    ]
+  }
+}

@@ -110,6 +110,12 @@
         "allowedEdges": ["product.contracts"]
       },
       {
+        "id": "product.toolchain.emscripten",
+        "owns": "RFC 0027/0029: the emscripten cross toolchain provider (pinned emsdk and emdawnwebgpu through webgpu_lane.py)",
+        "paths": ["public/product/toolchain_emscripten.h", "product/toolchain/emscripten.cpp"],
+        "allowedEdges": ["product.contracts"]
+      },
+      {
         "id": "product.stage.waf",
         "owns": "RFC 0027: the Waf engine build as the waf-engine stage provider",
         "paths": ["public/product/stage_waf.h", "product/stage/"],
@@ -157,7 +163,7 @@
         "id": "kiln.composition",
         "owns": "RFC 0027: the default provider catalog (ComposeDefaultCatalog)",
         "paths": ["public/kiln/composition.h", "product/kiln/composition/"],
-        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.toolchain.n3ds", "product.stage.waf", "product.stage.fstop", "product.stage.video-av1", "product.display.desktop", "product.run.desktop", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
+        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.toolchain.n3ds", "product.toolchain.emscripten", "product.stage.waf", "product.stage.fstop", "product.stage.video-av1", "product.display.desktop", "product.run.desktop", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
       },
       {
         "id": "kiln.app",
@@ -2041,6 +2047,7 @@
       "product_contracts": {"allowedUse": ["product_profile", "foundation_json"]},
       "product_toolchain_linux": {"allowedUse": ["product_contracts"]},
       "product_toolchain_n3ds": {"allowedUse": ["product_contracts"]},
+      "product_toolchain_emscripten": {"allowedUse": ["product_contracts"]},
       "product_stage_waf": {"allowedUse": ["product_contracts"]},
       "product_package_linux_dir": {"allowedUse": ["product_contracts", "content_vpk"]},
       "product_stage_fstop": {"allowedUse": ["product_contracts", "content_vpk"]},
@@ -2048,7 +2055,7 @@
       "product_display_desktop": {"allowedUse": ["product_contracts"]},
       "product_run_desktop": {"allowedUse": ["product_contracts"]},
       "kiln_core": {"allowedUse": ["product_contracts", "product_profile", "foundation_json", "jobsystem_defaultabi"]},
-      "kiln_composition": {"allowedUse": ["kiln_core", "product_toolchain_linux", "product_toolchain_n3ds", "product_stage_waf", "product_package_linux_dir", "product_stage_fstop", "product_stage_video_av1", "product_display_desktop", "product_run_desktop", "platform_posix", "jobsystem_defaultabi"]},
+      "kiln_composition": {"allowedUse": ["kiln_core", "product_toolchain_linux", "product_toolchain_n3ds", "product_toolchain_emscripten", "product_stage_waf", "product_package_linux_dir", "product_stage_fstop", "product_stage_video_av1", "product_display_desktop", "product_run_desktop", "platform_posix", "jobsystem_defaultabi"]},
       "kiln": {"allowedUse": ["kiln_composition", "kiln_core", "foundation_json", "platform_posix"]},
       "kiln_fixture_platform": {"allowedUse": ["product_contracts", "product_profile", "foundation_json"]},
       "kilntest": {"allowedUse": ["kiln_fixture_platform", "kiln_core", "product_toolchain_linux", "product_stage_waf", "product_package_linux_dir", "content_vpk", "product_display_desktop", "product_run_desktop", "product_contracts", "product_profile", "foundation_json", "platform_posix", "jobsystem_defaultabi"]},

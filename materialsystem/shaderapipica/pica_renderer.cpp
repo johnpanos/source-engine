@@ -1,6 +1,8 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// The 3DS shader API's renderer on render.device.pica (see pica_renderer.h).
+// The render core's shader API's renderer (see pica_renderer.h): on the 3DS
+// on render.device.pica, elsewhere on any render.device.v2 device (RFC 0029:
+// the browser's WebGPU adapter).
 //
 //=============================================================================//
 
@@ -8,11 +10,15 @@
 
 #include "render/device/device.h"
 #include "render/device/encoder.h"
+#if defined( PLATFORM_3DS )
 #include "render/device/pica/provider.h"
 #include "render/device/pica_codes.h"
 #include "render/device/pica_format.h"
+#endif
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <iterator>
 #include <map>
@@ -21,8 +27,10 @@
 #include <unordered_map>
 #include <vector>
 
+#if defined( PLATFORM_3DS )
 // The launch shell's bottom-screen log (launcher_main/n3ds_main.cpp).
 extern "C" void N3ds_StartDebugConsole();
+#endif
 
 namespace pica
 {
@@ -31,13 +39,30 @@ namespace
 {
 
 using namespace render::device;
-namespace pf = render::device::pica_format;
+#if defined( PLATFORM_3DS )
 namespace pc = render::device::pica;
 
 // The target is a power of two (the presenter samples it); the frame draws
 // its top-left 400x240.
-constexpr std::uint32_t kTargetWidth = 512;
-constexpr std::uint32_t kTargetHeight = 256;
+std::uint32_t TargetWidth()
+{
+	return 512;
+}
+std::uint32_t TargetHeight()
+{
+	return 256;
+}
+#else
+// The target is the screen.
+std::uint32_t TargetWidth()
+{
+	return std::uint32_t( kScreenWidth );
+}
+std::uint32_t TargetHeight()
+{
+	return std::uint32_t( kScreenHeight );
+}
+#endif
 
 // A mesh's memory (AllocLinear): in place, a mapped buffer of the render
 // core's device that is the mesh's one copy (the core reads it where it is,
@@ -46,7 +71,9 @@ constexpr std::uint32_t kTargetHeight = 256;
 struct Allocation
 {
 	BufferId buffer;
-	std::byte *resident = nullptr; // the device buffer's mapped bytes
+	// The device buffer's mapped bytes (the 3DS); elsewhere the CPU copy the
+	// mesh writes, which FlushLinear copies into the device buffer.
+	std::byte *resident = nullptr;
 	std::size_t bytes = 0;
 	Memory kind = Memory::kVertices;
 	bool inPlace = false; // the device buffer is the mesh's one copy
@@ -81,6 +108,10 @@ struct State
 	std::vector<ResourceId> releases; // after the recording that reads them
 	BufferId reserve; // ReserveLinear
 	CompletionToken submitted; // the last SubmitRecording's
+#if !defined( PLATFORM_3DS )
+	Presenter presenter = nullptr;
+	void *presenterContext = nullptr;
+#endif
 	bool initialized = false;
 	bool inFrame = false;
 	Stats stats;
@@ -138,7 +169,7 @@ Target Current()
 	if ( !depth.id.IsValid() )
 	{
 		TextureDesc desc;
-		desc.format = Format::kD24UnormS8;
+		desc.format = kDepthFormat;
 		desc.width = w;
 		desc.height = h;
 		desc.usages = { ResourceUsage::kDepthWrite };
@@ -178,13 +209,21 @@ ResourceUsage UsageOf( Memory kind )
 	return kind == Memory::kVertices ? ResourceUsage::kVertex : ResourceUsage::kIndex;
 }
 
-// A mapped upload buffer, already in its drawing usage.
+// A mapped upload buffer, already in its drawing usage (elsewhere a device
+// buffer and its CPU copy).
 std::byte *CreateLinear( Memory kind, std::size_t bytes, BufferId &out )
 {
 	BufferDesc desc;
 	desc.size = bytes;
+#if defined( PLATFORM_3DS )
 	desc.memory = MemoryKind::kUpload;
 	desc.usages = { UsageOf( kind ) };
+#else
+	// WebGPU sizes copies in whole words.
+	desc.size = ( bytes + 3 ) & ~std::size_t( 3 );
+	desc.memory = MemoryKind::kDeviceLocal;
+	desc.usages = { UsageOf( kind ), ResourceUsage::kCopyDestination };
+#endif
 	auto buffer = Device().CreateBuffer( desc );
 	if ( !buffer )
 		return nullptr;
@@ -194,9 +233,20 @@ std::byte *CreateLinear( Memory kind, std::size_t bytes, BufferId &out )
 	encoder.Value().TransitionBuffer( buffer.Value(), ResourceUsage::kUndefined, UsageOf( kind ) );
 	CommandEncoder list[] = { std::move( encoder ).Value() };
 	(void)Device().Submit( QueueKind::kGraphics, list, {} );
+#if defined( PLATFORM_3DS )
 	const std::span<std::byte> mapped = pc::MapUploadBuffer( Device(), buffer.Value() );
 	out = buffer.Value();
 	return mapped.data();
+#else
+	auto *copy = static_cast<std::byte *>( std::calloc( 1, desc.size ) );
+	if ( !copy )
+	{
+		(void)Device().Release( buffer.Value(), {} );
+		return nullptr;
+	}
+	out = buffer.Value();
+	return copy;
+#endif
 }
 
 void BeginPass( bool clearColor, bool clearDepth, std::uint32_t rgba )
@@ -347,10 +397,17 @@ void Texture::Release()
 bool Texture::CreateTarget( int width, int height )
 {
 	Release();
+#if defined( PLATFORM_3DS )
 	const auto side = []( int v )
 	{
 		return v >= 8 && v <= 512 && ( v & ( v - 1 ) ) == 0;
 	};
+#else
+	const auto side = []( int v )
+	{
+		return v >= 1 && v <= 8192;
+	};
+#endif
 	if ( !g_state.initialized || !side( width ) || !side( height ) )
 		return false;
 	TextureDesc desc;
@@ -446,6 +503,59 @@ bool Texture::Upload(
 	return true;
 }
 
+bool Texture::UploadCube( int size, const std::uint8_t *const *faces )
+{
+	Release();
+	if ( size < 1 || !g_state.initialized )
+		return false;
+	TextureDesc desc;
+	desc.dimension = TextureDimension::kCube;
+	desc.format = Format::kRGBA8Unorm;
+	desc.width = desc.height = std::uint32_t( size );
+	desc.depthOrLayers = 6;
+	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
+	auto texture = Device().CreateTexture( desc );
+	if ( !texture )
+		return false;
+	auto encoder = Device().BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+	{
+		(void)Device().Release( texture.Value(), {} );
+		return false;
+	}
+	CommandEncoder &e = encoder.Value();
+	e.TransitionTexture(
+	    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+	const std::size_t bytes = std::size_t( size ) * size * 4;
+	std::vector<BufferId> staging;
+	for ( std::uint32_t face = 0; face < 6; ++face )
+	{
+		auto buffer = Device().CreateUploadBuffer(
+		    { reinterpret_cast<const std::byte *>( faces[face] ), bytes } );
+		if ( !buffer )
+			break;
+		staging.push_back( buffer.Value() );
+		e.CopyBufferToTexture( buffer.Value(), texture.Value(),
+		    { 0, 0, face, std::uint32_t( size ), std::uint32_t( size ) } );
+	}
+	e.TransitionTexture(
+	    texture.Value(), ResourceUsage::kCopyDestination, ResourceUsage::kSampled );
+	CommandEncoder list[] = { std::move( e ) };
+	auto token = Device().Submit( QueueKind::kGraphics, list, {} );
+	for ( BufferId buffer : staging )
+		(void)Device().Release( buffer, token ? token.Value() : CompletionToken{} );
+	if ( !token || staging.size() != 6 )
+	{
+		(void)Device().Release( texture.Value(), {} );
+		return false;
+	}
+	m_texture = texture.Value().value;
+	m_width = m_height = size;
+	m_bytes = bytes * 6;
+	g_state.textureBytes += m_bytes;
+	return true;
+}
+
 void Texture::SetWrap( bool wrapS, bool wrapT )
 {
 	const std::uint8_t wrap = ( wrapS ? 1 : 0 ) | ( wrapT ? 2 : 0 );
@@ -459,11 +569,30 @@ void BindDevice( IRenderDevice2 *device )
 	g_bound = device;
 }
 
+#if !defined( PLATFORM_3DS )
+void SetScreenSize( int width, int height )
+{
+	if ( width > 0 && height > 0 && !g_state.initialized )
+	{
+		kScreenWidth = width;
+		kScreenHeight = height;
+	}
+}
+
+void BindPresenter( Presenter presenter, void *context )
+{
+	g_state.presenter = presenter;
+	g_state.presenterContext = context;
+}
+#endif
+
 bool Init()
 {
 	if ( g_state.initialized )
 		return true;
+#if defined( PLATFORM_3DS )
 	N3ds_StartDebugConsole();
+#endif
 	if ( !g_bound )
 	{
 		std::printf( "pica: no render core device was handed to the shader API\n" );
@@ -473,18 +602,28 @@ bool Init()
 
 	TextureDesc desc;
 	desc.format = Format::kRGBA8Unorm;
-	desc.width = kTargetWidth;
-	desc.height = kTargetHeight;
+	desc.width = TargetWidth();
+	desc.height = TargetHeight();
 	desc.usages = {
 	    ResourceUsage::kColorAttachment, ResourceUsage::kSampled, ResourceUsage::kCopySource };
 	auto color = Device().CreateTexture( desc );
-	desc.format = Format::kD24UnormS8;
+	desc.format = kDepthFormat;
 	desc.usages = { ResourceUsage::kDepthWrite };
 	auto depth = Device().CreateTexture( desc );
 	if ( !color || !depth )
 	{
-		std::printf( "pica: the frame's target was refused\n" );
+		const DeviceError error = color ? depth.Error() : color.Error();
+		std::printf( "pica: the frame's %s target (%ux%u) was refused: %s (%s)\n",
+		    color ? "depth" : "colour", TargetWidth(), TargetHeight(),
+		    DescribeStatus( error.status ), DescribeOperation( error.operation ) );
+#if !defined( PLATFORM_3DS )
+		const Presenter presenter = g_state.presenter;
+		void *context = g_state.presenterContext;
 		g_state = State();
+		BindPresenter( presenter, context );
+#else
+		g_state = State();
+#endif
 		return false;
 	}
 	g_state.color = color.Value();
@@ -522,7 +661,13 @@ void Shutdown()
 	for ( ResourceId id : g_state.releases )
 		(void)device.Release( id, {} );
 	for ( const auto &[address, allocation] : g_state.allocations )
+	{
 		(void)device.Release( allocation.buffer, {} );
+#if !defined( PLATFORM_3DS )
+		if ( allocation.inPlace )
+			std::free( allocation.resident );
+#endif
+	}
 	if ( g_state.reserve.IsValid() )
 		(void)device.Release( g_state.reserve, {} );
 	for ( const auto &[size, depth] : g_state.targetDepths )
@@ -532,7 +677,14 @@ void Shutdown()
 		if ( id.value )
 			(void)device.Release( id, {} );
 	(void)device.Poll();
+#if !defined( PLATFORM_3DS )
+	const Presenter presenter = g_state.presenter;
+	void *context = g_state.presenterContext;
 	g_state = State();
+	BindPresenter( presenter, context );
+#else
+	g_state = State();
+#endif
 }
 
 bool Initialized()
@@ -573,7 +725,14 @@ void EndFrame()
 	g_state.target = nullptr;
 	g_state.dropTargetDraws = false;
 	SubmitRecording( true );
+#if defined( PLATFORM_3DS )
 	(void)pc::PresentTopScreen( Device(), g_state.color, kScreenWidth, kScreenHeight );
+#else
+	if ( g_state.presenter )
+		(void)g_state.presenter( g_state.presenterContext, Device(),
+		    std::uint32_t( g_state.color.value ), std::uint32_t( kScreenWidth ),
+		    std::uint32_t( kScreenHeight ) );
+#endif
 	g_state.inFrame = false;
 }
 
@@ -661,8 +820,12 @@ void FreeLinear( void *ptr )
 		g_state.residentBytes -= found->second.bytes;
 	}
 	g_state.meshBytes -= found->second.bytes;
+#if defined( PLATFORM_3DS )
 	if ( !found->second.inPlace )
 		std::free( ptr );
+#else
+	std::free( ptr ); // in place, the CPU copy
+#endif
 	g_state.allocations.erase( found );
 	if ( !g_state.encoder )
 	{
@@ -701,8 +864,29 @@ void FlushLinear( const void *ptr, std::size_t bytes )
 	Allocation *allocation = Find( ptr, &offset );
 	if ( !allocation )
 		return;
+#if defined( PLATFORM_3DS )
 	if ( allocation->inPlace )
 		pc::FlushUploadBuffer( Device(), allocation->buffer, offset, bytes );
+#else
+	if ( !allocation->inPlace || bytes == 0 )
+		return;
+	// Whole words, inside the buffer; in its own submission, ahead of the
+	// recording that draws with it (PrepareWrite submitted any recording that
+	// read the old bytes).
+	const std::size_t begin = offset & ~std::size_t( 3 );
+	const std::size_t end =
+	    std::min( ( offset + bytes + 3 ) & ~std::size_t( 3 ), ( allocation->bytes + 3 ) & ~std::size_t( 3 ) );
+	auto encoder = Device().BeginEncoder( QueueKind::kGraphics );
+	if ( !encoder )
+		return;
+	const ResourceUsage usage = UsageOf( allocation->kind );
+	encoder.Value().TransitionBuffer( allocation->buffer, usage, ResourceUsage::kCopyDestination );
+	encoder.Value().WriteBuffer( allocation->buffer, begin,
+	    std::span<const std::byte>( allocation->resident + begin, end - begin ) );
+	encoder.Value().TransitionBuffer( allocation->buffer, ResourceUsage::kCopyDestination, usage );
+	CommandEncoder list[] = { std::move( encoder ).Value() };
+	(void)Device().Submit( QueueKind::kGraphics, list, {} );
+#endif
 }
 
 render::device::CommandEncoder *BeginCoreSection( CoreSectionTarget &target )
