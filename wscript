@@ -117,6 +117,10 @@ projects={
 		'video',
 	],
 	'tests': [
+		'foundation',
+		'product',
+		'product/kiln',
+		'unittests/kilntest',
 		'platform',
 		'content',
 		'unittests/contenttest',
@@ -151,6 +155,9 @@ projects={
 		'utils/unittest'
 	],
 	'tools': [
+		'foundation',
+		'product',
+		'product/kiln',
 		'fgdlib',
 		'content',
 		'render',
