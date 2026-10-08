@@ -439,6 +439,61 @@ and ABI constraints of their target modules. New strict first-party targets
 use the staged C++20 policy in RFC 0006; legacy public headers and extension
 ABIs do not acquire that requirement implicitly.
 
+## Tier 0 facade over the foundation providers (user direction, 2026-10-08)
+
+Roadmap row R103. Tier 0's exported functions are the mod-facing ABI: Source
+SDK game modules, server plug-ins and shader modules link `libtier0` and call
+its C exports directly. Replacing Tier 0 outright would break them, so
+(user decision, 2026-10-08) its platform internals move onto the foundation
+providers of rank 12 (R26) while every exported symbol keeps its name,
+signature, calling convention and observable behavior.
+
+Binding rules:
+
+1. **Exports are a frozen facade.** The export surface is recorded as a
+   fixture: symbol names per platform plus their declarations in the frozen
+   headers. A check fails on any removed, renamed or re-typed export.
+   `public/tier0/` headers on that surface join `legacyAbi.paths` (CAP010).
+2. **One owner per mechanism.** Tier 0 holds its own private instances of the
+   native providers (`platform/posix`, `platform/win32`) and answers its
+   exports through them. It owns no second clock, thread-id scheme,
+   command-line splitter, debugger check or crash handler. Each
+   replaced copy is deleted in the change that replaces it.
+3. **No locator.** The facade exposes no setter, global registry or capability
+   bag. New and migrated code takes the contracts by injection from its
+   composition root; the facade exists only for legacy callers and mods.
+4. **Behavior is preserved and proven.** Each cohort has an oracle against the
+   pre-change behavior on recorded inputs: `Plat_FloatTime` starts near zero at
+   load and is monotonic, the command-line corpus parses identically, spew
+   output is byte-identical, `ThreadGetCurrentId` matches the OS id where
+   callers compare it with native ids, and a crash still produces the report or
+   minidump it did before.
+5. **Mod proof.** A mod-style fixture module, built against the frozen headers
+   and never rebuilt, loads into the new Tier 0 and calls every cohort's
+   exports.
+
+Cohorts, in order:
+
+| Slice | Cohort | Exports (examples) | Provider |
+| --- | --- | --- | --- |
+| T0 | Export fixture, mod fixture module, tier0 OS-call ratchet | all | — |
+| T1 | Time | `Plat_FloatTime`, `Plat_MSTime`, `Plat_USTime` | `platform.clock.v1` |
+| T2 | Threads | `ThreadSleep`, `ThreadGetCurrentId`, thread naming and priority | `platform.thread.v1` |
+| T3 | Process environment | `CommandLine_Tier0`, `Plat_GetCommandLine(A)`, `Plat_IsInDebugSession` | `platform.process-environment.v1` |
+| T4 | Debug output | `Plat_DebugString`, the default spew sink | `platform.diagnostics.v1` |
+| T5 | Crash reporting | minidump and exit-with-error paths | `platform.diagnostics.v1` |
+| T6 | Memory and paths | page reservation in the allocator, module-relative paths | `platform.virtual-memory.v1`, `platform.paths.v1` |
+
+The ratchet counts native OS calls in Tier 0's sources per cohort (for
+example `clock_gettime`, `gettimeofday`, `QueryPerformanceCounter`, `usleep`,
+`/proc/self/*`, `sigaction`) and is shrink-only. A cohort closes when its count
+is zero and its oracle and the mod fixture pass on every required profile:
+Linux x86_64 and i386, Windows PE under Wine, and Android arm64.
+
+Out of scope: Tier 1 containers, strings, `KeyValues` and `ConVar` are not
+platform code and keep their layouts. Removing Tier 0 itself is R46's
+concern, and only after its exports have no first-party callers.
+
 ## Render-device capability family
 
 Rendering should use the capability model, but it should not be represented as

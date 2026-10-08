@@ -1,7 +1,9 @@
 # RFC 0001 rank 12 / R26: foundation contracts and native providers
 
-Status: `done` (2026-10-08). Every required profile has native evidence: Linux
-x86_64 and i386, Windows PE under Wine, and Android on a Galaxy Tab S8 Ultra.
+Status: `partial` (2026-10-08). R26's own gate passes: every required profile
+has native evidence (Linux x86_64 and i386, Windows PE under Wine, and Android
+on a Galaxy Tab S8 Ultra). The row is not `done` because its hard prerequisite
+R11 (paths and module resolution) is still partial; it closes when R11 does.
 Source revision: `6eabeb23a` plus a dirty tree (the change described here).
 
 ## What is installed
