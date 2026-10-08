@@ -49,6 +49,7 @@
 #include "render/legacy/core_mesh_kind.h"
 #include "render/legacy/core_passes.h"
 #include "render/legacy/material_flag_keys.h"
+#include "render/material/vmt_matrix.h"
 #include "itextureinternal.h"
 #include "texture_group_names.h"
 #include <string>
@@ -389,6 +390,21 @@ ShaderAPITextureHandle_t g_ModifyTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
 ShaderAPITextureHandle_t g_BoundTextures[16];
 // The lightmap page BindStandardTexture put on sampler 1 (else invalid).
 ShaderAPITextureHandle_t g_BoundLightmap = INVALID_SHADERAPI_TEXTURE_HANDLE;
+// The scene fog and the user clip planes as the material system sets them,
+// for the core's slot terms (ported from shaderapivulkan, whose copies go
+// with it).
+struct CoreFogState
+{
+	float start = 0.0f;
+	float end = 0.0f;
+	float fogZ = 0.0f;
+	float maxDensity = 1.0f;
+	unsigned char sceneColor[3] = { 0, 0, 0 };
+	MaterialFogMode_t sceneMode = MATERIAL_FOG_NONE;
+};
+CoreFogState g_CoreFog;
+float g_CoreClipPlanes[6][4] = {};
+int g_CoreClipPlanesEnabled = 0;
 IMaterialInternal *g_pBoundMaterial = NULL;
 // Model lighting as studiorender sets it (SetAmbientLightCube, SetLight): the
 // render core's model point reads it at each draw (RFC 0026 P3).
@@ -2308,6 +2324,74 @@ static render::device::StencilOp CoreStencilOp( StencilOperation_t op )
 // as shaderapivulkan's slots do (its ApplyDepthBiasState: the material
 // system's decal and normal biases, or the shadow bias factors). The 3DS
 // keeps the defaults it draws with.
+#if !defined( PLATFORM_3DS )
+// Portal 2's shaders scale every ssbump's basis weights by 1/sqrt(3); this
+// SDK's do not (ported from shaderapivulkan, whose copy goes with it).
+// mat_ssbump_normalize -1 follows the running game, 0 and 1 force either.
+static ConVar mat_ssbump_normalize( "mat_ssbump_normalize", "-1", FCVAR_CHEAT,
+    "ssbump basis weights x 1/sqrt(3): -1 as the game's shaders do (Portal 2 always), "
+    "0 only with $ssbumpmathfix, 1 always" );
+
+static bool SsbumpBasisNormalized()
+{
+	const int mode = mat_ssbump_normalize.GetInt();
+	if ( mode >= 0 )
+		return mode != 0;
+	static const bool s_bPortal2 = []
+	{
+		const char *game = CommandLine()->ParmValue( "-game", "hl2" );
+		const char *slash = strrchr( game, '/' );
+		const char *backslash = strrchr( game, '\\' );
+		if ( backslash && ( !slash || backslash > slash ) )
+			slash = backslash;
+		return !V_stricmp( slash ? slash + 1 : game, "portal2" );
+	}();
+	return s_bPortal2;
+}
+
+// The slot's terms every slot carries, as shaderapivulkan's MarkSlot fills
+// them: the stencil, the viewport's depth range, the user clip planes, the
+// ssbump policy, the shaders' time, the water tint scale and the scene fog.
+static void FillCoreSlotTerms( render::legacy::CorePassTarget &target )
+{
+	render::device::StencilState &stencil = target.drawState.stencil;
+	stencil.enabled = g_CoreStencil.enable;
+	stencil.compare = CoreStencilCompare( g_CoreStencil.compare );
+	stencil.fail = CoreStencilOp( g_CoreStencil.fail );
+	stencil.depthFail = CoreStencilOp( g_CoreStencil.depthFail );
+	stencil.pass = CoreStencilOp( g_CoreStencil.pass );
+	stencil.reference = std::uint8_t( g_CoreStencil.reference & 255 );
+	stencil.readMask = std::uint8_t( g_CoreStencil.testMask & 255 );
+	stencil.writeMask = std::uint8_t( g_CoreStencil.writeMask & 255 );
+	target.minDepth = g_Viewport.m_flMinZ;
+	target.maxDepth = g_Viewport.m_flMaxZ;
+	for ( int plane = 0; plane < 6; ++plane )
+		if ( g_CoreClipPlanesEnabled & ( 1 << plane ) )
+			std::copy_n( g_CoreClipPlanes[plane], 4, target.clipPlanes[plane] );
+	target.ssbumpNormalized = SsbumpBasisNormalized();
+	target.time = float( Sys_FloatTime() );
+	target.waterReflectTintScale = 1.0f; // no integer HDR on this shader API
+	if ( g_CoreFog.sceneMode == MATERIAL_FOG_LINEAR ||
+	     g_CoreFog.sceneMode == MATERIAL_FOG_LINEAR_BELOW_FOG_Z )
+	{
+		render::legacy::CorePassFog &fog = target.fog;
+		const bool height = g_CoreFog.sceneMode == MATERIAL_FOG_LINEAR_BELOW_FOG_Z;
+		const float ooFogRange =
+			g_CoreFog.end != g_CoreFog.start ? 1.0f / ( g_CoreFog.end - g_CoreFog.start ) : 1.0f;
+		fog.type = height ? 1.0f : 0.0f;
+		fog.params[0] = height ? 0.0f : g_CoreFog.start * ooFogRange;
+		fog.params[1] = g_CoreFog.fogZ;
+		fog.params[2] = height ? 1.0f : clamp( g_CoreFog.maxDensity, 0.0f, 1.0f );
+		fog.params[3] = ooFogRange;
+		for ( int i = 0; i < 3; ++i )
+			fog.color[i] = SrgbGammaToLinear( g_CoreFog.sceneColor[i] / 255.0f );
+		float eye[4];
+		g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
+		fog.eyeZ = eye[2];
+	}
+}
+#endif
+
 static void DecorateCoreTarget( render::legacy::CorePassTarget &target )
 {
 	const bool mesh = g_CoreMeshSlotPending;
@@ -2316,6 +2400,7 @@ static void DecorateCoreTarget( render::legacy::CorePassTarget &target )
 	(void)target;
 	(void)mesh;
 #else
+	FillCoreSlotTerms( target );
 	if ( !mesh || g_CurrentSnapshot < 0 || g_CurrentSnapshot >= g_Snapshots.Count() )
 		return;
 	const PicaSnapshot &snapshot = g_Snapshots[g_CurrentSnapshot];
@@ -3308,13 +3393,24 @@ void BuildVariables( IMaterialInternal *material, MaterialVariables &out )
 			continue;
 		render::legacy::CoreMeshVariable value;
 		value.key = var->GetName();
-		out.texts.push_back( var->GetStringValue() );
+		// A matrix in the core's row-major VMT form (GetStringValue shows it
+		// transposed), as shaderapivulkan captures it.
+		out.texts.push_back( var->GetType() == MATERIAL_VAR_TYPE_MATRIX
+				? RenderMaterialVmt::MatrixValue( var->GetMatrixValue().Base() )
+				: std::string( var->GetStringValue() ) );
 		if ( shader && i < shader->GetNumParams() && !V_stricmp( shader->GetParamName( i ), value.key ) )
 			value.defaultValue = shader->GetParamDefault( i );
 		if ( var->GetType() == MATERIAL_VAR_TYPE_TEXTURE && var->GetTextureValue() )
 		{
+			// The texture's frame variable picks the frame of an animated one.
+			const char *frameKey = !V_stricmp( value.key, "$texture2" ) ? "$frame2"
+				: !V_stricmp( value.key, "$bumpmap" ) || !V_stricmp( value.key, "$normalmap" ) ? "$bumpframe"
+				: !V_stricmp( value.key, "$envmap" ) ? "$envmapframe"
+				: "$frame";
+			bool frameFound = false;
+			IMaterialVar *frame = material->FindVar( frameKey, &frameFound, false );
 			ITextureInternal *texture = static_cast<ITextureInternal *>( var->GetTextureValue() );
-			value.textureHandle = int( texture->GetTextureHandle( 0 ) );
+			value.textureHandle = int( texture->GetTextureHandle( frameFound && frame ? frame->GetIntValue() : 0 ) );
 		}
 		out.variables.push_back( value );
 	}
@@ -3848,6 +3944,88 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	return true;
 }
 
+// The variables a draw takes beyond its material's, as shaderapivulkan
+// adds them: the bloom tint and motion-blur clamp (cvars), ShadowBuild's
+// caster texture and transform, and Portal's view-projection rows. False when
+// there are none (the material's cached list serves the draw as it is).
+static bool AppendDrawVariables( IMaterialInternal *material,
+	std::vector<render::legacy::CoreMeshVariable> &variables, std::vector<std::string> &values )
+{
+	const char *shader = material->GetShaderName();
+	const std::size_t before = variables.size();
+	values.reserve( 8 ); // the pointers below stay valid: at most 6 are made
+	if ( !V_stricmp( shader, "Downsample_nohdr" ) )
+	{
+		static ConVarRef tintR( "r_bloomtintr" ), tintG( "r_bloomtintg" ), tintB( "r_bloomtintb" ),
+			tintExponent( "r_bloomtintexponent" );
+		if ( tintR.IsValid() && tintG.IsValid() && tintB.IsValid() && tintExponent.IsValid() )
+		{
+			values.emplace_back( "[" + std::to_string( tintR.GetFloat() ) + " " +
+				std::to_string( tintG.GetFloat() ) + " " + std::to_string( tintB.GetFloat() ) + " " +
+				std::to_string( tintExponent.GetFloat() ) + "]" );
+			variables.push_back( { "$bloomtint", values.back().c_str(), nullptr, 0 } );
+		}
+	}
+	if ( !V_stricmp( shader, "MotionBlur" ) || !V_stricmp( shader, "MotionBlur_dx9" ) )
+	{
+		static ConVarRef percentMax( "mat_motion_blur_percent_of_screen_max" );
+		if ( percentMax.IsValid() )
+		{
+			values.emplace_back( std::to_string( percentMax.GetFloat() / 100.0f ) );
+			variables.push_back( { "$motionblurmax", values.back().c_str(), nullptr, 0 } );
+		}
+	}
+	if ( !V_stricmp( shader, "ShadowBuild" ) || !V_stricmp( shader, "ShadowBuild_DX9" ) )
+	{
+		bool found = false;
+		IMaterialVar *translucent = material->FindVar( "$translucent_material", &found, false );
+		IMaterial *caster = found && translucent->GetType() == MATERIAL_VAR_TYPE_MATERIAL
+			? translucent->GetMaterialValue() : nullptr;
+		IMaterialVar *base = caster ? caster->FindVar( "$basetexture", &found, false ) : nullptr;
+		if ( base && found && base->IsTexture() && base->GetTextureValue() )
+		{
+			ITexture *texture = base->GetTextureValue();
+			IMaterialVar *frame = caster->FindVar( "$frame", &found, false );
+			const int handle = static_cast<ITextureInternal *>( texture )->GetTextureHandle(
+				found && frame ? frame->GetIntValue() : 0 );
+			values.emplace_back( texture->GetName() );
+			variables.push_back( { "$basetexture", values.back().c_str(), nullptr, handle } );
+			IMaterialVar *transform = caster->FindVar( "$basetexturetransform", &found, false );
+			if ( found && transform && transform->GetType() == MATERIAL_VAR_TYPE_MATRIX )
+			{
+				values.emplace_back( RenderMaterialVmt::MatrixValue( transform->GetMatrixValue().Base() ) );
+				variables.push_back( { "$basetexturetransform", values.back().c_str(), nullptr, 0 } );
+			}
+		}
+	}
+	if ( !V_stricmp( shader, "Portal" ) || !V_stricmp( shader, "Portal_DX90" ) )
+	{
+		bool found = false;
+		IMaterialVar *alternate = material->FindVar( "$alternateviewmatrix", &found, false );
+		if ( found && alternate->GetType() == MATERIAL_VAR_TYPE_MATRIX )
+		{
+			const VMatrix &view = alternate->GetMatrixValue();
+			const float *projection = Top( kStackProjection ); // row-vector convention
+			static const char *const kRows[] = { "$portalviewproj0", "$portalviewproj1",
+				"$portalviewproj2", "$portalviewproj3" };
+			for ( int row = 0; row < 4; ++row )
+			{
+				std::string text = "[";
+				for ( int col = 0; col < 4; ++col )
+				{
+					float sum = 0.0f;
+					for ( int k = 0; k < 4; ++k )
+						sum += projection[k * 4 + row] * view[k][col];
+					text += std::to_string( sum ) + ( col == 3 ? "]" : " " );
+				}
+				values.emplace_back( std::move( text ) );
+				variables.push_back( { kRows[row], values.back().c_str(), nullptr, 0 } );
+			}
+		}
+	}
+	return variables.size() != before;
+}
+
 bool CEmptyMesh::EmitSurfaceToCore( int firstIndex, int indexCount, render::legacy::CoreMeshKind kind )
 {
 	using render::legacy::CoreMeshKind;
@@ -3957,6 +4135,17 @@ bool CEmptyMesh::EmitSurfaceToCore( int firstIndex, int indexCount, render::lega
 	draw.variables = material.variables.data();
 	draw.variableCount = std::uint32_t( material.variables.size() );
 	draw.materialRevision = material.revision;
+	// The draw's own variables (QueueMesh copies them): its material is then
+	// not the revisioned one the core caches.
+	std::vector<render::legacy::CoreMeshVariable> drawVariables;
+	std::vector<std::string> drawValues;
+	drawVariables = material.variables;
+	if ( AppendDrawVariables( g_pBoundMaterial, drawVariables, drawValues ) )
+	{
+		draw.variables = drawVariables.data();
+		draw.variableCount = std::uint32_t( drawVariables.size() );
+		draw.materialRevision = 0;
+	}
 	draw.vertices = vertices.data();
 	draw.vertexCount = std::uint32_t( vertices.size() );
 	draw.indices16 = drawTriangles->data();
@@ -5084,41 +5273,58 @@ void CShaderAPIEmpty::FogMode( MaterialFogMode_t fogMode )
 
 void CShaderAPIEmpty::FogStart( float fStart )
 {
+	g_CoreFog.start = fStart;
 }
 
 void CShaderAPIEmpty::FogEnd( float fEnd )
 {
+	g_CoreFog.end = fEnd;
 }
 
 void CShaderAPIEmpty::SetFogZ( float fogZ )
 {
+	g_CoreFog.fogZ = fogZ;
 }
 	
 void CShaderAPIEmpty::FogMaxDensity( float flMaxDensity )
 {
+	g_CoreFog.maxDensity = flMaxDensity;
 }
 
 void CShaderAPIEmpty::GetFogDistances( float *fStart, float *fEnd, float *fFogZ )
 {
+	if ( fStart )
+		*fStart = g_CoreFog.start;
+	if ( fEnd )
+		*fEnd = g_CoreFog.end;
+	if ( fFogZ )
+		*fFogZ = g_CoreFog.fogZ;
 }
 
 
 void CShaderAPIEmpty::SceneFogColor3ub( unsigned char r, unsigned char g, unsigned char b )
 {
+	g_CoreFog.sceneColor[0] = r;
+	g_CoreFog.sceneColor[1] = g;
+	g_CoreFog.sceneColor[2] = b;
 }
 
 
 void CShaderAPIEmpty::SceneFogMode( MaterialFogMode_t fogMode )
 {
+	g_CoreFog.sceneMode = fogMode;
 }
 
 void CShaderAPIEmpty::GetSceneFogColor( unsigned char *rgb )
 {
+	rgb[0] = g_CoreFog.sceneColor[0];
+	rgb[1] = g_CoreFog.sceneColor[1];
+	rgb[2] = g_CoreFog.sceneColor[2];
 }
 
 MaterialFogMode_t CShaderAPIEmpty::GetSceneFogMode( )
 {
-	return MATERIAL_FOG_NONE;
+	return g_CoreFog.sceneMode;
 }
 
 int CShaderAPIEmpty::GetPixelFogCombo( )
@@ -5203,12 +5409,12 @@ void CShaderAPIEmpty::InvalidateDelayedShaderConstants( void )
 
 float CShaderAPIEmpty::GammaToLinear_HardwareSpecific( float fGamma ) const
 {
-	return 0.0f;
+	return SrgbGammaToLinear( fGamma );
 }
 
 float CShaderAPIEmpty::LinearToGamma_HardwareSpecific( float fLinear ) const
 {
-	return 0.0f;
+	return SrgbLinearToGamma( fLinear );
 }
 
 void CShaderAPIEmpty::SetLinearToGammaConversionTextures( ShaderAPITextureHandle_t hSRGBWriteEnabledTexture, ShaderAPITextureHandle_t hIdentityTexture )
@@ -5723,10 +5929,22 @@ void CShaderAPIEmpty::ForceHardwareSync( void )
 
 void CShaderAPIEmpty::SetClipPlane( int index, const float *pPlane )
 {
+	if ( index < 0 || index >= 6 || !pPlane )
+		return;
+	g_CoreClipPlanes[index][0] = pPlane[0];
+	g_CoreClipPlanes[index][1] = pPlane[1];
+	g_CoreClipPlanes[index][2] = pPlane[2];
+	g_CoreClipPlanes[index][3] = -pPlane[3];
 }
 
 void CShaderAPIEmpty::EnableClipPlane( int index, bool bEnable )
 {
+	if ( index < 0 || index >= 6 )
+		return;
+	if ( bEnable )
+		g_CoreClipPlanesEnabled |= 1 << index;
+	else
+		g_CoreClipPlanesEnabled &= ~( 1 << index );
 }
 
 void CShaderAPIEmpty::SetFastClipPlane( const float *pPlane )

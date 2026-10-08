@@ -174,12 +174,13 @@ struct Stats
 	std::size_t meshBytes = 0; // linear memory of the meshes (AllocLinear)
 };
 
-// The depth buffers' format: the PICA200's D24S8; elsewhere D32 float, which
-// every WebGPU device has (WebGPU's depth24plus is no copyable 24-bit unorm).
+// The depth buffers' format: the PICA200's D24S8; elsewhere D32 float with
+// an 8-bit stencil (portals and stencil clears need one, as the native
+// backend's depth has; WebGPU's depth24plus is no copyable 24-bit unorm).
 #if defined( PLATFORM_3DS )
 constexpr render::device::Format kDepthFormat = render::device::Format::kD24UnormS8;
 #else
-constexpr render::device::Format kDepthFormat = render::device::Format::kD32Float;
+constexpr render::device::Format kDepthFormat = render::device::Format::kD32FloatS8;
 #endif
 
 #if defined( PLATFORM_3DS )
