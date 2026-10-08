@@ -1422,7 +1422,7 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 	for ( WorldView::DynamicDraw &draw : view.dynamicDraws )
 	{
 		std::string key;
-		const auto entry = s.Mapped( draw.material, stage, reflection, key );
+		const auto entry = s.Mapped( draw.Material(), stage, reflection, key );
 		std::string why;
 		if ( !entry->material )
 			why = entry->material.Error();
@@ -1440,7 +1440,7 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 		dynamic->mapped.push_back( entry );
 		if ( !why.empty() )
 		{
-			s.Refuse( "material " + draw.material.name + ": " + why );
+			s.Refuse( "material " + draw.Material().name + ": " + why );
 			return 0;
 		}
 	}
@@ -5665,7 +5665,7 @@ void WorldPass::RecordBatch(
 		     std::any_of( draw.indices.begin(), draw.indices.end(), outOfRange ) ||
 		     std::any_of( draw.indices16.begin(), draw.indices16.end(), outOfRange ) )
 		{
-			note( "dynamic material " + draw.material.name + ": " +
+			note( "dynamic material " + draw.Material().name + ": " +
 			      ( mapped ? "invalid triangle geometry" : mapped.Error() ) );
 			complete = false;
 			continue;
@@ -5673,7 +5673,7 @@ void WorldPass::RecordBatch(
 		Resources::Material &cached = r.dynamicMaterials[key];
 		cached.lastUsed = target.frame;
 		Resources::Material *m =
-		    prepareMaterial( *r.resolver, cached, mapped.Value(), draw.material );
+		    prepareMaterial( *r.resolver, cached, mapped.Value(), draw.Material() );
 		if ( !m || !drawGroupReady( *m, draw.lightmapPage, draw.capturedLightmap ) ||
 		     !frameGroupReady( *m ) || ( !m->program.sceneColor && !viewGroupReady( *m ) ) )
 		{
@@ -5708,7 +5708,7 @@ void WorldPass::RecordBatch(
 			auto variant = m->resolver->StaticVertexLightPipeline( m->program );
 			if ( !variant )
 			{
-				note( "material " + draw.material.name +
+				note( "material " + draw.Material().name +
 				      ": its static vertex light variant: " + variant.Error() );
 				complete = false;
 				continue;
@@ -5725,7 +5725,7 @@ void WorldPass::RecordBatch(
 			                             "a skinned draw needs model lighting and no baked light" ) ) );
 			if ( !variant )
 			{
-				note( "material " + draw.material.name + ": its skinned variant: " + variant.Error() );
+				note( "material " + draw.Material().name + ": its skinned variant: " + variant.Error() );
 				complete = false;
 				continue;
 			}
@@ -5744,7 +5744,7 @@ void WorldPass::RecordBatch(
 			                             "mesh streams need model lighting and no baked light" ) ) );
 			if ( !variant )
 			{
-				note( "material " + draw.material.name + ": its mesh streams variant: " +
+				note( "material " + draw.Material().name + ": its mesh streams variant: " +
 				      variant.Error() );
 				complete = false;
 				continue;

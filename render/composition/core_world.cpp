@@ -2657,17 +2657,18 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	pass::world::WorldView::DynamicDraw geometry;
 	std::copy_n( draw.modelToWorld, 16, geometry.modelToWorld );
 	// A revisioned material (the frontend promises equal content for equal
-	// revisions) is built once: per draw it was a copy of every variable and a
-	// default lookup each.
+	// revisions) is built once and shared by its draws: per draw it was a
+	// copy of every variable and a default lookup each, then (copying the
+	// cached one) of every string pair.
 	bool reused = false;
 	const bool revisioned = draw.materialRevision && draw.kind != legacy::CoreMeshKind::kStencilClear;
 	if ( revisioned )
 	{
 		std::lock_guard<std::mutex> guard( m_MaterialLock );
 		auto known = m_RevisionMaterials.find( draw.materialRevision );
-		if ( known != m_RevisionMaterials.end() && known->second.mesh == draw.mesh )
+		if ( known != m_RevisionMaterials.end() && known->second->mesh == draw.mesh )
 		{
-			geometry.material = known->second;
+			geometry.sharedMaterial = known->second;
 			reused = true;
 		}
 	}
@@ -2705,7 +2706,10 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 			std::lock_guard<std::mutex> guard( m_MaterialLock );
 			if ( m_RevisionMaterials.size() >= 256 )
 				m_RevisionMaterials.clear();
-			m_RevisionMaterials[draw.materialRevision] = geometry.material;
+			geometry.sharedMaterial =
+			    std::make_shared<const pass::world::WorldMaterial>( std::move( geometry.material ) );
+			geometry.material = {};
+			m_RevisionMaterials[draw.materialRevision] = geometry.sharedMaterial;
 		}
 	}
 	geometry.staticVertexLight = draw.staticVertexLighting;

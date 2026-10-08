@@ -722,7 +722,9 @@ private:
 	// The material QueueMesh built for each nonzero
 	// CoreMeshDraw::materialRevision (bounded; equal revisions, equal content).
 	std::mutex m_MaterialLock;
-	std::unordered_map<std::uint64_t, pass::world::WorldMaterial> m_RevisionMaterials;
+	// Shared with the draws of their revision (DynamicDraw::sharedMaterial).
+	std::unordered_map<std::uint64_t, std::shared_ptr<const pass::world::WorldMaterial>>
+	    m_RevisionMaterials;
 	struct StreamView
 	{
 		std::array<float, 16> view;
