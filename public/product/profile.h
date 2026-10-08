@@ -14,7 +14,8 @@
 //			then the child over the result. Objects merge member by member and
 //			any other value replaces. Existing members keep their position and
 //			new ones append, as Python's dict update does, so a resolved v1
-//			profile equals tools/quality/profile_extends.py's.
+//			profile equals the retired tools/quality/profile_extends.py's
+//			(kiln_gate.py parity keeps an independent reference).
 //
 //=============================================================================//
 

@@ -2,7 +2,7 @@
 //
 // Purpose: product.package.linux-dir (RFC 0027 L1): the `linux-dir` packager,
 //			a runnable directory tree for desktop Linux. It replaces the run/
-//			staging of tools/quality/stage_runtime.py and its siblings.
+//			staging of the retired tools/quality/stage_runtime.py and its siblings.
 //
 //			The package is a persistent runtime directory: the game writes its
 //			own files there (configs, saves, logs). The packager owns only the

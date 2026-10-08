@@ -1,7 +1,7 @@
 """Harness launches must not write the player's saved state.
 
 tools/quality/launch_sandbox.py gives a launch a throwaway HOME/XDG and refuses
-write paths in the player's locations (Steam installs, ./play* runtimes). These
+write paths in the player's locations (Steam installs, kiln's player runtimes). These
 tests run a fake engine against a fake home, Steam install and repository:
 
 - through the sandbox, a launch that saves cfg values leaves every sentinel
@@ -220,7 +220,6 @@ ALLOWED = {
     # Not a launch: the product name appears for another reason.
     "gi_soak.py": "launches through portal_boot.py; the name finds the product's pid",
     "portal2_paint.py": "launches through portal2_material_shots.py; checks the retail binary",
-    "stage_portal2_runtime.py": "names the staged launcher; runs only vpk",
     # Pending migration (RFC/0005-progress.md, launch sandbox record).
     "portal2_audio.py": "pending: retail cohort (links the retail binary; busy file)",
     "portal2_material_shots.py": "pending: retail cohort (busy file)",

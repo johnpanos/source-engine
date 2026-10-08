@@ -24,7 +24,7 @@ constexpr const char *kLockName = ".lock-waf-kiln";
 constexpr const char *kStampName = ".kiln-configure.json";
 
 // Configuration inputs besides the wscripts Waf recorded (the same set
-// tools/quality/ensure_configured.py watches).
+// the retired tools/quality/ensure_configured.py watched).
 constexpr const char *kInputRoots[] = { "waf", "scripts/waifulib", "quality/toolchain",
     "quality/profiles", "quality/product_profiles", "architecture/modules.json" };
 

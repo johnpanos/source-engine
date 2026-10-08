@@ -6,7 +6,7 @@
 //			  `none`    no display: SDL's offscreen driver, no window anywhere.
 //			  `private` a headless mutter with a virtual monitor, on a private
 //			            D-Bus whose configuration blocks the Flatpak document
-//			            portal (tools/quality/private_session.py's reason: a
+//			            portal (the retired tools/quality/private_session.py's reason: a
 //			            second portal unmounts the login session's
 //			            $XDG_RUNTIME_DIR/doc when the private bus ends). The
 //			            launch runs as mutter's child, so the compositor ends

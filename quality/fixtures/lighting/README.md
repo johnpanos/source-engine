@@ -218,7 +218,7 @@ ends, no new pipeline code: the scene front end's collision VMF
 compiled by `vmf_map_build.py` (vbsp, vvis and vrad `-fast`), then the one
 lighting back end (`map_lighting.light`, bsp + authored scene, profile
 `gi-fixture`) and `playable_maps` publishing to `run/maps/lt_<name>`
-(`./play lt_<name>`). The bake is a preview too: `fixture.json`
+(`./kiln play portal lt_<name>`). The bake is a preview too: `fixture.json`
 `lighting.map.overrides` sets lightmap samples 64, probe-volume samples 256,
 reflection probes (where the fixture has glossy surfaces) at 512 wide, 128
 per face and 16 samples, and no radiosity transfer or SDF volume (K11 reads
@@ -269,7 +269,7 @@ PYTHONPATH=build/toolchains/openusd-25.11/lib/python \
 python3 tools/quality/lighting_fixtures.py render [--fixture NAME]...
 # maps: collision VMF + entities -> vmf_map_build (vbsp/vvis/vrad fast) ->
 # map_lighting with the authored scene (gi-fixture profile, preview bake
-# overrides) -> published to run/maps/lt_<name> (./play lt_<name>)
+# overrides) -> published to run/maps/lt_<name> (./kiln play portal lt_<name>)
 OMP_NUM_THREADS=1 python3 tools/quality/lighting_fixtures.py build [--fixture NAME]...
 # fixture data and historical reference integrity
 python3 tools/quality/lighting_fixtures.py check

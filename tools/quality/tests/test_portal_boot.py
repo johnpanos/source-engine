@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import sys
 import tarfile
@@ -33,6 +34,24 @@ players : 1 humans, 0 bots (1 max)
 '''
 PROVIDERS = "[NativeVulkan] IShaderAPI::SetMode: device Fixture GPU up\nRFC0001 window: provider=sdl3 driver=wayland\n"
 
+
+
+def fake_kiln():
+    """portal_boot's kiln session, packaging a minimal Portal runtime."""
+    def build(profile, flavor=None, up_to=None, runtime=None):
+        stage = Path(runtime)
+        (stage / "portal").mkdir(parents=True)
+        (stage / "portal/gameinfo.txt").write_text("gameinfo")
+        (stage / "hl2_launcher").write_bytes(b"launcher")
+        return {"stages": [{"name": "package", "summary": "fake"}], "tree": "tree"}
+    session = mock.Mock()
+    session.build.side_effect = build
+    sepipe = mock.Mock()
+    sepipe.Session.return_value = session
+    stack = contextlib.ExitStack()
+    stack.enter_context(mock.patch.object(boot.sepipe_loader, "load", return_value=sepipe))
+    stack.enter_context(mock.patch.object(boot.sepipe_loader, "game_of", return_value="portal"))
+    return stack
 
 class AcceptanceTests(unittest.TestCase):
     def evaluate(self, log=STATUS, screenshots=None, code=0, timeout=False,
@@ -120,17 +139,14 @@ class UserDisplayTests(unittest.TestCase):
 
     def test_main_refuses_a_live_desktop_run_before_the_product_starts(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runtime, output = Path(tmp) / "original", Path(tmp) / "boot"
-            (runtime / "portal").mkdir(parents=True)
-            (runtime / "portal/gameinfo.txt").write_text("gameinfo")
-            (runtime / "hl2_launcher").write_bytes(b"launcher")
+            output = Path(tmp) / "boot"
             product = mock.Mock()
             with mock.patch.dict(os.environ, {"WAYLAND_DISPLAY": "wayland-0"}), mock.patch.object(
-                    boot, "run_product", product), mock.patch.object(
+                    boot, "run_kiln", product), mock.patch.object(
                     boot, "login_session_displays", return_value=self.LOGIN), mock.patch.object(
-                    boot.conformance, "source_identity", return_value={}), \
+                    boot.conformance, "source_identity", return_value={}), fake_kiln(), \
                     contextlib.redirect_stdout(io.StringIO()):
-                result = boot.main(["--runtime", str(runtime), "--out", str(output)])
+                result = boot.main(["--profile", "portal", "--out", str(output)])
             self.assertNotEqual(result, 0)
             product.assert_not_called()
             self.assertIn("live desktop", json.dumps(json.loads((output / "evidence.json").read_text())))
@@ -401,238 +417,6 @@ class ProviderCatalogTests(unittest.TestCase):
 
 
 class StagingTests(unittest.TestCase):
-    def make_build(self, root, games="portal"):
-        build, stage = root / "build", root / "stage"
-        for relative in ("launcher_main/hl2_launcher", "engine/libengine.so",
-                         "game/client/libclient.so", "game/server/libserver.so"):
-            path = build / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(relative)
-        (build / "c4che").mkdir()
-        if games is not None:
-            (build / "c4che/_cache.py").write_text("GAMES = %r\n" % games)
-        return build, stage
-
-
-    def test_unqualified_portal_game_outputs_are_installed_in_gamebin(self):
-        with tempfile.TemporaryDirectory() as directory:
-            build, stage = self.make_build(Path(directory))
-            installed = boot.install_build(build, stage)
-            self.assertIn("portal/bin/libclient.so", installed)
-            self.assertIn("portal/bin/libserver.so", installed)
-            self.assertNotIn("bin/libclient.so", installed)
-            self.assertNotIn("bin/libserver.so", installed)
-
-    def test_dedicated_launcher_uses_same_gamebin_staging(self):
-        with tempfile.TemporaryDirectory() as directory:
-            build, stage = self.make_build(Path(directory))
-            (build / "launcher_main/hl2_launcher").unlink()
-            launcher = build / "dedicated_main/dedicated_launcher"
-            launcher.parent.mkdir(parents=True)
-            launcher.write_text("dedicated")
-            installed = boot.install_build(build, stage, launcher_name="dedicated_launcher")
-            self.assertEqual("dedicated", (stage / "dedicated_launcher").read_text())
-            self.assertIn("portal/bin/libserver.so", installed)
-            self.assertNotIn("bin/libserver.so", installed)
-            with self.assertRaisesRegex(ValueError, "hl2_launcher"):
-                boot.install_build(build, stage)
-
-    def test_portal2_game_outputs_use_separate_gamebin(self):
-        with tempfile.TemporaryDirectory() as directory:
-            build, stage = self.make_build(Path(directory), "portal2")
-            installed = boot.install_build(build, stage, game="portal2")
-            self.assertIn("portal2/bin/libclient.so", installed)
-            self.assertIn("portal2/bin/libserver.so", installed)
-            self.assertNotIn("portal/bin/libclient.so", installed)
-
-    def test_unqualified_game_outputs_require_unambiguous_portal_selection(self):
-        for selection in (None, "hl2", "portal,hl2"):
-            with self.subTest(selection=selection), tempfile.TemporaryDirectory() as directory:
-                build, stage = self.make_build(Path(directory), selection)
-                installed = boot.install_build(build, stage)
-                self.assertNotIn("portal/bin/libclient.so", installed)
-                self.assertNotIn("portal/bin/libserver.so", installed)
-
-    def test_conflicting_waf_game_selections_do_not_label_other_game_as_portal(self):
-        with tempfile.TemporaryDirectory() as directory:
-            build, stage = self.make_build(Path(directory))
-            (build / "c4che/other_cache.py").write_text("GAMES = 'hl2'\n")
-            installed = boot.install_build(build, stage)
-            self.assertNotIn("portal/bin/libclient.so", installed)
-
-    def test_build_cache_is_data_and_cannot_execute_python(self):
-        with tempfile.TemporaryDirectory() as directory:
-            build, stage = self.make_build(Path(directory))
-            sentinel = Path(directory) / "must-not-exist"
-            (build / "c4che/_cache.py").write_text(
-                "GAMES = __import__('pathlib').Path(%r).touch()\n" % str(sentinel))
-            with self.assertRaises(ValueError):
-                boot.install_build(build, stage)
-            self.assertFalse(sentinel.exists())
-
-    def test_ambiguous_output_names_are_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
-            build, stage = self.make_build(Path(directory))
-            (build / "duplicate").mkdir()
-            (build / "duplicate/libengine.so").write_text("other engine")
-            with self.assertRaisesRegex(ValueError, "ambiguous"):
-                boot.install_build(build, stage)
-
-    def test_nested_waf_profile_outputs_are_not_staged(self):
-        with tempfile.TemporaryDirectory() as directory:
-            build, stage = self.make_build(Path(directory))
-            (build / "materialsystem/stdshaders").mkdir(parents=True)
-            (build / "materialsystem/stdshaders/libstdshader_dx9.so").write_text(
-                "active profile shader")
-            nested = build / "pbr-native"
-            (nested / "c4che").mkdir(parents=True)
-            (nested / "materialsystem/stdshaders").mkdir(parents=True)
-            (nested / "materialsystem/stdshaders/libstdshader_dx9.so").write_text(
-                "other profile shader")
-            (nested / "launcher_main/hl2_launcher").parent.mkdir(parents=True)
-            (nested / "launcher_main/hl2_launcher").write_text("other profile launcher")
-
-            installed = boot.install_build(build, stage)
-
-            self.assertEqual("engine/libengine.so", (stage / "bin/libengine.so").read_text())
-            self.assertEqual("active profile shader",
-                             (stage / "bin/libstdshader_dx9.so").read_text())
-            self.assertIn("bin/libstdshader_dx9.so", installed)
-            self.assertNotIn("pbr-native", installed["hl2_launcher"]["source"])
-
-    def test_host_tool_installs_below_build_are_not_staged(self):
-        with tempfile.TemporaryDirectory() as directory:
-            build, stage = self.make_build(Path(directory))
-            tools = build / "toolchains"
-            for relative in ("onetbb/lib64/libtbb.so", "onetbb-build/release/libtbb.so",
-                             "openusd/lib/libusd_ms.so"):
-                (tools / relative).parent.mkdir(parents=True, exist_ok=True)
-                (tools / relative).write_text("host tool")
-            with self.assertRaisesRegex(ValueError, "ambiguous"):
-                boot.install_build(build, stage, tool_roots=set())
-
-            installed = boot.install_build(build, stage, tool_roots={tools})
-
-            self.assertIn("bin/libengine.so", installed)
-            self.assertFalse(any("toolchains" in item["source"] for item in installed.values()))
-            self.assertFalse((stage / "bin/libtbb.so").exists())
-
-    def test_conformance_output_below_build_is_not_staged(self):
-        with tempfile.TemporaryDirectory() as directory:
-            build, stage = self.make_build(Path(directory))
-            quality = build / "quality"
-            # A command suite's staged runtime and a suite's fixture library.
-            runtime = quality / "corpus_hammer_loop.out/room/map/boot/runtime"
-            (runtime / "bin").mkdir(parents=True)
-            (runtime / "hl2_launcher").write_text("staged launcher")
-            (runtime / "bin/libengine.so").write_text("staged engine")
-            (quality / "loader.default.fixture.so").write_text("fixture")
-            original = boot.conformance.default_build_dir
-            try:
-                boot.conformance.default_build_dir = lambda: str(build / "elsewhere")
-                with self.assertRaisesRegex(ValueError, "exactly one hl2_launcher"):
-                    boot.install_build(build, stage, tool_roots=set())
-
-                boot.conformance.default_build_dir = lambda: str(quality)
-                installed = boot.install_build(build, stage, tool_roots=set())
-            finally:
-                boot.conformance.default_build_dir = original
-
-            self.assertEqual("engine/libengine.so", (stage / "bin/libengine.so").read_text())
-            self.assertFalse(any("quality" in item["source"] for item in installed.values()))
-            self.assertFalse((stage / "bin/loader.default.fixture.so").exists())
-
-    def test_declared_host_tool_roots_come_from_host_tool_profiles(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            profiles = root / "quality/product_profiles"
-            profiles.mkdir(parents=True)
-            (profiles / "tools.json").write_text(json.dumps(
-                {"schema": "source-host-tool-profile/v1", "layout": {"root": "build/toolchains"}}))
-            (profiles / "product.json").write_text(json.dumps(
-                {"schema": "source-product-profile/v1", "layout": {"root": "build"}}))
-            self.assertEqual({(root / "build/toolchains").resolve()},
-                             boot.host_tool_roots(root))
-            (profiles / "bad.json").write_text(json.dumps(
-                {"schema": "source-host-tool-profile/v1", "layout": {"root": "/abs"}}))
-            with self.assertRaisesRegex(ValueError, "repository-relative"):
-                boot.host_tool_roots(root)
-        self.assertIn(QUALITY.parents[1].resolve() / "build/toolchains", boot.host_tool_roots())
-
-    def test_mutable_files_are_independent_and_stale_screenshots_are_absent(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            runtime, stage = root / "original", root / "staged"
-            (runtime / "portal/cfg").mkdir(parents=True)
-            (runtime / "portal/screenshots").mkdir()
-            (runtime / "portal/gameinfo.txt").write_text("gameinfo")
-            (runtime / "portal/cfg/config.cfg").write_text("original configuration")
-            (runtime / "portal/content.vpk").write_bytes(b"immutable content")
-            (runtime / "portal/screenshots/stale.tga").write_bytes(b"old")
-            (runtime / "engine.log").write_text(STATUS)
-            boot.stage_runtime(runtime, stage)
-            (stage / "portal/cfg/config.cfg").write_text("modified configuration")
-            self.assertEqual("original configuration", (runtime / "portal/cfg/config.cfg").read_text())
-            self.assertFalse((stage / "portal/cfg/config.cfg").is_symlink())
-            self.assertTrue((stage / "portal/content.vpk").is_symlink())
-            self.assertFalse((stage / "engine.log").exists())
-            self.assertFalse((stage / "portal/screenshots").exists())
-
-    def test_private_clone_falls_back_without_sharing_writable_file(self):
-        with tempfile.TemporaryDirectory() as directory:
-            source, target = Path(directory) / "source.cfg", Path(directory) / "target.cfg"
-            source.write_text("original configuration")
-            if sys.platform.startswith("linux"):
-                with mock.patch("fcntl.ioctl", side_effect=OSError(boot.errno.EOPNOTSUPP,
-                                                                   "no clone support")):
-                    boot.copy_private_file(source, target)
-            else:
-                boot.copy_private_file(source, target)
-            target.write_text("changed")
-            self.assertEqual(source.read_text(), "original configuration")
-            self.assertEqual(target.read_text(), "changed")
-
-    def test_portal2_content_only_stages_vpks_without_retail_binaries(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            runtime, stage = root / "retail", root / "staged"
-            (runtime / "portal2/bin").mkdir(parents=True)
-            (runtime / "bin").mkdir()
-            (runtime / "portal2/gameinfo.txt").write_text("gameinfo")
-            (runtime / "portal2/pak01_dir.vpk").write_bytes(b"vpk")
-            (runtime / "portal2/bin/client.so").write_bytes(b"retail")
-            (runtime / "bin/engine.so").write_bytes(b"retail")
-
-            boot.stage_runtime(runtime, stage, game="portal2", content_only=True)
-
-            self.assertTrue((stage / "portal2/pak01_dir.vpk").is_symlink())
-            self.assertTrue((stage / "portal2/gameinfo.txt").is_file())
-            self.assertFalse((stage / "portal2/bin/client.so").exists())
-            self.assertFalse((stage / "bin/engine.so").exists())
-
-    def test_linked_directories_stay_links(self):
-        # A Portal 2 runtime staged by stage_portal2_runtime.py links its
-        # retail overlay directories; they are not walked into empty copies.
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            runtime, stage, retail = root / "p2", root / "staged", root / "retail_update"
-            retail.mkdir()
-            (retail / "pak01_dir.vpk").write_bytes(b"vpk")
-            (runtime / "portal2").mkdir(parents=True)
-            (runtime / "portal2/gameinfo.txt").write_text("gameinfo")
-            (runtime / "update").symlink_to(retail, target_is_directory=True)
-            boot.stage_runtime(runtime, stage, game="portal2")
-            self.assertTrue((stage / "update").is_symlink())
-            self.assertEqual((stage / "update").resolve(), retail.resolve())
-            self.assertTrue((stage / "update/pak01_dir.vpk").is_file())
-
-    def test_refuses_to_stage_inside_original_runtime(self):
-        with tempfile.TemporaryDirectory() as directory:
-            runtime = Path(directory)
-            (runtime / "portal").mkdir()
-            (runtime / "portal/gameinfo.txt").write_text("gameinfo")
-            with self.assertRaises(ValueError):
-                boot.stage_runtime(runtime, runtime / "output")
 
     def test_private_content_is_validated_before_staging(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -682,19 +466,6 @@ class StagingTests(unittest.TestCase):
             self.assertEqual(b"published material",
                              (stage / "portal2/materials/sample.vmt").read_bytes())
             self.assertLess(search.index("portal2/" + mount), search.index("custom/*"))
-
-    def test_build_override_does_not_install_other_games(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            build, stage = root / "build", root / "stage"
-            for relative in ("launcher_main/hl2_launcher", "engine/libengine.so",
-                             "game/client/portal/libclient.so", "game/client/hl2/libclient.so"):
-                path = build / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(relative)
-            installed = boot.install_build(build, stage)
-            self.assertEqual({"hl2_launcher", "bin/libengine.so", "portal/bin/libclient.so"}, set(installed))
-            self.assertEqual("game/client/portal/libclient.so", (stage / "portal/bin/libclient.so").read_text())
 
 
 class ScreenshotTests(unittest.TestCase):
@@ -785,7 +556,7 @@ class ShaderOverlayTests(unittest.TestCase):
             original = root / "original"
             stage.rename(original)
             before = boot.sha256(original / "portal/gameinfo.txt")
-            boot.stage_runtime(original, stage)
+            shutil.copytree(original, stage, symlinks=True)
             boot.install_shader_artifacts(artifacts, stage, repo)
             self.assertEqual(before, boot.sha256(original / "portal/gameinfo.txt"))
             gameinfo = (stage / "portal/gameinfo.txt").read_text()
@@ -865,14 +636,11 @@ class ShaderOverlayTests(unittest.TestCase):
 
 class TraceCaptureTests(unittest.TestCase):
     def run_capture(self, root, write_trace):
-        runtime, output = root / "original", root / "capture"
-        (runtime / "portal").mkdir(parents=True)
-        (runtime / "portal/gameinfo.txt").write_text("gameinfo")
-        (runtime / "hl2_launcher").write_bytes(b"launcher")
+        output = root / "capture"
 
-        def product(command, stage, environment, timeout, stdout):
+        def product(args, command, stage, environment, timeout, stdout):
             self.assertEqual(str(output / "render-trace.jsonl"), environment["SOURCE_RENDER_TRACE"])
-            self.assertNotIn(str(runtime), environment["SOURCE_RENDER_TRACE"])
+            self.assertIn(str(output), environment["SOURCE_RENDER_TRACE"])
             Path(stdout).write_text(STATUS)
             screenshot = stage / "portal/screenshots/frame.tga"
             screenshot.parent.mkdir(parents=True)
@@ -889,10 +657,11 @@ class TraceCaptureTests(unittest.TestCase):
 
         # The fake product opens no window, so the live-desktop guard has no
         # login session to protect here.
-        with mock.patch.object(boot, "run_product", side_effect=product), mock.patch.object(
+        with mock.patch.object(boot, "run_kiln", side_effect=product), mock.patch.object(
                 boot.conformance, "source_identity", return_value={}), mock.patch.object(
-                boot, "login_session_displays", return_value={}), contextlib.redirect_stdout(io.StringIO()):
-            result = boot.main(["--runtime", str(runtime), "--out", str(output), "--render-trace"])
+                boot, "login_session_displays", return_value={}), fake_kiln(), \
+                contextlib.redirect_stdout(io.StringIO()):
+            result = boot.main(["--profile", "portal", "--out", str(output), "--render-trace"])
         return result, json.loads((output / "evidence.json").read_text())
 
     def test_requested_trace_is_recorded_with_content_hash(self):

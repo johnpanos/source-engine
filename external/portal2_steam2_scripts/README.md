@@ -19,7 +19,7 @@ The aggregate SHA-256 over sorted relative paths, NUL separators, and the
 raw SHA-256 digest of each file is
 `fd63e6b45ceecf832d72de2ee85265df817cc65ecfc08b2674cb9f32e8d07f5f`.
 
-These files are reference versions and are not selected by `./play_p2`.
+These files are reference versions and are not selected by kiln.
 Some are byte-identical to files in the installed retail game; others differ
 and may document earlier behavior. The installed Portal 2 content remains
 the runtime authority. The repository's provenance and distribution warning

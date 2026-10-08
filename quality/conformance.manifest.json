@@ -14946,7 +14946,6 @@
       "sources": [
         "tools/render/proxy_corpus.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "game/client/material_proxy_capture.cpp",
         "quality/fixtures/render-material/proxy-inventory-v1.json",
         "quality/fixtures/render-material/proxy-capture-v1/portal2/capture_0.jsonl",
@@ -14984,7 +14983,6 @@
       "sources": [
         "tools/render/proxy_corpus.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "game/client/material_proxy_capture.cpp",
         "render/legacy/material_blocks.cpp",
         "public/render/legacy/material_blocks.h",
@@ -18338,7 +18336,6 @@
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -18385,7 +18382,6 @@
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -18426,7 +18422,6 @@
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -18464,7 +18459,6 @@
       "sources": [
         "tools/quality/portal2_shadow_views.py",
         "tools/quality/portal2_map_views.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-intro4-shadows-v1/views.json"
       ]
@@ -18499,7 +18493,6 @@
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-water-v1/scenarios.json",
         "quality/workloads/portal2-water-v1/checks.json",
@@ -18541,7 +18534,6 @@
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-water-v1/scenarios.json",
         "quality/workloads/portal2-water-v1/checks.json",
@@ -18586,7 +18578,6 @@
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -18737,7 +18728,6 @@
         "tools/quality/portal2_storybeats.py",
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/legacy_bsp.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-storybeats-v1/scenarios.json",
@@ -18778,7 +18768,6 @@
         "tools/quality/portal2_storybeats.py",
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/playable_maps.py",
         "tools/quality/legacy_bsp.py",
         "tools/quality/conformance_result.py",
@@ -18911,7 +18900,6 @@
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -18953,7 +18941,6 @@
       "sources": [
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-materials-v1/scenarios.json",
         "quality/workloads/portal2-materials-v1/checks.json",
@@ -18992,7 +18979,6 @@
       "sources": [
         "tools/quality/portal2_audio.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-audio-v1/audio.json",
@@ -19032,7 +19018,6 @@
       "sources": [
         "tools/quality/portal2_audio.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-audio-v1/audio.json",
@@ -19072,7 +19057,6 @@
       "sources": [
         "tools/quality/portal2_audio.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-audio-v1/audio.json",
@@ -19107,7 +19091,6 @@
       "sources": [
         "tools/quality/portal2_audio.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-audio-v1/audio.json",
@@ -19144,7 +19127,6 @@
       "sources": [
         "tools/quality/portal2_audio.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-audio-v1/audio.json",
@@ -19182,7 +19164,6 @@
         "tools/quality/portal2_paint.py",
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-paint-world-v1/scenarios.json",
         "quality/workloads/portal2-paint-world-v1/checks.json",
@@ -19221,7 +19202,6 @@
         "tools/quality/portal2_paint.py",
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-paint-world-v1/scenarios.json",
         "quality/workloads/portal2-paint-world-v1/checks.json",
@@ -19261,7 +19241,6 @@
         "tools/quality/portal2_paint.py",
         "tools/quality/portal2_material_shots.py",
         "tools/quality/portal2_scenarios.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal2-paint-world-v1/scenarios.json",
         "quality/workloads/portal2-paint-world-v1/checks.json",
@@ -19964,7 +19943,6 @@
         "tools/quality/portal_boot.py",
         "tools/quality/draw_state_diff.py",
         "tools/quality/legacy_ports_views.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/render-view-oracles-v1.json",
         "quality/fixtures/render-views/portal_testchmb_a_00/provenance.json",
@@ -20012,7 +19990,6 @@
         "tools/quality/portal_boot.py",
         "tools/quality/draw_state_diff.py",
         "tools/quality/legacy_ports_views.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/render-view-oracles-v1.json",
         "quality/fixtures/render-views/portal_testchmb_a_00/provenance.json",
@@ -20147,7 +20124,6 @@
       "sources": [
         "tools/quality/portal2_sign_panel.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py"
       ],
       "expect": "pass"
@@ -20176,7 +20152,6 @@
       "sources": [
         "tools/quality/portal2_sign_panel.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "game/client/c_vguiscreen.cpp",
         "game/client/portal2/vgui/vgui_base_progress_screen.cpp",
@@ -20241,7 +20216,6 @@
         "tools/quality/portal_boot.py",
         "tools/quality/legacy_bsp.py",
         "tools/quality/source_content.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal-sign-light-v1.json",
         "game/client/portal2/vgui/vgui_base_progress_screen.cpp"
@@ -20278,7 +20252,6 @@
         "tools/quality/portal_boot.py",
         "tools/quality/legacy_bsp.py",
         "tools/quality/source_content.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "quality/workloads/portal-sign-light-v1.json",
         "game/client/portal2/vgui/vgui_base_progress_screen.cpp",
@@ -20334,7 +20307,6 @@
         "tools/quality/portal2_mover_shadow.py",
         "tools/quality/portal_boot.py",
         "tools/quality/legacy_bsp.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "game/client/dynamic_occluders.cpp",
         "public/render/dynamic_occlusion.h",
@@ -20390,7 +20362,6 @@
         "tools/quality/portal_boot.py",
         "tools/quality/legacy_bsp.py",
         "tools/quality/source_content.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/conformance_result.py",
         "game/client/viewrender.cpp",
         "game/client/view.cpp",
@@ -20428,7 +20399,6 @@
       "sources": [
         "tools/quality/core_world_smoke.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/launch_sandbox.py",
         "tools/quality/conformance_result.py",
@@ -20467,7 +20437,6 @@
       "sources": [
         "tools/quality/core_world_smoke.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/launch_sandbox.py",
         "tools/quality/conformance_result.py",
@@ -20507,7 +20476,6 @@
       "sources": [
         "tools/quality/core_world_smoke.py",
         "tools/quality/portal_boot.py",
-        "tools/quality/stage_portal2_runtime.py",
         "tools/quality/source_content.py",
         "tools/quality/launch_sandbox.py",
         "tools/quality/conformance_result.py",
@@ -20654,7 +20622,7 @@
       "contract": "public/product/contracts.h",
       "kind": "positive",
       "profile": "linux-headless-core",
-      "description": "RFC 0027 L0 (RFC/0027-progress.md): foundation.json; product.profile schema v2 with the extends merge equal to profile_extends.py's rule, provenance, aliases, flavors and derived Waf arguments, and its seeded faults refused by name (extends cycle, unknown key, unknown provider, missing pin, three conflicting configure options, workspace values that would change a build fact); the shared suites of ITargetToolchain (linux-gcc, linux-clang, the fixture host), IRecipeBuilder (fake), IProductStage (fixture stages; waf-engine descriptor and cancellation), IPackager, IDeployTransport and IDisplaySession, each rejecting its deliberately bad providers by the clause they break (25 bad providers); the ProviderCatalog; and the fixture platform run build -> content -> package -> deploy -> run through an unchanged kiln.core, with an unchanged second run rebuilding and resending nothing, a missing capability refused before the device is touched, and an undeclared read failing the run with nothing published.",
+      "description": "RFC 0027 L0 (RFC/0027-progress.md): foundation.json; product.profile schema v2 with the extends merge equal to the retired profile_extends.py's rule (kiln_gate.py parity keeps an independent reference), provenance, aliases, flavors and derived Waf arguments, and its seeded faults refused by name (extends cycle, unknown key, unknown provider, missing pin, three conflicting configure options, workspace values that would change a build fact); the shared suites of ITargetToolchain (linux-gcc, linux-clang, the fixture host), IRecipeBuilder (fake), IProductStage (fixture stages; waf-engine descriptor and cancellation), IPackager, IDeployTransport and IDisplaySession, each rejecting its deliberately bad providers by the clause they break (25 bad providers); the ProviderCatalog; and the fixture platform run build -> content -> package -> deploy -> run through an unchanged kiln.core, with an unchanged second run rebuilding and resending nothing, a missing capability refused before the device is touched, and an undeclared read failing the run with nothing published.",
       "command": [
         "out/host-tests/unittests/kilntest/kilntest"
       ],
@@ -20686,7 +20654,7 @@
       "contract": "public/product/profile.h",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0027 L0 gate: `kiln profiles resolve` equals tools/quality/profile_extends.py, values and member order, on every file in quality/product_profiles (the pre-RFC profiles, the schema v2 desktop profiles and the fragments).",
+      "description": "RFC 0027 L0 gate: `kiln profiles resolve` equals the gate's own independent reference merge (the retired tools/quality/profile_extends.py's rule), values and member order, on every file in quality/product_profiles (the pre-RFC profiles, the schema v2 desktop profiles and the fragments).",
       "command": [
         "{python}",
         "tools/kiln/kiln_gate.py",
@@ -20699,10 +20667,53 @@
         "path:out/host-linux-x86_64/product/kiln/kiln"
       ],
       "sources": [
-        "tools/kiln/kiln_gate.py",
-        "tools/quality/profile_extends.py"
+        "tools/kiln/kiln_gate.py"
       ],
       "expect": "pass"
+    },
+    {
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L1",
+      "contract": "RFC/0027-product-pipeline-lowering-streaming-kiln.md",
+      "profile": "linux-host-corpus",
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 120,
+      "sources": [
+        "tools/kiln/retired_scan.py"
+      ],
+      "expect": "pass",
+      "id": "kiln.l1.no-callers",
+      "kind": "positive",
+      "min_checks": 2,
+      "description": "RFC 0027 L1 retirement: no retired launch or staging path (./play*, run.sh, run.conf, render_flags.sh, launcher_ccache.sh, ensure_configured.py, profile_extends.py, stage_*.py, private_session.py, transcode_av1.py, the scripts/ CI wrappers, the launch-equivalence gate) is tracked, and no tracked file outside RFC/ and Markdown names one except on a provenance line (retired, ported from, port of, formerly).",
+      "command": [
+        "{python}",
+        "tools/kiln/retired_scan.py",
+        "check"
+      ]
+    },
+    {
+      "domain": "Q-PRODUCT",
+      "rfc": "0027",
+      "migration": "RFC 0027 L1",
+      "contract": "RFC/0027-product-pipeline-lowering-streaming-kiln.md",
+      "profile": "linux-host-corpus",
+      "result_protocol": "checks-v1",
+      "timeout_seconds": 120,
+      "sources": [
+        "tools/kiln/retired_scan.py"
+      ],
+      "expect": "pass",
+      "id": "kiln.l1.no-callers.selftest",
+      "kind": "positive",
+      "min_checks": 8,
+      "description": "The no-callers scan's sensitivity: seeded callers of the retired surface (a launcher path join, ./play_p2 in an argv, an import of stage_portal2_runtime, a CI step running scripts/tests-ubuntu-amd64.sh, Hammer's old ./play argv, run.conf, ROOT / \"play\") are each caught, while provenance lines, documentation, kiln's own `play` subcommand and an unrelated run.sh pass.",
+      "command": [
+        "{python}",
+        "tools/kiln/retired_scan.py",
+        "selftest"
+      ]
     },
     {
       "id": "kiln.profiles.parity.sensitivity",
@@ -20751,36 +20762,6 @@
         "tools/kiln/kiln_gate.py",
         "product/stage/waf_engine.cpp",
         "product/kiln/core/session.cpp"
-      ],
-      "expect": "pass"
-    },
-    {
-      "id": "kiln.launch-equivalence",
-      "domain": "Q-PRODUCT",
-      "rfc": "0027",
-      "migration": "RFC 0027 L1",
-      "contract": "public/kiln/api.h",
-      "kind": "positive",
-      "profile": "linux-host-corpus",
-      "description": "RFC 0027 L1 launch-equivalence gate, argv and environment half: for each launcher mode (./play native, null, map with switches, render state, environment overrides; ./play_p2 plain, map, switches, environment overrides and --workshop; ./play_p2_fsr; ./play_fstop with and without a map) the old launcher runs for real until it exec()s the game (tools/kiln/exec_capture.c records and stops that exec), and `kiln play --dry-run` must give the same argv, launcher-set environment and working directory, paths normalized, and `kiln package` must lay out a runtime with the old staging's manifest (files by SHA-256, links by resolved target; Portal, Portal 2, Portal 2 with the P2:CE Workshop mount set, Portal 2 FSR and F-Stop, the F-Stop reference freshly staged), apart from the recorded differences (./play -> run.sh plumbing variables; CCACHE_DIR). A dropped switch, a swapped switch order and an extra map are caught. Needs installed Portal and Portal 2 content and the F-Stop depot. Also ./play_p2 --retail (Steam's portal2.sh from the repository root) and ./play_p2_coop: run against a stub play_p2 that answers the engine's server challenge and writes the join line, each peer's arguments through Portal 2's proven launch equal kiln's coop-pair peers (start order and the client's P2_NO_BUILD included).",
-      "command": [
-        "{python}",
-        "tools/kiln/launch_equivalence.py",
-        "check"
-      ],
-      "result_protocol": "checks-v1",
-      "min_checks": 76,
-      "timeout_seconds": 3600,
-      "requires": [
-        "path:out/host-linux-x86_64/product/kiln/kiln"
-      ],
-      "sources": [
-        "tools/kiln/launch_equivalence.py",
-        "tools/kiln/exec_capture.c",
-        "product/kiln/core/launch.cpp",
-        "product/package/linux_dir.cpp",
-        "product/stage/fstop_content.cpp",
-        "product/stage/video_av1.cpp"
       ],
       "expect": "pass"
     },

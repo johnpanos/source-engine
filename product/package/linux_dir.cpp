@@ -949,7 +949,7 @@ private:
 
 	// extract-packs: the manifest's VPK packs, filtered and rewritten, into
 	// <into>/<id>, with a stamp per pack and <into>/mounts.json, the record
-	// of what each pack supplies (stage_portal2_runtime.stage_workshop).
+	// of what each pack supplies (the retired stage_portal2_runtime.stage_workshop's).
 	foundation::Expected<void, ProviderError> ExtractPacks( const Value &step )
 	{
 		const std::string *from = step.FindString( "from" );

@@ -100,7 +100,7 @@ the tooling, since it opens a window):
 
 ```sh
 python3 materialsystem/shaderapivulkan/shaders/regen_material_spv.py --debug-out /tmp/vkdebug
-SOURCE_VK_SHADER_DIR=/tmp/vkdebug renderdoccmd capture --opt-hook-children ./play gi_door
+SOURCE_VK_SHADER_DIR=/tmp/vkdebug renderdoccmd capture --opt-hook-children ./kiln play portal gi_door
 ```
 
 ## Inspect

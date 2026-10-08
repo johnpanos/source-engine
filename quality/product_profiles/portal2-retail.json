@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "portal2-retail-v2",
-  "description": "The installed retail Portal 2 run as is, for comparisons (./play_p2 --retail execs Steam's portal2.sh from the repository root). Nothing is built.",
+  "description": "The installed retail Portal 2 run as is, for comparisons (kiln play portal2-retail execs Steam's portal2.sh from the repository root, as the retired ./play_p2 --retail did). Nothing is built.",
   "extends": [
     "fragments/desktop-launch.json"
   ],

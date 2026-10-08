@@ -175,7 +175,7 @@ int main( int argc, char **argv )
 		if ( !profile )
 			return Failure( json, profile.Error() );
 		// `resolve` prints the merged document itself (with or without
-		// --json), the form profile_extends.py printed.
+		// --json), the form the retired profile_extends.py printed.
 		std::cout << ( args[1] == "resolve" ? profile.Value().document.WritePretty()
 		                                    : kiln::ExplainJson( profile.Value() ).WritePretty() )
 		          << '\n';

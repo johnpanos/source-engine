@@ -109,7 +109,7 @@ int main( int, char ** )
 	static const char *const kLaunchArgs[] = { "-game", APPLE_DEFAULT_GAME, "-renderer",
 	    "native-vulkan", "-nosteam", "-insecure", "-nouserclip",
 	    // Box3D (RFC 0004) is the Apple products' physics provider (user
-	    // decision, 2026-09-26), as in the desktop ./play; its parallel step
+	    // decision, 2026-09-26), as in the desktop kiln profiles; its parallel step
 	    // runs on the engine compute pool. IVP stays linked for comparison runs.
 	    "-physics", "vphysics_box3d",
 	    // The material system renders on the main thread until its render

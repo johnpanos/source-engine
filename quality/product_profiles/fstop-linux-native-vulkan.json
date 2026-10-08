@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "fstop-linux-native-vulkan-v2",
-  "description": "F-Stop on Linux x86_64 (Portal 1 plus Valve's F-Stop content, ./play_fstop, tree build-fstop).",
+  "description": "F-Stop on Linux x86_64 (Portal 1 plus Valve's F-Stop content; kiln play fstop, formerly ./play_fstop).",
   "extends": [
     "fragments/linux-x86_64-desktop.json",
     "fragments/desktop-launch.json"

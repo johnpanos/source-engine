@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "ci-tests-linux-v2",
-  "description": "CI: the unit-test lane (tests.yml linux-amd64, formerly scripts/tests-ubuntu-amd64.sh): the test composition with AddressSanitizer and UBSan; the job runs unittest and unittest_legacy from the install.",
+  "description": "CI: the unit-test lane (tests.yml linux-amd64, the retired scripts/tests-ubuntu-amd64.sh): the test composition with AddressSanitizer and UBSan; the job runs unittest and unittest_legacy from the install.",
   "extends": [
     "fragments/linux-ci-ubuntu-24.04.json"
   ],

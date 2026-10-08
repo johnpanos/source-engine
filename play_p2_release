@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# Release flavor of ./play_p2 (RFC 0023): build-p2-release, LTO.
-# Arguments are ./play_p2's; see its header for --release/--dev/--fsr.
-exec "$(cd "$(dirname "$0")" && pwd)/play_p2" --release "$@"

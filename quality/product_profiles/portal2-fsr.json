@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "portal2-fsr-v2",
-  "description": "Portal 2 with the experimental pinned FSR 4.1.1 Vulkan provider (./play_p2_fsr, tree build-p2-fsr): a different tree.",
+  "description": "Portal 2 with the experimental pinned FSR 4.1.1 Vulkan provider (kiln play portal2-fsr, formerly ./play_p2_fsr): a different tree.",
   "extends": [
     "portal2-linux-native-vulkan.json"
   ],

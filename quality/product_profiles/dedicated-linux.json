@@ -72,7 +72,7 @@
     "locators": {
       "portal-base": {
         "default": "{root}/run/runtime",
-        "description": "A runnable Portal tree (retail content and its third-party libraries) to seed the runtime from once, as run.sh's BASE_RUNTIME"
+        "description": "A runnable Portal tree (retail content and its third-party libraries) to seed the runtime from once"
       }
     }
   },

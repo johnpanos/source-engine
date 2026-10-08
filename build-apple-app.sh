@@ -510,7 +510,7 @@ if target['os'] == 'ios':
         'UILaunchScreen': {},
         'UIRequiresFullScreen': True,
         'UIStatusBarHidden': True,
-        # Co-op (./play_p2_coop) and LAN games reach other devices on the
+        # Co-op (kiln play portal2-coop) and LAN games reach other devices on the
         # local network; iOS asks the player first and shows this reason.
         'NSLocalNetworkUsageDescription':
             'Multiplayer connects to games on your local network.',

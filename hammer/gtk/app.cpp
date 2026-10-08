@@ -136,7 +136,7 @@ struct AppState
 	~AppState() { frameReturns->service = nullptr; } // before the service goes
 
 	// Where F9 writes its build records, whether it publishes the map for
-	// ./play, and the export profile the lighting back end lights it with
+	// `kiln play portal`, and the export profile the lighting back end lights it with
 	// (empty: vrad's lighting). Fixed by the composition root (--builds,
 	// --no-publish, --lighting).
 	const std::string buildsRoot;
@@ -693,14 +693,15 @@ std::string MapNameOf( const std::string &path )
 
 void RunMap( const std::string &map )
 {
-	const gchar *argv[] = { "./play", map.c_str(), nullptr };
+	// RFC 0027: the published map through the portal profile (./kiln play).
+	const gchar *argv[] = { "./kiln", "play", "portal", map.c_str(), nullptr };
 	g_spawn_async( nullptr, const_cast<gchar **>( argv ), nullptr, G_SPAWN_DEFAULT, nullptr,
 	    nullptr, nullptr, nullptr );
 }
 
 // The catalog's map.build / map.build_and_run, run the way this host must: it
-// saves on this thread, then compiles off it and publishes the map (./play
-// <map>); 'run' also launches it (Source 2's "load in engine after building").
+// saves on this thread, then compiles off it and publishes the map (./kiln
+// play portal <map>); 'run' also launches it (Source 2's "load in engine after building").
 // The editor stays usable while the map compiles.
 void StartBuild( AppState *st, bool run )
 {
@@ -734,8 +735,9 @@ void StartBuild( AppState *st, bool run )
 			        SetHelp( st, "Built " + map + " (not published)" );
 			        return;
 		        }
-		        SetHelp( st,
-		            "Built " + map + ( run ? "; launching ./play " + map : "; ./play " + map ) );
+		        SetHelp( st, "Built " + map +
+		                         ( run ? "; launching ./kiln play portal " + map
+		                               : "; ./kiln play portal " + map ) );
 		        if ( run )
 		        {
 			        RunMap( map );

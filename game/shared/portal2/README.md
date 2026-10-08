@@ -13,8 +13,8 @@ The existing `portal` target selects `game/shared/portal` explicitly through
 `game/client/client_portal.vpc` and `game/server/server_portal.vpc`. Its source
 selection must remain independent of these files.
 
-The separate Portal 2 Waf configuration is available through `./play_p2
---configure-only`. The 94 selected gameplay sources that have Steam2
+The separate Portal 2 Waf configuration is the portal2 kiln profile's tree
+(`./kiln build portal2`). The 94 selected gameplay sources that have Steam2
 pseudocode, with their headers, have been reconstructed from it; every such
 file carries a `Portal 2 reconstruction` header and is not original Valve
 source. The VPC source maps still name 42 selected sources without pseudocode.
@@ -37,15 +37,16 @@ source archive has no exact-path copy of a remaining VPC source except a
 PS3-specific `vjobutils.cpp`. Remaining gameplay sources need implementation;
 same-named files from other games require semantic review before reuse.
 
-`./play_p2 --prepare` stages the installed Portal 2 VPKs by symlink into a
-private runtime. `./play_p2 --retail` starts the installed retail binary when
-immediate play is needed; the default command targets this repository's build.
+`./kiln package portal2` links the installed Portal 2 VPKs into the profile's
+runtime. `./kiln play portal2-retail` starts the installed retail binary when
+immediate play is needed; `./kiln play portal2` targets this repository's build.
 The installed Linux `portal2_linux` and game modules are 32-bit, while this
 branch's configured Linux target is 64-bit, so the retail modules cannot fill
 the missing source target.
 
-`./play_p2` runs on Box3D (`vphysics_box3d`), as `./play` does;
-`PHYSICS=vphysics ./play_p2` or an explicit `-physics` argument selects IVP.
+`./kiln play portal2` runs on Box3D (`vphysics_box3d`), as `./kiln play portal`
+does; `./kiln play portal2 --set ivp` or an explicit `-physics` argument
+selects IVP.
 On 2026-09-24, player movement and noclip were compared headless against IVP on
 `sp_a2_triple_laser` and `sp_a1_intro3`. The check covered falling, walking,
 friction, jumping, crouching, pushing a cube, noclip in all directions, and the
@@ -97,21 +98,22 @@ Fixed on the way:
   upload: the VGUI surface replaces the regenerator of a procedural material's
   base texture.
 - Movies play from offline AV1 transcodes (user direction, 2026-10-05).
-  `tools/video/transcode_av1.py` encodes every retail `media/*.bik` to AV1
-  (SVT-AV1, 8-bit 4:2:0) with Opus audio in `run/media-av1/<game dir>/media/*.webm`,
+  kiln's `video.av1` compiler (the `video-av1` stage, `product/stage/video_av1.cpp`)
+  encodes every retail `media/*.bik` to AV1 (SVT-AV1, 8-bit 4:2:0) with Opus
+  audio in `run/media-av1/<game dir>/media/*.webm`,
   keeping a clip only when its frame count matches and its mean SSIM against the
   Bink decode (frames paired by index) is at least 0.97, walking a CRF ladder
   (24, 18, 12) per clip. AV1 is the default everywhere video exists: Waf's
   `--video-provider=auto` links both FFmpeg providers for desktop Portal 2
   clients (none elsewhere), the launcher's `-video-provider auto` selects only
-  `av1` when it is linked, and `stage_portal2_runtime.py` mounts `run/media-av1`
-  ahead of each game directory whenever it has transcodes (`--no-av1-media`
-  opts out). `./play_p2` (and so `./play_p2_fsr` and the desktop
-  `./play_p2_coop` peers) runs the transcoder incrementally before staging.
+  `av1` when it is linked, and the portal2 profile's package mounts
+  `run/media-av1` ahead of each game directory whenever it has transcodes.
+  `./kiln play portal2` (and so portal2-fsr and the portal2-coop peers) runs
+  the compiler incrementally before packaging.
   The game still asks for `media/<name>.bik`; with only the av1 provider
   active, video services' alternate-file search resolves it to the `.webm`.
   The av1 provider decodes with dav1d and refuses non-AV1 streams by name;
-  `-video-provider bink` (`VIDEO_ARGS="-video-provider bink" ./play_p2`) plays
+  `-video-provider bink` (`./kiln play portal2 --set bink`) plays
   the retail files. Decoding is on
   the CPU (one dav1d thread per movie) with the existing YUV-to-RGB upload;
   GPU video decode and the Android/iOS packages are not done.
@@ -187,7 +189,7 @@ with the gun and:
   models) appear in doubling waves between two facing portals while the
   player looks into them and turns.
 
-The workload passes on this build (`./play_p2`'s Box3D and job-graph
+The workload passes on this build (the portal2 profile's Box3D and job-graph
 arguments) and on a clang AddressSanitizer build of the same tree
 (`--sanitize=address`; `new_delete_type_mismatch=0`, see below), as does the
 triple-laser workload.
@@ -479,7 +481,7 @@ front of the eye.
 shoots the views at 1024x768 on both sides.
 
 - On this build, the views run through `portal2_scenarios.py` (SDL offscreen).
-  The same engine arguments as `./play_p2` apply (`+mat_colorcorrection 1`),
+  The same engine arguments as the portal2 profile's apply (`+mat_colorcorrection 1`),
   plus `+sv_cheats 1`.
 - On retail, `portal2_linux` runs in a private symlink mirror of the install,
   with its own `portal2/cfg`, `update/cfg` and `scripts`. A `mapspawn.nut`
@@ -489,9 +491,9 @@ shoots the views at 1024x768 on both sides.
     every staged runtime mounts ahead of its own cfg. Until 2026-09-28 the
     mirrors linked `update/` whole, so harness settings (`hud_quickinfo 0`
     from the paint workload, `closecaption 0`, `snd_mute_losefocus 0`) were
-    saved into the player's config, and `./play_p2` lost its crosshair
-    brackets. `stage_portal2_runtime.private_retail_write_dir` now gives
-    every mirror a private `update/cfg`.
+    saved into the player's config, and the player's game lost its crosshair
+    brackets. `portal2_retail.private_retail_write_dir` now gives every
+    mirror a private `update/cfg`.
   - Retail needs a running Steam client ("Steam is not running" otherwise). The
     session uses the user's Steam when one is running. Only when none is running
     does it start one inside the compositor and shut it down afterwards.

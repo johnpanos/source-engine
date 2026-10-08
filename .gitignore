@@ -39,7 +39,7 @@ quality-results/
 run/runtime-p2/
 # Private runtime of tools/quality/portal2_scenarios.py.
 run/runtime-p2-scenarios/
-# PBRT maps published for ./play (tools/quality/playable_maps.py) and their mounts.
+# PBRT maps published for kiln play (tools/quality/playable_maps.py) and their mounts.
 run/maps/
 run/runtime*/portal/custom/pbrt-*
 .cache/
@@ -52,7 +52,7 @@ source-engine.sln
 # Pinned native SDKs fetched by tools/quality/product_profile.py (not sources).
 dependencies/
 
-# Staged game runtimes and packaging output (./play, run.sh, product staging).
+# Staged game runtimes and harness runtimes (kiln's portal-base content tree).
 # Built binaries and game content; never commit them.
 /run/
 myout/

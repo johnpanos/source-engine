@@ -263,7 +263,7 @@
       "game": "portal",
       "map": "testchmb_a_01",
       "settings": "legacy-ports",
-      "why": "The legacy-ports view set where tools/quality/legacy_ports_views.py defines it: testchmb_a_01 from the spawn point at run.conf's settings (1920x1080, mat_queue_mode 2, the job-graph and emit settings), eight yaws, two upward views and the pause menu.",
+      "why": "The legacy-ports view set where tools/quality/legacy_ports_views.py defines it: testchmb_a_01 from the spawn point at the portal profile's launch settings (1920x1080, mat_queue_mode 2, the job-graph and emit settings), eight yaws, two upward views and the pause menu.",
       "intro_frames": 300,
       "setup": [],
       "shots": [

@@ -4,7 +4,7 @@
 //			stage, the `video.av1` compiler of the shared-concerns table. It
 //			transcodes the installed game's Bink movies (`<game>/media/*.bik`
 //			under the `steam-portal2` locator) to AV1/Opus WebM in the
-//			`av1-media` location, as tools/video/transcode_av1.py did: a CRF
+//			`av1-media` location, as the retired tools/video/transcode_av1.py did: a CRF
 //			ladder per clip, kept only when frame count, size and audio tracks
 //			match and the mean SSIM against the Bink decode reaches 0.97, and a
 //			manifest.json keyed by source size, modification time and encoder

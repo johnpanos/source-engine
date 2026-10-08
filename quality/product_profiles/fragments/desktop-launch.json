@@ -1,7 +1,7 @@
 {
   "schema": "source-product-fragment/v2",
   "id": "desktop-launch-v2",
-  "description": "Desktop launch defaults that run.conf and play_p2 set by environment variable, as variables and switches: physics (PHYSICS, PHYSICS_ARGS), the job graphs (JOB_ARGS), the queued material system (QUEUE_ARGS / +mat_queue_mode in EXTRA_ARGS). Each game profile sets the values its launcher uses and splices them where its launcher puts them.",
+  "description": "Desktop launch defaults that the retired run.conf and play_p2 set by environment variable, as variables and switches: physics (PHYSICS, PHYSICS_ARGS), the job graphs (JOB_ARGS), the queued material system (QUEUE_ARGS / +mat_queue_mode in EXTRA_ARGS). Each game profile sets the values its launcher uses and splices them where its launcher puts them.",
   "launch": {
     "display_session": "user",
     "run": "single",

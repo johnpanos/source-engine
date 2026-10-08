@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "portal2-coop-v2",
-  "description": "Portal 2 co-op on two copies of the runtime, as ./play_p2_coop: the host (Atlas) runs a two-player listen server on the co-op map, and once it answers, the client (P-body) connects over the LAN; the coop-pair run provider watches the host's engine.log for the join. Builds the Portal 2 product in its own tree.",
+  "description": "Portal 2 co-op on two copies of the runtime, as the retired ./play_p2_coop did: the host (Atlas) runs a two-player listen server on the co-op map, and once it answers, the client (P-body) connects over the LAN; the coop-pair run provider watches the host's engine.log for the join. Builds the Portal 2 product in its own tree.",
   "extends": [
     "portal2-linux-native-vulkan.json"
   ],

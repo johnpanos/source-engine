@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "portal2-linux-native-vulkan-v2",
-  "description": "Portal 2 on Linux x86_64, SDL3 and native Vulkan with the render core and the GL adapter: the product ./play_p2 builds today (tree build-p2).",
+  "description": "Portal 2 on Linux x86_64, SDL3 and native Vulkan with the render core and the GL adapter: the product the retired ./play_p2 built (tree build-p2).",
   "extends": [
     "fragments/linux-x86_64-desktop.json",
     "fragments/desktop-launch.json",
@@ -272,7 +272,7 @@
     },
     "mount_sets": {
       "p2ce-workshop": {
-        "description": "The opt-in P2:CE Workshop packs of quality/materials/p2ce-workshop-mounts.json, ahead of retail content (./play_p2 --workshop)"
+        "description": "The opt-in P2:CE Workshop packs of quality/materials/p2ce-workshop-mounts.json, ahead of retail content (kiln play portal2 --mounts p2ce-workshop)"
       }
     }
   },

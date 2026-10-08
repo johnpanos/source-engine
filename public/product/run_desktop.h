@@ -5,7 +5,7 @@
 //			  `external-install` an installed program run as is (the retail
 //			                     game), waited on.
 //			  `coop-pair`        Portal 2 co-op on two copies of the runtime,
-//			                     as ./play_p2_coop: the host first; once its
+//			                     as the retired ./play_p2_coop did: the host first; once its
 //			                     server answers the engine's challenge, the
 //			                     client, with {lan_address} filled; then the
 //			                     host's log is watched for the remote join.

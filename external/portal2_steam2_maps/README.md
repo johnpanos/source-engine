@@ -13,7 +13,7 @@ doors, and a laser relay floor. It also has 36 changed VMFs and 12 identical
 VMFs. Version 22 has 6 absent, 45 changed, and 38 identical VMFs; version 24
 has 2 absent, 30 changed, and 71 identical VMFs. These historical maps are
 reference inputs; the installed Portal 2 content remains the runtime
-authority. Nothing here is selected by Waf or `./play_p2`.
+authority. Nothing here is selected by Waf or kiln.
 
 SHA-256 of sorted relative names, NUL separators, and each file's binary
 SHA-256 digest:

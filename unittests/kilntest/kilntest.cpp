@@ -365,7 +365,7 @@ void ProfileChecks()
 		Check( old && !old.Value().Buildable(), "profile.v1-inspection-only" );
 	}
 	{
-		// The merge rule equals profile_extends.py's: objects merge, the
+		// The merge rule equals the retired profile_extends.py's: objects merge, the
 		// rest replaces, existing members keep their position.
 		Value base = foundation::json::Parse( R"({"a":1,"o":{"x":1,"y":[1]},"z":0})" ).Value();
 		const Value derived =

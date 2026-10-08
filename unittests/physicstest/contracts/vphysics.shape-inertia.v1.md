@@ -92,6 +92,6 @@ model's obligation.
 `-physics_shape_inertia` selects the model for the server and client
 environments when the provider offers it (`PhysApplyInertiaModel`,
 `game/shared/physics_shared.cpp`). `-physics_shape_inertia_required` makes a
-missing capability an error. `./play` (`run.conf` `PHYSICS_ARGS`) and
-`./play_p2` pass `-physics_shape_inertia` by default; `PHYSICS_ARGS=` rolls
+missing capability an error. The portal and portal2 kiln profiles (`physics_args`) pass
+`-physics_shape_inertia` by default; `--set no-shape-inertia` rolls
 back. The launcher, the dedicated server and the Android APKs do not pass it.

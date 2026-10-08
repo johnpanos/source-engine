@@ -1,6 +1,6 @@
 {
   "schema": "portal2-demo/v1",
-  "description": "Recorded gameplay demo through the published sp_a1_intro4_relit map, recorded by the user on ./play_p2_fsr (2026-10-05) as the fixture for in-game performance and stutter work. Played back in real time (playdemo) by tools/quality/demo_frames.py; every presented frame of the playback window is reported. Diagnostic workload: no budget row, no acceptance claim.",
+  "description": "Recorded gameplay demo through the published sp_a1_intro4_relit map, recorded by the user on the retired ./play_p2_fsr (2026-10-05; now kiln play portal2-fsr) as the fixture for in-game performance and stutter work. Played back in real time (playdemo) by tools/quality/demo_frames.py; every presented frame of the playback window is reported. Diagnostic workload: no budget row, no acceptance claim.",
   "demo": "../../fixtures/demos/sp_a1_intro4_relit.dem",
   "demo_sha256": "d88908c20baa8fb84f3594a9437643e6686e96e088444505f2786be34cfca978",
   "map": "sp_a1_intro4_relit",

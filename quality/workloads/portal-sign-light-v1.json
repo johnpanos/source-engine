@@ -15,7 +15,7 @@
       "console": []
     },
     "core-world": {
-      "description": "native Vulkan with the RFC 0016 render core drawing the BSP world surfaces its material model takes (r_core_world 1, ./play --core-world); a closing r_core_world 3 shot (neither legacy nor the core draws those surfaces) proves which receivers the core drew",
+      "description": "native Vulkan with the RFC 0016 render core drawing the BSP world surfaces its material model takes (r_core_world 1, kiln play portal --set core-world); a closing r_core_world 3 shot (neither legacy nor the core draws those surfaces) proves which receivers the core drew",
       "console": ["r_core_world 1"],
       "diagnostics": ["r_core_world_stats"],
       "coverage_console": "r_core_world 3"

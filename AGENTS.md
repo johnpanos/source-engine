@@ -405,6 +405,20 @@ or budget. Messaging another independent session that the user started
 7. Update roadmap state and link evidence in the same change. State what passed,
    what was unavailable, and which dependent gates remain unverified.
 
+Products are built, packaged and launched through `./kiln` (RFC 0027 L1; the
+`./play*`, `run.sh` and `run.conf` launchers and the staging scripts are
+deleted). Trees live in `out/<profile>/<flavor>/` (`build/`, `install/`,
+`runtime/`), and harnesses launch through `kiln.api`
+(`tools/kiln/sepipe_loader.py`), never through a launcher:
+
+```sh
+./kiln profiles list                                 # every product profile
+./kiln build <profile> [--flavor dev|release|ktx]    # configure when changed, build, install
+./kiln package <profile> [--runtime DIR]             # lay out the runtime
+./kiln play <profile> [map] [--set <switch>]... [--mounts <set>] [-- engine args]
+./kiln switches <profile>                            # the profile's launch switches
+```
+
 Current installed architecture commands (run from the repository root):
 
 ```sh
@@ -553,8 +567,8 @@ The currently selected sources are:
 - the installed P2:CE base VPKs for required Strata/PBR dependencies and
   fallbacks, not as a claim that its small loose PBR set is a full remaster.
 
-Mount policy has one explicit owner shared by `play_p2`, `render_lab`, Hammer and
-content tools. It records source provenance (Workshop ID, archive and logical
+Mount policy has one explicit owner shared by the portal2 kiln profile,
+`render_lab`, Hammer and content tools. It records source provenance (Workshop ID, archive and logical
 asset path), resolves segmented VPK v2 archives, and gives a named specialized
 pack priority over the broad pack, then the original Portal 2 content. Namespaced
 materials remain namespaced unless an authored mapping selects them; mounting a
@@ -781,9 +795,9 @@ Keep the table concise and link details below or from the domain progress file.
     auto workers from the compute pool, with `-physics_workers 1` to opt out.
     Unmeasured on the Fold7. It applies only where Box3D is selected. Box3D
     is the default provider since 2026-09-26 (user decision): the launcher
-    (and so the Android APKs), the Linux dedicated server, `./play`,
-    `./play_p2`, `run.sh` and the iOS and tvOS apps; `-physics vphysics`
-    selects IVP. The Windows dedicated server (a legacy profile) still
+    (and so the Android APKs), the Linux dedicated server, the desktop kiln
+    profiles (`./kiln play portal|portal2`) and the iOS and tvOS apps;
+    `-physics vphysics` (`--set ivp`) selects IVP. The Windows dedicated server (a legacy profile) still
     defaults to IVP, and the conformance harnesses pin `-physics vphysics`.
   - `vphysics.shape-inertia.v1` (user decision, 2026-09-25): objects take
     their collision solid's full inertia tensor (Box3D hull mass data,
@@ -791,8 +805,9 @@ Keep the table concise and link details below or from the domain progress file.
     approximation. The legacy model stays the default and is unchanged.
     - 20 `inertia.*` contract checks pass, and 4 injected faults are
       detected; the `shape-inertia` gate is required.
-    - Game opt-in: `-physics_shape_inertia`, on by default in `./play` and
-      `./play_p2` (user decision; `PHYSICS_ARGS=` rolls back).
+    - Game opt-in: `-physics_shape_inertia`, on by default in the portal and
+      portal2 kiln profiles (user decision; `--set no-shape-inertia` rolls
+      back).
     - Open: no gameplay corpus under the model. Box3D's backward-Euler
       gyroscopic step makes a fast top sink at the game tick, so
       `gyro.gyroscope-stays-level` fails under `--candidate-shape-inertia`.
@@ -854,8 +869,8 @@ Keep the table concise and link details below or from the domain progress file.
     proposed until B0 installs them.
   - Installed 2026-10-07: `tools/quality/physics_lab_maps.py` publishes five
     scenario maps (`phys_tunnel`, `phys_stack`, `phys_joints`,
-    `phys_impacts`, `phys_rolling`; `./play <map>`, `PHYSICS=vphysics
-    ./play <map>` for IVP), each scene labelled in game, restartable from a
+    `phys_impacts`, `phys_rolling`; `./kiln play portal <map>`, with
+    `--set ivp` for IVP), each scene labelled in game, restartable from a
     button, and counting results to the console as `physlab` lines. All five
     boot headless on both providers. `phys_tunnel` reproduces the benchmark
     in game: 8 of 8 cubes through the hanging panes on Box3D, 4 of 8 on IVP.
@@ -1157,8 +1172,8 @@ Keep the table concise and link details below or from the domain progress file.
   - R96 (K12) integrates the terms into the product.
   - Moving-light GI is out of scope (user decision, 2026-09-30, reversing
     the 2026-09-29 decision to keep it). The indirect light is the bake's:
-    every profile's `r_indirect_producer auto` is `baked`, and `./play` and
-    `./play_p2` pass `baked` (`--moving-light-gi` opts in). RFC 0011's
+    every profile's `r_indirect_producer auto` is `baked`, and the portal and
+    portal2 kiln profiles pass `baked` (`--moving-light-gi` opts in). RFC 0011's
     producers stay in the tree as opt-ins; no K12 slice owes them a place
     on the core
     ([rule](RFC/0016-render-core.md#lighting-model-renderlightingv1-amended-2026-09-28)).
@@ -2129,10 +2144,10 @@ Keep the table concise and link details below or from the domain progress file.
     Portal maps and `gi_door` boot queued with 0 cross-thread calls;
     `gi_door` frames byte-identical across modes; frame pacing on a loaded
     host shows mode 2 at least as fast with a lower p99.
-  - `run.conf`, `run.sh` and `./play_p2` (with `./play_p2_fsr` and
-    `./play_p2_coop`; 2026-10-05,
+  - The desktop kiln profiles (portal, portal2, portal2-fsr and
+    portal2-coop; 2026-10-05,
     [measurements](RFC/0016-progress.md#device-heap-snapshots-and-cpu-mip-feedback-2026-10-04))
-    pass `+mat_queue_mode 2`. `portal_boot.py`, the
+    pass `+mat_queue_mode 2` (`--set sync-queue` opts out). `portal_boot.py`, the
     Android launcher and the iOS/tvOS launcher still pin 0.
     `frame_pacing.py` defaults to 0 and takes `--mat-queue-mode 2`.
   - A TSan run of the product tree found 46 signatures only in mode 2, each
@@ -2280,8 +2295,8 @@ Keep the table concise and link details below or from the domain progress file.
     families byte-identical with one-vertex chunks; CPU fixture
     `render.vulkan.emit-convert-batch` (269 checks) with a TSan lane; seeded
     chunk-offset and shared-maximum defects detected.
-  - Desktop launchers enable it: `run.conf`'s `JOB_ARGS` and `play_p2` pass
-    `-vkemitparallel 1` (agent decision under the user's standing
+  - Desktop launchers enable it: the portal and portal2 kiln profiles'
+    `job_args` pass `-vkemitparallel 1` (agent decision under the user's standing
     instruction, 2026-09-25). The engine default stays 0, and Android stays
     off until measured on the Fold7. Apple is unmeasured, and no full-product
     TSan run with it on exists. Merged into the shared tree from the worktree

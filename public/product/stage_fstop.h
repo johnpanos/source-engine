@@ -2,7 +2,7 @@
 //
 // Purpose: product.stage.fstop (RFC 0027 L1): the F-Stop content stage
 //			`fstop-content`, role `content`. It assembles the `fstop` game
-//			directory that tools/quality/stage_fstop_runtime.py staged: the
+//			directory that the retired tools/quality/stage_fstop_runtime.py staged: the
 //			gameinfo derived from Portal's, Valve's F-Stop-era content from
 //			Steam2 depot 852 version 0 mirrored with lower-case names, the
 //			merged sound-script, particle, HUD-layout and localization files,

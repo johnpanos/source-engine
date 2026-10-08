@@ -38,7 +38,7 @@
     "default_flavor": "dev",
     "flavors": {
       "dev": {
-        "description": "Development instrumentation kept (the trees ./play and ./play_p2 build today)",
+        "description": "Development instrumentation kept (the trees the retired ./play and ./play_p2 built)",
         "configure_options": {}
       },
       "release": {

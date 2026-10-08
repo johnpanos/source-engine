@@ -1,7 +1,7 @@
 {
   "schema": "source-product-fragment/v2",
   "id": "render-switches-v2",
-  "description": "The render switches of tools/quality/render_flags.sh as profile data (RFC 0027 decision 18). render_flags.sh emits, after the arguments of the switches given (in order), the core-world arguments and the archived lighting settings; here they are the variables core_world, producer, runtime_direct and area_lights, which switches set, spliced by each game profile's launch.arguments where its launcher puts them. --native is the default; --null differs per launcher, so each game profile defines its `null` switch; --dxvk went with DXVK Native (deleted 2026-10-07, RFC 0028 decision 10).",
+  "description": "The render switches of the retired tools/quality/render_flags.sh as profile data (RFC 0027 decision 18). render_flags.sh emits, after the arguments of the switches given (in order), the core-world arguments and the archived lighting settings; here they are the variables core_world, producer, runtime_direct and area_lights, which switches set, spliced by each game profile's launch.arguments where its launcher puts them. --native is the default; --null differs per launcher, so each game profile defines its `null` switch; --dxvk went with DXVK Native (deleted 2026-10-07, RFC 0028 decision 10).",
   "launch": {
     "variables": {
       "core_world": [

@@ -151,9 +151,9 @@ prints the result.
 `build-android-portal2-apk.sh` runs `build-android-apk.sh --profile` with this
 profile. With `--install`, `--run` or `--content-only`, it first stages the
 retail content from the Steam installation (`--steam-root`, default
-`$P2_STEAM_ROOT` or the Steam library path) with `stage_portal2_runtime.py
+`$P2_STEAM_ROOT` or the Steam library path) with `kiln package portal2-content
 --mount-custom` into `build-android-p2-content/`. That is the same search-path
-order as `./play_p2`, plus `portal2/custom/*` for the app's touch icons. The
+order as `./kiln play portal2`, plus `portal2/custom/*` for the app's touch icons. The
 push follows the stage's symlinks and sends only files that are missing on the
 device or whose size or modification time differs. The first sync is about
 11.5 GB; later ones send only what changed.

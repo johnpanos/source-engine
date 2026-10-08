@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "portal-linux-native-vulkan-v2",
-  "description": "Portal on Linux x86_64, SDL3 and native Vulkan with the render core: the product ./play and run.sh build today (tree build/); the launch reproduces run.sh with run.conf's settings. Pins and evidence are the v1 slice's (extends portal-linux-wayland-native-vulkan.json).",
+  "description": "Portal on Linux x86_64, SDL3 and native Vulkan with the render core: the product the retired ./play and run.sh built (tree build/); the launch reproduces run.sh with run.conf's settings (RFC 0027 L1 launch equivalence). Pins and evidence are the v1 slice's (extends portal-linux-wayland-native-vulkan.json).",
   "extends": [
     "portal-linux-wayland-native-vulkan.json",
     "fragments/linux-x86_64-desktop.json",
@@ -169,7 +169,7 @@
     "locators": {
       "portal-base": {
         "default": "{root}/run/runtime",
-        "description": "A runnable Portal tree (retail content and its third-party libraries) to seed the runtime from once, as run.sh's BASE_RUNTIME"
+        "description": "A runnable Portal tree (retail content and its third-party libraries) to seed the runtime from once"
       },
       "published-maps": {
         "default": "{root}/run/maps",
