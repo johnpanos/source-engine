@@ -441,7 +441,8 @@ ABIs do not acquire that requirement implicitly.
 
 ## Tier 0 facade over the foundation providers (user direction, 2026-10-08)
 
-Roadmap row R103. Tier 0's exported functions are the mod-facing ABI: Source
+Roadmap row R103 (done 2026-10-08; [record](0001-tier0-facade-progress.md)).
+Tier 0's exported functions are the mod-facing ABI: Source
 SDK game modules, server plug-ins and shader modules link `libtier0` and call
 its C exports directly. Replacing Tier 0 outright would break them, so
 (user decision, 2026-10-08) its platform internals move onto the foundation

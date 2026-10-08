@@ -78,4 +78,12 @@ does not trap it.
 - Win32 (`platform/win32/foundation_providers.h`): `CreateWin32VirtualMemory` (VirtualAlloc/VirtualProtect/VirtualFree, 64 KiB granularity). Row
   `platform.foundation.win32` runs as a static PE under Wine
   (`tools/quality/parity_wine.py check --suite platform.foundation.win32`).
+  Amended 2026-10-08 (R103): the provider's bookkeeping never touches the CRT
+  heap (a VirtualAlloc arena, a sorted reservation table, committed-page
+  bitmaps), so an allocator can be built on it. `Win32ProcessVirtualMemory()`
+  is a process-wide instance in static storage, never destroyed, which Tier
+  0's small-block heap uses. The backend extension `IWin32VirtualMemory` adds
+  `ReserveAt` (a fixed address, rounded down to the granularity;
+  `kOutOfMemory` when taken). The row runs the shared suite on the process
+  instance too, with `ReserveAt` and table-growth clauses.
 - Evidence and what is still unverified: `RFC/0001-foundation-providers-progress.md`.

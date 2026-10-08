@@ -126,9 +126,9 @@ Tooling changes made for this:
 - MSVC (optional): the Win32 providers are built with MinGW only.
 - Hosted CI has not run the new rows.
 - The engine's tier0 functions (`Plat_FloatTime`, `ThreadSleep`, `CommandLine()`,
-  spew, minidumps) still use their own implementations. Moving them onto these
-  providers is later work. Mod-facing exports stay compatible (user question,
-  2026-10-08).
+  spew, minidumps) used their own implementations when R26 closed. R103 moved
+  them onto these providers with mod-facing exports kept (2026-10-08,
+  [record](0001-tier0-facade-progress.md)).
 
 ## R11: paths and module resolution (2026-10-08)
 

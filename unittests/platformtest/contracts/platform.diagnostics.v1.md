@@ -1,7 +1,8 @@
 # Contract: `platform.diagnostics.v1`
 
 Module: `platform.contracts` · Types: `platform::IDebugOutput`,
-`platform::ICrashReporter`, `DiagnosticSeverity`, `CrashReportResult`
+`platform::ICrashReporter`, `platform::IStackCapture`, `platform::IWatchdog`,
+`DiagnosticSeverity`, `CrashReportResult`
 Header: `public/platform/contracts/diagnostics.h`
 Shared suite: `unittests/platformtest/diagnostics/diagnostics_conformance.h`
 Conformance: `unittests/platformtest/diagnostics/test_diagnostics.cpp` (+ `_negative`)
@@ -17,6 +18,11 @@ logging framework; it is **required**. `ICrashReporter` is **optional**: a
 provider without crash capture returns false from `IsAvailable()` and refuses
 every call. Installing the native crash handler is the provider's start step,
 owned by the composition root; consumers only annotate and request reports.
+
+Amended 2026-10-08 (R103, Tier 0's `GetCallStack` and `Plat_*WatchdogTimer`):
+`IStackCapture` returns the calling thread's return addresses and is
+**required**. `IWatchdog` calls a function once unless disarmed in time; it is
+**optional**: a provider without one reports `IsSupported()` false.
 
 ## 2. Accepted inputs
 
@@ -45,6 +51,15 @@ owned by the composition root; consumers only annotate and request reports.
   non-empty id unique per report. Anything but `kOk` leaves the id buffer
   unchanged. Annotations apply to every later report, including a crash.
 - Unavailable: `kUnsupported` or −1 everywhere, no change.
+- `CaptureStack( frames, max )` writes at most `max` addresses, innermost first,
+  starting at its caller (the provider's own frames are excluded), and returns
+  the count: 0 for a null buffer or `max <= 0`. Two captures from one site give
+  the same stack, and a shorter capture is a prefix of a longer one.
+- `Arm( seconds, fire, context )` (seconds > 0, non-null `fire`) replaces any
+  pending arm; `fire( context )` runs once, not before the delay, and never
+  after `Disarm()`. Where the provider fires from a signal handler (POSIX),
+  `fire` must be async-signal-safe. Unsupported: `Arm` returns false, nothing
+  fires.
 
 ## 4. Ownership, threading, ordering
 
@@ -78,16 +93,22 @@ platform-approved location.
   unavailable reporter accepting annotations, malformed keys accepted, an
   oversized value truncated, null removal refused, a reused report id and no
   annotation capacity are each caught.
+- Stack capture and watchdog (R103): the predicates cover refused buffers,
+  limits, prefix and stability, the caller as the first frame, firing once
+  after the delay, disarm, re-arm, and the unsupported branch; 5 bad captures
+  (own frame first, reversed, overrun, frames for a null buffer, unstable) and
+  5 bad watchdogs (fires twice, no-op disarm, stale callback, fires early,
+  unsupported yet fires) are each caught.
 
 ### Native providers (installed 2026-10-08, R26)
 
 - POSIX (`platform/posix/foundation_providers.h`, library `platform_posix`):
-  `CreateFdDebugOutput`, `CreateAndroidLogDebugOutput`, `CreatePosixCrashReporter` (text reports on demand and from a fatal-signal handler on an alternate stack) and `CreateUnavailableCrashReporter`. Row `platform.foundation.posix` runs this suite and the native
+  `CreateFdDebugOutput`, `CreateAndroidLogDebugOutput`, `CreatePosixCrashReporter` (text reports on demand and from a fatal-signal handler on an alternate stack), `CreateUnavailableCrashReporter`, `CreatePosixStackCapture` (`_Unwind_Backtrace`) and `CreatePosixWatchdog` (`SIGALRM`). Row `platform.foundation.posix` runs this suite and the native
   clauses on Linux with g++ and clang++, in release, under TSan and ASan/UBSan
   (`.tsan`, `.asan`) and as i386 (`.i386`). The same source cross-builds for
   Android arm64-v8a and x86_64 at API 29 (`tools/quality/android_foundation.py`)
   and compiles for iOS arm64.
-- Win32 (`platform/win32/foundation_providers.h`): `CreateWin32HandleDebugOutput`, `CreateWin32DebuggerOutput`, `CreateWin32CrashReporter` (unhandled-exception filter). Row
+- Win32 (`platform/win32/foundation_providers.h`): `CreateWin32HandleDebugOutput`, `CreateWin32DebuggerOutput`, `CreateWin32CrashReporter` (unhandled-exception filter), `CreateWin32StackCapture` (`RtlCaptureStackBackTrace`) and `CreateWin32Watchdog` (unsupported, as Tier 0's watchdog always was on Windows). Row
   `platform.foundation.win32` runs as a static PE under Wine
   (`tools/quality/parity_wine.py check --suite platform.foundation.win32`).
 - Evidence and what is still unverified: `RFC/0001-foundation-providers-progress.md`.
