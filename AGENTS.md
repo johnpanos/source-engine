@@ -121,6 +121,15 @@ Build infrastructure MUST provide:
   optional` in `quality/baseline.json`, and are reported as unavailable when
   their runner is missing. No roadmap gate waits on them. An Apple or MSVC
   support claim still needs that platform's own evidence.
+- The Galaxy Z Fold7 and the Android x86_64 ABI are **optional** too (user
+  decision, 2026-10-08). Android's required device evidence is an arm64-v8a
+  hardware run on any declared device (the Galaxy Tab S8 Ultra qualifies).
+  Fold7 rows (`render-v1.json`'s frame-pacing row, the Vulkan feature record)
+  are validated when present and reported unavailable when not; x86_64 is its
+  own optional profile in `quality/baseline.json`. Earlier gate text that asks
+  for Fold7 measurements or "Fold7 rows recorded" is optional evidence, and no
+  roadmap gate waits on it. A Fold7 or x86_64 support claim still needs its
+  own evidence.
 - Shared conformance plus profile-specific integration, sanitizer/fuzz coverage
   where supported, performance/power/memory budgets, installed-package smoke
   tests, symbolized crash diagnostics, and documented rebuild/reproduction steps.
