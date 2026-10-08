@@ -54,6 +54,12 @@ VIEWS = {
     "portal-walk": ("qa_portal_walk", ["wait 30", "+attack", "wait 10", "-attack", "wait 60",
                                        "cmd setang 0 0 0", "wait 30", "+attack2", "wait 10",
                                        "-attack2", "wait 60", "cmd setang 0 90 0", "wait 60"]),
+    # A Wheatley monitor (tools/quality/portal2_monitors.py's placement:
+    # 190 units in front of monitor1's screen, after its deploy relay).
+    "monitor-tb-intro": ("sp_a4_tb_intro", ["cmd noclip",
+                                             "ent_fire monitor1-relay_deploy_straight trigger",
+                                             "wait 360", "cmd setpos 1880.62 386 -320.9",
+                                             "cmd setang 0 0 0", "wait 120"]),
     "intro4-portals": ("sp_a1_intro4", ["give weapon_portalgun", "upgrade_portalgun",
                                          "wait 20", "+attack", "wait 5", "-attack", "wait 20",
                                          "cmd setang 0 90 0", "wait 5", "+attack2", "wait 5",

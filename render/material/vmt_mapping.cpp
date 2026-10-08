@@ -606,6 +606,10 @@ constexpr VmtMetadataRow kMetadata[] = {
     { "$surfaceprop", "physics surface properties (the physics and sound systems)" },
     { "$surfaceprop2", "physics surface properties of a blend's second layer" },
     { "$decalscale", "decal projection size (the decal system)" },
+    { "$mappingwidth", "the material's mapping width (decal and texture-space sizing in the "
+        "material system), not a shader parameter" },
+    { "$mappingheight", "the material's mapping height (decal and texture-space sizing in the "
+        "material system), not a shader parameter" },
     { "$reflectivity", "radiosity reflectivity (vrad)" },
     { "$fallbackmaterial", "the material a profile without the shader draws instead" },
     { "$envmapsphere", "a DirectX 6 envmap mode no dx9 shader reads" },

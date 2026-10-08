@@ -310,6 +310,11 @@ bool ViewRenderTarget( const MaterialDesc &material, const MaterialValue &value 
 	if ( material.family == "blob-shadow" && value.parameter == "basetexture" &&
 	     SameKey( value.text, "_rt_Shadows" ) )
 		return true;
+	// A monitor's screen: the point_camera view the client drew into
+	// _rt_Camera earlier in the frame (CViewRender::DrawMonitors).
+	if ( material.family == "unlit" && value.parameter == "basetexture" &&
+	     SameKey( value.text, "_rt_Camera" ) )
+		return true;
 	return material.family == "water" &&
 	       ( ( value.parameter == "reflecttexture" &&
 	             SameKey( value.text, "_rt_WaterReflection" ) ) ||

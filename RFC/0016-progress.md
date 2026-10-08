@@ -13203,3 +13203,14 @@ portal's far view reads dark against legacy: to be compared next.
   - Census `portal-walk`: only Chell's eyes (EyeRefract) are still dropped;
     0 legacy stream draws. The frame matches the previous run (mean
     difference 0.02 levels).
+- **Wheatley monitors** (census view `monitor-tb-intro`, added with the
+  monitors suite's placement): the screen (`dev/dev_tvmonitor1a`,
+  UnlitTwoTexture over `_rt_Camera`) was dropped. Two refusals stood in the
+  way:
+  - `$mappingwidth` and `$mappingheight` are material-system sizing keys no
+    shader reads; they are now recorded in the inert-key table.
+  - `_rt_Camera`, the point_camera view the client draws earlier in the
+    frame (`CViewRender::DrawMonitors`), is now the unlit family's allowed
+    view render target, as `_rt_WaterReflection` is water's.
+  - The core draws the live camera image through its scanlines; 0 legacy
+    stream draws and 0 core refusals on the view.
