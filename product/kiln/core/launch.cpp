@@ -287,8 +287,14 @@ foundation::Expected<LaunchPlan, Error> Session::PlanLaunch( const PlayRequest &
 	if ( !executable )
 		return foundation::MakeUnexpected(
 		    Fail( "launch", profile.name + " declares no launch.executable" ) );
+	if ( request.exactArguments && ( !request.switches.empty() || request.map ||
+	                                   !request.arguments.empty() || launch->Find( "peers" ) ) )
+		return foundation::MakeUnexpected( Fail( "request",
+		    "exact arguments take no switches, map or arguments, and no profile with peers" ) );
 	auto arguments =
-	    Expand( Strings( launch->Find( "arguments" ) ), variables, "launch.arguments" );
+	    request.exactArguments
+	        ? foundation::Expected<std::vector<std::string>, Error>( *request.exactArguments )
+	        : Expand( Strings( launch->Find( "arguments" ) ), variables, "launch.arguments" );
 	if ( !arguments )
 		return foundation::MakeUnexpected( arguments.Error() );
 	std::string missingExecutable;
@@ -297,6 +303,9 @@ foundation::Expected<LaunchPlan, Error> Session::PlanLaunch( const PlayRequest &
 		return foundation::MakeUnexpected(
 		    Fail( "launch", "launch.executable: \"{" + missingExecutable +
 		                        "}\" is not a single-valued launch variable" ) );
+	if ( !request.wrapper.empty() && launch->Find( "peers" ) )
+		return foundation::MakeUnexpected( Fail( "request", "a wrapper needs a single program" ) );
+	plan.argv = request.wrapper;
 	// A program path as given (an installed game); a bare name is in the runtime.
 	plan.argv.push_back( program->find( '/' ) != std::string::npos ? *program : "./" + *program );
 	plan.argv.insert( plan.argv.end(), arguments.Value().begin(), arguments.Value().end() );
@@ -357,6 +366,8 @@ foundation::Expected<LaunchPlan, Error> Session::PlanLaunch( const PlayRequest &
 			plan.environment.push_back( { member.first, *value } );
 		}
 	}
+	plan.environment.insert(
+	    plan.environment.end(), request.environment.begin(), request.environment.end() );
 	return plan;
 }
 
@@ -415,6 +426,13 @@ foundation::Expected<int, Error> Session::Launch(
 	runRequest.spawner = &spawner;
 	runRequest.diagnostics = &m_Diagnostics;
 	runRequest.cancel = request.cancel;
+	if ( request.started )
+	{
+		runRequest.started = [&request]( const std::string &name, platform::SpawnedProcess process )
+		{
+			request.started( name, process.id );
+		};
+	}
 	const auto spec = [&]( const std::string &name, const std::vector<std::string> &argv )
 	{
 		product::LaunchSpec launch;

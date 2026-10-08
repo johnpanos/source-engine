@@ -23,6 +23,9 @@ import launch_sandbox
 import render_trace
 import product_profile
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 
 SHADER_REGEN = (Path(__file__).resolve().parents[2] /
                 "materialsystem/shaderapivulkan/shaders/regen_material_spv.py")
@@ -723,6 +726,45 @@ def run_product(command, stage, environment, timeout, output):
     return returncode, timed_out, sorted(loaded), time.monotonic() - started
 
 
+def run_kiln(args, exact_arguments, stage, environment, timeout, output):
+    """The kiln.api run of the profile from the private runtime (RFC 0027):
+    the harness owns its test command (exact arguments) and sandbox
+    variables; kiln owns the program, display session and run provider.
+    Watches the game's mapped files as run_product does."""
+    overrides = {key: value for key, value in environment.items() if os.environ.get(key) != value}
+    overrides.update({key: None for key in os.environ if key not in environment})
+    pids = []
+    wrapper = []
+    if exact_arguments[0] != "./hl2_launcher":
+        index = exact_arguments.index("./hl2_launcher")
+        wrapper, exact_arguments = exact_arguments[:index], exact_arguments[index:]
+    run = sepipe_loader.Run(args.sepipe, args.session, "run", args.profile, flavor=args.flavor,
+                            runtime=str(stage), exact_arguments=exact_arguments[1:], wrapper=wrapper,
+                            environment=overrides, log=str(output),
+                            display="none" if args.headless else "user",
+                            started=lambda name, pid: pids.append(pid))
+    loaded = set()
+    started = time.monotonic()
+    timed_out = False
+    while run.poll() is None:
+        for pid in pids:
+            try:
+                for line in Path("/proc/%d/maps" % pid).read_text().splitlines():
+                    fields = line.split(None, 5)
+                    if len(fields) == 6 and fields[5].startswith("/"):
+                        loaded.add(fields[5])
+            except OSError:
+                pass
+        if time.monotonic() - started > timeout:
+            timed_out = True
+            run.stop()
+            break
+        time.sleep(0.1)
+    if run.error:
+        Path(output).open("a").write("\nkiln: %s\n" % run.error)
+    return run.returncode, timed_out, sorted(loaded), time.monotonic() - started
+
+
 def login_session_displays():
     """The login session's WAYLAND_DISPLAY and DISPLAY, from the systemd user
     manager; empty where there is no user manager (CI, containers)."""
@@ -749,8 +791,14 @@ def user_display_in_use(environment, login):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument("--build", type=Path)
+    parser.add_argument("--profile",
+                        help="kiln profile (e.g. portal, portal2): kiln packages it into the "
+                             "private runtime and the game runs through kiln.api (RFC 0027)")
+    parser.add_argument("--flavor", default="dev", help="the kiln profile's build flavor")
+    parser.add_argument("--runtime", type=Path,
+                        help="legacy: a staged runtime to copy (callers move to --profile)")
+    parser.add_argument("--build", type=Path,
+                        help="legacy: a Waf tree whose products overlay --runtime")
     parser.add_argument("--content-root", type=Path,
                         help="private maps/ and materials/ files added to the staged game")
     parser.add_argument("--material-root", type=Path,
@@ -825,6 +873,19 @@ def main(argv=None):
     for name in ("vulkan", "sdl3", "wayland"):
         parser.add_argument("--require-" + name, action="store_true")
     args = parser.parse_args(argv)
+    if bool(args.profile) == bool(args.runtime):
+        parser.error("give --profile (kiln) or the legacy --runtime, not both")
+    if args.profile and args.build:
+        parser.error("--build is the legacy overlay; a --profile run builds its own tree")
+    if args.profile:
+        try:
+            args.sepipe = sepipe_loader.load()
+            args.session = args.sepipe.Session(str(conformance.repo_root()))
+            args.game = args.session.resolve(args.profile)["launch"]["game"]
+        except (sepipe_loader.LoadError, KeyError) as error:
+            parser.error("kiln: %s" % error)
+        except Exception as error:  # sepipe.KilnError
+            parser.error("kiln: %s" % error)
     if args.timeout <= 0 or not re.fullmatch(r"[a-zA-Z0-9_]+", args.map):
         parser.error("timeout must be positive and map must be a simple map name")
     if not re.fullmatch(r"[a-zA-Z0-9_]+", args.physics):
@@ -840,12 +901,23 @@ def main(argv=None):
     evidence = {"schema": "portal-boot-evidence/v1", "status": "fail",
                 "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 "source": conformance.source_identity(conformance.repo_root()),
-                "runtime": str(args.runtime.resolve()), "map": args.map, "game": args.game,
+                "runtime": str(args.runtime.resolve()) if args.runtime else None,
+                "kiln": {"profile": args.profile, "flavor": args.flavor} if args.profile else None,
+                "map": args.map, "game": args.game,
                 "requested_resolution": [args.width, args.height]}
     try:
         stage = output / "runtime"
         game = args.game
-        evidence["staging"] = stage_runtime(args.runtime, stage, game=game)
+        if args.profile:
+            # The profile's own package (RFC 0027 linux-dir) in this private runtime.
+            shutil.rmtree(stage, ignore_errors=True)
+            built = args.session.build(args.profile, flavor=args.flavor, up_to="package",
+                                       runtime=str(stage))
+            evidence["staging"] = {"kiln": {stage_["name"]: stage_["summary"]
+                                            for stage_ in built["stages"]},
+                                   "tree": built["tree"]}
+        else:
+            evidence["staging"] = stage_runtime(args.runtime, stage, game=game)
         evidence["build_overrides"] = install_build(args.build, stage, game=game) if args.build else {}
         private_content = "custom/portal-boot-content"
         if args.content_root or args.material_root:
@@ -995,8 +1067,12 @@ def main(argv=None):
         evidence["requirements"] = requirements
         evidence["display_environment"] = {key: environment.get(key) for key in
                                            ("DISPLAY", "WAYLAND_DISPLAY", "SDL_VIDEODRIVER", "GDK_BACKEND")}
-        code, timed_out, loaded, seconds = run_product(command, stage, environment,
-                                                       args.timeout, output / "stdout.log")
+        if args.profile:
+            code, timed_out, loaded, seconds = run_kiln(args, command, stage, environment,
+                                                        args.timeout, output / "stdout.log")
+        else:
+            code, timed_out, loaded, seconds = run_product(command, stage, environment,
+                                                           args.timeout, output / "stdout.log")
         evidence["sandbox"] = sandbox.finish()
         log_paths = [output / "stdout.log", stage / "engine.log", stage / game / "console.log"]
         log = "\n".join(path.read_text(errors="replace") for path in log_paths if path.is_file())

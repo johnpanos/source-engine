@@ -36,6 +36,7 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -552,6 +553,8 @@ struct DisplayRequest
 
 struct DisplayEnvironment
 {
+	// The session's variables; a run provider applies them after the
+	// launch's, so they win (run-suite clause N7).
 	std::vector<platform::ToolProcessEnvironmentOverride> environment;
 	// Programs that wrap the launch (an isolated compositor runs it as its
 	// child and ends with it); empty for the user's own session.
@@ -603,6 +606,9 @@ struct RunRequest
 	platform::IProcessSpawner *spawner = nullptr;
 	IDiagnosticSink *diagnostics = nullptr;
 	const ICancellation *cancel = nullptr;
+	// Called once for each program as it starts, with the launch's name and
+	// the spawner's process (run-suite clause N8); may be empty.
+	std::function<void( const std::string &, platform::SpawnedProcess )> started;
 };
 
 class IRunProvider

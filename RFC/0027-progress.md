@@ -582,3 +582,45 @@ Evidence:
   no longer in the published map store (`run/maps` holds `_fast`, `_relit`
   and `_relit_v7`). The selected High workload cannot run until it is
   republished, with the old harness as well as the new one.
+
+### L1d (fourth slice): display precedence, harness launch options, `portal_boot.py` on kiln
+
+- **Fixed: the display session now owns its variables.** Run providers
+  applied the display session's environment before the launch's, so the
+  Portal profile's player default `SDL_VIDEODRIVER=wayland` overrode a
+  headless (`none`) session's offscreen driver. The display's variables are
+  now applied last.
+  - New run-suite clause N7: "the display session's environment wins over
+    the launch's".
+  - Bad provider `kLaunchOverridesDisplay` is rejected on N7.
+- **Harness launch options on `PlayRequest`** (`sepipe` keyword options in
+  brackets):
+  - `exactArguments` (`exact_arguments`): a harness's test command follows
+    the profile's executable in place of `launch.arguments`. Switches, a map,
+    request arguments and peer profiles are refused by name.
+  - `environment` (`environment={name: value | None}`): variables applied
+    after the profile's.
+  - `wrapper`: a capture tool inside the display session.
+  - `started` (`started=callable(name, pid)`): each program's start with its
+    process. The run request carries it, under new run-suite clause N8.
+    Bad provider `kSilentStart` is rejected on N8.
+  - The profile still owns the program, working directory, environment,
+    display session and run provider.
+- **kilntest.** 139/0 on gcc and clang.
+- **`portal_boot.py --profile <p> [--flavor f]`.** kiln packages the profile
+  into the boot's private runtime and the game runs through `kiln.api`.
+  - The boot's own test command, sandbox variables and RenderDoc wrapper are
+    passed as the options above.
+  - Mapped-library checks (`--require-vulkan|sdl3|wayland`) watch the
+    reported process.
+  - The legacy `--runtime`/`--build` path stays until its callers move (about
+    40 tools and 28 manifest rows), then is deleted with the L1 deletions.
+- **Equivalence.** The kiln path and the legacy path with the same kiln-built
+  binaries give the same command, with `testchmb_a_00` headless on native
+  Vulkan.
+- **Found, not from L1.** Both paths currently fail the boot oracle the same
+  way. The capture is an almost uniform grey (RGB 211, 15 colours), and the
+  engine logs "Window presentation change failed." That points at the
+  presentation work of the legacy device facade slices (F2–F4) on this
+  branch. It is left to that work's owner, and the `portal_boot` gate item
+  stays open until a boot renders.

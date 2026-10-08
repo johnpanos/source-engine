@@ -72,7 +72,9 @@ enum class RunFault
 {
 	kReturnsBeforeExit,
 	kIgnoresCancel,
-	kDropsLog, // starts the program with inherited output, not the launch's log
+	kDropsLog,               // starts the program with inherited output, not the launch's log
+	kLaunchOverridesDisplay, // a launch variable beats the display session's
+	kSilentStart,            // never reports the programs it starts
 };
 std::unique_ptr<product::IRunProvider> RunProvider( RunFault fault );
 

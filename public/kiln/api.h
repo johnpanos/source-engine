@@ -26,7 +26,9 @@
 #include "product/contracts.h"
 #include "product/profile.h"
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -145,6 +147,20 @@ struct PlayRequest
 		double refreshHz = 60.0;
 	};
 	std::optional<DisplayMode> displayMode;
+	// A harness's own test command: these arguments follow the profile's
+	// executable in place of launch.arguments (no switches, map or peers).
+	// The profile still owns the program, working directory, environment,
+	// display session and run provider.
+	std::optional<std::vector<std::string>> exactArguments;
+	// Variables applied after the profile's (a test sandbox's HOME, trace
+	// paths); an unset value removes the variable.
+	std::vector<platform::ToolProcessEnvironmentOverride> environment;
+	// Programs that wrap the game inside the display session (a capture tool).
+	std::vector<std::string> wrapper;
+	// Called as each program starts: its launch name ("game", or a peer's)
+	// and process id (the run provider's process; a display session's
+	// wrapper, when it has one).
+	std::function<void( const std::string &, std::int64_t )> started;
 	const product::ICancellation *cancel = nullptr;
 };
 

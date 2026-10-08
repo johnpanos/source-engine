@@ -977,6 +977,22 @@ void LaunchPlanChecks( const Workbench &bench, platform::IToolProcessProvider &p
 	           moved.Value().environment[0].value ==
 	               ( bench.root / "elsewhere" ).string() + "/bin:{inherit}",
 	    "launch.chosen-runtime-is-the-working-directory-and-{runtime}" );
+	kiln::PlayRequest exact = Play( "game" );
+	exact.exactArguments = std::vector<std::string>{ "-test", "+map", "x" };
+	exact.environment = { { "HOME", std::string( "/sandbox" ) }, { "GONE", std::nullopt } };
+	exact.wrapper = { "capture", "--" };
+	auto exactPlan = session.PlanLaunch( exact );
+	Check( exactPlan &&
+	           exactPlan.Value().argv ==
+	               std::vector<std::string>{ "capture", "--", "./run_me", "-test", "+map", "x" } &&
+	           exactPlan.Value().environment.size() == 4 &&
+	           exactPlan.Value().environment[2].name == "HOME" &&
+	           !exactPlan.Value().environment[3].value,
+	    "launch.exact-arguments-wrapper-and-environment-follow-the-profile" );
+	exact.switches = { "validate" };
+	auto exactSwitches = session.PlanLaunch( exact );
+	Check( !exactSwitches && exactSwitches.Error().code == "request",
+	    "launch.exact-arguments-with-switches-refused" );
 
 	kiln::SessionConfig personal = config;
 	personal.workspaceText =
@@ -1088,6 +1104,13 @@ int main()
 		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kDropsLog ), *spawner,
 		                   bench.scratch / "run-bad3" ),
 		    "N6", "bad run provider: drops the launch's log" );
+		CheckRejected(
+		    suites::RunSuite( *bad::RunProvider( bad::RunFault::kLaunchOverridesDisplay ), *spawner,
+		        bench.scratch / "run-bad4" ),
+		    "N7", "bad run provider: lets the launch override the display session" );
+		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kSilentStart ), *spawner,
+		                   bench.scratch / "run-bad5" ),
+		    "N8", "bad run provider: does not report its programs' starts" );
 		std::string error;
 		auto missing = spawner->Spawn( { { "/nonexistent/program" }, "/", {}, {} }, error );
 		Check( missing.id < 0 && error.find( "/nonexistent/program" ) != std::string::npos,

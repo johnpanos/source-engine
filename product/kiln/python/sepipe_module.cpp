@@ -19,6 +19,7 @@
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/vector.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -88,7 +89,9 @@ private:
 };
 
 // A play request from keyword options: map, switches, arguments, flavor,
-// display, mounts, device, runtime, log, display_mode=(w, h, hz), cancel.
+// display, mounts, device, runtime, log, display_mode=(w, h, hz), cancel,
+// exact_arguments, environment={name: value | None}, wrapper,
+// started=callable(name, process_id).
 // An unknown option is refused by name.
 kiln::PlayRequest MakePlay( const std::string &profile, const nb::kwargs &options )
 {
@@ -123,6 +126,30 @@ kiln::PlayRequest MakePlay( const std::string &profile, const nb::kwargs &option
 			const auto mode = nb::cast<std::tuple<int, int, double>>( value );
 			request.displayMode = kiln::PlayRequest::DisplayMode{
 			    std::get<0>( mode ), std::get<1>( mode ), std::get<2>( mode ) };
+		}
+		else if ( name == "exact_arguments" )
+			request.exactArguments = nb::cast<std::vector<std::string>>( value );
+		else if ( name == "wrapper" )
+			request.wrapper = nb::cast<std::vector<std::string>>( value );
+		else if ( name == "environment" )
+		{
+			for ( const auto &[variable, setting] : nb::cast<nb::dict>( value ) )
+			{
+				request.environment.push_back( { nb::cast<std::string>( variable ),
+				    setting.is_none() ? std::optional<std::string>()
+				                      : std::optional<std::string>(
+				                            nb::cast<std::string>( nb::str( setting ) ) ) } );
+			}
+		}
+		else if ( name == "started" )
+		{
+			// Run threads call back under the GIL.
+			nb::object callback = nb::borrow( value );
+			request.started = [callback]( const std::string &launch, std::int64_t process )
+			{
+				nb::gil_scoped_acquire gil;
+				callback( launch, process );
+			};
 		}
 		else if ( name == "cancel" )
 			request.cancel = nb::cast<product::CancellationFlag *>( value );

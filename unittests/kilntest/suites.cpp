@@ -8,9 +8,12 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <map>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace suites
 {
@@ -583,6 +586,22 @@ Verdict RunSuite(
 	auto loggedStatus = provider.Run( logged );
 	if ( !loggedStatus || fixture::ReadBytes( scratch / "game.log" ) != "to-stdout\nto-stderr\n" )
 		verdict.Fail( "N6 the program's output and errors go to the launch's log" );
+	product::RunRequest owned = launch( "echo \"$KILN_SUITE_DRIVER\" > driver.txt" );
+	owned.launches[0].environment.push_back( { "KILN_SUITE_DRIVER", std::string( "player" ) } );
+	owned.display.environment = { { "KILN_SUITE_DRIVER", std::string( "offscreen" ) } };
+	auto ownedStatus = provider.Run( owned );
+	if ( !ownedStatus || fixture::ReadBytes( scratch / "driver.txt" ) != "offscreen\n" )
+		verdict.Fail( "N7 the display session's environment wins over the launch's" );
+	product::RunRequest reported = launch( "exit 0" );
+	std::vector<std::pair<std::string, std::int64_t>> starts;
+	reported.started = [&]( const std::string &name, platform::SpawnedProcess process )
+	{
+		starts.emplace_back( name, process.id );
+	};
+	auto reportedStatus = provider.Run( reported );
+	if ( !reportedStatus || starts.size() != 1 || starts[0].first != "game" ||
+	     starts[0].second <= 0 )
+		verdict.Fail( "N8 each program's start is reported with its process" );
 	return verdict;
 }
 
