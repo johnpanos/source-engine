@@ -6,41 +6,12 @@
 //=============================================================================
 
 #include "BaseVSShader.h"
-#include "commandbuilder.h"
 
 
 #include "../materialsystem_global.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
-
-
-class CVRDistortTexture_DX9_Context : public CBasePerMaterialContextData
-{
-public:
-	uint8 *m_pStaticCmds;
-	CCommandBufferBuilder< CFixedCommandStorageBuffer< 1000 > > m_SemiStaticCmdsOut;
-
-	void ResetStaticCmds( void )
-	{
-		if ( m_pStaticCmds )
-		{
-			delete[] m_pStaticCmds;
-			m_pStaticCmds = NULL;
-		}
-	}
-
-	CVRDistortTexture_DX9_Context( void )
-	{
-		m_pStaticCmds = NULL;
-	}
-
-	~CVRDistortTexture_DX9_Context( void )
-	{
-		ResetStaticCmds();
-	}
-
-};
 
 
 BEGIN_VS_SHADER( vr_distort_hud, "Help for hud warp" )
@@ -72,39 +43,7 @@ BEGIN_VS_SHADER( vr_distort_hud, "Help for hud warp" )
 
 	SHADER_DRAW
 	{
-		CVRDistortTexture_DX9_Context	*pContextData = reinterpret_cast< CVRDistortTexture_DX9_Context *> ( *pContextDataPtr );
-		bool				bNeedRegenStaticCmds = ( !pContextData ) || pShaderShadow;
 
-		if ( !pContextData )								// make sure allocated
-		{
-			pContextData = new CVRDistortTexture_DX9_Context;
-			*pContextDataPtr = pContextData;
-		}
-
-		if ( pShaderShadow || bNeedRegenStaticCmds )
-		{
-			pContextData->ResetStaticCmds();
-			CCommandBufferBuilder< CFixedCommandStorageBuffer< 5000 > > staticCmdsBuf;
-
-			staticCmdsBuf.BindTexture( this, SHADER_SAMPLER0, BASETEXTURE, -1 );
-			staticCmdsBuf.BindTexture( this, SHADER_SAMPLER1, DISTORTMAP, -1 );
-
-			staticCmdsBuf.End();
-
-			// now, copy buf
-			pContextData->m_pStaticCmds = new uint8[ staticCmdsBuf.Size() ];
-			memcpy( pContextData->m_pStaticCmds, staticCmdsBuf.Base(), staticCmdsBuf.Size() );
-		}
-
-		if ( pShaderAPI && pContextData->m_bMaterialVarsChanged )
-		{
-			// need to regenerate the semistatic cmds
-			pContextData->m_SemiStaticCmdsOut.Reset();
-			pContextData->m_bMaterialVarsChanged = false;
-
-			pContextData->m_SemiStaticCmdsOut.SetAmbientCubeDynamicStateVertexShader();
-			pContextData->m_SemiStaticCmdsOut.End();
-		}
 
 		SHADOW_STATE
 		{

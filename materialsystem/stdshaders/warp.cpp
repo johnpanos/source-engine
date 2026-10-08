@@ -6,7 +6,6 @@
 //=============================================================================
 
 #include "BaseVSShader.h"
-#include "commandbuilder.h"
 
 
 #include "../materialsystem_global.h"
@@ -18,34 +17,6 @@
 
 
 
-
-
-class CWarp_DX9_Context : public CBasePerMaterialContextData
-{
-public:
-	uint8 *m_pStaticCmds;
-	CCommandBufferBuilder< CFixedCommandStorageBuffer< 1000 > > m_SemiStaticCmdsOut;
-
-	void ResetStaticCmds( void )
-	{
-		if ( m_pStaticCmds )
-		{
-			delete[] m_pStaticCmds;
-			m_pStaticCmds = NULL;
-		}
-	}
-
-	CWarp_DX9_Context( void )
-	{
-		m_pStaticCmds = NULL;
-	}
-
-	~CWarp_DX9_Context( void )
-	{
-		ResetStaticCmds();
-	}
-
-};
 
 
 static const float kAllZeros[ 4 ] = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -74,38 +45,7 @@ BEGIN_VS_SHADER( warp, "Help for warp" )
 
 	SHADER_DRAW
 	{
-		CWarp_DX9_Context	*pContextData = reinterpret_cast< CWarp_DX9_Context *> ( *pContextDataPtr );
-		bool				bNeedRegenStaticCmds = ( !pContextData ) || pShaderShadow;
 
-		if ( !pContextData )								// make sure allocated
-		{
-			pContextData = new CWarp_DX9_Context;
-			*pContextDataPtr = pContextData;
-		}
-
-		if ( pShaderShadow || bNeedRegenStaticCmds )
-		{
-			pContextData->ResetStaticCmds();
-			CCommandBufferBuilder< CFixedCommandStorageBuffer< 5000 > > staticCmdsBuf;
-
-			staticCmdsBuf.BindTexture( this, SHADER_SAMPLER0, BASETEXTURE, -1 );
-
-			staticCmdsBuf.End();
-
-			// now, copy buf
-			pContextData->m_pStaticCmds = new uint8[ staticCmdsBuf.Size() ];
-			memcpy( pContextData->m_pStaticCmds, staticCmdsBuf.Base(), staticCmdsBuf.Size() );
-		}
-
-		if ( pShaderAPI && pContextData->m_bMaterialVarsChanged )
-		{
-			// need to regenerate the semistatic cmds
-			pContextData->m_SemiStaticCmdsOut.Reset();
-			pContextData->m_bMaterialVarsChanged = false;
-
-			pContextData->m_SemiStaticCmdsOut.SetAmbientCubeDynamicStateVertexShader();
-			pContextData->m_SemiStaticCmdsOut.End();
-		}
 
 		SHADOW_STATE
 		{
