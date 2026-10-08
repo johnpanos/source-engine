@@ -85,6 +85,9 @@ import material_pixel_pbr_model  # noqa: E402
 import material_pixel_portal  # noqa: E402
 import portal_boot  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 
 SCHEMA = "source-material-pixels/v1"
 EVIDENCE_SCHEMA = "material-pixel-evidence/v1"
@@ -1140,9 +1143,9 @@ def evaluate(report, hdr, reference=None):
 
 
 def find_harness(build):
-    # The tree's own target; a search only when it is elsewhere, since other
-    # build trees can be nested inside this one.
-    canonical = Path(build) / "unittests" / "shaderextensiontest" / "material_pixel_conformance"
+    # The install's test program (kiln build's engine-install, tests/); a
+    # search only when it is elsewhere.
+    canonical = Path(build) / "tests" / "material_pixel_conformance"
     if canonical.is_file() and os.access(canonical, os.X_OK):
         return canonical
     candidates = sorted(Path(build).rglob("material_pixel_conformance"))
@@ -1164,8 +1167,10 @@ def run(args):
                 "display": args.display,
                 "tolerances": {"pixel": PIXEL_TOLERANCE, "model": MODEL_TOLERANCE}}
     stage = output / "runtime"
-    evidence["staging"] = portal_boot.stage_runtime(args.runtime, stage)
-    evidence["build_overrides"] = portal_boot.install_build(args.build, stage)
+    # The client profile's package in this private runtime (RFC 0027).
+    built = sepipe_loader.session().build(args.profile, flavor=args.flavor, up_to="package",
+                                          runtime=str(stage))
+    evidence["staging"] = {item["name"]: item["summary"] for item in built["stages"]}
     if args.family == "pbr-fallback":
         fixture_dir = Path(__file__).resolve().parents[2] / "quality/fixtures/material-pixels"
         material_dir = stage / "portal/materials/conformance"
@@ -1208,7 +1213,7 @@ def run(args):
         shutil.copy2(fixture_dir / "pbr-fallback-legacy.vmt", target)
         evidence["fixtures"] = {"pbr_fallback.vmt": portal_boot.sha256(target)}
     harness = stage / "material_pixel_conformance"
-    shutil.copy2(find_harness(args.build), harness)
+    shutil.copy2(find_harness(sepipe_loader.installed(args.profile, args.flavor)), harness)
     evidence["harness_sha256"] = portal_boot.sha256(harness)
     pixels = output / "pixels.json"
     command = [str(harness), "-game", "portal", "-renderer", args.renderer, "-hdr", args.hdr,
@@ -1280,8 +1285,7 @@ def main(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     run_parser = commands.add_parser("run", help="stage a runtime, render, and judge")
-    run_parser.add_argument("--runtime", type=Path, required=True)
-    run_parser.add_argument("--build", type=Path, required=True)
+    sepipe_loader.add_arguments(run_parser, "portal")
     run_parser.add_argument("--renderer", required=True)
     run_parser.add_argument("--hdr", choices=sorted(HDR_TYPES), required=True)
     run_parser.add_argument("--family", choices=FAMILIES, default="lightmap")

@@ -61,8 +61,7 @@ def merge_case_files(paths):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument("--build", type=Path, required=True)
+    material_pixel_conformance.sepipe_loader.add_arguments(parser, "portal")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--cases", type=Path, action="append",
                         help="case file (repeatable; default every %s/*.vdf)"
@@ -105,10 +104,12 @@ def main(argv=None):
     cases = output / "cases.vdf"
     cases.write_text(merge_case_files(case_files))
     stage = output / "runtime"
-    evidence["staging"] = portal_boot.stage_runtime(args.runtime, stage)
-    evidence["build_overrides"] = portal_boot.install_build(args.build, stage)
+    built = material_pixel_conformance.sepipe_loader.session().build(
+        args.profile, flavor=args.flavor, up_to="package", runtime=str(stage))
+    evidence["staging"] = {item["name"]: item["summary"] for item in built["stages"]}
     harness = stage / "material_pixel_conformance"
-    shutil.copy2(material_pixel_conformance.find_harness(args.build), harness)
+    shutil.copy2(material_pixel_conformance.find_harness(
+        material_pixel_conformance.sepipe_loader.installed(args.profile, args.flavor)), harness)
     evidence["harness_sha256"] = portal_boot.sha256(harness)
     pixels = output / "pixels.json"
     capture = output / "capture.jsonl"
