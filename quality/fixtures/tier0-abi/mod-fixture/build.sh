@@ -11,11 +11,26 @@ tier0=$2
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../../../.." && pwd)
 out="$here/$platform"
-if [ -e "$out/libmod_fixture.so" ]; then
-	echo "refusing to rebuild $out/libmod_fixture.so: the fixture is kept, not rebuilt" >&2
+if [ -e "$out/libmod_fixture.so" ] || [ -e "$out/mod_fixture.dll" ]; then
+	echo "refusing to rebuild the fixture in $out: it is kept, not rebuilt" >&2
 	exit 1
 fi
 mkdir -p "$out"
+if [ "$platform" = windows-x86_64 ]; then
+	# MSVC through the pinned msvc-wine toolchain, as a mod's Visual Studio build
+	# would: C++14, static CRT, the dedicated tree's defines. Links tier0.lib.
+	msvc="$root/dependencies/windows-msvc-wine/14.44-10.0.26100/bin/x64"
+	cd "$out"
+	"$msvc/cl" /nologo /std:c++14 /O2 /MT /EHsc /GR /LD /w /DWIN32=1 /D_WIN32=1 /D_WINDOWS \
+		/DPLATFORM_64BITS=1 /DCOMPILER_MSVC=1 /DCOMPILER_MSVC64=1 /DMSVC=1 /DNDEBUG \
+		/D_CRT_SECURE_NO_DEPRECATE /D_CRT_NONSTDC_NO_DEPRECATE /DNO_X360_XDK /D_DLL_EXT=.dll \
+		/DNO_MEMOVERRIDE_NEW_DELETE=1 /I"$root/public" /I"$root/public/tier0" /I"$root/common" \
+		"$here/mod_fixture.cpp" /Fe:mod_fixture.dll /link "$tier0/tier0.lib"
+	rm -f mod_fixture.obj mod_fixture.exp mod_fixture.lib
+	git -C "$root" rev-parse HEAD > "$out/built-at-revision.txt"
+	echo "built $out/mod_fixture.dll"
+	exit 0
+fi
 case "$platform" in
 linux-x86_64) cxx="g++"; arch="-march=core2 -mfpmath=sse -DPLATFORM_64BITS=1" ;;
 linux-i386) cxx="g++ -m32"; arch="-march=pentium4 -mfpmath=sse" ;;

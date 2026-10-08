@@ -30,9 +30,22 @@ HEADERS = os.path.join(ROOT, "public", "tier0")
 SCHEMA = "tier0-abi/v1"
 # std:: members, typeinfo and typeinfo names, and their local statics.
 STD_INTERNAL = re.compile(r"^_Z(N|NK|TI|TS|TV|ZN|ZNK)St")
+# The same for MSVC's decoration: a name in namespace std (Windows PE).
+MSVC_STD_INTERNAL = re.compile(r"^\?.*@std@@")
+PE_EXPORT = re.compile(r"^\s*\[\s*\d+\]\s+\+base\[\s*\d+\]\s+[0-9a-fA-F]+\s+(\S+)\s*$")
+
+
+def is_mangled(name):
+    return name.startswith("_Z") or name.startswith("?")
 
 
 def exported_symbols(lib, nm="nm"):
+    if lib.lower().endswith(".dll"):
+        # A PE export table names exports without a kind: every one is "PE".
+        # `nm` is then the objdump that reads it (a MinGW objdump by default).
+        objdump = "x86_64-w64-mingw32-objdump" if nm == "nm" else nm
+        out = subprocess.run([objdump, "-p", lib], capture_output=True, text=True, check=True).stdout
+        return {m.group(1): "PE" for m in map(PE_EXPORT.match, out.splitlines()) if m}
     out = subprocess.run([nm, "-D", "--defined-only", lib], capture_output=True, text=True,
                          check=True).stdout
     symbols = {}
@@ -81,7 +94,7 @@ def build_record(lib, platform, nm):
     exports = {}
     for name, kind in sorted(symbols.items()):
         entry = {"kind": kind}
-        if not name.startswith("_Z"):
+        if not is_mangled(name):
             entry["declarations"] = declarations(name, statements)
         exports[name] = entry
     return {"schema": SCHEMA, "platform": platform, "library": os.path.basename(lib),
@@ -102,7 +115,7 @@ def compare(recorded, current):
                                                          now.get("declarations")))
     for name in current["exports"]:
         if name not in recorded["exports"]:
-            if STD_INTERNAL.match(name):
+            if STD_INTERNAL.match(name) or MSVC_STD_INTERNAL.match(name):
                 # A static library leaking std's template instantiations or
                 # typeinfo into Tier 0's exports: never part of the mod ABI.
                 problems.append("new export %s is a standard-library internal" % name)

@@ -60,7 +60,12 @@ struct Report
 } // namespace
 
 // Writes "FAIL ..." lines into `report` and returns checks * 1000 + failures.
-extern "C" __attribute__( ( visibility( "default" ) ) ) int ModFixture_Run( char *report, int size )
+#if defined( _WIN32 )
+#define MOD_FIXTURE_EXPORT extern "C" __declspec( dllexport )
+#else
+#define MOD_FIXTURE_EXPORT extern "C" __attribute__( ( visibility( "default" ) ) )
+#endif
+MOD_FIXTURE_EXPORT int ModFixture_Run( char *report, int size )
 {
 	Report r = { report, size, 0, 0, 0 };
 	if ( size > 0 )

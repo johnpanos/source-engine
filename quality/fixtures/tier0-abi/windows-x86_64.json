@@ -1,0 +1,1576 @@
+{
+ "exports": {
+  "??0CCallStackStorage@@QEAA@AEBV0@@Z": {
+   "kind": "PE"
+  },
+  "??0CCallStackStorage@@QEAA@P6AHPEAPEAXHH@ZI@Z": {
+   "kind": "PE"
+  },
+  "??0CClockSpeedInit@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??0CScopedModuleLoadRequest@@QEAA@PEBDH0@Z": {
+   "kind": "PE"
+  },
+  "??0CStackTop_CopyParentStack@@QEAA@PEBQEAXH@Z": {
+   "kind": "PE"
+  },
+  "??0CStackTop_ReferenceParentStack@@QEAA@PEBQEAXH@Z": {
+   "kind": "PE"
+  },
+  "??0CThread@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??0CThreadEvent@@QEAA@PEBD_N1@Z": {
+   "kind": "PE"
+  },
+  "??0CThreadEvent@@QEAA@_N@Z": {
+   "kind": "PE"
+  },
+  "??0CThreadFullMutex@@QEAA@_NPEBD@Z": {
+   "kind": "PE"
+  },
+  "??0CThreadLocalBase@GenericThreadLocals@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??0CThreadMutex@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??0CThreadRWLock@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??0CThreadSemaphore@@QEAA@HH@Z": {
+   "kind": "PE"
+  },
+  "??0CThreadSpinRWLock@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??0CThreadSyncObject@@IEAA@XZ": {
+   "kind": "PE"
+  },
+  "??0CValidatableThread@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??0CWorkerThread@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CScopedModuleLoadRequest@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CStackTop_CopyParentStack@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CStackTop_ReferenceParentStack@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CThread@@UEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CThreadEvent@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CThreadFullMutex@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CThreadLocalBase@GenericThreadLocals@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CThreadMutex@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CThreadRWLock@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CThreadSemaphore@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CThreadSyncObject@@QEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CValidatableThread@@UEAA@XZ": {
+   "kind": "PE"
+  },
+  "??1CWorkerThread@@UEAA@XZ": {
+   "kind": "PE"
+  },
+  "??4CCallStackStorage@@QEAAAEAV0@AEBV0@@Z": {
+   "kind": "PE"
+  },
+  "??4CClockSpeedInit@@QEAAAEAV0@$$QEAV0@@Z": {
+   "kind": "PE"
+  },
+  "??4CClockSpeedInit@@QEAAAEAV0@AEBV0@@Z": {
+   "kind": "PE"
+  },
+  "??4CStackTop_Base@@QEAAAEAV0@$$QEAV0@@Z": {
+   "kind": "PE"
+  },
+  "??4CStackTop_Base@@QEAAAEAV0@AEBV0@@Z": {
+   "kind": "PE"
+  },
+  "??4CStackTop_CopyParentStack@@QEAAAEAV0@AEBV0@@Z": {
+   "kind": "PE"
+  },
+  "??4CStackTop_ReferenceParentStack@@QEAAAEAV0@AEBV0@@Z": {
+   "kind": "PE"
+  },
+  "??4CThreadLocalBase@GenericThreadLocals@@QEAAAEAV01@AEBV01@@Z": {
+   "kind": "PE"
+  },
+  "??4CThreadSpinRWLock@@QEAAAEAV0@$$QEAV0@@Z": {
+   "kind": "PE"
+  },
+  "??4CThreadSpinRWLock@@QEAAAEAV0@AEBV0@@Z": {
+   "kind": "PE"
+  },
+  "??7CThreadSyncObject@@QEBA_NXZ": {
+   "kind": "PE"
+  },
+  "??BCThreadSyncObject@@QEAAPEAXXZ": {
+   "kind": "PE"
+  },
+  "??_7CThread@@6B@": {
+   "kind": "PE"
+  },
+  "??_7CValidatableThread@@6B@": {
+   "kind": "PE"
+  },
+  "??_7CWorkerThread@@6B@": {
+   "kind": "PE"
+  },
+  "??_FCCallStackStorage@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "??_FCStackTop_ReferenceParentStack@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "??_FCThreadEvent@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "??_FCThreadFullMutex@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?AssertOwnedByCurrentThread@CThreadFullMutex@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?AssertOwnedByCurrentThread@CThreadMutex@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?AssertUseable@CThreadSyncObject@@IEAAXXZ": {
+   "kind": "PE"
+  },
+  "?BoostPriority@CWorkerThread@@QEAAHXZ": {
+   "kind": "PE"
+  },
+  "?CalcStackDepth@CThread@@QEAA_KPEAX@Z": {
+   "kind": "PE"
+  },
+  "?Call@CWorkerThread@@IEAAHII_NP6AIIPEAPEAVCThreadEvent@@HI@Z@Z": {
+   "kind": "PE"
+  },
+  "?CallMaster@CWorkerThread@@QEAAHII@Z": {
+   "kind": "PE"
+  },
+  "?CallWorker@CWorkerThread@@QEAAHII_N@Z": {
+   "kind": "PE"
+  },
+  "?Check@CThreadEvent@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?CheckNamedEvent@CThreadEvent@@SA?AW4NamedEventResult_t@@PEBDI@Z": {
+   "kind": "PE"
+  },
+  "?ConColorMsg@@YAXAEBVColor@@PEBDZZ": {
+   "kind": "PE"
+  },
+  "?ConLog@@YAXPEBDZZ": {
+   "kind": "PE"
+  },
+  "?ConMsg@@YAXPEBDZZ": {
+   "kind": "PE"
+  },
+  "?ConWarning@@YAXPEBDZZ": {
+   "kind": "PE"
+  },
+  "?CreateSimpleThread@@YAPEAUThreadHandle_t__@@P6A_KPEAX@Z0PEA_KI@Z": {
+   "kind": "PE"
+  },
+  "?DevLog@@YAXPEBDZZ": {
+   "kind": "PE"
+  },
+  "?DevMsg@@YAXPEBDZZ": {
+   "kind": "PE"
+  },
+  "?DevWarning@@YAXPEBDZZ": {
+   "kind": "PE"
+  },
+  "?Get@CThreadLocalBase@GenericThreadLocals@@QEBAPEAXXZ": {
+   "kind": "PE"
+  },
+  "?GetCallHandle@CWorkerThread@@QEAAAEAVCThreadEvent@@XZ": {
+   "kind": "PE"
+  },
+  "?GetCallParam@CWorkerThread@@QEBAIXZ": {
+   "kind": "PE"
+  },
+  "?GetCurrentCThread@CThread@@SAPEAV1@XZ": {
+   "kind": "PE"
+  },
+  "?GetHandle@CThreadSyncObject@@QEBAQEAXXZ": {
+   "kind": "PE"
+  },
+  "?GetName@CThread@@QEAAPEBDXZ": {
+   "kind": "PE"
+  },
+  "?GetPriority@CThread@@QEBAHXZ": {
+   "kind": "PE"
+  },
+  "?GetRequestedInterface@CScopedModuleLoadRequest@@QEBAPEBDXZ": {
+   "kind": "PE"
+  },
+  "?GetRequestingSubsystem@CScopedModuleLoadRequest@@QEBAPEBDXZ": {
+   "kind": "PE"
+  },
+  "?GetResult@CThread@@QEAAHXZ": {
+   "kind": "PE"
+  },
+  "?GetSourceLine@CScopedModuleLoadRequest@@QEBAHXZ": {
+   "kind": "PE"
+  },
+  "?GetThreadHandle@CThread@@IEBAQEAUThreadHandle_t__@@XZ": {
+   "kind": "PE"
+  },
+  "?GetThreadHandle@CThread@@QEAAPEAUThreadHandle_t__@@XZ": {
+   "kind": "PE"
+  },
+  "?GetThreadID@CThread@@IEBA?B_KXZ": {
+   "kind": "PE"
+  },
+  "?GetThreadProc@CThread@@MEAAP6AKPEAX@ZXZ": {
+   "kind": "PE"
+  },
+  "?Init@CClockSpeedInit@@SAXXZ": {
+   "kind": "PE"
+  },
+  "?Init@CThread@@MEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?IsAlive@CThread@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?IsLockedForRead@CThreadSpinRWLock@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?IsLockedForWrite@CThreadSpinRWLock@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?IsOwnedByCurrentThread_DebugOnly@CThreadMutex@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?IsSuspended@CThread@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?IsThreadRunning@CThread@@MEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?Join@CThread@@QEAA_NI@Z": {
+   "kind": "PE"
+  },
+  "?Lock@CThreadFastMutex@@AECAXII@Z": {
+   "kind": "PE"
+  },
+  "?Lock@CThreadFullMutex@@QEAAXI@Z": {
+   "kind": "PE"
+  },
+  "?Lock@CThreadFullMutex@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?Lock@CThreadMutex@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?Lock@CThreadMutex@@QEBAXXZ": {
+   "kind": "PE"
+  },
+  "?LockForRead@CThreadRWLock@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?LockForRead@CThreadRWLock@@QEBAXXZ": {
+   "kind": "PE"
+  },
+  "?LockForRead@CThreadSpinRWLock@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?LockForRead@CThreadSpinRWLock@@QEBAXXZ": {
+   "kind": "PE"
+  },
+  "?LockForWrite@CThreadRWLock@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?LockForWrite@CThreadRWLock@@QEBAXXZ": {
+   "kind": "PE"
+  },
+  "?LockForWrite@CThreadSpinRWLock@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?LockForWrite@CThreadSpinRWLock@@QEBAXXZ": {
+   "kind": "PE"
+  },
+  "?LockSilent@CThreadMutex@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?OnExit@CThread@@MEAAXXZ": {
+   "kind": "PE"
+  },
+  "?PeekCall@CWorkerThread@@QEAA_NPEAI@Z": {
+   "kind": "PE"
+  },
+  "?Release@CThreadFullMutex@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?Release@CThreadSemaphore@@QEAA_NHPEAH@Z": {
+   "kind": "PE"
+  },
+  "?ReleaseParentStackReferences@CStackTop_ReferenceParentStack@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?Reply@CWorkerThread@@QEAAXI@Z": {
+   "kind": "PE"
+  },
+  "?Reset@CThreadEvent@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?Resume@CThread@@QEAAIXZ": {
+   "kind": "PE"
+  },
+  "?Set@CThreadEvent@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?Set@CThreadLocalBase@GenericThreadLocals@@QEAAXPEAX@Z": {
+   "kind": "PE"
+  },
+  "?SetName@CThread@@QEAAXPEBD@Z": {
+   "kind": "PE"
+  },
+  "?SetPriority@CThread@@QEAA_NH@Z": {
+   "kind": "PE"
+  },
+  "?SetTrace@CThreadFullMutex@@QEAAX_N@Z": {
+   "kind": "PE"
+  },
+  "?SetTrace@CThreadMutex@@QEAAX_N@Z": {
+   "kind": "PE"
+  },
+  "?Sleep@CThread@@SAXI@Z": {
+   "kind": "PE"
+  },
+  "?SpinLockForRead@CThreadSpinRWLock@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?SpinLockForWrite@CThreadSpinRWLock@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?Start@CThread@@UEAA_NIW4ThreadPriorityEnum_t@@@Z": {
+   "kind": "PE"
+  },
+  "?Stop@CThread@@QEAAXH@Z": {
+   "kind": "PE"
+  },
+  "?Suspend@CThread@@QEAAIXZ": {
+   "kind": "PE"
+  },
+  "?Terminate@CThread@@QEAA_NH@Z": {
+   "kind": "PE"
+  },
+  "?ThreadProc@CThread@@KAKPEAX@Z": {
+   "kind": "PE"
+  },
+  "?ThreadProcRunWithMinidumpHandler@CThread@@KAXPEAX@Z": {
+   "kind": "PE"
+  },
+  "?TryLock@CThreadMutex@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?TryLock@CThreadMutex@@QEBA_NXZ": {
+   "kind": "PE"
+  },
+  "?TryLockForRead@CThreadSpinRWLock@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?TryLockForRead@CThreadSpinRWLock@@QEBA_NXZ": {
+   "kind": "PE"
+  },
+  "?TryLockForRead_UnforcedInline@CThreadSpinRWLock@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?TryLockForWrite@CThreadSpinRWLock@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?TryLockForWrite@CThreadSpinRWLock@@QEBA_NXZ": {
+   "kind": "PE"
+  },
+  "?TryLockForWrite_UnforcedInline@CThreadSpinRWLock@@QEAA_NXZ": {
+   "kind": "PE"
+  },
+  "?Unlock@CThreadFullMutex@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?Unlock@CThreadMutex@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?Unlock@CThreadMutex@@QEBAXXZ": {
+   "kind": "PE"
+  },
+  "?UnlockRead@CThreadRWLock@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?UnlockRead@CThreadRWLock@@QEBAXXZ": {
+   "kind": "PE"
+  },
+  "?UnlockRead@CThreadSpinRWLock@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?UnlockRead@CThreadSpinRWLock@@QEBAXXZ": {
+   "kind": "PE"
+  },
+  "?UnlockSilent@CThreadMutex@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?UnlockWrite@CThreadRWLock@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?UnlockWrite@CThreadRWLock@@QEBAXXZ": {
+   "kind": "PE"
+  },
+  "?UnlockWrite@CThreadSpinRWLock@@QEAAXXZ": {
+   "kind": "PE"
+  },
+  "?UnlockWrite@CThreadSpinRWLock@@QEBAXXZ": {
+   "kind": "PE"
+  },
+  "?Wait@CThreadEvent@@QEAA_NI@Z": {
+   "kind": "PE"
+  },
+  "?Wait@CThreadSyncObject@@QEAA_NI@Z": {
+   "kind": "PE"
+  },
+  "?WaitForCall@CWorkerThread@@QEAA_NIPEAI@Z": {
+   "kind": "PE"
+  },
+  "?WaitForCall@CWorkerThread@@QEAA_NPEAI@Z": {
+   "kind": "PE"
+  },
+  "?WaitForCreateComplete@CThread@@MEAA_NPEAVCThreadEvent@@@Z": {
+   "kind": "PE"
+  },
+  "?WaitForMultiple@CThreadEvent@@SAIHPEAPEAV1@_NI@Z": {
+   "kind": "PE"
+  },
+  "?WaitForMultiple@CThreadEvent@@SAIHPEAV1@_NI@Z": {
+   "kind": "PE"
+  },
+  "?WaitForMultiple@CThreadSyncObject@@SAIHPEAPEAV1@_NI@Z": {
+   "kind": "PE"
+  },
+  "?WaitForMultiple@CThreadSyncObject@@SAIHPEAV1@_NI@Z": {
+   "kind": "PE"
+  },
+  "?WaitForRead@CThreadRWLock@@AEAAXXZ": {
+   "kind": "PE"
+  },
+  "?WaitForReply@CWorkerThread@@IEAAHIP6AIIPEAPEAVCThreadEvent@@HI@Z@Z": {
+   "kind": "PE"
+  },
+  "?WaitForReply@CWorkerThread@@QEAAHI@Z": {
+   "kind": "PE"
+  },
+  "?Yield@CThread@@SAXXZ": {
+   "kind": "PE"
+  },
+  "?g_bInException@@3_NA": {
+   "kind": "PE"
+  },
+  "?g_nThreadID@@3V?$CThreadLocalInt@H@GenericThreadLocals@@A": {
+   "kind": "PE"
+  },
+  "AllocateThreadID": {
+   "declarations": [],
+   "kind": "PE"
+  },
+  "AreAllAssertsDisabled": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool AreAllAssertsDisabled()"
+   ],
+   "kind": "PE"
+  },
+  "AssertValidStringPtr": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void AssertValidStringPtr( const tchar* ptr, int maxchar = 0xFFFFFF )"
+   ],
+   "kind": "PE"
+  },
+  "COM_TimestampedLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void COM_TimestampedLog( PRINTF_FORMAT_STRING char const *fmt, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "CallAssertFailedNotifyFunc": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void CallAssertFailedNotifyFunc( const char *pchFile, int nLine, const char *pchMessage )"
+   ],
+   "kind": "PE"
+  },
+  "CatchAndWriteMiniDump": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void CatchAndWriteMiniDump( FnWMain pfn, int argc, tchar *argv[] )"
+   ],
+   "kind": "PE"
+  },
+  "CatchAndWriteMiniDumpEx": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void CatchAndWriteMiniDumpEx( FnWMain pfn, int argc, tchar *argv[], ECatchAndWriteMinidumpAction eAction )"
+   ],
+   "kind": "PE"
+  },
+  "CatchAndWriteMiniDumpExForVoidPtrFn": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void CatchAndWriteMiniDumpExForVoidPtrFn( FnVoidPtrFn pfn, void *pv, ECatchAndWriteMinidumpAction eAction )"
+   ],
+   "kind": "PE"
+  },
+  "CatchAndWriteMiniDumpExReturnsInt": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE int CatchAndWriteMiniDumpExReturnsInt( FnWMainIntRet pfn, int argc, tchar *argv[], ECatchAndWriteMinidumpAction eAction )"
+   ],
+   "kind": "PE"
+  },
+  "CatchAndWriteMiniDumpForVoidPtrFn": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void CatchAndWriteMiniDumpForVoidPtrFn( FnVoidPtrFn pfn, void *pv, bool bExitQuietly )"
+   ],
+   "kind": "PE"
+  },
+  "ColorSpewMessage": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewRetval_t ColorSpewMessage( SpewType_t type, const Color *pColor, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 3, 4 )"
+   ],
+   "kind": "PE"
+  },
+  "CommandLine_Tier0": {
+   "declarations": [
+    "icommandline.h: PLATFORM_INTERFACE ICommandLine *CommandLine_Tier0()"
+   ],
+   "kind": "PE"
+  },
+  "ConColorMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConColorMsg( int level, const Color& clr, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 3, 4 )",
+    "dbg.h: DBG_OVERLOAD void ConColorMsg( const Color& clr, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 )"
+   ],
+   "kind": "PE"
+  },
+  "ConDColorMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConDColorMsg( const Color& clr, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 )"
+   ],
+   "kind": "PE"
+  },
+  "ConDLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConDLog( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "ConDMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConDMsg( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "ConDWarning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConDWarning( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "ConLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConLog( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void ConLog( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "ConMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConMsg( int level, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void ConMsg( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "ConWarning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void ConWarning( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void ConWarning( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "CrackSmokingCompiler": {
+   "declarations": [],
+   "kind": "PE"
+  },
+  "CreateSimpleThread": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE ThreadHandle_t CreateSimpleThread( ThreadFunc_t, void *pParam, unsigned stackSize = 0 )",
+    "threadtools.h: PLATFORM_OVERLOAD ThreadHandle_t CreateSimpleThread( ThreadFunc_t, void *pParam, ThreadId_t *pID, unsigned stackSize = 0 )"
+   ],
+   "kind": "PE"
+  },
+  "DLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DLog( const tchar *pGroupName, int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 3, 4 )"
+   ],
+   "kind": "PE"
+  },
+  "DMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DMsg( const tchar *pGroupName, int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 3, 4 )"
+   ],
+   "kind": "PE"
+  },
+  "DWarning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DWarning( const tchar *pGroupName, int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 3, 4 )"
+   ],
+   "kind": "PE"
+  },
+  "DebugLogger": {
+   "declarations": [
+    "dbg.h: PLATFORM_INTERFACE IDbgLogger *DebugLogger()"
+   ],
+   "kind": "PE"
+  },
+  "DeclareCurrentThreadIsMainThread": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void DeclareCurrentThreadIsMainThread()"
+   ],
+   "kind": "PE"
+  },
+  "DecodeBinaryFromString": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE int DecodeBinaryFromString( const char *pString, void *pDestBuffer, int iDestBufferSize, char **ppParseFinishOut = NULL )"
+   ],
+   "kind": "PE"
+  },
+  "DefaultSpewFunc": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewRetval_t DefaultSpewFunc( SpewType_t type, const tchar *pMsg )"
+   ],
+   "kind": "PE"
+  },
+  "DefaultSpewFuncAbortOnAsserts": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewRetval_t DefaultSpewFuncAbortOnAsserts( SpewType_t type, const tchar *pMsg )"
+   ],
+   "kind": "PE"
+  },
+  "DevLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DevLog( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void DevLog( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "DevMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DevMsg( int level, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void DevMsg( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "DevWarning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void DevWarning( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )",
+    "dbg.h: DBG_OVERLOAD void DevWarning( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "DoNewAssertDialog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool DoNewAssertDialog( const tchar *pFile, int line, const tchar *pExpression )"
+   ],
+   "kind": "PE"
+  },
+  "EnableCrashingOnCrashes": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void EnableCrashingOnCrashes()"
+   ],
+   "kind": "PE"
+  },
+  "EncodeBinaryToString": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE int EncodeBinaryToString( const void *pToEncode, int iDataLength, char *pEncodeOut, int iEncodeBufferSize )"
+   ],
+   "kind": "PE"
+  },
+  "Error": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void Error( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )",
+    "dbg.h: DBG_INTERFACE void NORETURN Error( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "ErrorV": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void NORETURN ErrorV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist )"
+   ],
+   "kind": "PE"
+  },
+  "FreeThreadID": {
+   "declarations": [],
+   "kind": "PE"
+  },
+  "GetCPUFrequencyResults": {
+   "declarations": [
+    "cpumonitoring.h: PLATFORM_INTERFACE CPUFrequencyResults GetCPUFrequencyResults( bool fGetDisabledResults = false )"
+   ],
+   "kind": "PE"
+  },
+  "GetCPUInformation": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE const CPUInformation* GetCPUInformation()"
+   ],
+   "kind": "PE"
+  },
+  "GetCPUUsage": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE float GetCPUUsage()"
+   ],
+   "kind": "PE"
+  },
+  "GetCallStack": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE int GetCallStack( void **pReturnAddressesOut, int iArrayCount, int iSkipCount )"
+   ],
+   "kind": "PE"
+  },
+  "GetCallStack_Fast": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE int GetCallStack_Fast( void **pReturnAddressesOut, int iArrayCount, int iSkipCount )"
+   ],
+   "kind": "PE"
+  },
+  "GetCurrentDate": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void GetCurrentDate( int *pDay, int *pMonth, int *pYear )"
+   ],
+   "kind": "PE"
+  },
+  "GetFileAndLineFromAddress": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE bool GetFileAndLineFromAddress( const void *pAddress, tchar *pFileNameOut, int iMaxFileNameLength, uint32 &iLineNumberOut, uint32 *pDisplacementOut = NULL )"
+   ],
+   "kind": "PE"
+  },
+  "GetMemoryInformation": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool GetMemoryInformation( MemoryInformation *pOutMemoryInfo )"
+   ],
+   "kind": "PE"
+  },
+  "GetModuleNameFromAddress": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE bool GetModuleNameFromAddress( const void *pAddress, tchar *pModuleNameOut, int iMaxModuleNameLength )"
+   ],
+   "kind": "PE"
+  },
+  "GetSpewOutputColor": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE const Color* GetSpewOutputColor( void )"
+   ],
+   "kind": "PE"
+  },
+  "GetSpewOutputFunc": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewOutputFunc_t GetSpewOutputFunc( void )"
+   ],
+   "kind": "PE"
+  },
+  "GetSpewOutputGroup": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE const tchar* GetSpewOutputGroup( void )"
+   ],
+   "kind": "PE"
+  },
+  "GetSpewOutputLevel": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE int GetSpewOutputLevel( void )"
+   ],
+   "kind": "PE"
+  },
+  "GetSymbolNameFromAddress": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE bool GetSymbolNameFromAddress( const void *pAddress, tchar *pSymbolNameOut, int iMaxSymbolNameLength, uint64 *pDisplacementOut = NULL )"
+   ],
+   "kind": "PE"
+  },
+  "GetThreadedLoadLibraryFunc": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE ThreadedLoadLibraryFunc_t GetThreadedLoadLibraryFunc()"
+   ],
+   "kind": "PE"
+  },
+  "HushAsserts": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool HushAsserts()"
+   ],
+   "kind": "PE"
+  },
+  "InitPME": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void InitPME()"
+   ],
+   "kind": "PE"
+  },
+  "InstallProgressReportHandler": {
+   "declarations": [
+    "progressbar.h: PLATFORM_INTERFACE ProgressReportHandler_t InstallProgressReportHandler( ProgressReportHandler_t pfn)"
+   ],
+   "kind": "PE"
+  },
+  "Is64BitOS": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Is64BitOS()"
+   ],
+   "kind": "PE"
+  },
+  "IsSpewActive": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool IsSpewActive( const tchar* pGroupName, int level )"
+   ],
+   "kind": "PE"
+  },
+  "Log": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void Log( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "LogV": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void LogV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist )"
+   ],
+   "kind": "PE"
+  },
+  "MemAllocOOMError": {
+   "declarations": [
+    "mem.h: MEM_INTERFACE void MemAllocOOMError( size_t nSize )"
+   ],
+   "kind": "PE"
+  },
+  "MemAllocScratch": {
+   "declarations": [
+    "mem.h: MEM_INTERFACE void *MemAllocScratch( int nMemSize )"
+   ],
+   "kind": "PE"
+  },
+  "MemFreeScratch": {
+   "declarations": [
+    "mem.h: MEM_INTERFACE void MemFreeScratch()"
+   ],
+   "kind": "PE"
+  },
+  "MinidumpSetUnhandledExceptionFunction": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void MinidumpSetUnhandledExceptionFunction( FnMiniDump pfn )"
+   ],
+   "kind": "PE"
+  },
+  "MinidumpUserStreamInfoAppend": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void MinidumpUserStreamInfoAppend( const char *pFormat, ... )"
+   ],
+   "kind": "PE"
+  },
+  "MinidumpUserStreamInfoGet": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE const char *MinidumpUserStreamInfoGet( int Index )"
+   ],
+   "kind": "PE"
+  },
+  "MinidumpUserStreamInfoSetHeader": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void MinidumpUserStreamInfoSetHeader( const char *pFormat, ... )"
+   ],
+   "kind": "PE"
+  },
+  "ModuleLoadTelemetry_FreeLibrary": {
+   "declarations": [
+    "native_module_load_telemetry.h: ModuleLoadTelemetry_LoadLibraryA( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryW( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExA( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExW( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_GetProcAddress( \\ module, entry, __FILE__, __LINE__ ) ModuleLoadTelemetry_FreeLibrary( module, __FILE__, __LINE__ ) PLATFORM_INTERFACE void *ModuleLoadTelemetry_dlopen( const char *pPath, int nMode, const char *pRequester, int nSourceLine )",
+    "native_module_load_telemetry.h: PLATFORM_INTERFACE BOOL ModuleLoadTelemetry_FreeLibrary( HMODULE hModule, const char *pRequester, int nSourceLine )"
+   ],
+   "kind": "PE"
+  },
+  "ModuleLoadTelemetry_GetProcAddress": {
+   "declarations": [
+    "native_module_load_telemetry.h: ModuleLoadTelemetry_LoadLibraryA( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryW( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExA( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExW( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_GetProcAddress( \\ module, entry, __FILE__, __LINE__ ) ModuleLoadTelemetry_FreeLibrary( module, __FILE__, __LINE__ ) PLATFORM_INTERFACE void *ModuleLoadTelemetry_dlopen( const char *pPath, int nMode, const char *pRequester, int nSourceLine )",
+    "native_module_load_telemetry.h: PLATFORM_INTERFACE FARPROC ModuleLoadTelemetry_GetProcAddress( HMODULE hModule, LPCSTR pEntryPoint, const char *pRequester, int nSourceLine )"
+   ],
+   "kind": "PE"
+  },
+  "ModuleLoadTelemetry_LoadLibraryA": {
+   "declarations": [
+    "native_module_load_telemetry.h: ModuleLoadTelemetry_LoadLibraryA( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryW( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExA( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExW( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_GetProcAddress( \\ module, entry, __FILE__, __LINE__ ) ModuleLoadTelemetry_FreeLibrary( module, __FILE__, __LINE__ ) PLATFORM_INTERFACE void *ModuleLoadTelemetry_dlopen( const char *pPath, int nMode, const char *pRequester, int nSourceLine )",
+    "native_module_load_telemetry.h: PLATFORM_INTERFACE HMODULE ModuleLoadTelemetry_LoadLibraryA( LPCSTR pPath, const char *pRequester, int nSourceLine )"
+   ],
+   "kind": "PE"
+  },
+  "ModuleLoadTelemetry_LoadLibraryExA": {
+   "declarations": [
+    "native_module_load_telemetry.h: ModuleLoadTelemetry_LoadLibraryA( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryW( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExA( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExW( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_GetProcAddress( \\ module, entry, __FILE__, __LINE__ ) ModuleLoadTelemetry_FreeLibrary( module, __FILE__, __LINE__ ) PLATFORM_INTERFACE void *ModuleLoadTelemetry_dlopen( const char *pPath, int nMode, const char *pRequester, int nSourceLine )",
+    "native_module_load_telemetry.h: PLATFORM_INTERFACE HMODULE ModuleLoadTelemetry_LoadLibraryExA( LPCSTR pPath, HANDLE hFile, DWORD nFlags, const char *pRequester, int nSourceLine )"
+   ],
+   "kind": "PE"
+  },
+  "ModuleLoadTelemetry_LoadLibraryExW": {
+   "declarations": [
+    "native_module_load_telemetry.h: ModuleLoadTelemetry_LoadLibraryA( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryW( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExA( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExW( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_GetProcAddress( \\ module, entry, __FILE__, __LINE__ ) ModuleLoadTelemetry_FreeLibrary( module, __FILE__, __LINE__ ) PLATFORM_INTERFACE void *ModuleLoadTelemetry_dlopen( const char *pPath, int nMode, const char *pRequester, int nSourceLine )",
+    "native_module_load_telemetry.h: PLATFORM_INTERFACE HMODULE ModuleLoadTelemetry_LoadLibraryExW( LPCWSTR pPath, HANDLE hFile, DWORD nFlags, const char *pRequester, int nSourceLine )"
+   ],
+   "kind": "PE"
+  },
+  "ModuleLoadTelemetry_LoadLibraryW": {
+   "declarations": [
+    "native_module_load_telemetry.h: ModuleLoadTelemetry_LoadLibraryA( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryW( path, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExA( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_LoadLibraryExW( \\ path, file, flags, __FILE__, __LINE__ ) ModuleLoadTelemetry_GetProcAddress( \\ module, entry, __FILE__, __LINE__ ) ModuleLoadTelemetry_FreeLibrary( module, __FILE__, __LINE__ ) PLATFORM_INTERFACE void *ModuleLoadTelemetry_dlopen( const char *pPath, int nMode, const char *pRequester, int nSourceLine )",
+    "native_module_load_telemetry.h: PLATFORM_INTERFACE HMODULE ModuleLoadTelemetry_LoadLibraryW( LPCWSTR pPath, const char *pRequester, int nSourceLine )"
+   ],
+   "kind": "PE"
+  },
+  "Msg": {
+   "declarations": [
+    "dbg.h: while (0) DBG_INTERFACE void Msg( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "MsgV": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void MsgV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist )"
+   ],
+   "kind": "PE"
+  },
+  "NetLog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void NetLog( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )"
+   ],
+   "kind": "PE"
+  },
+  "NetMsg": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void NetMsg( int level, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 2, 3 )"
+   ],
+   "kind": "PE"
+  },
+  "NetWarning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void NetWarning( int level, PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 2, 3 )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_Alloc": {
+   "declarations": [],
+   "kind": "PE"
+  },
+  "Plat_ApplyHardwareDataBreakpointsToNewThread": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_ApplyHardwareDataBreakpointsToNewThread( unsigned long dwThreadID )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_BeginWatchdogTimer": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_BeginWatchdogTimer( int nSecs )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_DebugString": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_DebugString( const char * )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_EndWatchdogTimer": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_EndWatchdogTimer( void )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_ExitProcess": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_ExitProcess( int nCode )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_ExitProcessWithError": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_ExitProcessWithError( int nCode, bool bGenerateMinidump = false )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_FastVerifyHardwareKey": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_FastVerifyHardwareKey()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_FloatTime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE double Plat_FloatTime()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_Free": {
+   "declarations": [],
+   "kind": "PE"
+  },
+  "Plat_GetCommandLine": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE const tchar *Plat_GetCommandLine()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_GetCommandLineA": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE const char *Plat_GetCommandLineA()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_GetMemPageSize": {
+   "declarations": [
+    "systeminformation.h: PLATFORM_INTERFACE unsigned long Plat_GetMemPageSize()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_GetModuleFilename": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_GetModuleFilename( char *pOut, int nMaxBytes )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_GetPagedPoolInfo": {
+   "declarations": [
+    "systeminformation.h: PLATFORM_INTERFACE SYSTEM_CALL_RESULT_t Plat_GetPagedPoolInfo( PAGED_POOL_INFO_t *pPPI )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_GetWatchdogTime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE int Plat_GetWatchdogTime( void )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_IsInBenchmarkMode": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_IsInBenchmarkMode()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_IsInDebugSession": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_IsInDebugSession()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_MSTime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE uint32 Plat_MSTime()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_Realloc": {
+   "declarations": [],
+   "kind": "PE"
+  },
+  "Plat_SetAllocErrorFn": {
+   "declarations": [],
+   "kind": "PE"
+  },
+  "Plat_SetBenchmarkMode": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_SetBenchmarkMode( bool bBenchmarkMode )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_SetExitProcessWithErrorCB": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_SetExitProcessWithErrorCB( ExitProcessWithErrorCBFn pfnCB )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_SetHardwareDataBreakpoint": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_SetHardwareDataBreakpoint( const void *pAddress, int nWatchBytes, bool bBreakOnRead )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_SetWatchdogHandlerFunction": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void Plat_SetWatchdogHandlerFunction( Plat_WatchDogHandlerFunction_t function )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_SimpleLog": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void* Plat_SimpleLog( const tchar* file, int line )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_USTime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE uint64 Plat_USTime()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_VerifyHardwareKey": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_VerifyHardwareKey()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_VerifyHardwareKeyDriver": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_VerifyHardwareKeyDriver()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_VerifyHardwareKeyPrompt": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE bool Plat_VerifyHardwareKeyPrompt()"
+   ],
+   "kind": "PE"
+  },
+  "Plat_ctime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE char * Plat_ctime( const time_t *timep, char *buf, size_t bufsize )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_gmtime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE struct tm * Plat_gmtime( const time_t *timep, struct tm *result )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_localtime": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE struct tm * Plat_localtime( const time_t *timep, struct tm *result )"
+   ],
+   "kind": "PE"
+  },
+  "Plat_timegm": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE time_t Plat_timegm( struct tm *timeptr )"
+   ],
+   "kind": "PE"
+  },
+  "PreloadStackInformation": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE void PreloadStackInformation( void * const *pAddresses, int iAddressCount )"
+   ],
+   "kind": "PE"
+  },
+  "ReleaseThreadHandle": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ReleaseThreadHandle( ThreadHandle_t )"
+   ],
+   "kind": "PE"
+  },
+  "ReportProgress": {
+   "declarations": [
+    "progressbar.h: PLATFORM_INTERFACE void ReportProgress(char const *job_name, int total_units_to_do, int n_units_completed)"
+   ],
+   "kind": "PE"
+  },
+  "RunTSListTests": {
+   "declarations": [
+    "tslist.h: PLATFORM_INTERFACE bool RunTSListTests( int nListSize = 10000, int nTests = 1 )"
+   ],
+   "kind": "PE"
+  },
+  "RunTSQueueTests": {
+   "declarations": [
+    "tslist.h: PLATFORM_INTERFACE bool RunTSQueueTests( int nListSize = 10000, int nTests = 1 )"
+   ],
+   "kind": "PE"
+  },
+  "SetAllAssertsDisabled": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void SetAllAssertsDisabled( bool bAssertsEnabled )"
+   ],
+   "kind": "PE"
+  },
+  "SetAssertFailedNotifyFunc": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void SetAssertFailedNotifyFunc( AssertFailedNotifyFunc_t func )"
+   ],
+   "kind": "PE"
+  },
+  "SetCPUMonitoringInterval": {
+   "declarations": [
+    "cpumonitoring.h: PLATFORM_INTERFACE void SetCPUMonitoringInterval( unsigned nDelayMilliseconds )"
+   ],
+   "kind": "PE"
+  },
+  "SetMiniDumpFunction": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE FnMiniDump SetMiniDumpFunction( FnMiniDump pfn )"
+   ],
+   "kind": "PE"
+  },
+  "SetMinidumpComment": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void SetMinidumpComment( const char *pszComment )"
+   ],
+   "kind": "PE"
+  },
+  "SetMinidumpFilenamePrefix": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void SetMinidumpFilenamePrefix( const char *pszPrefix )"
+   ],
+   "kind": "PE"
+  },
+  "SetStackTranslationSymbolSearchPath": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE void SetStackTranslationSymbolSearchPath( const char *szSemicolonSeparatedList = NULL )"
+   ],
+   "kind": "PE"
+  },
+  "SetThreadedLoadLibraryFunc": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void SetThreadedLoadLibraryFunc( ThreadedLoadLibraryFunc_t func )"
+   ],
+   "kind": "PE"
+  },
+  "SetupWin32ConsoleIO": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool SetupWin32ConsoleIO()"
+   ],
+   "kind": "PE"
+  },
+  "ShouldUseNewAssertDialog": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE bool ShouldUseNewAssertDialog()"
+   ],
+   "kind": "PE"
+  },
+  "ShutdownPME": {
+   "declarations": [
+    "platform.h: PLATFORM_INTERFACE void ShutdownPME()"
+   ],
+   "kind": "PE"
+  },
+  "SpewActivate": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void SpewActivate( const tchar* pGroupName, int level )"
+   ],
+   "kind": "PE"
+  },
+  "SpewOutputFunc": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void SpewOutputFunc( SpewOutputFunc_t func )"
+   ],
+   "kind": "PE"
+  },
+  "StackToolsNotify_LoadedLibrary": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE void StackToolsNotify_LoadedLibrary( const char *szLibName )"
+   ],
+   "kind": "PE"
+  },
+  "Sys_RecordModuleEntryPoint": {
+   "declarations": [
+    "module_load_telemetry_internal.h: PLATFORM_INTERFACE void Sys_RecordModuleEntryPoint( CSysModule *pModule, const char *pRequestedPath, const char *pEntryPoint, bool bSuccess, int nProviderResult, const char *pProviderError )"
+   ],
+   "kind": "PE"
+  },
+  "Sys_RecordModuleInterface": {
+   "declarations": [
+    "module_load_telemetry_internal.h: PLATFORM_INTERFACE void Sys_RecordModuleInterface( CSysModule *pModule, const char *pInterfaceName, bool bSuccess )"
+   ],
+   "kind": "PE"
+  },
+  "Sys_RecordModuleLoad": {
+   "declarations": [
+    "module_load_telemetry_internal.h: PLATFORM_INTERFACE void Sys_RecordModuleLoad( CSysModule *pModule, const char *pRequestedPath, const char *pResolvedPath, int nProviderResult, const char *pProviderError )"
+   ],
+   "kind": "PE"
+  },
+  "Sys_RecordModuleUnload": {
+   "declarations": [
+    "module_load_telemetry_internal.h: PLATFORM_INTERFACE void Sys_RecordModuleUnload( CSysModule *pModule, bool bSuccess, int nProviderResult, const char *pProviderError )"
+   ],
+   "kind": "PE"
+  },
+  "Sys_SetModuleLoadTelemetrySink": {
+   "declarations": [],
+   "kind": "PE"
+  },
+  "ThreadGetCurrentHandle": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE ThreadHandle_t ThreadGetCurrentHandle()"
+   ],
+   "kind": "PE"
+  },
+  "ThreadGetCurrentId": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE ThreadId_t ThreadGetCurrentId()"
+   ],
+   "kind": "PE"
+  },
+  "ThreadGetPriority": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int ThreadGetPriority( ThreadHandle_t hThread = NULL )"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInMainThread": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadInMainThread()"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedAssignIf": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadInterlockedAssignIf( int32 volatile *, int32 value, int32 comperand ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedAssignIf128": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadInterlockedAssignIf128( volatile int128 *pDest, const int128 &value, const int128 &comperand ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedAssignIf64": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadInterlockedAssignIf64( volatile int64 *pDest, int64 value, int64 comperand ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedAssignPointerIf": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadInterlockedAssignPointerIf( void * volatile *, void *value, void *comperand ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedCompareExchange": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int32 ThreadInterlockedCompareExchange( int32 volatile *, int32 value, int32 comperand ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedCompareExchange64": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int64 ThreadInterlockedCompareExchange64( int64 volatile *, int64 value, int64 comperand ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedCompareExchangePointer": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void *ThreadInterlockedCompareExchangePointer( void * volatile *, void *value, void *comperand ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedDecrement": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int32 ThreadInterlockedDecrement( int32 volatile * ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedExchange": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int32 ThreadInterlockedExchange( int32 volatile *, int32 value ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedExchange64": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int64 ThreadInterlockedExchange64( int64 volatile *, int64 value ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedExchangeAdd": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int32 ThreadInterlockedExchangeAdd( int32 volatile *, int32 value ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedExchangePointer": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void *ThreadInterlockedExchangePointer( void * volatile *, void *value ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadInterlockedIncrement": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int32 ThreadInterlockedIncrement( int32 volatile * ) NOINLINE"
+   ],
+   "kind": "PE"
+  },
+  "ThreadJoin": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadJoin( ThreadHandle_t, unsigned timeout = TT_INFINITE )"
+   ],
+   "kind": "PE"
+  },
+  "ThreadSetAffinity": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void ThreadSetAffinity( ThreadHandle_t hThread, int nAffinityMask )"
+   ],
+   "kind": "PE"
+  },
+  "ThreadSetDebugName": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void ThreadSetDebugName( ThreadHandle_t hThread, const char *pszName )"
+   ],
+   "kind": "PE"
+  },
+  "ThreadSetPriority": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE bool ThreadSetPriority( ThreadHandle_t hThread, int priority )"
+   ],
+   "kind": "PE"
+  },
+  "ThreadWaitForObjects": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE int ThreadWaitForObjects( int nEvents, const HANDLE *pHandles, bool bWaitAll = true, unsigned timeout = TT_INFINITE )"
+   ],
+   "kind": "PE"
+  },
+  "TranslateStackInfo": {
+   "declarations": [
+    "stacktools.h: PLATFORM_INTERFACE int TranslateStackInfo( const void * const *pCallStack, int iCallStackCount, tchar *szOutput, int iOutBufferSize, const tchar *szEntrySeparator, TranslateStackInfo_StyleFlags_t style = TSISTYLEFLAG_DEFAULT )"
+   ],
+   "kind": "PE"
+  },
+  "VoidFnPtrLookup_Tier0": {
+   "declarations": [
+    "dynfunction.h: DLL_EXPORT void *VoidFnPtrLookup_Tier0(const char *libname, const char *fn, void *fallback)"
+   ],
+   "kind": "PE"
+  },
+  "Warning": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void Warning( PRINTF_FORMAT_STRING const tchar *pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "WarningV": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void WarningV( PRINTF_FORMAT_STRING const tchar *pMsg, va_list arglist )"
+   ],
+   "kind": "PE"
+  },
+  "WriteMiniDump": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE void WriteMiniDump( const char *pszFilenameSuffix = NULL )"
+   ],
+   "kind": "PE"
+  },
+  "WriteMiniDumpUsingExceptionInfo": {
+   "declarations": [
+    "minidump.h: PLATFORM_INTERFACE bool WriteMiniDumpUsingExceptionInfo( unsigned int uStructuredExceptionCode, _EXCEPTION_POINTERS * pExceptionInfo, int minidumpType, const char *pszFilenameSuffix = NULL, tchar *ptchMinidumpFileNameBuffer = NULL )"
+   ],
+   "kind": "PE"
+  },
+  "_AssertValidReadPtr": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void _AssertValidReadPtr( void* ptr, int count = 1 )"
+   ],
+   "kind": "PE"
+  },
+  "_AssertValidReadWritePtr": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void _AssertValidReadWritePtr( void* ptr, int count = 1 )"
+   ],
+   "kind": "PE"
+  },
+  "_AssertValidWritePtr": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void _AssertValidWritePtr( void* ptr, int count = 1 )"
+   ],
+   "kind": "PE"
+  },
+  "_DSpewMessage": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewRetval_t _DSpewMessage( const tchar *pGroupName, int level, PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 3, 4 )"
+   ],
+   "kind": "PE"
+  },
+  "_ExitOnFatalAssert": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void _ExitOnFatalAssert( const tchar* pFile, int line )"
+   ],
+   "kind": "PE"
+  },
+  "_SpewInfo": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE void _SpewInfo( SpewType_t type, const tchar* pFile, int line )"
+   ],
+   "kind": "PE"
+  },
+  "_SpewMessage": {
+   "declarations": [
+    "dbg.h: DBG_INTERFACE SpewRetval_t _SpewMessage( PRINTF_FORMAT_STRING const tchar* pMsg, ... ) FMTFUNCTION( 1, 2 )"
+   ],
+   "kind": "PE"
+  },
+  "g_ClockSpeed": {
+   "declarations": [
+    "fasttimer.h: PLATFORM_INTERFACE uint64 g_ClockSpeed"
+   ],
+   "kind": "PE"
+  },
+  "g_ClockSpeedMicrosecondsMultiplier": {
+   "declarations": [
+    "fasttimer.h: PLATFORM_INTERFACE double g_ClockSpeedMicrosecondsMultiplier"
+   ],
+   "kind": "PE"
+  },
+  "g_ClockSpeedMillisecondsMultiplier": {
+   "declarations": [
+    "fasttimer.h: PLATFORM_INTERFACE double g_ClockSpeedMillisecondsMultiplier"
+   ],
+   "kind": "PE"
+  },
+  "g_ClockSpeedSecondsMultiplier": {
+   "declarations": [
+    "fasttimer.h: PLATFORM_INTERFACE double g_ClockSpeedSecondsMultiplier"
+   ],
+   "kind": "PE"
+  },
+  "g_dwClockSpeed": {
+   "declarations": [],
+   "kind": "PE"
+  },
+  "g_pMemAlloc": {
+   "declarations": [
+    "memalloc.h: MEM_INTERFACE IMemAlloc *g_pMemAlloc"
+   ],
+   "kind": "PE"
+  },
+  "g_pVCR": {
+   "declarations": [
+    "vcrmode.h: PLATFORM_INTERFACE VCR_t *g_pVCR"
+   ],
+   "kind": "PE"
+  },
+  "vtune": {
+   "declarations": [
+    "platform.h: ( ( OuterType * ) ( (uint8 *)this - offsetof( OuterType, OuterMember ) ) ) PLATFORM_INTERFACE bool vtune( bool resume )"
+   ],
+   "kind": "PE"
+  }
+ },
+ "library": "tier0.dll",
+ "platform": "windows-x86_64",
+ "schema": "tier0-abi/v1"
+}
