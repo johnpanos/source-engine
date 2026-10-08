@@ -533,3 +533,52 @@ Evidence:
 - **Open.** The tree's `kiln-evidence/package.json` is overwritten by a
   chosen-runtime package. It should record the output directory or use its
   own name.
+
+### L1d (third slice): harness runs through `kiln.api`; `frame_floor.py` migrated
+
+- **Contract additions.**
+  - `SpawnRequest::outputFile` and `LaunchSpec::outputFile`: the program's
+    output and errors go to a file. The POSIX spawner opens it before fork
+    and `dup2`s it.
+  - `PlayRequest::log`: a co-op peer's log is `<log>.<peer>`.
+  - `PlayRequest::displayMode`: `Launch` never set the private compositor's
+    mode before.
+  - A chosen runtime keeps its display-session scratch beside it.
+- **Shared run suite.** New clause N6: "the program's output and errors go
+  to the launch's log". Every real run provider passes it, and a new bad
+  provider (`kDropsLog`) is rejected on N6.
+- **kilntest.** 135/0 on gcc and clang.
+- **sepipe.** `plan`, `play` and `run` take keyword options (`map`,
+  `switches`, `arguments`, `flavor`, `display`, `mounts`, `device`,
+  `runtime`, `log`, `display_mode=(w, h, hz)`, `cancel`). An unknown option
+  is refused by name. `sepipe.Cancellation` stops a run from any thread.
+  - End to end: headless Portal in a private runtime, cancelled after 15 s,
+    returned 130 in 15.3 s. The log held the engine output and no process
+    was left.
+- **Loader.** `tools/kiln/sepipe_loader.py` gives harnesses one way to import
+  `sepipe` (it builds the tools tree once when the module is missing).
+  `sepipe_loader.Run` is a run request on a thread with `poll()` and
+  `stop()`.
+- **`frame_floor.py`** (an L1 gate harness) no longer calls
+  `stage_portal2_runtime.py`, `./play_p2` or `private_session`.
+  - It packages its private runtime with `build(up_to="package",
+    runtime=…)`.
+  - It runs through `run(display="private"|"none", display_mode=…, log=…)` on
+    a thread and stops the run by cancellation.
+  - `--build` and `--steam-root` become `--kiln-profile`/`--flavor` (the
+    workspace owns content locations), and `--render-switch=--x` becomes
+    `--set x`. The evidence records the run's options and its plan.
+  - Process-group cleanup is now the run provider's (clause N4). The
+    harness's test checks that stopping cancels and waits.
+  - 22 of 23 self-tests pass. `test_disabled_effect_missing_query_and_wrong_gpu_fail`
+    fails identically on HEAD's unmodified copy, so it predates this change.
+- **Real run on this host.** A scratch copy of the workload on
+  `sp_a1_intro4_relit` packaged 2,803 files. It ran in a private 1920×1080
+  compositor and measured 2,934 frames over 20.1 s, and the run stopped
+  cleanly.
+  - The verdict fails on performance. That is expected here: verdicts belong
+    on the bazzite box.
+- **Content gap, not from L1.** The workload's map `sp_a1_intro4_probe64` is
+  no longer in the published map store (`run/maps` holds `_fast`, `_relit`
+  and `_relit_v7`). The selected High workload cannot run until it is
+  republished, with the old harness as well as the new one.

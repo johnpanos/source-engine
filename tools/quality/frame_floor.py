@@ -6,8 +6,9 @@ first frame below the floor.
 The workload (quality/workloads/portal2-frame-floor-v1) is a portal2-scenarios
 workload whose script flies a route through the map and fires its story
 events (tools/quality/portal2_scenarios.py's QA driver). The game starts
-through ./play_p2 on a private staged runtime, so it runs with exactly the
-arguments a player gets, with the native Vulkan backend writing one line per
+through kiln.api (sepipe): a run request of the Portal 2 profile from a
+private runtime that kiln packages, so it runs with exactly the arguments
+`./kiln play portal2` gives a player, with the native Vulkan backend writing one line per
 presented frame (-vkframestats). This tool reads that stream while the game
 runs.
 
@@ -46,22 +47,21 @@ import os
 from pathlib import Path
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import time
 
 import conformance
 import portal2_scenarios
-import private_session
 import render_budgets
 import product_profile
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
 
 
 ROOT = Path(conformance.repo_root())
 DEFAULT_WORKLOAD = ROOT / "quality/workloads/portal2-frame-floor-v1/workload.json"
-DEFAULT_STEAM_ROOT = Path(os.environ.get(
-    "P2_STEAM_ROOT", Path.home() / ".local/share/Steam/steamapps/common/Portal 2"))
 EVIDENCE_SCHEMA = "frame-floor-evidence/v1"
 BEGIN_MARK = "floor_begin"
 END_MARK = "floor_end"
@@ -104,8 +104,8 @@ def configure_budget(workload, args):
         raise FloorError("%s requires %dx%d" % (row["id"], conditions["width"], conditions["height"]))
     if args.display == "offscreen":
         raise FloorError("offscreen's capped drawable cannot certify %s" % row["id"])
-    if args.render_switch or args.extra_arg:
-        raise FloorError("render switches/extra arguments cannot override a hard High workload")
+    if args.set or args.extra_arg:
+        raise FloorError("launch switches/extra arguments cannot override a hard High workload")
     profile = product_profile.load_profile(ROOT / row["profile"])
     quality = profile["intent"]["render_quality"][conditions["quality"]]
     return {"row": row["id"], "profile": row["profile"], "conditions": conditions,
@@ -334,17 +334,16 @@ class FrameWatcher:
 # --- Staging and launch ------------------------------------------------------------
 
 def stage(args, workload):
+    """Package the profile into the private runtime (kiln.api, the same
+    packager and steps as `kiln play`)."""
     runtime = args.runtime.resolve()
-    if runtime == (ROOT / "run/runtime-p2").resolve():
-        raise FloorError("refusing ./play_p2's own runtime; use a private --runtime")
-    log = args.out / "stage.log"
-    with log.open("wb") as stream:
-        code = subprocess.run([sys.executable, str(ROOT / "tools/quality/stage_portal2_runtime.py"),
-                               "--steam-root", str(args.steam_root), "--runtime", str(runtime),
-                               "--build", str(args.build.resolve()), "--mount-published"],
-                              stdout=stream, stderr=subprocess.STDOUT).returncode
-    if code != 0:
-        raise FloorError("staging failed (%s)" % log)
+    player = Path(args.session.plan(args.kiln_profile, flavor=args.flavor)["runtime"]).resolve()
+    if runtime == player:
+        raise FloorError("refusing the profile's own runtime (%s); use a private --runtime" % player)
+    try:
+        args.session.build(args.kiln_profile, flavor=args.flavor, up_to="package", runtime=str(runtime))
+    except args.sepipe.KilnError as error:
+        raise FloorError("packaging failed: %s" % error) from error
     for scenario in workload["scenarios"]:
         if not (runtime / "portal2/custom" / ("pbrt-" + scenario["map"])).exists() and \
                 not (runtime / "portal2/maps" / (scenario["map"] + ".bsp")).exists():
@@ -359,8 +358,7 @@ def game_command(args, scenario, stats_path, runtime):
                                             "+engine_no_focus_sleep", "0"]
     profiling = (["-vkgputimers"] + ([] if args.render_budget else ["+exec", "render_profile"])
                  if getattr(args, "profile", False) else [])
-    return [str(ROOT / "play_p2"), *args.render_switch,
-            "-multirun", "-novid", "-condebug", "-windowed", "-noborder",
+    return ["-multirun", "-novid", "-condebug", "-windowed", "-noborder",
             "-w", str(args.width), "-h", str(args.height),
             "-vkopaquebatch", "0" if getattr(args, "opaque_batching", "on") == "off" else "1",
             # The game starts in runtime; keep evidence paths beneath its
@@ -374,47 +372,22 @@ def game_command(args, scenario, stats_path, runtime):
             "+exec", "qa_" + scenario["name"]]
 
 
-def launch(args, runtime, command, output):
-    environment = dict(os.environ)
-    environment.update({"P2_RUNTIME": str(runtime), "P2_NO_BUILD": "1",
-                        "P2_BUILD_DIR": str(args.build.resolve())})
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
+def run_options(args, runtime, arguments, output):
+    """The kiln run request's options; the run and its evidence use one copy."""
+    refresh = args.render_budget["conditions"].get("refresh_hz", 60) if args.render_budget else 60
+    return {"flavor": args.flavor, "switches": args.set, "arguments": arguments, "runtime": str(runtime),
+            "display": "private" if args.display == "compositor" else "none",
+            "display_mode": (args.width, args.height, float(refresh)), "log": str(output / "stdout.log")}
+
+
+def launch(args, runtime, arguments, output):
+    """A kiln run request on a thread: the profile's display session (a
+    private compositor or offscreen) and run provider own the process."""
     tools = output / "tools"
     portal2_scenarios.write_fake_zenity(tools)
-    environment["PATH"] = str(tools) + os.pathsep + environment.get("PATH", "")
-    if args.display == "offscreen":
-        environment["SDL_VIDEODRIVER"] = "offscreen"
-    else:
-        environment["SDL_VIDEODRIVER"] = "wayland"
-        display = "floor-%d" % os.getpid()
-        refresh = args.render_budget["conditions"].get("refresh_hz", 60) if args.render_budget else 60
-        command = private_session.dbus_run_session(output / "dbus") + [
-            "mutter", "--headless", "--virtual-monitor", "%dx%d@%g" % (args.width, args.height, refresh),
-            "--wayland-display", display, "--"] + command
-    stream = (output / "stdout.log").open("wb")
-    process = subprocess.Popen(command, cwd=ROOT, env=environment, stdout=stream,
-                               stderr=subprocess.STDOUT, start_new_session=True)
-    return process, stream
-
-
-def stop(process):
-    try:
-        if process.poll() is None:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
-        process.wait()
-    except ProcessLookupError:
-        pass
-    finally:
-        # A compositor/session wrapper can exit before its game. That is not
-        # acknowledgment that the private process group drained.
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+    os.environ["PATH"] = str(tools) + os.pathsep + os.environ.get("PATH", "")
+    return sepipe_loader.Run(args.sepipe, args.session, "run", args.kiln_profile,
+                             **run_options(args, runtime, arguments, output))
 
 
 def host_context():
@@ -439,7 +412,7 @@ def run(args, workload, settings, scenario, runtime):
     command = game_command(args, scenario, stats_path, runtime)
     context_before = host_context()
     started = time.monotonic()
-    process, stream = launch(args, runtime, command, output)
+    process = launch(args, runtime, command, output)
     first_failure = None
     timed_out = False
     try:
@@ -459,13 +432,15 @@ def run(args, workload, settings, scenario, runtime):
                 break
             time.sleep(0.05)
     finally:
-        stop(process)
-        stream.close()
+        process.stop()
     final_failure = watcher.poll()
     first_failure = first_failure or final_failure
     seconds = time.monotonic() - started
     log = console.read_text(errors="replace") if console.is_file() else ""
-    stdout = (output / "stdout.log").read_text(errors="replace")
+    stdout_log = output / "stdout.log"
+    stdout = stdout_log.read_text(errors="replace") if stdout_log.is_file() else ""
+    if process.error:
+        stdout += "\nkiln: " + process.error
     (output / "console.log").write_text(log)
     qa = portal2_scenarios.evaluate(scenario, log, process.returncode, timed_out)
     for frame in watcher.frames:
@@ -517,7 +492,9 @@ def run(args, workload, settings, scenario, runtime):
         "device": watcher.header,
         "quality_receipt": receipt,
         "route_checks": qa["checks"],
-        "command": command,
+        "command": {"profile": args.kiln_profile, "options": run_options(args, runtime, command, output),
+                    "plan": args.session.plan(args.kiln_profile,
+                                              **run_options(args, runtime, command, output))},
         "host_before": context_before,
         "host_after": host_context(),
     }
@@ -549,10 +526,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--workload", type=Path, default=DEFAULT_WORKLOAD)
-    parser.add_argument("--steam-root", type=Path, default=DEFAULT_STEAM_ROOT)
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2")
+    parser.add_argument("--kiln-profile", default="portal2",
+                        help="kiln profile to build, package and run (default portal2)")
+    parser.add_argument("--flavor", default="dev", help="the profile's build flavor")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-floor",
-                        help="private staged runtime (restaged on every run)")
+                        help="private runtime kiln packages into (on every run)")
     parser.add_argument("--out", type=Path, required=True, help="new evidence directory")
     parser.add_argument("--display", choices=("compositor", "offscreen"), default="compositor")
     parser.add_argument("--width", type=int, default=1920)
@@ -572,8 +550,8 @@ def main(argv=None):
     parser.add_argument("--preview", action="store_true",
                         help="take a screenshot at each view of the route (a screenshot is "
                              "itself a hitch: implies --no-stop, and no verdict on lows)")
-    parser.add_argument("--render-switch", action="append", default=[],
-                        help="./play_p2 render switch, e.g. --render-switch=--no-core-world")
+    parser.add_argument("--set", action="append", default=[], metavar="SWITCH",
+                        help="kiln launch switch (kiln switches portal2), e.g. --set no-core-world")
     parser.add_argument("--extra-arg", action="append", default=[],
                         help="extra engine argument before +map (repeatable)")
     parser.add_argument("--skip-stage", action="store_true",
@@ -587,6 +565,11 @@ def main(argv=None):
         settings = floor_settings(workload, args)
         args.render_budget = configure_budget(workload, args)
     except (portal2_scenarios.ScenarioError, product_profile.ProfileError, FloorError, ValueError) as error:
+        parser.exit(2, "frame_floor: %s\n" % error)
+    try:
+        args.sepipe = sepipe_loader.load()
+        args.session = args.sepipe.Session(str(ROOT))
+    except sepipe_loader.LoadError as error:
         parser.exit(2, "frame_floor: %s\n" % error)
     args.out = args.out.resolve()
     if (args.out / "evidence.json").exists():

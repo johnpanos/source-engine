@@ -133,6 +133,18 @@ struct PlayRequest
 	// Launch from (and, for play, package into) this directory instead of
 	// the tree's own runtime.
 	std::optional<std::filesystem::path> runtime;
+	// The program's output and errors (a peer's go to "<log>.<peer>");
+	// inherited when unset.
+	std::optional<std::filesystem::path> log;
+	// The display session's mode (an isolated compositor's monitor);
+	// the provider's default when unset.
+	struct DisplayMode
+	{
+		int width = 1920;
+		int height = 1080;
+		double refreshHz = 60.0;
+	};
+	std::optional<DisplayMode> displayMode;
 	const product::ICancellation *cancel = nullptr;
 };
 

@@ -415,6 +415,8 @@ public:
 		spawn.environment = request.display.environment;
 		spawn.environment.insert( spawn.environment.end(), request.launches[0].environment.begin(),
 		    request.launches[0].environment.end() );
+		if ( m_Fault != RunFault::kDropsLog )
+			spawn.outputFile = request.launches[0].outputFile.string();
 		std::string error;
 		const platform::SpawnedProcess process = request.spawner->Spawn( spawn, error );
 		if ( m_Fault == RunFault::kReturnsBeforeExit )

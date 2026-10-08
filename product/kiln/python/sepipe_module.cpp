@@ -16,12 +16,14 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
+#include <nanobind/stl/tuple.h>
 #include <nanobind/stl/vector.h>
 
 #include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
+#include <tuple>
 
 namespace nb = nanobind;
 using foundation::json::Value;
@@ -85,23 +87,48 @@ private:
 	nb::object m_Callback;
 };
 
-kiln::PlayRequest MakePlay( const std::string &profile, std::optional<std::string> map,
-    std::vector<std::string> switches, std::vector<std::string> arguments,
-    std::optional<std::string> flavor, std::optional<std::string> display,
-    std::vector<std::string> mounts, std::optional<std::string> device,
-    std::optional<std::string> runtime )
+// A play request from keyword options: map, switches, arguments, flavor,
+// display, mounts, device, runtime, log, display_mode=(w, h, hz), cancel.
+// An unknown option is refused by name.
+kiln::PlayRequest MakePlay( const std::string &profile, const nb::kwargs &options )
 {
 	kiln::PlayRequest request;
 	request.profile = profile;
-	request.map = std::move( map );
-	request.switches = std::move( switches );
-	request.arguments = std::move( arguments );
-	request.flavor = std::move( flavor );
-	request.displaySession = std::move( display );
-	request.mountSets = std::move( mounts );
-	request.device = std::move( device );
-	if ( runtime )
-		request.runtime = std::filesystem::absolute( *runtime );
+	for ( const auto &[key, value] : options )
+	{
+		const std::string name = nb::cast<std::string>( key );
+		if ( value.is_none() )
+			continue;
+		if ( name == "map" )
+			request.map = nb::cast<std::string>( value );
+		else if ( name == "switches" )
+			request.switches = nb::cast<std::vector<std::string>>( value );
+		else if ( name == "arguments" )
+			request.arguments = nb::cast<std::vector<std::string>>( value );
+		else if ( name == "flavor" )
+			request.flavor = nb::cast<std::string>( value );
+		else if ( name == "display" )
+			request.displaySession = nb::cast<std::string>( value );
+		else if ( name == "mounts" )
+			request.mountSets = nb::cast<std::vector<std::string>>( value );
+		else if ( name == "device" )
+			request.device = nb::cast<std::string>( value );
+		else if ( name == "runtime" )
+			request.runtime =
+			    std::filesystem::absolute( nb::cast<std::string>( nb::str( value ) ) );
+		else if ( name == "log" )
+			request.log = std::filesystem::absolute( nb::cast<std::string>( nb::str( value ) ) );
+		else if ( name == "display_mode" )
+		{
+			const auto mode = nb::cast<std::tuple<int, int, double>>( value );
+			request.displayMode = kiln::PlayRequest::DisplayMode{
+			    std::get<0>( mode ), std::get<1>( mode ), std::get<2>( mode ) };
+		}
+		else if ( name == "cancel" )
+			request.cancel = nb::cast<product::CancellationFlag *>( value );
+		else
+			throw KilnError( kiln::Error{ "request", "unknown option " + name } );
+	}
 	return request;
 }
 
@@ -205,48 +232,36 @@ NB_MODULE( sepipe, m )
 	        nb::arg( "up_to" ) = "engine", nb::arg( "mounts" ) = std::vector<std::string>{},
 	        nb::arg( "runtime" ) = nb::none() );
 
-	// plan, play and run take the same play request.
-	const auto request = []( auto method )
-	{
-		return [method]( Session &self, const std::string &profile, std::optional<std::string> map,
-		           std::vector<std::string> switches, std::vector<std::string> arguments,
-		           std::optional<std::string> flavor, std::optional<std::string> display,
-		           std::vector<std::string> mounts, std::optional<std::string> device,
-		           std::optional<std::string> runtime )
-		{
-			return method(
-			    self, MakePlay( profile, std::move( map ), std::move( switches ),
-			              std::move( arguments ), std::move( flavor ), std::move( display ),
-			              std::move( mounts ), std::move( device ), std::move( runtime ) ) );
-		};
-	};
-	const auto define = [&]( const char *name, auto method, const char *doc )
-	{
-		session.def( name, request( method ), nb::arg( "profile" ), nb::arg( "map" ) = nb::none(),
-		    nb::arg( "switches" ) = std::vector<std::string>{},
-		    nb::arg( "arguments" ) = std::vector<std::string>{}, nb::arg( "flavor" ) = nb::none(),
-		    nb::arg( "display" ) = nb::none(), nb::arg( "mounts" ) = std::vector<std::string>{},
-		    nb::arg( "device" ) = nb::none(), nb::arg( "runtime" ) = nb::none(), doc );
-	};
-	define(
-	    "plan",
-	    []( Session &self, const kiln::PlayRequest &play )
-	    {
-		    return self.Plan( play );
-	    },
-	    "The launch plan of a play or run request (kiln play --dry-run)." );
-	define(
-	    "play",
-	    []( Session &self, const kiln::PlayRequest &play )
-	    {
-		    return self.Launch( play, true );
-	    },
-	    "Build through the package stage, launch, and return the exit status (kiln play)." );
-	define(
-	    "run",
-	    []( Session &self, const kiln::PlayRequest &play )
-	    {
-		    return self.Launch( play, false );
-	    },
-	    "Launch what is packaged and return the exit status (kiln run)." );
+	// plan, play and run take the same play request (MakePlay's options).
+	nb::class_<product::CancellationFlag>( m, "Cancellation",
+	    "A cancellation token for play and run; cancel() from any thread stops the run's "
+	    "programs. Keep it alive until the run returns." )
+	    .def( nb::init<>() )
+	    .def( "cancel", &product::CancellationFlag::Cancel )
+	    .def_prop_ro( "cancelled", &product::CancellationFlag::IsCancelled );
+	session
+	    .def(
+	        "plan",
+	        []( Session &self, const std::string &profile, const nb::kwargs &options )
+	        {
+		        return self.Plan( MakePlay( profile, options ) );
+	        },
+	        nb::arg( "profile" ), nb::arg( "options" ),
+	        "The launch plan of a play or run request (kiln play --dry-run)." )
+	    .def(
+	        "play",
+	        []( Session &self, const std::string &profile, const nb::kwargs &options )
+	        {
+		        return self.Launch( MakePlay( profile, options ), true );
+	        },
+	        nb::arg( "profile" ), nb::arg( "options" ),
+	        "Build through the package stage, launch, and return the exit status (kiln play)." )
+	    .def(
+	        "run",
+	        []( Session &self, const std::string &profile, const nb::kwargs &options )
+	        {
+		        return self.Launch( MakePlay( profile, options ), false );
+	        },
+	        nb::arg( "profile" ), nb::arg( "options" ),
+	        "Launch what is packaged and return the exit status (kiln run)." );
 }

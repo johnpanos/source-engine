@@ -390,9 +390,20 @@ foundation::Expected<int, Error> Session::Launch(
 	if ( !run )
 		return foundation::MakeUnexpected( Fail( "catalog", run.Error().Describe() ) );
 	product::DisplayRequest displayRequest;
-	displayRequest.scratch = ( plan.Value().tree.empty() ? m_Config.outRoot / plan.Value().profile
-	                                                     : plan.Value().tree ) /
-	                         "display-session";
+	// A chosen runtime keeps its session beside it, so runs from different
+	// runtimes never share one.
+	displayRequest.scratch =
+	    request.runtime ? request.runtime->parent_path() /
+	                          ( request.runtime->filename().string() + ".display-session" )
+	                    : ( plan.Value().tree.empty() ? m_Config.outRoot / plan.Value().profile
+	                                                  : plan.Value().tree ) /
+	                          "display-session";
+	if ( request.displayMode )
+	{
+		displayRequest.width = request.displayMode->width;
+		displayRequest.height = request.displayMode->height;
+		displayRequest.refreshHz = request.displayMode->refreshHz;
+	}
 	displayRequest.cancel = request.cancel;
 	auto environment = display.Value()->Open( displayRequest );
 	if ( !environment )
@@ -411,6 +422,11 @@ foundation::Expected<int, Error> Session::Launch(
 		launch.argv = argv;
 		launch.environment = plan.Value().environment;
 		launch.workingDirectory = plan.Value().workingDirectory;
+		if ( request.log )
+			launch.outputFile = plan.Value().peers.empty()
+			                        ? *request.log
+			                        : request.log->parent_path() /
+			                              ( request.log->filename().string() + "." + name );
 		return launch;
 	};
 	if ( plan.Value().peers.empty() )

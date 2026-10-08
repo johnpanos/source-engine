@@ -578,6 +578,11 @@ Verdict RunSuite(
 	none.spawner = &spawner;
 	if ( provider.Run( none ) )
 		verdict.Fail( "N5 a run with no launch is refused" );
+	product::RunRequest logged = launch( "echo to-stdout; echo to-stderr >&2" );
+	logged.launches[0].outputFile = scratch / "game.log";
+	auto loggedStatus = provider.Run( logged );
+	if ( !loggedStatus || fixture::ReadBytes( scratch / "game.log" ) != "to-stdout\nto-stderr\n" )
+		verdict.Fail( "N6 the program's output and errors go to the launch's log" );
 	return verdict;
 }
 

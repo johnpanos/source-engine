@@ -590,6 +590,8 @@ struct LaunchSpec
 	std::vector<platform::ToolProcessEnvironmentOverride>
 	    environment; // "{inherit}" filled by the spawner
 	std::filesystem::path workingDirectory;
+	// The program's output file (standard output and error); empty inherits.
+	std::filesystem::path outputFile;
 };
 
 struct RunRequest

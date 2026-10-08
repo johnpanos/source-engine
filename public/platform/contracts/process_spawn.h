@@ -33,6 +33,9 @@ struct SpawnRequest
 	// Changes to the inherited environment; "{inherit}" in a value is the
 	// variable's inherited value.
 	std::vector<ToolProcessEnvironmentOverride> environment;
+	// When set, the program's standard output and error go to this file
+	// (created or truncated); otherwise they are inherited.
+	std::string outputFile;
 };
 
 struct SpawnedProcess

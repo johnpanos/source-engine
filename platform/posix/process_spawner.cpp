@@ -69,10 +69,23 @@ public:
 		for ( const std::string &argument : request.argv )
 			argv.push_back( const_cast<char *>( argument.c_str() ) );
 		argv.push_back( nullptr );
+		int output = -1;
+		if ( !request.outputFile.empty() )
+		{
+			output =
+			    open( request.outputFile.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644 );
+			if ( output < 0 )
+			{
+				error = "cannot open " + request.outputFile + ": " + std::strerror( errno );
+				return {};
+			}
+		}
 		int pipeFds[2];
 		if ( pipe2( pipeFds, O_CLOEXEC ) != 0 )
 		{
 			error = std::strerror( errno );
+			if ( output >= 0 )
+				close( output );
 			return {};
 		}
 		const pid_t pid = fork();
@@ -81,11 +94,19 @@ public:
 			error = std::strerror( errno );
 			close( pipeFds[0] );
 			close( pipeFds[1] );
+			if ( output >= 0 )
+				close( output );
 			return {};
 		}
 		if ( pid == 0 )
 		{
 			setpgid( 0, 0 );
+			if ( output >= 0 )
+			{
+				// dup2 clears close-on-exec on the copies.
+				dup2( output, STDOUT_FILENO );
+				dup2( output, STDERR_FILENO );
+			}
 			for ( const auto &[name, value] : environment )
 			{
 				if ( value )
@@ -106,6 +127,8 @@ public:
 			_exit( 127 );
 		}
 		close( pipeFds[1] );
+		if ( output >= 0 )
+			close( output );
 		int failure = 0;
 		const ssize_t got = read( pipeFds[0], &failure, sizeof( failure ) );
 		close( pipeFds[0] );

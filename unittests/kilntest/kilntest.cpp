@@ -1085,8 +1085,11 @@ int main()
 		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kIgnoresCancel ),
 		                   *spawner, bench.scratch / "run-bad2" ),
 		    "N4", "bad run provider: ignores cancellation" );
+		CheckRejected( suites::RunSuite( *bad::RunProvider( bad::RunFault::kDropsLog ), *spawner,
+		                   bench.scratch / "run-bad3" ),
+		    "N6", "bad run provider: drops the launch's log" );
 		std::string error;
-		auto missing = spawner->Spawn( { { "/nonexistent/program" }, "/", {} }, error );
+		auto missing = spawner->Spawn( { { "/nonexistent/program" }, "/", {}, {} }, error );
 		Check( missing.id < 0 && error.find( "/nonexistent/program" ) != std::string::npos,
 		    "spawn: a missing program fails by name" );
 	}
