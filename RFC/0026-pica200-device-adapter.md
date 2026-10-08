@@ -581,3 +581,19 @@ See the [progress section](#progress).
     299 -> 275 ms per frame (with the buffer fixes). An earlier experiment
     that skinned only each draw's referenced vertices was slower and was
     dropped.
+- 2026-10-07: model draw copies (user direction: "optimize ... buffer copies
+  in StageUpload"; research found each vertex copied about three more times
+  after it is produced).
+  - `CoreMeshDraw::takeVertices`/`takeIndices`: `QueueMesh` moves the
+    frontend's arrays instead of copying them. The batch gather copy does not
+    occur for model draws (one draw per slot, written from its own arrays).
+    The copy into GPU-visible memory (`StageUpload`, about 5 % of core 0)
+    remains; removing it needs an upload area in render.device.v2.
+  - `EmitToCore` builds each GPU-skinned vertex once as a complete value
+    instead of default-constructing the array and overwriting it.
+  - Guest profile: `memcpy` 13.3 % -> 9.9 %, `memset` out of the top list;
+    intro4 windows 214 -> 190 ms and 275 -> 245 ms per frame (best window
+    18 fps). Matched camera: GPU vs CPU skinning and CPU vs the earlier
+    capture differ in 0 of 96,000 pixels by more than 4.
+  - Cumulative on the intro4 demo since the first guest profile: frame 181
+    window 421 -> 190 ms, frame 331 window 401 -> 245 ms (about 1.6-2.2x).
