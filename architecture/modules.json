@@ -2524,7 +2524,6 @@
             "indirect_sdf_native_conformance",
             "legacy_render_provider_conformance",
             "material_binding_conformance",
-            "material_pixel_conformance",
             "queued_mesh_contract_vulkan_conformance"
           ]
         },
@@ -2944,7 +2943,6 @@
       "unittests/legacymoduleclientfixture/legacy_loader_abi_2013.h",
       "unittests/legacymoduleclientfixture/legacymoduleclientfixture.cpp",
       "unittests/shaderextensiontest/test_shaderextension_host.cpp",
-      "unittests/shaderextensiontest/material_pixel_conformance.cpp",
       "utils/common/utilmatlib.cpp",
       "utils/vbsp/ivp.cpp",
       "matchmaking/main.cpp",

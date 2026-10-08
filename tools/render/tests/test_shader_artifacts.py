@@ -193,17 +193,15 @@ class InventoryTest(unittest.TestCase):
         units = sa.inventory()
         keys = [(u.source, u.permutation) for u in units]
         self.assertEqual(len(keys), len(set(keys)))
-        self.assertGreater(len([u for u in units if u.header == "legacy"]), 100)
+        # The legacy shader ports are deleted (R91, e32f58361).
+        self.assertEqual([u.name for u in units if u.header == "legacy"], [])
 
     def test_permutation_bits_follow_sorted_axes(self):
         units = {u.name: u for u in sa.inventory()}
-        plain, clip = units["g_worldPbrFragSpv"], units["g_worldPbrClipFragSpv"]
+        plain, multisample = units["g_depthToAlphaFragSpv"], units["g_depthToAlphaMsFragSpv"]
         self.assertEqual(plain.permutation, 0)
         self.assertEqual(plain.axes, sorted(plain.axes))
-        self.assertEqual(clip.permutation, 1 << clip.axes.index("-DCLIP_PLANES"))
-        both = units["g_worldPbrLightClipFragSpv"]
-        self.assertEqual(both.permutation, (1 << both.axes.index("-DCLIP_PLANES")) |
-                         (1 << both.axes.index("-DDIRECT_LIGHTS")))
+        self.assertEqual(multisample.permutation, 1 << multisample.axes.index("-DMULTISAMPLE"))
 
 
 class LayoutTest(unittest.TestCase):

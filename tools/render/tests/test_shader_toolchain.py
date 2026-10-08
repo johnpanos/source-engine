@@ -204,7 +204,7 @@ class RealTreeTest(unittest.TestCase):
         self.assertEqual(failed, [])
         names = [r["name"] for r in checks.results]
         self.assertIn("generator.material", names)
-        self.assertIn("generator.legacy", names)
+        self.assertNotIn("generator.legacy", names)  # the legacy ports are deleted (R91)
         self.assertEqual(sum(name.startswith("module.") for name in names), len(st.EMBEDDED))
 
     def test_seeded_byte_in_every_committed_file_is_detected(self):
@@ -213,12 +213,11 @@ class RealTreeTest(unittest.TestCase):
                                             stream=io.StringIO())
         failed = {r["name"] for r in checks.results if not r["ok"]}
         self.assertIn("generator.material", failed)
-        self.assertIn("generator.legacy", failed)
         for path in {row[0] for row in st.EMBEDDED}:
             array, _ = evidence["seeded"][path].split(" word ")
             self.assertIn("module.%s:%s" % (path, array), failed)
         # Only the seeded modules fail.
-        self.assertEqual(len(failed), 2 + len({row[0] for row in st.EMBEDDED}))
+        self.assertEqual(len(failed), 1 + len({row[0] for row in st.EMBEDDED}))
 
     def test_foreign_wrapper_around_the_real_compiler_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

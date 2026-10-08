@@ -17,16 +17,7 @@
       }
     },
     "support_scope": "Native Linux Wayland pure Vulkan smoke; not four-platform or renderer parity acceptance",
-    "packaging": "Waf-installed local Linux runtime with separately supplied licensed Portal content",
-    "shader_pipeline": {
-      "compiler_profile": "quality/shader_profiles/source-dx9-fxc-wine.json",
-      "artifact_runner": "tools/quality/shader_artifacts.py",
-      "default_workload": "quality/workloads/portal-start-chambers-shaders-v1.json",
-      "artifact_format": "SPIR-V for native Vulkan",
-      "coverage": "Observed scene static groups; every valid dynamic permutation in each group. Not a complete shipping shader library.",
-      "staging": "portal_boot.py --shader-artifacts validates input and artifact hashes before copying into the private runtime",
-      "documentation": "tools/quality/shader_artifacts.md"
-    }
+    "packaging": "Waf-installed local Linux runtime with separately supplied licensed Portal content"
   },
   "toolchain": {
     "cxx": "g++",
