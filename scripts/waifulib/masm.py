@@ -16,7 +16,9 @@ def create_masm_task(self, node):
 	return self.create_compiled_task('masm', node)
 
 def configure(conf):
-	conf.env.AS = conf.env.CC[0].replace('CL.exe', 'ml64.exe')
+	# An explicit AS (MSVC under Wine: the ml64 wrapper) wins; on Windows the
+	# assembler sits next to CL.exe.
+	conf.env.AS = conf.environ.get('AS') or conf.env.CC[0].replace('CL.exe', 'ml64.exe')
 	conf.env.ASFLAGS = ['/nologo', '/c']
 	conf.env.AS_SRC_F = ['']
 	conf.env.AS_TGT_F = ['/Fo']

@@ -26,7 +26,11 @@ import capabilities
 
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".inl", ".mm"}
 EXCLUDED_PARTS = {".git", "build", "thirdparty", "waf3"}
-EXCLUDED_PREFIXES = ("tools/archlint/tests/fixtures/",)
+# Not engine source: archlint's own fixtures, and reference trees no product
+# compiles (the CS:GO drop the Portal 2 VScript module was rebuilt from, and
+# the decompiled Portal 2 skeletons of game/shared/portal2/README.md).
+EXCLUDED_PREFIXES = ("tools/archlint/tests/fixtures/", "games/csgo/",
+                     "external/portal2_steam2_decompiled/")
 
 
 @dataclass(frozen=True)
@@ -203,7 +207,9 @@ def source_files(root: Path, selected: Iterable[str] | None = None) -> list[Path
         )
         if search.returncode in (0, 1):
             names = [name for name in search.stdout.decode("utf-8").split("\0") if name]
-            return sorted(root / name.removeprefix("./") for name in names)
+            # The same exclusions as the walk below (EXCLUDED_PREFIXES included).
+            return sorted(path for path in (root / name.removeprefix("./") for name in names)
+                          if is_source(path, root))
     except FileNotFoundError:
         pass
 
@@ -654,7 +660,10 @@ def validate_unbuilt_vendor_paths(root: Path, manifest: dict) -> list[str]:
                 errors.append(f"{where}: {prefix} needs a non-empty {field}")
     prefixes = unbuilt_vendor_prefixes(manifest)
     if prefixes:
-        for record in sorted(root.glob("build*/toolchain-invocations.json")):
+        # Waf trees: the legacy build*/ roots and kiln's out/<profile>/<flavor>/build.
+        records = sorted(root.glob("build*/toolchain-invocations.json")) + \
+            sorted(root.glob("out/*/*/build/toolchain-invocations.json"))
+        for record in records:
             try:
                 entries_built = json.loads(record.read_text(encoding="utf-8")).get("entries", [])
             except (OSError, ValueError):
@@ -663,7 +672,7 @@ def validate_unbuilt_vendor_paths(root: Path, manifest: dict) -> list[str]:
                 source = built.get("source", "")
                 if source.startswith(prefixes):
                     errors.append(
-                        f"{record.parent.name} compiles {source}, which is excluded as unbuilt vendor "
+                        f"{record.parent.relative_to(root)} compiles {source}, which is excluded as unbuilt vendor "
                         "code; route its loader through telemetry or remove the exclusion"
                     )
                     break

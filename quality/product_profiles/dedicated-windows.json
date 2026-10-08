@@ -1,0 +1,99 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "dedicated-windows-v2",
+  "description": "The Windows x86_64 dedicated server (Portal), built on Linux with MSVC under Wine and run under Wine: the Windows twin of dedicated-linux. Provision the toolchain once with python3 tools/windows/msvc_wine.py provision.",
+  "extends": [
+    "fragments/windows-x86_64-msvc-wine.json"
+  ],
+  "aliases": [
+    "dedicated@windows-x86_64"
+  ],
+  "target": {
+    "product": "dedicated-server"
+  },
+  "configure_options": {
+    "dedicated": true,
+    "build_games": "portal"
+  },
+  "package": {
+    "form": "windows-dir",
+    "directory": "runtime",
+    "steps": [
+      {
+        "op": "seed",
+        "from": "portal-base",
+        "marker": "portal/gameinfo.txt",
+        "game": "portal",
+        "shared_suffixes": [
+          ".vpk",
+          ".bsp",
+          ".vtf",
+          ".vmt",
+          ".mdl",
+          ".vvd",
+          ".vtx",
+          ".phy",
+          ".wav",
+          ".mp3",
+          ".ogg",
+          ".webm",
+          ".bik"
+        ],
+        "skip_directories": [
+          "bin",
+          "screenshots",
+          "save",
+          "logs",
+          "dumps"
+        ],
+        "skip_suffixes": [
+          ".log",
+          ".dmp",
+          ".so"
+        ]
+      },
+      {
+        "op": "overlay",
+        "artifact": "engine-install",
+        "include": [
+          "dedicated_launcher.exe",
+          "bin/*.dll",
+          "portal/bin/*.dll"
+        ]
+      }
+    ]
+  },
+  "content": {
+    "locators": {
+      "portal-base": {
+        "default": "{root}/run/runtime",
+        "description": "A runnable Portal tree (retail content) to seed the runtime's content from once; its Linux binaries are not copied"
+      }
+    }
+  },
+  "launch": {
+    "game": "portal",
+    "default_map": "testchmb_a_00",
+    "runner": [
+      "wine"
+    ],
+    "executable": "dedicated_launcher.exe",
+    "arguments": [
+      "-console",
+      "-nominidumps",
+      "-game",
+      "portal",
+      "-insecure",
+      "+map",
+      "{map}",
+      "{args}"
+    ],
+    "environment": {
+      "SteamAppId": "400",
+      "SteamGameId": "400",
+      "WINEPREFIX": "{runtime}/../wineprefix",
+      "WINEDEBUG": "-all",
+      "WINEDLLOVERRIDES": "mscoree,mshtml=;winewayland.drv,winex11.drv=d"
+    }
+  }
+}

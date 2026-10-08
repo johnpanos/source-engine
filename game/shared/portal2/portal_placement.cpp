@@ -25,7 +25,7 @@
 #include "c_trigger_portal_cleanser.h"
 #endif
 
-#include "cegclientwrapper.h"
+#include "CegClientWrapper.h"
 
 
 #include "paint_color_manager.h"

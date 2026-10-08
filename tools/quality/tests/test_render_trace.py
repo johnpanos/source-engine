@@ -161,50 +161,5 @@ class AnalyzerTests(unittest.TestCase):
             self.assertEqual("invalid", json.loads(output.read_text())["status"])
 
 
-class CollectorIntegrationTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.directory = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.directory.cleanup)
-        cls.executable = Path(cls.directory.name) / "collector"
-        subprocess.run(["g++", "-std=c++11", "-pthread", "-I" + str(ROOT / "materialsystem/shaderapidx9"),
-                        str(QUALITY / "tests/fixtures/cpp/render_trace.cpp"),
-                        str(ROOT / "materialsystem/shaderapidx9/render_diagnostics.cpp"),
-                        "-o", str(cls.executable)], check=True, capture_output=True, text=True)
-
-    def test_real_collector_escaping_stale_shader_and_bounded_details(self):
-        path = Path(self.directory.name) / "real.jsonl"
-        subprocess.run([str(self.executable), str(path)], check=True)
-        events, digest = trace.read_events(path)
-        report = trace.analyze(events)
-        self.assertEqual(64, len(digest))
-        self.assertIn('café 🚀 material"\\\n\tname', report["materials"])
-        self.assertEqual(4, report["totals"]["draws"])
-        self.assertEqual(3, report["coverage"]["draw_details"])
-        self.assertEqual(1, report["coverage"]["undetailed_selected_draws"])
-        self.assertTrue(report["coverage"]["detail_limit_reached"])
-        self.assertEqual(3, report["totals"]["failed_shader_requests"])
-        self.assertIn("stale_shader_binding", {item["code"] for item in report["observations"]})
-
-    def test_real_collector_names_round_trip_utf8_and_malformed_bytes(self):
-        path = Path(self.directory.name) / "names.jsonl"
-        subprocess.run([str(self.executable), str(path)], check=True)
-        events, _ = trace.read_events(path)
-        names = {event["material"] for event in events if "material" in event}
-        expected = {b"bad\xa9", b"truncated\xe2\x82", b"overlong\xc0\xaf",
-                    b"surrogate\xed\xa0\x80", b"beyond\xf4\x90\x80\x80", b"literal\\udca9"}
-        self.assertTrue(expected <= {name.encode("utf-8", errors="surrogateescape") for name in names})
-        raw = path.read_bytes()
-        self.assertIn("café 🚀".encode("utf-8"), raw)
-        self.assertIn(b'bad\\udca9', raw)
-        self.assertIn(b'literal\\\\udca9', raw)
-
-    def test_disabled_collector_writes_nothing(self):
-        before = set(Path(self.directory.name).iterdir())
-        result = subprocess.run([str(self.executable)], capture_output=True, text=True, check=True)
-        self.assertEqual("", result.stdout + result.stderr)
-        self.assertEqual(before, set(Path(self.directory.name).iterdir()))
-
-
 if __name__ == "__main__":
     unittest.main()

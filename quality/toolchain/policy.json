@@ -36,6 +36,7 @@
       "msvc": {
         "std": "/std:c++20",
         "required": [
+          "/permissive",
           "/Zc:__cplusplus"
         ],
         "forbidden": []
@@ -78,6 +79,7 @@
       "msvc": {
         "std": "/std:c++20",
         "required": [
+          "/permissive",
           "/Zc:__cplusplus"
         ],
         "forbidden": []
@@ -130,6 +132,17 @@
           "-funsafe-math-optimizations"
         ]
       },
+      "msvc": {
+        "std": "/std:c17",
+        "required": [
+          "/TC",
+          "/fp:precise"
+        ],
+        "forbidden": [
+          "/TP",
+          "/fp:fast"
+        ]
+      },
       "probe": "quality/toolchain/probes/box3d_c17.c"
     }
   },
@@ -151,6 +164,7 @@
     "product_toolchain_linux": {"dialect": "cxx20", "rfc": "0027"},
     "product_toolchain_n3ds": {"dialect": "cxx20", "rfc": "0027"},
     "product_toolchain_emscripten": {"dialect": "cxx20", "rfc": "0029"},
+    "product_toolchain_msvc_wine": {"dialect": "cxx20", "rfc": "0027"},
     "product_stage_waf": {"dialect": "cxx20", "rfc": "0027"},
     "kiln_core": {"dialect": "cxx20", "rfc": "0027"},
     "kiln_composition": {"dialect": "cxx20", "rfc": "0027"},

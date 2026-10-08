@@ -678,6 +678,30 @@ def render_generated(header, words_of):
     return "".join(out)
 
 
+# MSVC limits one string literal to 16380 bytes and a concatenation to 65535
+# (C2026); GCC and Clang have no such limit.
+MSVC_LITERAL = 16000
+MSVC_CONCATENATION = 65000
+
+
+def char_array(array, text, delimiter):
+    """`inline constexpr char array[] = ...;` holding text and a NUL, in a form
+    every compiler accepts: adjacent raw literals of at most MSVC_LITERAL
+    characters, or (beyond MSVC's concatenation limit) a brace list of
+    character codes. Both are the same array: the same size and bytes."""
+    if len(text.encode()) <= MSVC_CONCATENATION:
+        chunks = [text[i:i + MSVC_LITERAL] for i in range(0, len(text), MSVC_LITERAL)] or [""]
+        literals = "\n    ".join("R\"%s(%s)%s\"" % (delimiter, chunk, delimiter)
+                                 for chunk in chunks)
+        return "inline constexpr char %s[] =\n    %s;\n\n" % (array, literals)
+    data = list(text.encode()) + [0]
+    # Bytes past ASCII as character literals: a negative number would narrow
+    # where char is unsigned (ARM).
+    rows = [", ".join(str(b) if b < 128 else "'\\x%02x'" % b for b in data[i:i + 32])
+            for i in range(0, len(data), 32)]
+    return "inline constexpr char %s[] = {\n    %s };\n\n" % (array, ",\n    ".join(rows))
+
+
 def render_glsl(header, text_of):
     """The text of a GLSL_GENERATED, GLES_GENERATED, MSL_GENERATED,
     HLSL_GENERATED or WGSL_GENERATED header; text_of(array) gives each array's
@@ -715,8 +739,7 @@ def render_glsl(header, text_of):
         if ")%s\"" % delimiter in text:
             raise ToolchainError("%s: the %s holds the raw string's delimiter" % (array, language))
         out.append("// %s%s\n" % (source, (" " + " ".join(options)) if options else ""))
-        out.append("inline constexpr char %s[] = R\"%s(%s)%s\";\n\n"
-                   % (array, delimiter, text, delimiter))
+        out.append(char_array(array, text, delimiter))
     out.append("} // namespace %s\n\n" % namespace)
     out.append("#endif // %s\n" % guard)
     return "".join(out)
@@ -776,13 +799,17 @@ def pinned_bin(pin, root=ROOT):
     return Path(root) / pin["directory"] / "bin"
 
 
+# The pin names executables without a suffix; Windows hosts add .exe.
+EXE = ".exe" if os.name == "nt" else ""
+
+
 def resolve(executable, environment, pin, root=ROOT):
     """(path, how) of a compiler: the environment override, the pinned build,
     then PATH. Identity is verified separately."""
     override = os.environ.get(environment)
     if override:
         return override, "$" + environment
-    built = pinned_bin(pin, root) / executable
+    built = pinned_bin(pin, root) / (executable + EXE)
     if built.is_file():
         return str(built), "pinned build"
     found = shutil.which(executable)
@@ -1435,7 +1462,7 @@ def build(pin, jobs=None, fetch_only=False, root=ROOT):
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text())
         if manifest.get("stamp") == stamp and \
-                all((base / out).is_file() for out in pin["build"]["outputs"]):
+                all((base / (out + EXE)).is_file() for out in pin["build"]["outputs"]):
             log("up to date: %s" % bin_dir)
             return 0
     for directory in (sources, build_dir, bin_dir):
@@ -1470,11 +1497,11 @@ def build(pin, jobs=None, fetch_only=False, root=ROOT):
     subprocess.run(compile_, check=True, env=env, stdout=subprocess.DEVNULL)
     bin_dir.mkdir(parents=True)
     for output, built in pin["build"]["outputs"].items():
-        shutil.copy2(build_dir / built, base / output)
+        shutil.copy2(build_dir / (built + EXE), base / (output + EXE))
 
-    glslc_path = str(bin_dir / pin["compiler"]["executable"])
+    glslc_path = str(bin_dir / (pin["compiler"]["executable"] + EXE))
     problem = identity_problem(glslc_path, pin)
-    debug_problem = debug_identity_problem(str(bin_dir / pin["debug_compiler"]["executable"]),
+    debug_problem = debug_identity_problem(str(bin_dir / (pin["debug_compiler"]["executable"] + EXE)),
                                            pin)
     if problem or debug_problem:
         raise ToolchainError("the pinned build is not the pin: %s" % (problem or debug_problem))
@@ -1489,7 +1516,7 @@ def build(pin, jobs=None, fetch_only=False, root=ROOT):
         "host": {"c++": first_line(["c++", "--version"]),
                  "cmake": first_line(["cmake", "--version"]),
                  "ninja": first_line(["ninja", "--version"])},
-        "outputs": {output: sha256(base / output) for output in pin["build"]["outputs"]},
+        "outputs": {output: sha256(base / (output + EXE)) for output in pin["build"]["outputs"]},
     }
     manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
     log("built %s" % bin_dir)
@@ -1518,7 +1545,7 @@ def build_cross(pin, jobs=None, fetch_only=False, root=ROOT):
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text())
         if manifest.get("stamp") == stamp and \
-                all((base / out).is_file() for out in cross["build"]["outputs"]):
+                all((base / (out + EXE)).is_file() for out in cross["build"]["outputs"]):
             log("up to date: %s" % ", ".join(cross["build"]["outputs"]))
             return 0
     for directory in (sources, build_dir):
@@ -1550,8 +1577,8 @@ def build_cross(pin, jobs=None, fetch_only=False, root=ROOT):
     subprocess.run(compile_, check=True, env=env, stdout=subprocess.DEVNULL)
     (base / "bin").mkdir(parents=True, exist_ok=True)
     for output, built in cross["build"]["outputs"].items():
-        shutil.copy2(build_dir / built, base / output)
-    problem = cross_identity_problem(str(base / "bin" / cross["executable"]), pin)
+        shutil.copy2(build_dir / (built + EXE), base / (output + EXE))
+    problem = cross_identity_problem(str(base / "bin" / (cross["executable"] + EXE)), pin)
     if problem:
         raise ToolchainError("the pinned SPIRV-Cross build is not the pin: %s" % problem)
     manifest = {
@@ -1565,7 +1592,7 @@ def build_cross(pin, jobs=None, fetch_only=False, root=ROOT):
         "host": {"c++": first_line(["c++", "--version"]),
                  "cmake": first_line(["cmake", "--version"]),
                  "ninja": first_line(["ninja", "--version"])},
-        "outputs": {output: sha256(base / output) for output in cross["build"]["outputs"]},
+        "outputs": {output: sha256(base / (output + EXE)) for output in cross["build"]["outputs"]},
     }
     manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
     log("built %s" % ", ".join(cross["build"]["outputs"]))

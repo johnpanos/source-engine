@@ -15,7 +15,7 @@
 #pragma once
 #endif
 
-#include "appframework/iappsystem.h"
+#include "appframework/IAppSystem.h"
 
 #define SOURCE_SECTOR_SIZE	2048	// DVD Sector Size
 #define TARGET_SECTOR_SIZE	512		// HDD Sector Size

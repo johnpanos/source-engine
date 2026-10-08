@@ -20,8 +20,17 @@
 
 struct RenderCoreBinding;
 
+// The definitions export these from their module (DLL_EXPORT); MSVC requires
+// the declarations to agree (C2375).
+#if defined( _MSC_VER )
+#define RENDER_CORE_BINDING_EXPORT __declspec( dllexport )
+#else
+#define RENDER_CORE_BINDING_EXPORT
+#endif
+
 // Copies the binding. Fails if it is incomplete or the engine already bound
 // one. The core must outlive the engine's shutdown.
-extern "C" bool Engine_BindRenderCore( const RenderCoreBinding *pBinding );
+extern "C" RENDER_CORE_BINDING_EXPORT bool Engine_BindRenderCore(
+    const RenderCoreBinding *pBinding );
 
 #endif // ENGINE_RENDER_CORE_BINDING_H

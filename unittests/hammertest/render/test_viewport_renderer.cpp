@@ -359,16 +359,13 @@ int main()
 		std::size_t copies = 0;
 		for ( const nulldev::RecordedCommand &command : control->Recorded() )
 			copies += command.op == nulldev::RecordedOp::kCopyBufferToTexture ? 1 : 0;
-		// Three 4x4 textures (4x4, 2x2, 1x1), the renderer's 1x1 white, the
-		// programs' neutral textures for the terms that are off (a 1x1 2D and
-		// a 1x1 cube's six faces; MaterialPrograms makes them) and the frame
-		// group's neutral 2D for the surface program's unread split-sum slot
-		// (the group residency that holds it makes its own), and the neutral
-		// view group's neutral 2D for its unread shadow atlas (RFC 0016 K11
-		// c2; the programs' view residency makes its own), and its neutral
-		// two-layer array for the unread projector cookies (K11: projected
-		// lights in the surface program).
-		checks.Equal( copies, std::size_t( 3 * 3 + 1 + 1 + 6 + 1 + 1 + 2 ),
+		// Three 4x4 textures (4x4, 2x2, 1x1), the renderer's 1x1 white, and one
+		// copy per layer of each group residency's neutral textures for the
+		// slots its terms leave unread (GroupResidency::Neutral): the
+		// programs' 1x1 2D and cube (six faces); one group residency's 2D and
+		// two-cube array (twelve layers; the RPRB v8 probe cubes); and the
+		// other's 2D, two-layer array (projector cookies) and depth neutral.
+		checks.Equal( copies, std::size_t( 3 * 3 + 1 + ( 1 + 6 ) + ( 1 + 12 ) + ( 1 + 2 + 1 ) ),
 		    "V8.each-texture-uploads-its-three-levels" );
 		checks.That( renderer.Scene().blendedBatches == 1 && renderer.Scene().texturedBatches == 3,
 		    "V8.the-translucent-batch-alone-is-blended" );

@@ -1,0 +1,9 @@
+# Python packages the tools/quality tests import on the hosted runners
+# (composition.yml), at the developer host's versions. OpenUSD is not here:
+# its tests need the pinned 25.11 the map tools build from source
+# (quality/product_profiles/openusd-linux-tools.json; SOURCE_USD_TOOLCHAIN),
+# not PyPI's usd-core, and skip without it.
+numpy==2.4.4
+imageio==2.37.3
+scipy==1.16.2
+OpenImageIO==3.1.17.0

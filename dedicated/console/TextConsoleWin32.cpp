@@ -129,11 +129,10 @@ char * CTextConsoleWin32::GetLine( int index, char *buf, int buflen )
 		unsigned long	numread;
 		unsigned long	numevents;
 
+		// Not a console (stdin redirected: a service, a harness, Wine without a
+		// console): there is no typed input, which is not an error.
 		if ( !GetNumberOfConsoleInputEvents( hinput, &numevents ) )
-		{
-			Error("CTextConsoleWin32::GetLine: !GetNumberOfConsoleInputEvents");
 			return NULL;
-		}
 
 		if ( numevents <= 0 )
 			break;

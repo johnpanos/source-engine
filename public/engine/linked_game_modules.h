@@ -39,8 +39,17 @@ struct LinkedGameModules
 	int appSystemCount;
 };
 
+// The definitions export these from their module (DLL_EXPORT); MSVC requires
+// the declarations to agree (C2375).
+#if defined( _MSC_VER )
+#define LINKED_GAME_MODULES_EXPORT __declspec( dllexport )
+#else
+#define LINKED_GAME_MODULES_EXPORT
+#endif
+
 // Copies the table. Fails if a required factory is missing or the engine
 // already bound or loaded its game modules.
-extern "C" bool Engine_BindLinkedGameModules( const LinkedGameModules *pModules );
+extern "C" LINKED_GAME_MODULES_EXPORT bool Engine_BindLinkedGameModules(
+    const LinkedGameModules *pModules );
 
 #endif // ENGINE_LINKED_GAME_MODULES_H

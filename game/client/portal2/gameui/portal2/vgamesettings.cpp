@@ -5,7 +5,7 @@
 //=====================================================================================//
 
 #include "vgamesettings.h"
-#include "keyvalues.h"
+#include "KeyValues.h"
 
 #include <ctype.h>
 #include <vstdlib/random.h>

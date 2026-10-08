@@ -188,13 +188,15 @@ int CheckOtherInstancesWithEnumProcess( const char *thisProcessNameShort )
 	if ( !hInst )
 		return CHECK_PROCESS_UNSUPPORTED;
 
-	typedef DWORD (WINAPI *GetProcessImageFileNameFn)(HANDLE, LPTSTR, DWORD);
-	GetProcessImageFileNameFn fn = (GetProcessImageFileNameFn)GetProcAddress( hInst,
+	typedef DWORD( WINAPI * GetProcessImageFileNameFn )( HANDLE, LPTSTR, DWORD );
 #ifdef  UNICODE
-		"GetProcessImageFileNameW");
+	const char *pszImageFileName = "GetProcessImageFileNameW";
 #else
-		"GetProcessImageFileNameA");
+	const char *pszImageFileName = "GetProcessImageFileNameA";
 #endif
+	// Selected outside the call: GetProcAddress may be a macro.
+	GetProcessImageFileNameFn fn =
+	    (GetProcessImageFileNameFn)GetProcAddress( hInst, pszImageFileName );
 
 	if ( !fn )
 		return CHECK_PROCESS_UNSUPPORTED;
@@ -279,13 +281,14 @@ int CheckOtherInstancesRunning( void )
 	HINSTANCE hInst = LoadLibrary( "Psapi.dll" );
 	if ( hInst )
 	{
-		typedef DWORD (WINAPI *GetProcessImageFileNameFn)(HANDLE, LPTSTR, DWORD);
-		GetProcessImageFileNameFn fn = (GetProcessImageFileNameFn)GetProcAddress( hInst,
+		typedef DWORD( WINAPI * GetProcessImageFileNameFn )( HANDLE, LPTSTR, DWORD );
 #ifdef  UNICODE
-			"GetProcessImageFileNameW");
+		const char *pszImageFileName = "GetProcessImageFileNameW";
 #else
-			"GetProcessImageFileNameA");
+		const char *pszImageFileName = "GetProcessImageFileNameA";
 #endif
+		GetProcessImageFileNameFn fn =
+		    (GetProcessImageFileNameFn)GetProcAddress( hInst, pszImageFileName );
 		if ( fn )
 		{
 			bStatus = fn( GetCurrentProcess(), thisProcessName, nLength );

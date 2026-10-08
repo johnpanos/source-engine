@@ -18,7 +18,7 @@
 #include "tier0/dbg.h"
 #include "cdll_int.h"
 #include "menu.h" // for chudmenu defs
-#include "keyvalues.h"
+#include "KeyValues.h"
 #include <filesystem.h>
 #include "c_team.h"
 #include "vgui/ISurface.h"
@@ -46,7 +46,7 @@
 #include "radialmenu_taunt.h"
 #include "radialbutton.h"
 
-#include "cegclientwrapper.h"
+#include "CegClientWrapper.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

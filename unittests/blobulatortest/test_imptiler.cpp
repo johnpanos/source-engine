@@ -1018,13 +1018,14 @@ void TestTwoParticles()
 			int nComponents;
 		};
 		// Bridged: the midpoint field 2 k( (d/2)^2 / Rc^2 ) exceeds the threshold
-		// for d < ~2.79 R (retail radii), so 1.5 R bridges and 2.2 R (spheres
-		// apart, still bridged) too; 3.4 R leaves two blobs whose fields
-		// overlap; 3 cutoffs leaves two independent spheres.
+		// for d < ~4.88 R (retail's kernel and radii), so 1.5 R bridges and
+		// 2.2 R (spheres apart, still bridged) too; 6.5 R leaves two blobs whose
+		// fields overlap (d < 2 Rc ~ 8.46 R); 3 cutoffs leaves two independent
+		// spheres.
 		const Case cases[] = {
 		    { "bridged", 1.5 * R, 1 },
 		    { "bridged-apart", 2.2 * R, 1 },
-		    { "separate-overlapping-fields", 3.4 * R, 2 },
+		    { "separate-overlapping-fields", 6.5 * R, 2 },
 		    { "separate", 3.0 * flCutoff, 2 },
 		};
 		for ( const Case &c : cases )

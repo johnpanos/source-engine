@@ -265,3 +265,16 @@ legacy host pins the process to Vulkan (see R97).
   program started in a reused prefix in `CreateDXGIFactory2`: the remote
   script uses a fresh prefix per program.
 - No product frame time: no product composes the D3D12 device before R91.
+
+### MSVC under Wine (2026-10-08, user direction)
+
+`tools/render/d3d12_lane.py --compiler msvc` builds the adapter and any
+suite with the pinned MSVC 19.44 (RFC 0027's `tools/windows/msvc_wine.py`;
+static C runtime, `/W3 /WX`) and runs it under Wine with vkd3d-proton,
+beside the MinGW default. `render.device.v2` passes 1,563/0 and the `pbr`
+family matches its Vulkan frames 199/0, as with MinGW (both rerun). Fixes
+it needed: `NOMINMAX` before `<d3d12.h>` in the adapter's two headers;
+generated shader headers as literals MSVC accepts (16,000-character
+chunks, or a character list past 64 KB); 64-bit `ReportConformance`
+counts. `--sdl3` with MSVC is refused by name until an SDL3 MSVC pin
+exists.

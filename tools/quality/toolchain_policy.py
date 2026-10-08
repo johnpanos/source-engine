@@ -131,14 +131,16 @@ def normalize_flags(policy, dialect_name, family, flags):
     flags present, forbidden flags absent. Other flags keep their order."""
     mapping = dialect_mapping(policy, dialect_name, family)
     forbidden = set(mapping.get("forbidden", []))
+    required = mapping.get("required", [])
+    # Required flags follow the standard flag: MSVC's /std:c++20 implies
+    # /permissive-, which a /permissive earlier on the line does not undo.
     result = [flag for flag in flags
-              if not is_std_flag(policy, family, flag) and flag not in forbidden]
+              if not is_std_flag(policy, family, flag) and flag not in forbidden
+              and flag not in required]
     wanted = std_flag(policy, dialect_name, family)
     if wanted:
         result.append(wanted)
-    for flag in mapping.get("required", []):
-        if flag not in result:
-            result.append(flag)
+    result += required
     return result
 
 

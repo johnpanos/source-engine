@@ -281,7 +281,11 @@ public:
 		if ( inputs.Cancel() && inputs.Cancel()->IsCancelled() )
 			return foundation::MakeUnexpected(
 			    ProviderError{ std::string( kCancelled ), "before build" } );
-		auto built = Waf( inputs, { m_Python, ( source / "waf" ).string(), "install" }, tree );
+		// `build` first: Waf records compile_commands.json and the toolchain
+		// invocations (toolchain_boundary.py's input) only on a build command;
+		// `install` then finds nothing to compile.
+		auto built =
+		    Waf( inputs, { m_Python, ( source / "waf" ).string(), "build", "install" }, tree );
 		if ( !built )
 			return foundation::MakeUnexpected( built.Error() );
 		const WafCounts counts = CountWork( built.Value() );

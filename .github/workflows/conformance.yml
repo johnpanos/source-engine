@@ -51,6 +51,26 @@ jobs:
         config: [default, release]
     steps:
     - uses: actions/checkout@v4
+      with:
+        submodules: true
+        # The Hammer parity suites read the frozen legacy sources from history.
+        fetch-depth: 0
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install the suites' host dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y g++ cmake ninja-build libglib2.0-dev libbz2-dev zlib1g-dev libzstd-dev libvulkan-dev
+        python3 -m pip install -r tools/quality/requirements-ci.txt
+    # RFC 0016 K4: the render suites include the generated SPIR-V headers.
+    - name: Build the pinned shader tools
+      run: python3 tools/render/shader_toolchain.py build
+    # RFC 0027: kiln.l0 runs the kilntest the host kiln tree builds.
+    - name: Build the host kiln tree and kilntest
+      run: |
+        ./kiln profiles list > /dev/null
+        cd out/host-linux-x86_64 && WAFLOCK=.lock-waf-kiln python3 "$GITHUB_WORKSPACE/waf" build --targets=kilntest
     - name: Enumerate selected suites and providers
       run: python3 tools/quality/conformance.py plan
     - name: Build, run and evidence every manifest suite

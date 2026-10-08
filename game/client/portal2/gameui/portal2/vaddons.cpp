@@ -12,7 +12,7 @@
 
 #include "vaddons.h"
 #include "vgenericpanellist.h"
-#include "keyvalues.h"
+#include "KeyValues.h"
 #include "vfooterpanel.h"
 #include "engineinterface.h"
 #include "filesystem.h"

@@ -182,7 +182,7 @@ def _write_invocations(bld, tasks):
 			'compiler_cxx': env.COMPILER_CXX,
 			'cc': env.CC,
 			'cxx': env.CXX,
-			'cc_version': '.'.join(env.CC_VERSION) if env.CC_VERSION else None,
+			'cc_version': '.'.join(str(part) for part in env.CC_VERSION) if env.CC_VERSION else None,
 			'probed_dialects': env.TOOLCHAIN_PROBED_DIALECTS,
 			'probes_executed': env.TOOLCHAIN_PROBES_EXECUTED,
 		},

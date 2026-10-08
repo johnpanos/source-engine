@@ -116,6 +116,12 @@
         "allowedEdges": ["product.contracts"]
       },
       {
+        "id": "product.toolchain.msvc-wine",
+        "owns": "RFC 0027: the windows-msvc-wine target toolchain (MSVC under Wine, provisioned by tools/windows/msvc_wine.py)",
+        "paths": ["public/product/toolchain_msvc_wine.h", "product/toolchain/msvc_wine.cpp"],
+        "allowedEdges": ["product.contracts", "foundation.json"]
+      },
+      {
         "id": "product.stage.waf",
         "owns": "RFC 0027: the Waf engine build as the waf-engine stage provider",
         "paths": ["public/product/stage_waf.h", "product/stage/"],
@@ -163,7 +169,7 @@
         "id": "kiln.composition",
         "owns": "RFC 0027: the default provider catalog (ComposeDefaultCatalog)",
         "paths": ["public/kiln/composition.h", "product/kiln/composition/"],
-        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.toolchain.n3ds", "product.toolchain.emscripten", "product.stage.waf", "product.stage.fstop", "product.stage.video-av1", "product.display.desktop", "product.run.desktop", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
+        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.toolchain.n3ds", "product.toolchain.emscripten", "product.toolchain.msvc-wine", "product.stage.waf", "product.stage.fstop", "product.stage.video-av1", "product.display.desktop", "product.run.desktop", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
       },
       {
         "id": "kiln.app",
@@ -182,7 +188,9 @@
         "kind": "backend",
         "owns": "RFC 0027: sepipe, the nanobind module over kiln.api (host tools only); the Python and nanobind headers stay here",
         "paths": ["product/kiln/python/"],
-        "allowedEdges": ["kiln.core", "kiln.composition", "foundation.json", "foundation"]
+        "allowedEdges": ["kiln.core", "kiln.composition", "foundation.json", "foundation"],
+        "externalHeaders": ["nanobind/nanobind.h", "nanobind/stl/optional.h", "nanobind/stl/string.h",
+                            "nanobind/stl/tuple.h", "nanobind/stl/vector.h"]
       },
       {
         "id": "kiln.fixture-platform",
@@ -194,7 +202,7 @@
         "id": "kiln.tests",
         "kind": "native-test",
         "paths": ["unittests/kilntest/"],
-        "allowedEdges": ["kiln.core", "kiln.composition", "kiln.fixture-platform", "product.contracts", "product.profile", "product.toolchain.linux", "product.stage.waf", "product.package.linux-dir", "content.vpk", "product.display.desktop", "product.run.desktop", "platform.contracts", "platform.posix", "jobs.graph", "foundation", "foundation.json", "testing.contracts"]
+        "allowedEdges": ["kiln.core", "kiln.composition", "kiln.fixture-platform", "product.contracts", "product.profile", "product.toolchain.linux", "product.toolchain.msvc-wine", "product.stage.waf", "product.package.linux-dir", "content.vpk", "product.display.desktop", "product.run.desktop", "platform.contracts", "platform.posix", "jobs.graph", "foundation", "foundation.json", "testing.contracts"]
       },
       {
         "id": "content.asset-tests",
@@ -210,8 +218,17 @@
         ],
         "allowedEdges": [
           "foundation",
-          "content.block-container"
+          "content.block-container",
+          "external.bcdec"
         ]
+      },
+      {
+        "id": "external.bcdec",
+        "owns": "The vendored header-only bcdec block-compression decoder (external/bcdec/README.source.md)",
+        "paths": [
+          "external/bcdec/"
+        ],
+        "allowedEdges": []
       },
       {
         "id": "world.map-container.test-cases",
@@ -302,7 +319,8 @@
           "texturecontainer/block_decode.cpp"
         ],
         "allowedEdges": [
-          "content.texture-contract"
+          "content.texture-contract",
+          "external.bcdec"
         ],
         "externalHeaders": [
           "bcdec.h"
@@ -755,7 +773,12 @@
           "SDL3/SDL_vulkan.h",
           "UIKit/UIKit.h",
           "vulkan/vulkan.h",
-          "TargetConditionals.h"
+          "TargetConditionals.h",
+          "SDL3/SDL_system.h",
+          "jni.h",
+          "wayland-client.h",
+          "unistd.h",
+          "stdint.h"
         ],
         "uselib": [
           "SDL3",
@@ -1253,6 +1276,7 @@
           "content.studio-model",
           "content.texture-contract",
           "content.vtf-reader",
+          "content.vtf-container",
           "content.vtf-decompress",
           "content.vtf-decompress-zlib",
           "render.shader-library",
@@ -2011,6 +2035,7 @@
       "ctime",
       "deque",
       "exception",
+      "stdexcept",
       "filesystem",
       "fstream",
       "functional",

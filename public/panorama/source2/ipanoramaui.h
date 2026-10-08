@@ -6,7 +6,7 @@
 #define __IPANORAMAUI_H__
 
 
-#include "appframework/iappsystem.h"
+#include "appframework/IAppSystem.h"
 #include "tier3/tier3.h"
 #include "inputsystem/inputenums.h"
 #include "inputsystem/buttoncode.h"

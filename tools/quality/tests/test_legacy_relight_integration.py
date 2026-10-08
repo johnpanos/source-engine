@@ -86,7 +86,10 @@ class Content:
 class RelightIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from pxr import Usd, UsdGeom
+        try:
+            from pxr import Usd, UsdGeom
+        except ImportError as error:
+            raise unittest.SkipTest("test_legacy_relight_integration needs OpenUSD's pxr: %s" % error)
         import lightmap_layout
         import usd_scene
         cls.temporary = tempfile.TemporaryDirectory(prefix="relight-displacement-")

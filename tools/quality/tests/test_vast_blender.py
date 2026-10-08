@@ -87,8 +87,10 @@ class VastBlenderTest(unittest.TestCase):
         self.assertEqual(json.loads(remote.command([], {})[4]), ssh)
         self.assertTrue(remote.applies("render") and remote.applies("bake"))
         # The tool steps run there too, with the host's pinned OIDN as their identity.
-        for step in ("noise", "denoise", "directional", "rprb"):
+        for step in ("noise", "denoise", "directional"):
             self.assertTrue(remote.applies(step), step)
+        # rprb runs locally with the pinned ktx (152a6ada9), as ktx2 does.
+        self.assertFalse(remote.applies("rprb"))
         self.assertFalse(remote.applies("ktx2"))
         self.assertEqual(remote.tool_identity("openimagedenoise")["sha256"],
                          vast_blender.HOST["oidn"]["sha256"])

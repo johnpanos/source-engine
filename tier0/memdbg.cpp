@@ -260,9 +260,12 @@ struct CrtDbgMemHeader_t
 	unsigned char m_Reserved2[16];
 };
 
-struct DbgMemHeader_t
+// alignas: the block follows the header, and the reserved bytes were sized
+// for 32-bit (4 + 12); on 64-bit the header would be 24 bytes and blocks only
+// 8-aligned (tslist's 16-byte heads fail).
+struct alignas( 16 ) DbgMemHeader_t
 #if !defined( _DEBUG ) || defined( POSIX )
-	: CrtDbgMemHeader_t
+    : CrtDbgMemHeader_t
 #endif
 {
 	size_t nLogicalSize;

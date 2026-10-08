@@ -9,28 +9,32 @@ jobs:
   # pin the ubuntu-24.04 runner's compilers). The Windows lanes stay on
   # waf.bat until kiln has a Windows host (MSVC runners are optional).
   build-dedicated-windows-i386:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v2
     - name: Build dedicated windows-i386
       run: |
         git submodule init && git submodule update
-        python tools/render/shader_toolchain.py build
         ./waf.bat configure -T debug -d
         ./waf.bat build
+    - name: Configure log
+      if: failure()
+      run: Get-Content build/config.log -Tail 80
 
   build-dedicated-windows-amd64:
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v2
     - name: Build dedicated windows-amd64
       run: |
         git submodule init && git submodule update
-        python tools/render/shader_toolchain.py build
         ./waf.bat configure -T debug -d
         ./waf.bat build
+    - name: Configure log
+      if: failure()
+      run: Get-Content build/config.log -Tail 80
 
   build-dedicated-linux-i386:
     runs-on: ubuntu-24.04
@@ -43,10 +47,9 @@ jobs:
       run: |
         sudo dpkg --add-architecture i386
         sudo apt-get update
-        sudo apt-get install -y g++ pkg-config g++-multilib gcc-multilib libopenal-dev:i386 \
-          libpng-dev:i386 libjpeg-dev:i386 libfreetype6-dev:i386 libfontconfig1-dev:i386 \
-          libcurl4-gnutls-dev:i386 libsdl2-dev:i386 zlib1g-dev:i386 libbz2-dev:i386 \
-          libedit-dev:i386 zlib1g-dev libbz2-dev
+        # A dedicated server links no SDL, image or font library.
+        sudo apt-get install -y g++ pkg-config g++-multilib gcc-multilib zlib1g-dev:i386 \
+          libbz2-dev:i386 libedit-dev:i386 libcurl4-gnutls-dev:i386 libzstd-dev:i386 zlib1g-dev libbz2-dev
     - name: Build dedicated linux-i386 (kiln profile ci-dedicated-linux-i386)
       env:
         PKG_CONFIG_PATH: /usr/lib/i386-linux-gnu/pkgconfig

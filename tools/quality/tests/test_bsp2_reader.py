@@ -214,8 +214,12 @@ class Bsp2ReaderTests(unittest.TestCase):
             tool = scratch / "bsp2tool"
             build = subprocess.run(
                 # Every mapcontainer source: bsp2tool validates each lump it packs.
-                [compiler, "-std=c++20", "-O1", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "public")] +
+                # As mapcontainer/wscript builds it: the repository root for
+                # external/bcdec and the content hash it links.
+                [compiler, "-std=c++20", "-O1", "-Wall", "-Wextra", "-Werror", "-I", str(ROOT / "public"),
+                 "-I", str(ROOT)] +
                 [str(path) for path in sorted((ROOT / "mapcontainer").glob("*.cpp"))] +
+                [str(ROOT / "content/hash.cpp")] +
                 [str(ROOT / "utils/bsp2tool/bsp2tool.cpp"), "-o", str(tool)],
                 text=True, capture_output=True, timeout=120)
             self.assertEqual(build.returncode, 0, build.stdout + build.stderr)

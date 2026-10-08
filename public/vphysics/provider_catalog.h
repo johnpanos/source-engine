@@ -14,7 +14,15 @@ struct PhysicsProviderDescriptor
 	IPhysics *( *create )();
 };
 
-extern "C" const PhysicsProviderDescriptor *PhysicsIVP_Describe();
-extern "C" const PhysicsProviderDescriptor *PhysicsBox3D_Describe();
+// The definitions export these from their module (DLL_EXPORT); MSVC requires
+// the declarations to agree (C2375).
+#if defined( _MSC_VER )
+#define PHYSICS_PROVIDER_CATALOG_EXPORT __declspec( dllexport )
+#else
+#define PHYSICS_PROVIDER_CATALOG_EXPORT
+#endif
+
+extern "C" PHYSICS_PROVIDER_CATALOG_EXPORT const PhysicsProviderDescriptor *PhysicsIVP_Describe();
+extern "C" PHYSICS_PROVIDER_CATALOG_EXPORT const PhysicsProviderDescriptor *PhysicsBox3D_Describe();
 
 #endif // VPHYSICS_PROVIDER_CATALOG_H

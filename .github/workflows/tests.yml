@@ -4,10 +4,22 @@ on: [push, pull_request]
 
 jobs:
   architecture:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-    - uses: actions/checkout@v2
+    # Submodules: the loader inventory covers them. Full history: the Hammer
+    # legacy-freeze suite reads its frozen sources from a recorded commit.
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+        fetch-depth: 0
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y g++ pkg-config cmake ninja-build libglib2.0-dev libbz2-dev zlib1g-dev
+    # RFC 0016 K4: the render suites include the generated SPIR-V headers.
+    - name: Build the pinned shader tools
+      run: python3 tools/render/shader_toolchain.py build
     - name: Verify RFC 0001 architecture baseline
       run: |
         python3 tools/archlint/archlint.py check --all
@@ -33,7 +45,15 @@ jobs:
   hammer-windows-parity:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+    # The render suites include the generated SPIR-V headers.
+    - name: Build the pinned shader tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y g++ cmake ninja-build
+        python3 tools/render/shader_toolchain.py build
     - name: Install MinGW-w64 and Wine
       run: |
         sudo dpkg --add-architecture i386

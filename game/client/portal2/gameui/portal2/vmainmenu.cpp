@@ -32,7 +32,7 @@
 #include "vgui_controls/Image.h"
 
 #include "filesystem.h"
-#include "cegclientwrapper.h"
+#include "CegClientWrapper.h"
 
 #ifndef NO_STEAM
 #include "steam/isteamremotestorage.h"

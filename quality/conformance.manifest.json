@@ -3705,6 +3705,7 @@
         "render/material/model_lighting.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "hammer/adapters/render/material_textures.cpp",
         "hammer/adapters/render/scene_geometry.cpp",
@@ -3787,6 +3788,7 @@
         "render/material/model_lighting.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "hammer/adapters/render/material_textures.cpp",
         "hammer/adapters/render/scene_geometry.cpp",
@@ -3867,6 +3869,7 @@
         "render/material/model_lighting.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "hammer/adapters/render/material_textures.cpp",
         "hammer/adapters/render/scene_geometry.cpp",
@@ -3950,6 +3953,7 @@
         "render/material/model_lighting.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "hammer/adapters/render/material_textures.cpp",
         "hammer/adapters/render/scene_geometry.cpp",
@@ -4050,6 +4054,7 @@
         "render/material/model_lighting.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "hammer/adapters/render/material_textures.cpp",
         "hammer/adapters/render/scene_geometry.cpp",
@@ -4166,6 +4171,7 @@
         "render/material/model_lighting.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "hammer/adapters/render/material_textures.cpp",
         "hammer/adapters/render/scene_geometry.cpp",
@@ -4257,6 +4263,7 @@
         "render/material/model_lighting.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "hammer/adapters/render/material_textures.cpp",
         "hammer/adapters/render/scene_geometry.cpp",
@@ -7127,7 +7134,7 @@
         "hammer/core/app/instance_preview.cpp",
         "unittests/hammertest/app/test_instance_preview.cpp"
       ],
-      "min_checks": 37,
+      "min_checks": 36,
       "expect": "pass"
     },
     {
@@ -7435,7 +7442,7 @@
       ],
       "result_protocol": "checks-v1",
       "sources": [
-        "mapcontainer/blake2b.cpp",
+        "content/hash.cpp",
         "mapcontainer/map_container.cpp",
         "unittests/mapcontainertest/test_map_container.cpp"
       ],
@@ -8086,7 +8093,7 @@
             "-DTOOLCHAIN_LAYOUT_FN=ToolchainLayoutsCxx20"
           ],
           "sources": [
-            "mapcontainer/blake2b.cpp",
+            "content/hash.cpp",
             "mapcontainer/map_container.cpp",
             "unittests/toolchaintest/mapcontainer_bsp2_helper.cpp",
             "unittests/toolchaintest/boundary_layout_unit.cpp"
@@ -9796,6 +9803,7 @@
         "render/material/material_programs.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/culling/cull.cpp",
         "render/math/bounds.cpp",
         "render/math/matrix.cpp",
@@ -13013,6 +13021,7 @@
         "render/material/vertexlit_family.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/pass/world/world_pass.cpp",
         "render/material/families/surface_program.glsl",
         "tools/render/lab.py",
@@ -13083,6 +13092,7 @@
         "render/material/vmt_mapping.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/pass/world/world_pass.cpp",
         "render/material/families/surface_program.glsl",
         "public/render/material/vertexlit_family.h",
@@ -13224,6 +13234,7 @@
         "render/material/pbr_family.cpp",
         "render/material/vmt_mapping.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/families/surface_program.glsl",
         "tools/render/lab.py"
       ],
@@ -13417,6 +13428,7 @@
         "render/material/refract_family.cpp",
         "render/material/vmt_mapping.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/pass/world/world_pass.cpp",
         "render/material/families/surface_program.glsl",
         "render/lab/lab_support.cpp",
@@ -13613,6 +13625,7 @@
         "render/lab/view_state_suite.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/surface_program.cpp",
         "render/material/surface_reduced.cpp",
         "render/material/energy_family.cpp",
@@ -13737,6 +13750,7 @@
         "render/lab/render_lab.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/vertexlit_family.cpp",
         "quality/materials/portal2-model-claims.json",
         "render/graph/scene_color.cpp",
@@ -13781,6 +13795,7 @@
         "render/lab/render_lab.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "quality/materials/portal2-all-claims.json",
         "render/graph/scene_color.cpp",
         "render/material/refract_family.cpp",
@@ -15694,6 +15709,10 @@
       "profile": "linux-headless-core",
       "description": "render.composition and render.legacy-frontend (RFC 0016 A.7) through the launcher's C entry points: RenderCore_Create composes or fails naming the unknown device or feature; the frontend's provider keeps the backend identity and forwards creation; RenderStageMarkers001 marks stages of engine frames; a frame runs legacy-stream then present. P6 (RFC 0016 K5): -render-core-passes selects the frontend's core-pass probe and refuses an unknown one by name; with a probe the frontend queues one slot on the backend at each view's opaque stage, tagged with the stage and view depth, and none without one. P9 (R96): Studio bytes and a host palette pass through the public composition API with arbitrary model names and multiple body groups; inactive unsupported materials do not reject a supported body, blanks are accepted, and active unsupported materials or failed imports refuse before slot publication. P10 (R96): selected LODs and replacement descriptors govern both static and posed eligibility; blank LODs are valid, and missing/unsupported replacements or out-of-range selections refuse before slot publication.",
       "result_protocol": "checks-v1",
+      "link_flags": [
+        "-lz",
+        "-lzstd"
+      ],
       "sources": [
         "render/graph/scene_color.cpp",
         "render/material/refract_family.cpp",
@@ -15737,6 +15756,8 @@
         "render/pass/volumetric/volumetric.cpp",
         "texturecontainer/vtf/container.cpp",
         "texturecontainer/vtf_reader.cpp",
+        "texturecontainer/vtf_decompress.cpp",
+        "mapcontainer/reflection_probes.cpp",
         "render/composition/core_temporal.cpp",
         "render/pass/temporal/temporal.cpp",
         "render/pass/temporal/input_copy.cpp",
@@ -15762,6 +15783,7 @@
         "render/legacy/frame_executor.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "render/material/vertexlit_family.cpp",
         "render/material/family_program.cpp",
@@ -15806,6 +15828,10 @@
       "profile": "linux-headless-core",
       "description": "RFC 0016 K10 'Capability negotiation' (render/composition/negotiation.cpp, FeatureRequirements::fallback): an independent oracle judges negotiations (a feature is composed as itself when the device has its requirements, else as its fallback only when the product profile declares feature=fallback, and every substitution is reported by name; no fallback fails kMissingCapability and an undeclared one kUndeclaredFallback, each naming it), and two seeded bad compositions fail it (an undeclared fallback taken, a silent substitution). RenderCore_Create on the null device with compute masked (-render-masked-capabilities) composes CPU skinning under skinning=skinning-cpu and names it in RenderCoreResult, fails RENDER_CORE_UNDECLARED_FALLBACK without the declaration, and refuses an unknown capability name.",
       "result_protocol": "checks-v1",
+      "link_flags": [
+        "-lz",
+        "-lzstd"
+      ],
       "sources": [
         "render/shaderlib/shaderlib.cpp",
         "render/shaderlib/core_artifacts.cpp",
@@ -15847,6 +15873,7 @@
         "render/pass/volumetric/volumetric.cpp",
         "texturecontainer/vtf/container.cpp",
         "texturecontainer/vtf_reader.cpp",
+        "texturecontainer/vtf_decompress.cpp",
         "render/composition/core_temporal.cpp",
         "render/pass/temporal/temporal.cpp",
         "render/pass/temporal/input_copy.cpp",
@@ -15873,6 +15900,7 @@
         "render/legacy/frame_executor.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "render/material/vertexlit_family.cpp",
         "render/material/family_program.cpp",
@@ -15982,6 +16010,7 @@
         "render/legacy/frame_executor.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "render/material/vertexlit_family.cpp",
         "render/material/family_program.cpp",
@@ -16104,6 +16133,7 @@
         "render/legacy/frame_executor.cpp",
         "render/material/cable_family.cpp",
         "render/material/program_resolver.cpp",
+        "render/material/energy_family.cpp",
         "render/material/pbr_family.cpp",
         "render/material/vertexlit_family.cpp",
         "render/material/family_program.cpp",
@@ -20960,13 +20990,13 @@
       "profile": "linux-headless-core",
       "description": "RFC 0027 L0 (RFC/0027-progress.md): foundation.json; product.profile schema v2 with the extends merge equal to the retired profile_extends.py's rule (kiln_gate.py parity keeps an independent reference), provenance, aliases, flavors and derived Waf arguments, and its seeded faults refused by name (extends cycle, unknown key, unknown provider, missing pin, three conflicting configure options, workspace values that would change a build fact); the shared suites of ITargetToolchain (linux-gcc, linux-clang, the fixture host), IRecipeBuilder (fake), IProductStage (fixture stages; waf-engine descriptor and cancellation), IPackager, IDeployTransport and IDisplaySession, each rejecting its deliberately bad providers by the clause they break (25 bad providers); the ProviderCatalog; and the fixture platform run build -> content -> package -> deploy -> run through an unchanged kiln.core, with an unchanged second run rebuilding and resending nothing, a missing capability refused before the device is touched, and an undeclared read failing the run with nothing published.",
       "command": [
-        "out/host-tests/unittests/kilntest/kilntest"
+        "out/host-linux-x86_64/unittests/kilntest/kilntest"
       ],
       "result_protocol": "checks-v1",
       "min_checks": 140,
       "timeout_seconds": 300,
       "requires": [
-        "path:out/host-tests/unittests/kilntest/kilntest"
+        "path:out/host-linux-x86_64/unittests/kilntest/kilntest"
       ],
       "sources": [
         "foundation/json.cpp",

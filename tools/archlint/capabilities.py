@@ -112,8 +112,13 @@ def check(root, block, strip):
             if not re.search(r'#\s*include\b', stripped_lines[line]):
                 continue
             name = match.group(2)
-            candidate = next((p.resolve() for p in (path.parent / name, root / 'public' / name)
-                              if p.is_file()), None)
+            # Beside the file, under public/, or (a qualified name) from the
+            # repository root, as the build's include roots find them.
+            # Normalized without following links: a submodule linked into a
+            # worktree must still resolve inside the root.
+            roots = (path.parent / name, root / 'public' / name) + \
+                ((root / name,) if '/' in name else ())
+            candidate = next((Path(os.path.normpath(p)) for p in roots if p.is_file()), None)
             generated = generated_owner(name, block)
             if candidate is None and generated is not None:
                 # A header the build writes (block['generatedHeaders']): owned
@@ -650,7 +655,20 @@ def compile_dep_errors(root, block, depfiles, strip=None):
                 relative = header.relative_to(root).as_posix()
             except ValueError:
                 relative = None
-            if relative is None or relative.startswith(VENDORED_PREFIXES) or relative.startswith('build'):
+            # A header the build generated into a tree's generated/ root (a
+            # legacy build*/ tree or kiln's out/<profile>/<flavor>/build) is
+            # owned as block['generatedHeaders'] declares it.
+            if relative is not None and '/generated/' in relative:
+                produced = generated_owner(relative.split('/generated/', 1)[1], block)
+                if produced is not None:
+                    if produced != mid and produced not in modules[mid]['allowedEdges']:
+                        errors.add(f'CAP005 {source} ({mid}): reaches {relative}, a generated '
+                                   f'header of {produced}')
+                    continue
+            # A vendored file a module declares (external.bcdec) follows the
+            # edge rule like any other; the rest of a vendored tree is external.
+            if relative is None or relative.startswith('build') or (
+                    relative.startswith(VENDORED_PREFIXES) and owner(relative, block) is None):
                 if portable:
                     errors.add(f'CAP005 {source} ({mid}): portable module reaches external header {header}')
                 continue

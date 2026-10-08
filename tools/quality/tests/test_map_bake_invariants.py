@@ -11,6 +11,11 @@ import pbrt_playable_content as content
 import reflection_probe_set as rprb
 import numpy as np
 
+import bc_codec  # noqa: E402
+
+# Radiance cubes are encoded by the pinned ktx; CI has none.
+NO_KTX = bc_codec.default_tool() is None
+
 
 class ProductionPolicy(unittest.TestCase):
     def setUp(self):
@@ -19,7 +24,7 @@ class ProductionPolicy(unittest.TestCase):
     def test_quality_cannot_be_overridden(self):
         for key, value in (("lightmap", {"samples": 1}),
                            ("lightmap", {"device": "cpu"}),
-                           ("probe_volume", {"fit_limit": True}),
+                           ("probe_volume", {"fit_limit": False}),
                            ("radiosity", {"patch_size_m": 1}),
                            ("reflection_probe", None),
                            ("audit", {"require_directional": False})):
@@ -76,6 +81,7 @@ class ProductionPolicy(unittest.TestCase):
         self.assertEqual(content.target_size((4096, 2048)), (4096, 2048))
 
 
+@unittest.skipIf(NO_KTX, "the pinned ktx tool is not built (build/toolchains)")
 class CompiledCandidates(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -109,6 +115,7 @@ class CompiledCandidates(unittest.TestCase):
         self.assertEqual(buffer[rprb.GPU_MASKS_WORD:].size, rprb.CANDIDATE_CELLS * 2)
 
 
+@unittest.skipIf(NO_KTX, "the pinned ktx tool is not built (build/toolchains)")
 class WideCandidates(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

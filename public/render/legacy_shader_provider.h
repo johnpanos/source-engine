@@ -189,21 +189,31 @@ struct LegacyShaderProvider
 // untyped interface registry crosses this boundary.
 extern "C" const render::LegacyShaderProvider *NativeVulkanShaderBackend_Describe();
 extern "C" bool NativeVulkanShaderBackend_Create( render::LegacyShaderServices *services );
-extern "C" const render::LegacyShaderProvider *NullShaderBackend_Describe();
+// The definitions export these from their module (DLL_EXPORT); MSVC requires
+// the declarations to agree (C2375).
+#if defined( _MSC_VER )
+#define LEGACY_SHADER_PROVIDER_EXPORT __declspec( dllexport )
+#else
+#define LEGACY_SHADER_PROVIDER_EXPORT
+#endif
+
+extern "C" LEGACY_SHADER_PROVIDER_EXPORT const render::LegacyShaderProvider *
+NullShaderBackend_Describe();
 // The Nintendo 3DS fullbright backend (materialsystem/shaderapipica).
-extern "C" const render::LegacyShaderProvider *PicaShaderBackend_Describe();
-extern "C" bool MaterialSystem_BindShaderProvider(
-	IMaterialSystem *materialSystem, const render::LegacyShaderProvider *provider );
+extern "C" LEGACY_SHADER_PROVIDER_EXPORT const render::LegacyShaderProvider *
+PicaShaderBackend_Describe();
+extern "C" LEGACY_SHADER_PROVIDER_EXPORT bool MaterialSystem_BindShaderProvider(
+    IMaterialSystem *materialSystem, const render::LegacyShaderProvider *provider );
 
 // The composition root's feature requirements for the bound provider. Accepted
 // only before Connect; the material system selects the profile during Init from
 // the selected adapter's facts and the documented quirk table, and fails Init if
 // a required feature is unavailable. Roots that never call this get
 // render::PreferAvailableRenderFeatures() (the legacy tool default).
-extern "C" bool MaterialSystem_SetRenderProfileRequest(
+extern "C" LEGACY_SHADER_PROVIDER_EXPORT bool MaterialSystem_SetRenderProfileRequest(
     IMaterialSystem *materialSystem, const render::RenderProfileRequest *request );
 // Copies the profile selected by Init. Returns false before selection.
-extern "C" bool MaterialSystem_GetRenderProfile(
+extern "C" LEGACY_SHADER_PROVIDER_EXPORT bool MaterialSystem_GetRenderProfile(
     IMaterialSystem *materialSystem, render::RenderFeatureProfile *profile );
 
 #endif // RENDER_LEGACY_SHADER_PROVIDER_H

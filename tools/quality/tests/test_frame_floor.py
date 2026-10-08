@@ -225,7 +225,7 @@ class FrameFloorTest(unittest.TestCase):
         self.assertEqual(self.receipt(self.quality_log(1024, 768))["status"], "fail")
 
     def test_disabled_effect_missing_query_and_wrong_gpu_fail(self):
-        values = dict(self.budget["settings"], r_core_shadow_pcss="0")
+        values = dict(self.budget["settings"], r_core_shadow_movers="0")
         self.assertEqual(self.receipt(self.quality_log(settings=values))["status"], "fail")
         del values["mat_antialias"]
         self.assertTrue(any("mat_antialias" in failure for failure in

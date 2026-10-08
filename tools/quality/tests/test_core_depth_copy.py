@@ -22,7 +22,7 @@ struct CVulkanContext {
                             int depthCompare = 0, stencilCompare = 0; };
     struct DynDraw {
         int kind = kRecordCopy, target = -1, copyDst = 2;
-        bool coreCustomEffect = false, corePortalCopy = false;
+        bool coreCustomEffect = false, corePortalCopy = false, queryInput = false;
         bool copyDepthToAlpha = false, clearDepth = false, clearStencil = false;
         DynRasterState raster;
         int copySrcRect[4] = {}, copyDstRect[4] = {};

@@ -197,7 +197,7 @@ int main()
 			for ( int i = 0; i < 200; ++i )
 			{
 				const float p[3] = { pos( rng ), pos( rng ), pos( rng ) };
-				double ou, ov, od;
+				double ou = 0.0, ov = 0.0, od = 0.0;
 				float u, v, d;
 				const bool oracle = OracleProject( light, p, &ou, &ov, &od );
 				const bool test = ProjectUnderTest( light, p, &u, &v, &d );

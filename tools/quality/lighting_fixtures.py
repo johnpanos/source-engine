@@ -2229,14 +2229,14 @@ def check(root=None, names=None, maps=True):
                 problems.append("%s: manifest camera %s is not in the fixture" % (name, camera))
         if not current_tolerance(ledger, name):
             problems.append("%s: no tolerance fixed in tolerances.json" % name)
-        problems += check_references(fixture, root)
+        problems += check_references(fixture, root, generated=maps)
         if maps:
             problems += check_map(fixture)
     problems += check_results(root, ledger, {f["name"] for f in fixtures})
     return problems
 
 
-def check_references(fixture, root):
+def check_references(fixture, root, generated=True):
     name = fixture["name"]
     path = fixture["directory"] / "references" / "references.json"
     if not path.is_file():
@@ -2264,6 +2264,11 @@ def check_references(fixture, root):
             problems.append("%s/%s: lighting reference omitted authored normal maps" %
                             (name, state))
         for layer, digest in render.get("stage_layers", {}).items():
+            # A layer under quality-results/ is generated (a relit map's
+            # scene), so it is checked with the published maps, not by the
+            # checked-in set alone.
+            if not generated and layer.startswith("quality-results/"):
+                continue
             if not (ROOT / layer).is_file() or sha256(ROOT / layer) != digest:
                 problems.append("%s/%s: stage layer %s changed or missing" % (name, state,
                                                                              layer))

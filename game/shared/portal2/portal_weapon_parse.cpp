@@ -5,7 +5,7 @@
 //=============================================================================//
 
 #include "cbase.h"
-#include <keyvalues.h>
+#include <KeyValues.h>
 #include "portal_weapon_parse.h"
 #include "ammodef.h"
 

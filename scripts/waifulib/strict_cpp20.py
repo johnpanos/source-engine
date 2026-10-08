@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 """Per-target C++20 environment; never modifies the legacy parent environment."""
 import json
+import os
 import sys
 from pathlib import Path
 from waflib.Configure import conf
@@ -53,7 +54,14 @@ def strict_cpp20_env(ctx):
                     if flag not in removed and not flag.startswith(('-L', '-l'))]
     if env.COMPILER_CXX != 'msvc':
         env.CXXFLAGS += profile['base_flags']
-    env.INCLUDES = []
+    # MSVC's tool keeps the toolchain's own include directories (the VC and
+    # Windows SDK headers) in INCLUDES; keep those and drop the engine's.
+    if env.COMPILER_CXX == 'msvc':
+        root = os.path.normcase(os.path.abspath(ctx.srcnode.abspath()))
+        env.INCLUDES = [path for path in env.INCLUDES
+                        if not os.path.normcase(os.path.abspath(str(path))).startswith(root)]
+    else:
+        env.INCLUDES = []
     env.DEFINES = []
     return env
 

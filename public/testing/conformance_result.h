@@ -23,10 +23,11 @@
 
 namespace testing
 {
-// Prints the record and returns the matching process exit status.
-inline int ReportConformance( unsigned long checks, unsigned long failures )
+// Prints the record and returns the matching process exit status. The counts
+// are 64-bit everywhere (unsigned long is 32-bit on Windows, size_t is not).
+inline int ReportConformance( unsigned long long checks, unsigned long long failures )
 {
-	std::printf( "CONFORMANCE %lu %lu\n", checks, failures );
+	std::printf( "CONFORMANCE %llu %llu\n", checks, failures );
 	std::fflush( stdout );
 	return ( checks > 0 && failures == 0 ) ? 0 : 1;
 }

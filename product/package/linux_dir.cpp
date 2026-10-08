@@ -149,10 +149,10 @@ public:
 		return SaveRecord();
 	}
 
-	PackageManifest Manifest() const
+	PackageManifest Manifest( std::string_view form ) const
 	{
 		PackageManifest manifest;
-		manifest.form = std::string( kLinuxDirPackager );
+		manifest.form = std::string( form );
 		for ( const auto &entry : m_Owned.entries )
 		{
 			auto role = m_Owned.roles.find( entry.first );
@@ -1210,10 +1210,14 @@ private:
 	std::string m_CurrentSet; // the running step's mount set, if any
 };
 
-class LinuxDirPackager final : public IPackager
+// One implementation for the directory forms: linux-dir and windows-dir lay
+// out the same steps; the form only names the runtime's platform.
+class DirectoryPackager final : public IPackager
 {
 public:
-	std::string_view Name() const noexcept override { return kLinuxDirPackager; }
+	explicit DirectoryPackager( std::string_view form ) : m_Form( form ) {}
+
+	std::string_view Name() const noexcept override { return m_Form; }
 
 	foundation::Expected<PackageManifest, ProviderError> Package(
 	    const PackageRequest &request ) override
@@ -1226,13 +1230,16 @@ public:
 		const Value *steps = package ? package->Find( "steps" ) : nullptr;
 		if ( !steps || !steps->IsArray() || steps->Items().empty() )
 			return foundation::MakeUnexpected(
-			    Fail( "invalid-request", "package.steps lists the linux-dir steps" ) );
+			    Fail( "invalid-request", "package.steps lists the directory steps" ) );
 		Builder builder( request, request.output );
 		auto built = builder.Run( *steps );
 		if ( !built )
 			return foundation::MakeUnexpected( built.Error() );
-		return builder.Manifest();
+		return builder.Manifest( m_Form );
 	}
+
+private:
+	std::string_view m_Form;
 };
 
 bool GlobFrom( std::string_view pattern, std::string_view path )
@@ -1278,7 +1285,12 @@ bool GlobMatch( std::string_view pattern, std::string_view path )
 
 std::unique_ptr<IPackager> CreateLinuxDirPackager()
 {
-	return std::make_unique<LinuxDirPackager>();
+	return std::make_unique<DirectoryPackager>( kLinuxDirPackager );
+}
+
+std::unique_ptr<IPackager> CreateWindowsDirPackager()
+{
+	return std::make_unique<DirectoryPackager>( kWindowsDirPackager );
 }
 
 } // namespace product

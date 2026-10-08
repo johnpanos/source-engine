@@ -53,8 +53,11 @@ namespace product
 {
 
 inline constexpr std::string_view kLinuxDirPackager = "linux-dir";
+// A Windows runtime laid out on the Linux host (run under Wine): the same steps.
+inline constexpr std::string_view kWindowsDirPackager = "windows-dir";
 
 std::unique_ptr<IPackager> CreateLinuxDirPackager();
+std::unique_ptr<IPackager> CreateWindowsDirPackager();
 
 // Glob matching as the steps use it (exposed for tests).
 bool GlobMatch( std::string_view pattern, std::string_view path );

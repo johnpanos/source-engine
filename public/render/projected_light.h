@@ -8,7 +8,7 @@
 //
 //              light = color x cookie( uv ) x atten x endFalloff x max(0, n.L)
 //              atten = saturate( c + l / d + q / d^2 )
-//              endFalloff: 1 up to 0.6 far, falling linearly to 0 at far
+//              endFalloff: 1 up to 0.6 farDistance, falling linearly to 0 at farDistance
 //
 //          with d the distance to the light, uv the point's position in the
 //          frustum (Project), and nothing outside the frustum or nearer than
@@ -93,9 +93,11 @@ inline bool Project( const Light &light, const float p[3], float *u, float *v, f
 	float atten =
 	    light.atten[0] + light.atten[1] / distance + light.atten[2] / ( distance * distance );
 	atten = atten < 0.0f ? 0.0f : ( atten > 1.0f ? 1.0f : atten );
-	// RemapValClamped( d, far, 0.6 far, 0, 1 )
-	const float far = light.farZ;
-	float end = far > 0.0f ? ( distance - far ) / ( 0.6f * far - far ) : 0.0f;
+	// RemapValClamped( d, farDistance, 0.6 farDistance, 0, 1 )
+	const float farDistance = light.farZ;
+	float end = farDistance > 0.0f
+	                ? ( distance - farDistance ) / ( 0.6f * farDistance - farDistance )
+	                : 0.0f;
 	end = end < 0.0f ? 0.0f : ( end > 1.0f ? 1.0f : end );
 	return atten * end;
 }
@@ -103,7 +105,7 @@ inline bool Project( const Light &light, const float p[3], float *u, float *v, f
 // A projector as the render core's programs read it (std430/std140; the one
 // layout of render/shaders/common/projected_light.glsl's ProjectedLight):
 // origin (w: its cookie's layer), the frustum's basis, tan half-angles, near
-// and far, color (w: its shadow tile in the view's list, or -1) and the
+// and farDistance, color (w: its shadow tile in the view's list, or -1) and the
 // attenuation (w: the lens radius its soft shadows take).
 struct LightGpu
 {
@@ -168,11 +170,11 @@ inline void BoundingSphere( const Light &light, float center[3], float *radius )
 {
 	const float tanH = std::tan( 0.5f * light.horizontalFovDegrees * kPi / 180.0f );
 	const float tanV = std::tan( 0.5f * light.verticalFovDegrees * kPi / 180.0f );
-	const float far = light.farZ;
-	const float halfDiagonal = far * std::sqrt( tanH * tanH + tanV * tanV );
+	const float farDistance = light.farZ;
+	const float halfDiagonal = farDistance * std::sqrt( tanH * tanH + tanV * tanV );
 	for ( int k = 0; k < 3; ++k )
-		center[k] = light.origin[k] + light.forward[k] * 0.5f * far;
-	*radius = std::sqrt( 0.25f * far * far + halfDiagonal * halfDiagonal );
+		center[k] = light.origin[k] + light.forward[k] * 0.5f * farDistance;
+	*radius = std::sqrt( 0.25f * farDistance * farDistance + halfDiagonal * halfDiagonal );
 }
 
 // The client's projected lights for the frame, published to the engine (plain
