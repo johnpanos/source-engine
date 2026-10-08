@@ -134,15 +134,6 @@ def build(bld):
 		'writestencil_dx9.cpp',
 		'eyeball.cpp',
 		'../../public/tier0/memoverride.cpp'
-#		$Folder	'stdshader_dbg Files', [$X360]
-#		{
-#			'debugdepth.cpp',
-#			'DebugDrawEnvmapMask.cpp',
-#			'debugluxel.cpp',
-#			'debugnormalmap.cpp',
-#			'debugtangentspace.cpp',
-#			'fillrate.cpp',
-
 	]
 	# The canonical shader binds Vulkan's native world pipeline. DX9 keeps the
 	# existing fallback material route in its independently built profile.
