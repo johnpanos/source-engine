@@ -1,4 +1,4 @@
-// User-selected High performance fixture (2026-10-01): sp_a1_intro4_probe64.
+// User-selected High performance fixture (2026-10-01): sp_a1_intro4_relit.
 // Reuses the retained Intro4 profiling camera, with both orientations warmed
 // before the measured bracket. This is a camera workload, not story parity.
 
@@ -21,7 +21,9 @@ function Intro4_Position()
 QA_Expect( "map.loaded", function()
 {
 	QA_Detail( GetMapName() )
-	return GetMapName() == "sp_a1_intro4_probe64"
+	// GetMapName() reports a published variant (_relit, _source2) by its base
+	// name (game/server/vscript_server.cpp); the harness passes the _relit map.
+	return GetMapName() == "sp_a1_intro4"
 } )
 
 QA_Do( "warm arrival", function()
@@ -65,4 +67,4 @@ QA_Do( "end measured bracket", function()
 	SendToConsole( "vk_frame_mark floor_end" )
 }, 2.0 )
 
-QA_Start( "sp_a1_intro4_probe64" )
+QA_Start( "sp_a1_intro4_relit" )

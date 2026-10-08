@@ -313,7 +313,7 @@ class WorkloadTests(unittest.TestCase):
         workload = scenarios.load_workload(path)
         scenario = workload["scenarios"][0]
         check = next(c for c in scenario["console_checks"] if c["name"] == "map.fixture")
-        for map_name, expected in [("sp_a1_intro4_probe64", "PASS"),
+        for map_name, expected in [("sp_a1_intro4_relit", "PASS"),
                                    ("sp_a1_intro4", "FAIL")]:
             outcome, _ = scenarios.evaluate_console_check(
                 check, {"map_identity": ["map     : %s at: 0 x, 0 y, 0 z" % map_name]})

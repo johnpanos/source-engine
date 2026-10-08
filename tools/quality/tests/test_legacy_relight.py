@@ -140,8 +140,8 @@ class StaticPropSceneTests(unittest.TestCase):
         self.assertEqual(override["scale_type"], 12)
         relit, _ = scene.elevator_video_override(Resolver(), "sp_a2_laser_intro_relit")
         self.assertEqual(relit, override)
-        probe64, _ = scene.elevator_video_override(Resolver(), "sp_a2_laser_intro_probe64")
-        self.assertEqual(probe64, override)
+        suffixed, _ = scene.elevator_video_override(Resolver(), "sp_a2_laser_intro_source2")
+        self.assertEqual(suffixed, override)
         class ExplicitResolver:
             def read(self, path):
                 return (b'[{ map = "sp_a2_laser_intro", arrival = "laser_portal.bik", '

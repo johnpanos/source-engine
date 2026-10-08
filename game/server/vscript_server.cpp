@@ -292,7 +292,7 @@ static const char *GetMapName()
 	// Portal 2's shipped VScript tables select elevator movies, choreography,
 	// and transitions by the original map name. Published relights retain that
 	// authored behavior while their BSPs use distinct installed names.
-	static const char *const pszPublishedSuffixes[] = { "_relit", "_source2", "_probe64" };
+	static const char *const pszPublishedSuffixes[] = { "_relit", "_source2" };
 	static char szSourceMapName[MAX_PATH];
 	const size_t nNameLength = V_strlen( pszMapName );
 	for ( const char *pszSuffix : pszPublishedSuffixes )

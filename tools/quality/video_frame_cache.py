@@ -64,7 +64,7 @@ def main(argv=None):
         boot = output / "boot"
         result = portal_boot.main([
             "--runtime", str(args.runtime), "--build", str(args.build), "--out", str(boot),
-            "--game", "portal2", "--map", "sp_a1_intro4_probe64", "--headless",
+            "--game", "portal2", "--map", "sp_a1_intro4_relit", "--headless",
             "--capture-wait", "30", "--startup-command", "r_core_world 1",
             "--console-command", "video_bink_cache_probe %s %s" % (positive, invalid),
             "--console-command", "video_bink_cache_probe %s %s" % (negative, invalid),

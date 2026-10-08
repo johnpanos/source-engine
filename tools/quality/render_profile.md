@@ -52,8 +52,8 @@ Analyze any retained scenario's `frames.jsonl`:
 
 ```sh
 python3 tools/quality/render_profile.py \
-  quality-results/profile-NEW/sp_a1_intro4_probe64/frames.jsonl \
-  --console quality-results/profile-NEW/sp_a1_intro4_probe64/console.log \
+  quality-results/profile-NEW/sp_a1_intro4_relit/frames.jsonl \
+  --console quality-results/profile-NEW/sp_a1_intro4_relit/console.log \
   --json quality-results/profile-NEW/profile.json \
   > quality-results/profile-NEW/profile.tsv
 rg '^gpu_segment|^core_gpu_inclusive' quality-results/profile-NEW/profile.tsv
@@ -302,7 +302,7 @@ of meshes or lifetime totals. A capture can re-record that stream.
 Run separate on/off `--preview` captures to inspect the three settled views.
 Screenshots exercise stream replay and add work; their timings are not performance
 evidence. The script checks the authored map name returned by VScript, while the
-bracketed `status` console check independently requires the actual `_probe64`
+bracketed `status` console check independently requires the actual `_relit`
 fixture. A retail map with the same authored name cannot pass fixture identity.
 Use `--profile` only for separate pass-timing diagnosis. Ordinary runs deliberately
 omit pass timers; the detailed analyzer's missing-pass warnings do not provide a
