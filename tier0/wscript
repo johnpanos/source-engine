@@ -93,6 +93,13 @@ def build(bld):
 
 	install_path = None if bld.env.BUILD_SDK else bld.env.LIBDIR
 
+	# The foundation providers are Tier 0's private implementation (R103):
+	# nothing from their archive joins the export list mods link against,
+	# std template instantiations included.
+	linkflags = []
+	if bld.env.DEST_OS not in ( 'win32', 'darwin', 'ios', '3ds' ) and not bld.env.APPLE:
+		linkflags = [ '-Wl,--exclude-libs,libplatform_foundation_legacyabi.a' ]
+
 	bld.shlib(
 		source   = source,
 		target   = PROJECT_NAME,
@@ -101,6 +108,7 @@ def build(bld):
 		includes = includes,
 		defines  = defines,
 		use      = libs,
+		linkflags = linkflags,
 		install_path = install_path,
 		subsystem = bld.env.MSVC_SUBSYSTEM,
 		idx      = bld.get_taskgen_count()

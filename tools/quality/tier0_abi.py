@@ -28,6 +28,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FIXTURES = os.path.join(ROOT, "quality", "fixtures", "tier0-abi")
 HEADERS = os.path.join(ROOT, "public", "tier0")
 SCHEMA = "tier0-abi/v1"
+# std:: members, typeinfo and typeinfo names, and their local statics.
+STD_INTERNAL = re.compile(r"^_Z(N|NK|TI|TS|TV|ZN|ZNK)St")
 
 
 def exported_symbols(lib, nm="nm"):
@@ -100,7 +102,12 @@ def compare(recorded, current):
                                                          now.get("declarations")))
     for name in current["exports"]:
         if name not in recorded["exports"]:
-            added.append(name)
+            if STD_INTERNAL.match(name):
+                # A static library leaking std's template instantiations or
+                # typeinfo into Tier 0's exports: never part of the mod ABI.
+                problems.append("new export %s is a standard-library internal" % name)
+            else:
+                added.append(name)
     return problems, added
 
 
@@ -170,6 +177,9 @@ def main():
     mutated = copy.deepcopy(current)
     mutated["exports"]["Plat_NewThing"] = {"kind": "T", "declarations": []}
     expect(not compare(recorded, mutated)[0], "an added export is allowed")
+    mutated = copy.deepcopy(current)
+    mutated["exports"]["_ZNSt8_Rb_treeISsSsE4findEv"] = {"kind": "W"}
+    expect(bool(compare(recorded, mutated)[0]), "an added std internal is refused")
     print("CONFORMANCE %d %d" % (checks, failures))
     return 1 if failures else 0
 
