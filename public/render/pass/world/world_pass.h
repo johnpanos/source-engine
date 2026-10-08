@@ -90,6 +90,9 @@ struct WorldMaterial
 	// default): a variable the model does not read must hold it.
 	std::vector<std::pair<std::string, std::string>> defaults;
 	bool hasProxy = false;
+	// Nonzero: equal revisions promise equal content (a frontend's
+	// CoreMeshDraw::materialRevision), so the pass reuses its snapshot key.
+	std::uint64_t revision = 0;
 };
 
 struct WorldSurface

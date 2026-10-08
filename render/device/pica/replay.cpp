@@ -187,10 +187,32 @@ private:
 		std::byte bytes[4];
 		for ( int i = 0; i < 4; ++i )
 			bytes[i] = std::byte( word >> ( 8 * i ) );
-		for ( std::uint32_t y = 0; y < height; ++y )
-			for ( std::uint32_t x = 0; x < width; ++x )
-				std::memcpy(
-				    base + std::size_t( TiledIndex( x, y, level.storedWidth ) ) * 4, bytes, 4 );
+		if ( width % kTile == 0 && height % kTile == 0 && width <= level.storedWidth &&
+		     height <= level.storedHeight )
+		{
+			// Every texel gets the same word, and a region from the origin
+			// whose sides are whole tiles covers, in each tile row, a run of
+			// consecutive tiles (tiles are row-major): one straight fill per
+			// tile row, nothing outside the region touched.
+			std::uint32_t value;
+			std::memcpy( &value, bytes, 4 );
+			std::uint32_t *words = reinterpret_cast<std::uint32_t *>( base );
+			const std::size_t tilesPerRow = level.storedWidth / kTile;
+			const std::size_t run = std::size_t( width / kTile ) * kTile * kTile;
+			for ( std::uint32_t row = 0; row < height / kTile; ++row )
+			{
+				std::uint32_t *at = words + std::size_t( row ) * tilesPerRow * kTile * kTile;
+				for ( std::size_t i = 0; i < run; ++i )
+					at[i] = value;
+			}
+		}
+		else
+		{
+			for ( std::uint32_t y = 0; y < height; ++y )
+				for ( std::uint32_t x = 0; x < width; ++x )
+					std::memcpy( base + std::size_t( TiledIndex( x, y, level.storedWidth ) ) * 4,
+					    bytes, 4 );
+		}
 		GSPGPU_FlushDataCache( base, std::size_t( level.bytes ) );
 	}
 

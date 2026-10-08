@@ -2653,33 +2653,59 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 	view.debug = m_Renderer.AppliedDebug();
 	pass::world::WorldView::DynamicDraw geometry;
 	std::copy_n( draw.modelToWorld, 16, geometry.modelToWorld );
-	geometry.material.name = draw.name;
-	geometry.material.shader =
-	    draw.kind == legacy::CoreMeshKind::kStencilClear ? "UnlitGeneric" : draw.shader;
-	if ( draw.kind == legacy::CoreMeshKind::kStencilClear )
+	// A revisioned material (the frontend promises equal content for equal
+	// revisions) is built once: per draw it was a copy of every variable and a
+	// default lookup each.
+	bool reused = false;
+	const bool revisioned = draw.materialRevision && draw.kind != legacy::CoreMeshKind::kStencilClear;
+	if ( revisioned )
 	{
-		geometry.material.variables.emplace_back( "$vertexcolor", "1" );
-		geometry.material.variables.emplace_back( "$vertexalpha", "1" );
-		geometry.material.variables.emplace_back( "$nofog", "1" );
+		std::lock_guard<std::mutex> guard( m_MaterialLock );
+		auto known = m_RevisionMaterials.find( draw.materialRevision );
+		if ( known != m_RevisionMaterials.end() && known->second.mesh == draw.mesh )
+		{
+			geometry.material = known->second;
+			reused = true;
+		}
 	}
-	geometry.material.mesh = draw.mesh;
-	geometry.staticVertexLight = draw.staticVertexLighting;
+	if ( !reused )
+	{
+		geometry.material.name = draw.name;
+		geometry.material.shader =
+		    draw.kind == legacy::CoreMeshKind::kStencilClear ? "UnlitGeneric" : draw.shader;
+		if ( draw.kind == legacy::CoreMeshKind::kStencilClear )
+		{
+			geometry.material.variables.emplace_back( "$vertexcolor", "1" );
+			geometry.material.variables.emplace_back( "$vertexalpha", "1" );
+			geometry.material.variables.emplace_back( "$nofog", "1" );
+		}
+		geometry.material.mesh = draw.mesh;
 
-	for ( std::uint32_t i = 0;
-	    draw.kind != legacy::CoreMeshKind::kStencilClear && i < draw.variableCount; ++i )
-	{
-		const legacy::CoreMeshVariable &variable = draw.variables[i];
-		if ( !variable.key || !variable.value )
-			return 0;
-		geometry.material.variables.emplace_back( variable.key, variable.value );
-		const char *declared = MaterialDefault( draw.shader, variable.key );
-		if ( !declared )
-			declared = variable.defaultValue;
-		if ( declared )
-			geometry.material.defaults.emplace_back( variable.key, declared );
-		if ( variable.textureHandle )
-			geometry.material.textures.emplace_back( variable.key, variable.textureHandle );
+		for ( std::uint32_t i = 0;
+		    draw.kind != legacy::CoreMeshKind::kStencilClear && i < draw.variableCount; ++i )
+		{
+			const legacy::CoreMeshVariable &variable = draw.variables[i];
+			if ( !variable.key || !variable.value )
+				return 0;
+			geometry.material.variables.emplace_back( variable.key, variable.value );
+			const char *declared = MaterialDefault( draw.shader, variable.key );
+			if ( !declared )
+				declared = variable.defaultValue;
+			if ( declared )
+				geometry.material.defaults.emplace_back( variable.key, declared );
+			if ( variable.textureHandle )
+				geometry.material.textures.emplace_back( variable.key, variable.textureHandle );
+		}
+		geometry.material.revision = revisioned ? draw.materialRevision : 0;
+		if ( revisioned )
+		{
+			std::lock_guard<std::mutex> guard( m_MaterialLock );
+			if ( m_RevisionMaterials.size() >= 256 )
+				m_RevisionMaterials.clear();
+			m_RevisionMaterials[draw.materialRevision] = geometry.material;
+		}
 	}
+	geometry.staticVertexLight = draw.staticVertexLighting;
 	if ( cards )
 	{
 		geometry.cards.assign( draw.cards, draw.cards + draw.cardCount );

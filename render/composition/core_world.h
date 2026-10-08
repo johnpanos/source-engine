@@ -718,6 +718,10 @@ private:
 	unsigned long long m_StageLitViews = 0; // main thread
 	// Stream-view metadata and the stage's casters.
 	std::mutex m_ShadowLock;
+	// The material QueueMesh built for each nonzero
+	// CoreMeshDraw::materialRevision (bounded; equal revisions, equal content).
+	std::mutex m_MaterialLock;
+	std::unordered_map<std::uint64_t, pass::world::WorldMaterial> m_RevisionMaterials;
 	struct StreamView
 	{
 		std::array<float, 16> view;

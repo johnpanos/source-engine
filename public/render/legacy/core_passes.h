@@ -270,6 +270,11 @@ struct CoreMeshDraw
 	const char *shader = nullptr;
 	const CoreMeshVariable *variables = nullptr;
 	std::uint32_t variableCount = 0;
+	// Nonzero: the frontend's identity of exactly this name, shader and
+	// variable content. Equal revisions promise equal material content, so the
+	// core reuses what it built from them (no per-draw copy or key); 0 means
+	// unknown, and the core reads the variables every time.
+	std::uint64_t materialRevision = 0;
 	const material::SurfaceWorldVertex *vertices = nullptr;
 	std::uint32_t vertexCount = 0;
 	const std::uint32_t *indices = nullptr;

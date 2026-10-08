@@ -705,6 +705,8 @@ struct WorldPass::State
 	// leaves borrowers their entry.
 	std::mutex mappedLock;
 	std::unordered_map<std::string, std::shared_ptr<const MappedEntry>> mapped;
+	// The snapshot key of each revisioned material (WorldMaterial::revision).
+	std::unordered_map<std::uint64_t, std::string> revisionKeys;
 	std::shared_ptr<const MappedEntry> Mapped(
 	    const WorldMaterial &source, bool stage, bool reflection, std::string &key );
 	// A world stage's lighting as it changes (SetStageLightmap,
@@ -1529,7 +1531,24 @@ std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
 #else
 	constexpr std::size_t kMaxMapped = 4096;
 #endif
-	key = MaterialSnapshotKey( source );
+	// A revisioned material's key is built once (MaterialSnapshotKey formats
+	// every variable, which per dynamic draw was a measured share of the frame).
+	if ( source.revision )
+	{
+		std::lock_guard<std::mutex> guard( mappedLock );
+		auto known = revisionKeys.find( source.revision );
+		if ( known != revisionKeys.end() )
+			key = known->second;
+		else
+		{
+			key = MaterialSnapshotKey( source );
+			if ( revisionKeys.size() >= 1024 )
+				revisionKeys.clear();
+			revisionKeys.emplace( source.revision, key );
+		}
+	}
+	else
+		key = MaterialSnapshotKey( source );
 	std::shared_ptr<const MappedEntry> found;
 	{
 		std::lock_guard<std::mutex> guard( mappedLock );

@@ -52,6 +52,9 @@ const char *const kDefaults[] = {
 	"hl2_launcher",
 	"-game", "portal2",
 	"-novid",
+	// Audio off for now (user direction 2026-10-07): the engine mixes on the
+	// main thread, a cost to recover once the frame rate is up.
+	"-nosound",
 	// The buttons, Circle Pad and C-Stick are SDL3's "Nintendo 3DS" gamepad;
 	// Portal 2's joy_configuration.cfg binds its Xbox layout.
 	"-console",

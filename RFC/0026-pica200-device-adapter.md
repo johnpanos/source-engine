@@ -416,3 +416,24 @@ See the [progress section](#progress).
     inclusive, printf formatting 13.6 %, `WorldPass::State::Mapped` 8.2 %,
     the PICA texture-record map 8.1 %, `Replayer::BeginRendering` 5.6 % (CPU
     clears, one 4-byte copy per pixel). The 20-30 fps goal is open.
+- 2026-10-07: the cheap fixes the guest profile named (user direction:
+  "disable audio for now, and do the other cheap ones first").
+  - Audio off by default on the 3DS (`-nosound` in `n3ds_main.cpp`).
+  - Model draws keep each material's variables in the core's text form,
+    rebuilt only when a raw signature of the values changes:
+    `GetStringValue` formatted every float and vector parameter with
+    snprintf on every draw. `CoreMeshDraw::materialRevision` (new, 0 =
+    unknown) lets `CoreWorld::QueueMesh` reuse the `WorldMaterial` it built
+    and `WorldPass::State::Mapped` reuse the snapshot key
+    (`WorldMaterial::revision`), instead of copying every variable and
+    formatting the key per draw.
+  - Load clears fill tile-aligned regions one tile-row run at a time
+    instead of one tiled `memcpy` per texel (`replay.cpp` `Fill`).
+  - Effect on the intro4 demo, guest clock, matching 30-frame windows:
+    421 -> 238 ms and 401 -> 211 ms per frame (about 1.8x); end-frame
+    34 -> 15 ms. Printf formatting fell from 13.6 % to under 2 %. The
+    matched camera's image is unchanged. Still 3-5 fps; the top remaining
+    costs are `EmitToCore`'s CPU skinning (13.7 % self, plus 55 % of
+    `memset`) and `StageUpload` copies.
+  - `guest_profile.py --lines F`: the hottest source lines, or without
+    line tables the hottest instructions, inside functions matching F.

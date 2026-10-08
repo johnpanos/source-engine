@@ -103,7 +103,45 @@ def symbolize(addresses, elf):
     return names
 
 
-def report(path, elf=None, top=30, callers_of=None, out=print):
+def report_lines(samples, function, names, elf, total, top, out):
+    """Where inside the functions matching `function` the samples fall: the
+    source line of each sampled pc (addr2line, with inlined frames)."""
+    pcs = collections.Counter(pc for thread, pc, _, _ in samples if thread and function in names.get(pc, ""))
+    if not pcs:
+        out("-- lines of %s: no samples" % function)
+        return
+    ordered = sorted(pcs)
+    lines = subprocess.run([str(ADDR2LINE), "-i", "-e", str(elf), "-a"] + ["%x" % a for a in ordered],
+                           capture_output=True, text=True).stdout.splitlines()
+    # "-a" prints each address, then its line and the lines it is inlined into.
+    where, current = {}, None
+    for line in lines:
+        if line.startswith("0x"):
+            current = int(line, 16)
+            where[current] = []
+        elif current is not None:
+            where[current].append(line.split("/")[-1].split(" (")[0])
+    by_line = collections.Counter()
+    for address, hits in pcs.items():
+        chain = where.get(address) or ["?"]
+        by_line[" <- ".join(chain[:3])] += hits
+    out("-- lines of %s (%.1f%% of core-0 time)" % (function, 100.0 * sum(pcs.values()) / total))
+    if all(line.startswith("?") or ":?" in line for line in by_line):
+        # No line tables (the build has no -g): the hottest instructions,
+        # each with the two before it, from the ELF.
+        objdump = ADDR2LINE.with_name("arm-none-eabi-objdump")
+        for address, hits in pcs.most_common(min(top, 8)):
+            text = subprocess.run([str(objdump), "-d", "--no-show-raw-insn",
+                                   "--start-address=0x%x" % (address - 8), "--stop-address=0x%x" % (address + 4),
+                                   str(elf)], capture_output=True, text=True).stdout.splitlines()
+            body = [l.strip() for l in text if ":\t" in l]
+            out("  %5.1f%%  %x  %s" % (100.0 * hits / total, address, " | ".join(body)[:160]))
+        return
+    for line, hits in by_line.most_common(top):
+        out("  %5.1f%%  %s" % (100.0 * hits / total, line[:150]))
+
+
+def report(path, elf=None, top=30, callers_of=None, out=print, lines_of=None):
     elf = Path(elf or n3ds_tree.ELF)
     samples = list(read_samples(path))
     if not samples:
@@ -145,6 +183,8 @@ def report(path, elf=None, top=30, callers_of=None, out=print):
     out("-- inclusive")
     for name, hits in inclusive.most_common(top):
         out("  %5.1f%%  %s" % (share(hits), name[:120]))
+    if lines_of:
+        report_lines(samples, lines_of, names, elf, total, top, out)
     if callers_of:
         out("-- callers of %s" % callers_of)
         merged = collections.Counter()
@@ -161,9 +201,11 @@ def main():
     parser.add_argument("--elf", type=Path)
     parser.add_argument("--top", type=int, default=30)
     parser.add_argument("--callers", help="list the nearest non-library callers of functions matching this")
+    parser.add_argument("--lines", help="where inside the functions matching this the time goes (source lines)")
     options = parser.parse_args()
     import azahar_ns
-    report(options.profile or azahar_ns.HOME / "guest_profile.bin", options.elf, options.top, options.callers)
+    report(options.profile or azahar_ns.HOME / "guest_profile.bin", options.elf, options.top, options.callers,
+           lines_of=options.lines)
     return 0
 
 

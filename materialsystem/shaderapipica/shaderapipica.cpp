@@ -50,6 +50,7 @@
 #include "itextureinternal.h"
 #include "texture_group_names.h"
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <malloc.h>
 
@@ -2639,6 +2640,156 @@ void CEmptyMesh::RenderPass()
 		DrawRange( m_nDrawFirst, m_nDrawCount );
 }
 
+namespace
+{
+
+// A material's variables in the core's form, and the raw signature they were
+// made from (EmitToCore).
+struct MaterialVariables
+{
+	std::vector<std::uint32_t> signature;
+	std::vector<std::string> texts;
+	std::vector<render::legacy::CoreMeshVariable> variables;
+	std::uint64_t revision = 0; // CoreMeshDraw::materialRevision: new on every rebuild
+};
+
+std::uint32_t FloatBits( float value )
+{
+	std::uint32_t bits;
+	memcpy( &bits, &value, sizeof( bits ) );
+	return bits;
+}
+
+// What the text form depends on, read without formatting.
+void SignatureOf( IMaterialInternal *material, std::vector<std::uint32_t> &out )
+{
+	out.clear();
+	IMaterialVar **params = material->GetShaderParams();
+	const int count = material->ShaderParamCount();
+	out.push_back( std::uint32_t( count ) );
+	out.push_back( std::uint32_t( reinterpret_cast<std::uintptr_t>( params ) ) );
+	for ( int i = 0; i < count; ++i )
+	{
+		IMaterialVar *var = params[i];
+		if ( !var || !var->IsDefined() )
+		{
+			out.push_back( 0xFFFFFFFFu );
+			continue;
+		}
+		const MaterialVarType_t type = var->GetType();
+		out.push_back( std::uint32_t( type ) );
+		switch ( type )
+		{
+		case MATERIAL_VAR_TYPE_INT:
+			out.push_back( std::uint32_t( var->GetIntValue() ) );
+			break;
+		case MATERIAL_VAR_TYPE_FLOAT:
+			out.push_back( FloatBits( var->GetFloatValue() ) );
+			break;
+		case MATERIAL_VAR_TYPE_VECTOR:
+		{
+			const int size = var->VectorSize();
+			const float *vec = var->GetVecValue();
+			out.push_back( std::uint32_t( size ) );
+			for ( int j = 0; j < size && j < 4; ++j )
+				out.push_back( FloatBits( vec[j] ) );
+			break;
+		}
+		case MATERIAL_VAR_TYPE_TEXTURE:
+		{
+			ITexture *texture = var->GetTextureValue();
+			out.push_back( std::uint32_t( reinterpret_cast<std::uintptr_t>( texture ) ) );
+			out.push_back( texture ? std::uint32_t(
+				static_cast<ITextureInternal *>( texture )->GetTextureHandle( 0 ) ) : 0u );
+			break;
+		}
+		case MATERIAL_VAR_TYPE_MATRIX:
+		{
+			const VMatrix &matrix = var->GetMatrixValue();
+			for ( int r = 0; r < 4; ++r )
+				for ( int c = 0; c < 4; ++c )
+					out.push_back( FloatBits( matrix.m[r][c] ) );
+			break;
+		}
+		default:
+		{
+			// Strings (and the rest): a hash of the text, which for these
+			// types is stored, not formatted.
+			const char *text = var->GetStringValue();
+			std::uint32_t hash = 2166136261u;
+			for ( const char *c = text ? text : ""; *c; ++c )
+				hash = ( hash ^ std::uint8_t( *c ) ) * 16777619u;
+			out.push_back( hash );
+			break;
+		}
+		}
+	}
+	std::uint32_t flags = 0, bit = 1;
+	for ( const auto &flag : RenderLegacyMaterialFlags::Keys )
+	{
+		if ( material->GetMaterialVarFlag( flag.flag ) )
+			flags |= bit;
+		bit <<= 1;
+	}
+	out.push_back( flags );
+}
+
+void BuildVariables( IMaterialInternal *material, MaterialVariables &out )
+{
+	out.texts.clear();
+	out.variables.clear();
+	IMaterialVar **params = material->GetShaderParams();
+	IShader *shader = material->GetShader();
+	const int paramCount = material->ShaderParamCount();
+	out.texts.reserve( paramCount + 1 );
+	for ( int i = 0; i < paramCount; ++i )
+	{
+		IMaterialVar *var = params[i];
+		if ( !var || !var->IsDefined() || !V_strnicmp( var->GetName(), "$flags", 6 ) )
+			continue;
+		render::legacy::CoreMeshVariable value;
+		value.key = var->GetName();
+		out.texts.push_back( var->GetStringValue() );
+		if ( shader && i < shader->GetNumParams() && !V_stricmp( shader->GetParamName( i ), value.key ) )
+			value.defaultValue = shader->GetParamDefault( i );
+		if ( var->GetType() == MATERIAL_VAR_TYPE_TEXTURE && var->GetTextureValue() )
+		{
+			ITextureInternal *texture = static_cast<ITextureInternal *>( var->GetTextureValue() );
+			value.textureHandle = int( texture->GetTextureHandle( 0 ) );
+		}
+		out.variables.push_back( value );
+	}
+	// The texts are final: point the values at them.
+	for ( size_t i = 0; i < out.variables.size(); ++i )
+		out.variables[i].value = out.texts[i].c_str();
+	for ( const auto &flag : RenderLegacyMaterialFlags::Keys )
+		if ( material->GetMaterialVarFlag( flag.flag ) )
+			out.variables.push_back( { flag.key, "1", "0", 0 } );
+}
+
+const MaterialVariables &VariablesFor( IMaterialInternal *material )
+{
+	static std::unordered_map<IMaterialInternal *, MaterialVariables> s_cache;
+	static std::vector<std::uint32_t> s_signature;
+	SignatureOf( material, s_signature );
+	auto at = s_cache.find( material );
+	if ( at != s_cache.end() && at->second.signature == s_signature )
+		return at->second;
+	if ( at == s_cache.end() )
+	{
+		if ( s_cache.size() >= 512 ) // bounded: a reused address rebuilds anyway
+			s_cache.clear();
+		at = s_cache.emplace( material, MaterialVariables{} ).first;
+	}
+	static std::uint64_t s_revision = 0;
+	at->second.signature = s_signature;
+	at->second.revision = ++s_revision;
+	BuildVariables( material, at->second );
+	return at->second;
+}
+
+} // namespace
+
 bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 {
 	static unsigned s_reasons = 0;
@@ -2761,34 +2912,13 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		out.color[3] = in.color[3];
 	}
 
-	// The material's variables, as the core's claim reads them.
-	std::vector<render::legacy::CoreMeshVariable> variables;
-	std::vector<std::string> texts;
-	IMaterialVar **params = g_pBoundMaterial->GetShaderParams();
-	IShader *shader = g_pBoundMaterial->GetShader();
-	const int paramCount = g_pBoundMaterial->ShaderParamCount();
-	texts.reserve( paramCount + 1 );
-	for ( int i = 0; i < paramCount; ++i )
-	{
-		IMaterialVar *var = params[i];
-		if ( !var || !var->IsDefined() || !V_strnicmp( var->GetName(), "$flags", 6 ) )
-			continue;
-		render::legacy::CoreMeshVariable value;
-		value.key = var->GetName();
-		texts.push_back( var->GetStringValue() );
-		value.value = texts.back().c_str();
-		if ( shader && i < shader->GetNumParams() && !V_stricmp( shader->GetParamName( i ), value.key ) )
-			value.defaultValue = shader->GetParamDefault( i );
-		if ( var->GetType() == MATERIAL_VAR_TYPE_TEXTURE && var->GetTextureValue() )
-		{
-			ITextureInternal *texture = static_cast<ITextureInternal *>( var->GetTextureValue() );
-			value.textureHandle = int( texture->GetTextureHandle( 0 ) );
-		}
-		variables.push_back( value );
-	}
-	for ( const auto &flag : RenderLegacyMaterialFlags::Keys )
-		if ( g_pBoundMaterial->GetMaterialVarFlag( flag.flag ) )
-			variables.push_back( { flag.key, "1", "0", 0 } );
+	// The material's variables, as the core's claim reads them. GetStringValue
+	// formats float and vector values with snprintf, which over dozens of
+	// parameters per draw was a tenth of the frame (tools/n3ds/guest_profile.py);
+	// so each material keeps its text form, rebuilt only when a raw signature
+	// of its values (types, bits, texture and string pointers, flags) changes.
+	const MaterialVariables &material = VariablesFor( g_pBoundMaterial );
+	const std::vector<render::legacy::CoreMeshVariable> &variables = material.variables;
 
 	render::legacy::CoreMeshDraw draw;
 	draw.kind = render::legacy::CoreMeshKind::kModelSurface;
@@ -2796,6 +2926,7 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	draw.shader = g_pBoundMaterial->GetShaderName();
 	draw.variables = variables.data();
 	draw.variableCount = std::uint32_t( variables.size() );
+	draw.materialRevision = material.revision;
 	draw.vertices = vertices.data();
 	draw.vertexCount = std::uint32_t( vertices.size() );
 	draw.indices = triangles.data();
