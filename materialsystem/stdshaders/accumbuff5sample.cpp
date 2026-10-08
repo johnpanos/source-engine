@@ -7,9 +7,6 @@
 
 #include "BaseVSShader.h"
 #include "common_hlsl_cpp_consts.h"
-#include "screenspaceeffect_vs20.inc"
-#include "accumbuff5sample_ps20.inc"
-#include "accumbuff5sample_ps20b.inc"
 #include "convar.h"
 
 BEGIN_VS_SHADER_FLAGS( accumbuff5sample, "Help for AccumBuff5Sample", SHADER_NOT_EDITABLE )
@@ -66,18 +63,12 @@ BEGIN_VS_SHADER_FLAGS( accumbuff5sample, "Help for AccumBuff5Sample", SHADER_NOT
 			int fmt = VERTEX_POSITION;
 			pShaderShadow->VertexShaderVertexFormat( fmt, 1, 0, 0 );
 
-			DECLARE_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( accumbuff5sample_ps20b );
-				SET_STATIC_PIXEL_SHADER( accumbuff5sample_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( accumbuff5sample_ps20 );
-				SET_STATIC_PIXEL_SHADER( accumbuff5sample_ps20 );
 			}			
 		}
 

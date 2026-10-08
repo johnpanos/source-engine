@@ -9,9 +9,6 @@
 #include "mathlib/vmatrix.h"
 #include "common_hlsl_cpp_consts.h" // hack hack hack!
 
-#include "lightmappedreflective_vs20.inc"
-#include "lightmappedreflective_ps20.inc"
-#include "lightmappedreflective_ps20b.inc"
 
 
 DEFINE_FALLBACK_SHADER( LightmappedReflective, LightmappedReflective_DX90 )
@@ -155,30 +152,15 @@ BEGIN_VS_SHADER( LightmappedReflective_DX90, "Help for Lightmapped Reflective" )
 				EnableAlphaBlending( SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
 			}
 
-			DECLARE_STATIC_VERTEX_SHADER( lightmappedreflective_vs20 );
-			SET_STATIC_VERTEX_SHADER_COMBO( BASETEXTURE, params[BASETEXTURE]->IsTexture() );
-			SET_STATIC_VERTEX_SHADER( lightmappedreflective_vs20 );
 
 			// "REFLECT" "0..1"
 			// "REFRACT" "0..1"
 			
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( lightmappedreflective_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( REFLECT,  bReflection );
-				SET_STATIC_PIXEL_SHADER_COMBO( REFRACT,  bRefraction );
-				SET_STATIC_PIXEL_SHADER_COMBO( BASETEXTURE, params[BASETEXTURE]->IsTexture() );
-				SET_STATIC_PIXEL_SHADER_COMBO( ENVMAPMASK, params[ENVMAPMASK]->IsTexture() && params[BASETEXTURE]->IsTexture() );
-				SET_STATIC_PIXEL_SHADER( lightmappedreflective_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( lightmappedreflective_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( REFLECT,  bReflection );
-				SET_STATIC_PIXEL_SHADER_COMBO( REFRACT,  bRefraction );
-				SET_STATIC_PIXEL_SHADER_COMBO( BASETEXTURE, params[BASETEXTURE]->IsTexture() );
-				SET_STATIC_PIXEL_SHADER_COMBO( ENVMAPMASK, params[ENVMAPMASK]->IsTexture() && params[BASETEXTURE]->IsTexture() );
-				SET_STATIC_PIXEL_SHADER( lightmappedreflective_ps20 );
 			}
 
 			FogToFogColor();

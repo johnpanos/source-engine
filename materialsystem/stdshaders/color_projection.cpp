@@ -7,8 +7,6 @@
 
 #include "BaseVSShader.h"
 
-#include "color_projection_ps20.inc"
-#include "color_projection_vs20.inc"
 
 #include "../materialsystem_global.h"
 
@@ -249,11 +247,7 @@ BEGIN_VS_SHADER( color_projection, "Help for deferred color correction" )
 			int nTexCoordDims[ 2 ] = { 2, 3 };
 			pShaderShadow->VertexShaderVertexFormat( fmt, 2, nTexCoordDims, 0 );
 
-			DECLARE_STATIC_VERTEX_SHADER( color_projection_vs20 );
-			SET_STATIC_VERTEX_SHADER( color_projection_vs20 );
 
-			DECLARE_STATIC_PIXEL_SHADER( color_projection_ps20 );
-			SET_STATIC_PIXEL_SHADER( color_projection_ps20 );
 		}
 
 		Draw();

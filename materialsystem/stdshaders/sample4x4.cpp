@@ -42,7 +42,6 @@ BEGIN_VS_SHADER_FLAGS( Sample4x4, "Help for Sample4x4", SHADER_NOT_EDITABLE )
 			int fmt = VERTEX_POSITION;
 			pShaderShadow->VertexShaderVertexFormat( fmt, 1, 0, 0 );
 			
-			pShaderShadow->SetVertexShader( "Downsample_vs20", 0 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
@@ -56,16 +55,13 @@ BEGIN_VS_SHADER_FLAGS( Sample4x4, "Help for Sample4x4", SHADER_NOT_EDITABLE )
 					memcpy( szNewName, szPixelShader, sizeof( char ) * iLength );
 					szNewName[iLength] = 'b';
 					szNewName[iLength + 1] = '\0';
-					pShaderShadow->SetPixelShader( szNewName, 0 );
 				}
 				else
 				{
-					pShaderShadow->SetPixelShader( params[PIXSHADER]->GetStringValue(), 0 );
 				}
 			}
 			else
 			{
-				pShaderShadow->SetPixelShader( params[PIXSHADER]->GetStringValue(), 0 );
 			}
 
 // 			if ( IsAlphaModulating() )

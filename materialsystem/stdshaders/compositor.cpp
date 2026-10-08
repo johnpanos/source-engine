@@ -7,8 +7,6 @@
 
 #include "BaseVSShader.h"
 
-#include "compositor_ps20.inc"
-#include "compositor_ps20b.inc"
 #include "materialsystem/combineoperations.h"
 
 #include "tier0/memdbgon.h"
@@ -183,7 +181,6 @@ static void DrawCompositorStage_common( CBaseVSShader *pShader, IMaterialVar **p
 		int fmt = VERTEX_POSITION;
 		pShaderShadow->VertexShaderVertexFormat( fmt, 1, 0, 0 );
 
-		pShaderShadow->SetVertexShader( "compositor_vs20", 0 );
 	}
 
 }
@@ -196,9 +193,6 @@ static void DrawCompositorStage_ps20_muladdblend( CBaseVSShader *pShader, IMater
 	SHADOW_STATE
 	{
 		{
-			DECLARE_STATIC_PIXEL_SHADER( compositor_ps20 );
-			SET_STATIC_PIXEL_SHADER_COMBO( COMBINE_MODE, nCombineMode );
-			SET_STATIC_PIXEL_SHADER( compositor_ps20 );
 		}
 		pShader->Draw();
 
@@ -220,9 +214,6 @@ static void DrawCompositorStage_ps20_lerp( CBaseVSShader *pShader, IMaterialVar 
 	SHADOW_STATE
 	{
 		{
-			DECLARE_STATIC_PIXEL_SHADER( compositor_ps20 );
-			SET_STATIC_PIXEL_SHADER_COMBO( COMBINE_MODE, ECO_Legacy_Lerp_FirstPass );
-			SET_STATIC_PIXEL_SHADER( compositor_ps20 );
 		}
 		pShader->Draw();
 
@@ -231,9 +222,6 @@ static void DrawCompositorStage_ps20_lerp( CBaseVSShader *pShader, IMaterialVar 
 		pShaderShadow->BlendFunc( SHADER_BLEND_ONE, SHADER_BLEND_ONE );
 
 		{
-			DECLARE_STATIC_PIXEL_SHADER( compositor_ps20 );
-			SET_STATIC_PIXEL_SHADER_COMBO( COMBINE_MODE, ECO_Legacy_Lerp_SecondPass );
-			SET_STATIC_PIXEL_SHADER( compositor_ps20 );
 		}
 		pShader->Draw();
 	}
@@ -248,9 +236,6 @@ static void DrawCompositorStage_ps20_select( CBaseVSShader *pShader, IMaterialVa
 	SHADOW_STATE
 	{
 		{
-			DECLARE_STATIC_PIXEL_SHADER( compositor_ps20 );
-			SET_STATIC_PIXEL_SHADER_COMBO( COMBINE_MODE, nCombineMode );
-			SET_STATIC_PIXEL_SHADER( compositor_ps20 );
 		}
 		pShader->Draw();
 	}
@@ -295,9 +280,6 @@ static void DrawCompositorStage_ps20b( CBaseVSShader *pShader, IMaterialVar **pa
 		pShaderShadow->EnableSRGBRead( SHADER_SAMPLER2, true );
 		pShaderShadow->EnableSRGBRead( SHADER_SAMPLER3, true );
 
-		DECLARE_STATIC_PIXEL_SHADER( compositor_ps20b );
-		SET_STATIC_PIXEL_SHADER_COMBO( COMBINE_MODE, nCombineMode );
-		SET_STATIC_PIXEL_SHADER( compositor_ps20b );
 
 		pShader->Draw();
 	}

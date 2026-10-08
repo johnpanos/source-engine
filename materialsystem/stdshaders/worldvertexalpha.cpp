@@ -8,9 +8,6 @@
 
 #include "BaseVSShader.h"
 
-#include "WorldVertexAlpha.inc"
-#include "worldvertexalpha_ps20.inc"
-#include "worldvertexalpha_ps20b.inc"
 
 BEGIN_VS_SHADER( WorldVertexAlpha, 
 			  "Help for WorldVertexAlpha" )
@@ -61,10 +58,7 @@ BEGIN_VS_SHADER( WorldVertexAlpha,
 					// using 1 texture (needed for translucent displacements).
 					pShaderShadow->BlendFunc( SHADER_BLEND_ONE_MINUS_SRC_ALPHA, SHADER_BLEND_SRC_ALPHA );
 					
-					worldvertexalpha_Static_Index vshIndex;
-					pShaderShadow->SetVertexShader( "WorldVertexAlpha", vshIndex.GetIndex() );
 
-					pShaderShadow->SetPixelShader( "WorldVertexAlpha" );
 					FogToFogColor();
 				}
 
@@ -98,20 +92,12 @@ BEGIN_VS_SHADER( WorldVertexAlpha,
 					pShaderShadow->EnableBlendingSeparateAlpha( true );
 					pShaderShadow->BlendFuncSeparateAlpha( SHADER_BLEND_ZERO, SHADER_BLEND_SRC_ALPHA );
 
-					worldvertexalpha_Static_Index vshIndex;
-					pShaderShadow->SetVertexShader( "WorldVertexAlpha", vshIndex.GetIndex() );
 
 					if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 					{
-						DECLARE_STATIC_PIXEL_SHADER( worldvertexalpha_ps20b );
-						SET_STATIC_PIXEL_SHADER_COMBO( PASS, 0 );
-						SET_STATIC_PIXEL_SHADER( worldvertexalpha_ps20b );
 					}
 					else
 					{
-						DECLARE_STATIC_PIXEL_SHADER( worldvertexalpha_ps20 );
-						SET_STATIC_PIXEL_SHADER_COMBO( PASS, 0 );
-						SET_STATIC_PIXEL_SHADER( worldvertexalpha_ps20 );
 					}
 
 
@@ -144,20 +130,12 @@ BEGIN_VS_SHADER( WorldVertexAlpha,
 					pShaderShadow->EnableBlendingSeparateAlpha( true );
 					pShaderShadow->BlendFuncSeparateAlpha( SHADER_BLEND_ONE, SHADER_BLEND_ONE );
 
-					worldvertexalpha_Static_Index vshIndex;
-					pShaderShadow->SetVertexShader( "WorldVertexAlpha", vshIndex.GetIndex() );
 
 					if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 					{
-						DECLARE_STATIC_PIXEL_SHADER( worldvertexalpha_ps20b );
-						SET_STATIC_PIXEL_SHADER_COMBO( PASS, 1 );
-						SET_STATIC_PIXEL_SHADER( worldvertexalpha_ps20b );
 					}
 					else
 					{
-						DECLARE_STATIC_PIXEL_SHADER( worldvertexalpha_ps20 );
-						SET_STATIC_PIXEL_SHADER_COMBO( PASS, 1 );
-						SET_STATIC_PIXEL_SHADER( worldvertexalpha_ps20 );
 					}
 
 					FogToFogColor();

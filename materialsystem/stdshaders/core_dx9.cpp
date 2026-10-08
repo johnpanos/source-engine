@@ -6,9 +6,6 @@
 //=============================================================================//
 
 #include "BaseVSShader.h"
-#include "core_vs20.inc"
-#include "core_ps20.inc"
-#include "core_ps20b.inc"
 
 #define MAXBLUR 1
 
@@ -177,27 +174,12 @@ BEGIN_VS_SHADER( Core_DX90,
 
 			pShaderShadow->VertexShaderVertexFormat( flags, nTexCoordCount, NULL, userDataSize );
 
-			DECLARE_STATIC_VERTEX_SHADER( core_vs20 );
-			SET_STATIC_VERTEX_SHADER_COMBO( MODEL,  bIsModel );
-			SET_STATIC_VERTEX_SHADER( core_vs20 );
 
 			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( core_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( CUBEMAP,  bHasEnvmap && ( nPass == 1 ) );
-				SET_STATIC_PIXEL_SHADER_COMBO( FLOWMAP, bHasFlowmap );
-				SET_STATIC_PIXEL_SHADER_COMBO( CORECOLORTEXTURE, bHasCoreColorTexture && ( nPass == 0 ) );
-				SET_STATIC_PIXEL_SHADER_COMBO( REFRACT, nPass == 0 );
-				SET_STATIC_PIXEL_SHADER( core_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( core_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( CUBEMAP,  bHasEnvmap && ( nPass == 1 ) );
-				SET_STATIC_PIXEL_SHADER_COMBO( FLOWMAP, bHasFlowmap );
-				SET_STATIC_PIXEL_SHADER_COMBO( CORECOLORTEXTURE, bHasCoreColorTexture && ( nPass == 0 ) );
-				SET_STATIC_PIXEL_SHADER_COMBO( REFRACT, nPass == 0 );
-				SET_STATIC_PIXEL_SHADER( core_ps20 );
 			}
 
 			DefaultFog();

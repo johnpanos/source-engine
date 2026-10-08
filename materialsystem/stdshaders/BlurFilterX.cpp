@@ -6,9 +6,6 @@
 //===========================================================================//
 
 #include "BaseVSShader.h"
-#include "BlurFilter_vs20.inc"
-#include "BlurFilter_ps20.inc"
-#include "BlurFilter_ps20b.inc"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -49,19 +46,12 @@ BEGIN_VS_SHADER_FLAGS( BlurFilterX, "Help for BlurFilterX", SHADER_NOT_EDITABLE 
 			pShaderShadow->EnableSRGBWrite( bForceSRGBReadAndWrite );
 
 			// Pre-cache shaders
-			blurfilter_vs20_Static_Index vshIndex;
-			pShaderShadow->SetVertexShader( "BlurFilter_vs20", vshIndex.GetIndex() );
 			
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( blurfilter_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( APPROX_SRGB_ADAPTER, bForceSRGBReadAndWrite );
-				SET_STATIC_PIXEL_SHADER( blurfilter_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( blurfilter_ps20 );
-				SET_STATIC_PIXEL_SHADER( blurfilter_ps20 );
 			}
 
 			if ( IS_FLAG_SET( MATERIAL_VAR_ADDITIVE ) )

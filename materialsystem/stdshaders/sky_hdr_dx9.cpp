@@ -6,13 +6,6 @@
 // $NoKeywords: $
 //=============================================================================//
 #include "BaseVSShader.h"
-#include "sky_vs20.inc"
-#include "sky_ps20.inc"
-#include "sky_ps20b.inc"
-#include "sky_hdr_compressed_ps20.inc"
-#include "sky_hdr_compressed_ps20b.inc"
-#include "sky_hdr_compressed_rgbs_ps20.inc"
-#include "sky_hdr_compressed_rgbs_ps20b.inc"
 
 #include "convar.h"
 
@@ -131,8 +124,6 @@ BEGIN_VS_SHADER( Sky_HDR_DX9, "Help for Sky_HDR_DX9 shader" )
 			pShaderShadow->EnableTexture( SHADER_SAMPLER0, true );
 			pShaderShadow->VertexShaderVertexFormat( VERTEX_POSITION, 1, NULL, 0 );
 
-			DECLARE_STATIC_VERTEX_SHADER( sky_vs20 );
-			SET_STATIC_VERTEX_SHADER( sky_vs20 );
 
 			if ( (params[HDRCOMPRESSEDTEXTURE]->IsDefined()) &&
 				 mat_use_compressed_hdr_textures.GetBool() )
@@ -140,13 +131,9 @@ BEGIN_VS_SHADER( Sky_HDR_DX9, "Help for Sky_HDR_DX9 shader" )
 				pShaderShadow->EnableSRGBRead(SHADER_SAMPLER0,false);
 				if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 				{
-					DECLARE_STATIC_PIXEL_SHADER( sky_hdr_compressed_rgbs_ps20b );
-					SET_STATIC_PIXEL_SHADER( sky_hdr_compressed_rgbs_ps20b );
 				}
 				else
 				{
-					DECLARE_STATIC_PIXEL_SHADER( sky_hdr_compressed_rgbs_ps20 );
-					SET_STATIC_PIXEL_SHADER( sky_hdr_compressed_rgbs_ps20 );
 				}
 			}
 			else
@@ -161,13 +148,9 @@ BEGIN_VS_SHADER( Sky_HDR_DX9, "Help for Sky_HDR_DX9 shader" )
 					pShaderShadow->EnableSRGBRead(SHADER_SAMPLER2,false);
 					if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 					{
-						DECLARE_STATIC_PIXEL_SHADER( sky_hdr_compressed_ps20b );
-						SET_STATIC_PIXEL_SHADER( sky_hdr_compressed_ps20b );
 					}
 					else
 					{
-						DECLARE_STATIC_PIXEL_SHADER( sky_hdr_compressed_ps20 );
-						SET_STATIC_PIXEL_SHADER( sky_hdr_compressed_ps20 );
 					}
 				}
 				else
@@ -181,13 +164,9 @@ BEGIN_VS_SHADER( Sky_HDR_DX9, "Help for Sky_HDR_DX9 shader" )
 					
 					if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 					{
-						DECLARE_STATIC_PIXEL_SHADER( sky_ps20b );
-						SET_STATIC_PIXEL_SHADER( sky_ps20b );
 					}
 					else
 					{
-						DECLARE_STATIC_PIXEL_SHADER( sky_ps20 );
-						SET_STATIC_PIXEL_SHADER( sky_ps20 );
 					}
 				}
 			}

@@ -8,11 +8,6 @@
 #include "BaseVSShader.h"
 #include "commandbuilder.h"
 
-#include "vr_distort_hud_ps20.inc"
-#include "vr_distort_hud_ps20b.inc"
-#include "vr_distort_hud_vs20.inc"
-#include "vr_distort_hud_ps30.inc"
-#include "vr_distort_hud_vs30.inc"
 
 #include "../materialsystem_global.h"
 
@@ -149,27 +144,17 @@ BEGIN_VS_SHADER( vr_distort_hud, "Help for hud warp" )
 
 			if ( !g_pHardwareConfig->SupportsShaderModel_3_0() )
 			{
-				DECLARE_STATIC_VERTEX_SHADER( vr_distort_hud_vs20 );
-				SET_STATIC_VERTEX_SHADER( vr_distort_hud_vs20 );
 
 				if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 				{
-					DECLARE_STATIC_PIXEL_SHADER( vr_distort_hud_ps20b );
-					SET_STATIC_PIXEL_SHADER( vr_distort_hud_ps20b );
 				}
 				else
 				{
-					DECLARE_STATIC_PIXEL_SHADER( vr_distort_hud_ps20 );
-					SET_STATIC_PIXEL_SHADER( vr_distort_hud_ps20 );
 				}
 			}
 			else
 			{
-				DECLARE_STATIC_VERTEX_SHADER( vr_distort_hud_vs30 );
-				SET_STATIC_VERTEX_SHADER( vr_distort_hud_vs30 );
 
-				DECLARE_STATIC_PIXEL_SHADER( vr_distort_hud_ps30 );
-				SET_STATIC_PIXEL_SHADER( vr_distort_hud_ps30 );
 			}
 		}
 

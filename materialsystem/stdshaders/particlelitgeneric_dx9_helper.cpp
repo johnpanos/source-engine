@@ -10,8 +10,6 @@
 
 #include "particlelitgeneric_dx9_helper.h"
 #include "BaseVSShader.h"
-#include "particlelit_generic_vs30.inc"
-#include "particlelit_generic_ps30.inc"
 #include "convar.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -180,15 +178,8 @@ void DrawParticleLitGeneric_DX9( CBaseVSShader *pShader, IMaterialVar** params,
 		pShaderShadow->VertexShaderVertexFormat( 
 			flags, 2, pTexCoordCount, 0, userDataSize );
 
-		DECLARE_STATIC_VERTEX_SHADER( particlelit_generic_vs30 );
-		SET_STATIC_VERTEX_SHADER_COMBO( HALFLAMBERT,  bHalfLambert);
-		SET_STATIC_VERTEX_SHADER( particlelit_generic_vs30 );
 		
-		DECLARE_STATIC_PIXEL_SHADER( particlelit_generic_ps30 );
-		SET_STATIC_PIXEL_SHADER_COMBO( HALFLAMBERT,  bHalfLambert);
 //		SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHT,  hasFlashlight );
-		SET_STATIC_PIXEL_SHADER_COMBO( HDRTYPE,  hdrType );
-		SET_STATIC_PIXEL_SHADER( particlelit_generic_ps30 );
 
 		if( hasFlashlight )
 		{
@@ -241,18 +232,7 @@ void DrawParticleLitGeneric_DX9( CBaseVSShader *pShader, IMaterialVar** params,
 		MaterialFogMode_t fogType = pShaderAPI->GetSceneFogMode();
 //		int fogIndex = ( fogType == MATERIAL_FOG_LINEAR_BELOW_FOG_Z ) ? 1 : 0;
 
-		DECLARE_DYNAMIC_VERTEX_SHADER( particlelit_generic_vs30 );
-		SET_DYNAMIC_VERTEX_SHADER( particlelit_generic_vs30 );
 
-		DECLARE_DYNAMIC_PIXEL_SHADER( particlelit_generic_ps30 );
-		SET_DYNAMIC_PIXEL_SHADER_COMBO( NUM_LIGHTS, lightState.m_nNumLights );
-		SET_DYNAMIC_PIXEL_SHADER_COMBO( AMBIENT_LIGHT, lightState.m_bAmbientLight ? 1 : 0 );
-		SET_DYNAMIC_PIXEL_SHADER_COMBO( STATIC_LIGHT,  lightState.m_bStaticLight  ? 1 : 0 );
-		SET_DYNAMIC_PIXEL_SHADER_COMBO( WRITEWATERFOGTODESTALPHA,  fogType == MATERIAL_FOG_LINEAR_BELOW_FOG_Z &&
-			blendType != BT_BLENDADD && blendType != BT_BLEND && !bIsAlphaTested );
-		SET_DYNAMIC_PIXEL_SHADER_COMBO( PIXELFOGTYPE, pShaderAPI->GetPixelFogCombo() );
-		SET_DYNAMIC_PIXEL_SHADER_COMBO( HDRENABLED,  pShader->IsHDREnabled() );
-		SET_DYNAMIC_PIXEL_SHADER( particlelit_generic_ps30 );
 
 		pShader->SetVertexShaderTextureTransform( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, info.m_nBaseTextureTransform );
 		if( hasBump )

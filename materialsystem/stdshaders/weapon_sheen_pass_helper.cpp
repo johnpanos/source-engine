@@ -10,12 +10,7 @@
 #include "convar.h"
 
 // Auto generated inc files
-#include "weapon_sheen_pass_vs20.inc"
-#include "weapon_sheen_pass_ps20.inc"
-#include "weapon_sheen_pass_ps20b.inc"
 
-#include "weapon_sheen_pass_vs30.inc"
-#include "weapon_sheen_pass_ps30.inc"
 
 void InitParamsWeaponSheenPass( CBaseVSShader *pShader, IMaterialVar** params, const char *pMaterialName, WeaponSheenPassVars_t &info )
 {
@@ -111,22 +106,13 @@ void DrawWeaponSheenPass( CBaseVSShader *pShader, IMaterialVar** params, IShader
 		if ( !g_pHardwareConfig->HasFastVertexTextures() )
 		{
 			// Vertex Shader
-			DECLARE_STATIC_VERTEX_SHADER( weapon_sheen_pass_vs20 );
-			SET_STATIC_VERTEX_SHADER_COMBO( BUMPMAP, bBumpMapping ? 1 : 0 );
-			SET_STATIC_VERTEX_SHADER( weapon_sheen_pass_vs20 );
 
 			// Pixel Shader
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( weapon_sheen_pass_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( BUMPMAP, bBumpMapping ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER( weapon_sheen_pass_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( weapon_sheen_pass_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( BUMPMAP, bBumpMapping ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER( weapon_sheen_pass_ps20 );
 			}
 		}
 		else
@@ -135,14 +121,8 @@ void DrawWeaponSheenPass( CBaseVSShader *pShader, IMaterialVar** params, IShader
 			SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
 
 			// Vertex Shader
-			DECLARE_STATIC_VERTEX_SHADER( weapon_sheen_pass_vs30 );
-			SET_STATIC_VERTEX_SHADER_COMBO( BUMPMAP, bBumpMapping ? 1 : 0 );
-			SET_STATIC_VERTEX_SHADER( weapon_sheen_pass_vs30 );
 
 			// Pixel Shader
-			DECLARE_STATIC_PIXEL_SHADER( weapon_sheen_pass_ps30 );
-			SET_STATIC_PIXEL_SHADER_COMBO( BUMPMAP, bBumpMapping ? 1 : 0 );
-			SET_STATIC_PIXEL_SHADER( weapon_sheen_pass_ps30 );
 		}
 
 		// Textures

@@ -8,9 +8,6 @@
 
 #include "BaseVSShader.h"
 
-#include "shadow_ps20.inc"
-#include "shadow_ps20b.inc"
-#include "shadow_vs20.inc"
 
 BEGIN_VS_SHADER_FLAGS( Shadow, "Help for Shadow", SHADER_NOT_EDITABLE )
 
@@ -66,18 +63,12 @@ BEGIN_VS_SHADER_FLAGS( Shadow, "Help for Shadow", SHADER_NOT_EDITABLE )
 			int numTexCoords = 1;
 			pShaderShadow->VertexShaderVertexFormat( flags, numTexCoords, 0, 0 );
 
-			DECLARE_STATIC_VERTEX_SHADER( shadow_vs20 );
-			SET_STATIC_VERTEX_SHADER( shadow_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( shadow_ps20b );
-				SET_STATIC_PIXEL_SHADER( shadow_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( shadow_ps20 );
-				SET_STATIC_PIXEL_SHADER( shadow_ps20 );
 			}
 
 			pShaderShadow->EnableSRGBWrite( true );

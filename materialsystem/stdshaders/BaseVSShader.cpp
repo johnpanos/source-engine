@@ -19,10 +19,6 @@
 #if SUPPORT_DX8
 #endif
 
-#include "lightmappedgeneric_flashlight_vs20.inc"
-#include "flashlight_ps20.inc"
-#include "flashlight_ps20b.inc"
-#include "vertexlitgeneric_flashlight_vs11.inc"
 #endif // GAME_SHADER_DLL
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -505,12 +501,6 @@ void CBaseVSShader::DrawFlashlight_dx90( IMaterialVar** params, IShaderDynamicAP
 
 		if( vars.m_bLightmappedGeneric )
 		{
-			lightmappedgeneric_flashlight_vs20_Static_Index	vshIndex;
-			vshIndex.SetWORLDVERTEXTRANSITION( vars.m_bWorldVertexTransition );
-			vshIndex.SetNORMALMAP( vars.m_bBump );
-			vshIndex.SetSEAMLESS( bSeamless );
-			vshIndex.SetDETAIL( bDetail );
-			pShaderShadow->SetVertexShader( "lightmappedgeneric_flashlight_vs20", vshIndex.GetIndex() );
 
 			unsigned int flags = VERTEX_POSITION | VERTEX_NORMAL;
 			if( vars.m_bBump )
@@ -527,9 +517,6 @@ void CBaseVSShader::DrawFlashlight_dx90( IMaterialVar** params, IShaderDynamicAP
 		}
 		else
 		{
-			vertexlitgeneric_flashlight_vs11_Static_Index vshIndex;
-			vshIndex.SetTEETH( vars.m_bTeeth );
-			pShaderShadow->SetVertexShader( "vertexlitgeneric_flashlight_vs11", vshIndex.GetIndex() );
 
 			unsigned int flags = VERTEX_POSITION | VERTEX_NORMAL;
 			int numTexCoords = 1;
@@ -545,26 +532,9 @@ void CBaseVSShader::DrawFlashlight_dx90( IMaterialVar** params, IShaderDynamicAP
 		{
 			int nShadowFilterMode = g_pHardwareConfig->GetShadowFilterMode();
 
-			flashlight_ps20b_Static_Index	pshIndex;
-			pshIndex.SetNORMALMAP( nBumpMapVariant );
-			pshIndex.SetNORMALMAP2( bBump2 );
-			pshIndex.SetWORLDVERTEXTRANSITION( vars.m_bWorldVertexTransition );
-			pshIndex.SetSEAMLESS( bSeamless );
-			pshIndex.SetDETAILTEXTURE( bDetail );
-			pshIndex.SetDETAIL_BLEND_MODE( nDetailBlendMode );
-			pshIndex.SetFLASHLIGHTDEPTHFILTERMODE( nShadowFilterMode );
-			pShaderShadow->SetPixelShader( "flashlight_ps20b", pshIndex.GetIndex() );
 		}
 		else
 		{
-			flashlight_ps20_Static_Index	pshIndex;
-			pshIndex.SetNORMALMAP( nBumpMapVariant );
-			pshIndex.SetNORMALMAP2( bBump2 );
-			pshIndex.SetWORLDVERTEXTRANSITION( vars.m_bWorldVertexTransition );
-			pshIndex.SetSEAMLESS( bSeamless );
-			pshIndex.SetDETAILTEXTURE( bDetail );
-			pshIndex.SetDETAIL_BLEND_MODE( nDetailBlendMode );
-			pShaderShadow->SetPixelShader( "flashlight_ps20", pshIndex.GetIndex() );
 		}
 		FogToBlack();
 	}
@@ -606,8 +576,6 @@ void CBaseVSShader::DrawEqualDepthToDestAlpha( void )
 
 			s_pShaderShadow->DepthFunc( SHADER_DEPTHFUNC_EQUAL );
 
-			s_pShaderShadow->SetVertexShader( "depthtodestalpha_vs20", 0 );
-			s_pShaderShadow->SetPixelShader( "depthtodestalpha_ps20b", 0 );
 		}
 		if( s_pShaderAPI )
 		{

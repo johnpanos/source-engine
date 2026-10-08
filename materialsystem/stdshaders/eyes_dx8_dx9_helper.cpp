@@ -9,22 +9,9 @@
 #include "mathlib/vmatrix.h"
 #include "eyes_dx8_dx9_helper.h"
 #include "cpp_shader_constant_register_map.h"
-#include "Eyes.inc"
-#include "eyes_flashlight_vs11.inc"
-#include "eyes_flashlight_ps11.inc"
 
 
-#include "eyes_vs20.inc"
-#include "eyes_ps20.inc"
-#include "eyes_ps20b.inc"
-#include "eyes_flashlight_vs20.inc"
-#include "eyes_flashlight_ps20.inc"
-#include "eyes_flashlight_ps20b.inc"
 
-#include "eyes_vs30.inc"
-#include "eyes_ps30.inc"
-#include "eyes_flashlight_vs30.inc"
-#include "eyes_flashlight_ps30.inc"
 
 
 ConVar r_flashlight_version2( "r_flashlight_version2", "0", FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY );
@@ -95,19 +82,12 @@ static void DrawFlashlight( bool bDX9, CBaseVSShader *pShader, IMaterialVar** pa
 			int nShadowFilterMode = g_pHardwareConfig->GetShadowFilterMode();	// Based upon vendor and device dependent formats
 			if ( !g_pHardwareConfig->HasFastVertexTextures() )
 			{
-				DECLARE_STATIC_VERTEX_SHADER( eyes_flashlight_vs20 );
-				SET_STATIC_VERTEX_SHADER( eyes_flashlight_vs20 );
 
 				if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 				{
-					DECLARE_STATIC_PIXEL_SHADER( eyes_flashlight_ps20b );
-					SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHTDEPTHFILTERMODE, nShadowFilterMode );
-					SET_STATIC_PIXEL_SHADER( eyes_flashlight_ps20b );
 				}
 				else
 				{
-					DECLARE_STATIC_PIXEL_SHADER( eyes_flashlight_ps20 );
-					SET_STATIC_PIXEL_SHADER( eyes_flashlight_ps20 );
 				}
 			}
 			else
@@ -115,12 +95,7 @@ static void DrawFlashlight( bool bDX9, CBaseVSShader *pShader, IMaterialVar** pa
 				// The vertex shader uses the vertex id stream
 				SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
 
-				DECLARE_STATIC_VERTEX_SHADER( eyes_flashlight_vs30 );
-				SET_STATIC_VERTEX_SHADER( eyes_flashlight_vs30 );
 
-				DECLARE_STATIC_PIXEL_SHADER( eyes_flashlight_ps30 );
-				SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHTDEPTHFILTERMODE, nShadowFilterMode );
-				SET_STATIC_PIXEL_SHADER( eyes_flashlight_ps30 );
 			}
 
 			// On DX9, get the gamma read and write correct
@@ -139,11 +114,7 @@ static void DrawFlashlight( bool bDX9, CBaseVSShader *pShader, IMaterialVar** pa
 		else
 		{
 			// DX8 uses old asm shaders
-			eyes_flashlight_vs11_Static_Index	vshIndex;
-			pShaderShadow->SetVertexShader( "eyes_flashlight_vs11", vshIndex.GetIndex() );
 
-			eyes_flashlight_ps11_Static_Index	pshIndex;
-			pShaderShadow->SetPixelShader( "eyes_flashlight_ps11", pshIndex.GetIndex() );
 		}
 		
 		pShader->FogToBlack();
@@ -175,21 +146,12 @@ static void DrawUsingVertexShader( bool bDX9, CBaseVSShader *pShader, IMaterialV
 			{
 				bool bUseStaticControlFlow = g_pHardwareConfig->SupportsStaticControlFlow();
 
-				DECLARE_STATIC_VERTEX_SHADER( eyes_vs20 );
-				SET_STATIC_VERTEX_SHADER_COMBO( HALFLAMBERT, IS_FLAG_SET( MATERIAL_VAR_HALFLAMBERT ) );
-				SET_STATIC_VERTEX_SHADER_COMBO( INTRO, params[info.m_nIntro]->GetIntValue() ? 1 : 0 );
-				SET_STATIC_VERTEX_SHADER_COMBO( USE_STATIC_CONTROL_FLOW, bUseStaticControlFlow );
-				SET_STATIC_VERTEX_SHADER( eyes_vs20 );
 
 				if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 				{
-					DECLARE_STATIC_PIXEL_SHADER( eyes_ps20b );
-					SET_STATIC_PIXEL_SHADER( eyes_ps20b );
 				}
 				else
 				{
-					DECLARE_STATIC_PIXEL_SHADER( eyes_ps20 );
-					SET_STATIC_PIXEL_SHADER( eyes_ps20 );
 				}
 			}
 			else
@@ -197,13 +159,7 @@ static void DrawUsingVertexShader( bool bDX9, CBaseVSShader *pShader, IMaterialV
 				// The vertex shader uses the vertex id stream
 				SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
 
-				DECLARE_STATIC_VERTEX_SHADER( eyes_vs30 );
-				SET_STATIC_VERTEX_SHADER_COMBO( HALFLAMBERT, IS_FLAG_SET( MATERIAL_VAR_HALFLAMBERT ) );
-				SET_STATIC_VERTEX_SHADER_COMBO( INTRO, params[info.m_nIntro]->GetIntValue() ? 1 : 0 );
-				SET_STATIC_VERTEX_SHADER( eyes_vs30 );
 
-				DECLARE_STATIC_PIXEL_SHADER( eyes_ps30 );
-				SET_STATIC_PIXEL_SHADER( eyes_ps30 );
 			}
 			// On DX9, get the gamma read and write correct
 			pShaderShadow->EnableSRGBRead( SHADER_SAMPLER0, true );			// Base
@@ -212,11 +168,7 @@ static void DrawUsingVertexShader( bool bDX9, CBaseVSShader *pShader, IMaterialV
 		}
 		else
 		{
-			eyes_Static_Index vshIndex;
-			vshIndex.SetHALF_LAMBERT( IS_FLAG_SET( MATERIAL_VAR_HALFLAMBERT ) );
-			pShaderShadow->SetVertexShader( "Eyes", vshIndex.GetIndex() );
 
-			pShaderShadow->SetPixelShader( "Eyes_Overbright2" );
 		}
 
 		pShader->FogToFogColor();

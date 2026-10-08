@@ -6,9 +6,6 @@
 
 #include "BaseVSShader.h"
 
-#include "unlitgeneric_vs20.inc"
-#include "modulate_ps20.inc"
-#include "modulate_ps20b.inc"
 
 #include "cpp_shader_constant_register_map.h"
 
@@ -183,19 +180,12 @@ BEGIN_VS_SHADER( Modulate_DX9,
 
 				pShaderShadow->VertexShaderVertexFormat( flags, numTexCoords, NULL, userDataSize );
 
-				DECLARE_STATIC_VERTEX_SHADER( unlitgeneric_vs20 );
-				SET_STATIC_VERTEX_SHADER_COMBO( VERTEXCOLOR, bVertexColorOrAlpha ? 1 : 0  );
-				SET_STATIC_VERTEX_SHADER( unlitgeneric_vs20 );
 
 				if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 				{
-					DECLARE_STATIC_PIXEL_SHADER( modulate_ps20b );
-					SET_STATIC_PIXEL_SHADER( modulate_ps20b );
 				}
 				else
 				{
-					DECLARE_STATIC_PIXEL_SHADER( modulate_ps20 );
-					SET_STATIC_PIXEL_SHADER( modulate_ps20 );
 				}
 
 				// We need to fog to *white* regardless of overbrighting...

@@ -8,8 +8,6 @@
 #include "common_hlsl_cpp_consts.h"
 #include "convar.h"
 
-#include "Downsample_nohdr_ps20.inc"
-#include "Downsample_nohdr_ps20b.inc"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -64,20 +62,12 @@ BEGIN_VS_SHADER_FLAGS( Downsample_nohdr, "Help for Downsample_nohdr", SHADER_NOT
 
 			pShaderShadow->VertexShaderVertexFormat( VERTEX_POSITION, 1, 0, 0 );
 
-			pShaderShadow->SetVertexShader( "Downsample_vs20", 0 );
 			
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( downsample_nohdr_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( CSTRIKE, params[CSTRIKE]->GetIntValue() ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER_COMBO( SRGB_ADAPTER, bForceSRGBReadAndWrite );
-				SET_STATIC_PIXEL_SHADER( downsample_nohdr_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( downsample_nohdr_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( CSTRIKE, params[CSTRIKE]->GetIntValue() ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER( downsample_nohdr_ps20 );
 			}
 		}
 

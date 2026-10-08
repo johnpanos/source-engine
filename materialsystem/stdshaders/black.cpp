@@ -14,9 +14,6 @@
 
 #include "BaseVSShader.h"
 #include "cpp_shader_constant_register_map.h"
-#include "black_vs20.inc"
-#include "black_ps20.inc"
-#include "black_ps20b.inc"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -51,18 +48,12 @@ SHADER_DRAW
 		int userDataSize = 0;
 		pShaderShadow->VertexShaderVertexFormat( flags, nTexCoordCount, NULL, userDataSize );
 
-		DECLARE_STATIC_VERTEX_SHADER( black_vs20 );
-		SET_STATIC_VERTEX_SHADER( black_vs20 );
 
 		if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 		{
-			DECLARE_STATIC_PIXEL_SHADER( black_ps20b );
-			SET_STATIC_PIXEL_SHADER( black_ps20b );
 		}
 		else
 		{
-			DECLARE_STATIC_PIXEL_SHADER( black_ps20 );
-			SET_STATIC_PIXEL_SHADER( black_ps20 );
 		}
 
 		pShaderShadow->EnableSRGBWrite( true );

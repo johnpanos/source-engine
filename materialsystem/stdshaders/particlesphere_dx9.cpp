@@ -8,9 +8,6 @@
 
 #include "BaseVSShader.h"
 
-#include "particlesphere_vs20.inc"
-#include "particlesphere_ps20.inc"
-#include "particlesphere_ps20b.inc"
 
 #include "cpp_shader_constant_register_map.h"
 
@@ -97,19 +94,12 @@ BEGIN_VS_SHADER_FLAGS( ParticleSphere_DX9, "Help for BumpmappedEnvMap", SHADER_N
 			pShaderShadow->BlendFunc( SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
 			pShaderShadow->EnableDepthWrites( false );
 
-			DECLARE_STATIC_VERTEX_SHADER( particlesphere_vs20 );
-			SET_STATIC_VERTEX_SHADER( particlesphere_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( particlesphere_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( DEPTHBLEND, params[DEPTHBLEND]->GetIntValue() );
-				SET_STATIC_PIXEL_SHADER( particlesphere_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( particlesphere_ps20 );
-				SET_STATIC_PIXEL_SHADER( particlesphere_ps20 );
 			}
 
 			FogToFogColor();

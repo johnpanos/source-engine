@@ -7,9 +7,6 @@
 
 #include "BaseVSShader.h"
 #include "convar.h"
-#include "portalstaticoverlay_vs20.inc"
-#include "portalstaticoverlay_ps20.inc"
-#include "portalstaticoverlay_ps20b.inc"
 #include "cpp_shader_constant_register_map.h"
 
 BEGIN_VS_SHADER( PortalStaticOverlay, 
@@ -137,29 +134,15 @@ SHADER_DRAW
 		}
 		pShaderShadow->VertexShaderVertexFormat( fmt, 1, 0, userDataSize );
 
-		DECLARE_STATIC_VERTEX_SHADER( portalstaticoverlay_vs20 );
-		SET_STATIC_VERTEX_SHADER_COMBO( MODEL,  bIsModel );
-		SET_STATIC_VERTEX_SHADER_COMBO( PORTALGHOSTOVERLAY, nGhostOverlay );
-		SET_STATIC_VERTEX_SHADER( portalstaticoverlay_vs20 );
 
 		// Avoid setting a pixel shader when only doing depth/stencil operations, as recommended by PIX
 		if( bColorWrites || bAlphaMaskTexture || g_pHardwareConfig->PlatformRequiresNonNullPixelShaders() )
 		{
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( portalstaticoverlay_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( HASALPHAMASK, bAlphaMaskTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( HASSTATICTEXTURE, bStaticBlendTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( PORTALGHOSTOVERLAY, bGhostOverlay );
-				SET_STATIC_PIXEL_SHADER( portalstaticoverlay_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( portalstaticoverlay_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( HASALPHAMASK, bAlphaMaskTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( HASSTATICTEXTURE, bStaticBlendTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( PORTALGHOSTOVERLAY, bGhostOverlay );
-				SET_STATIC_PIXEL_SHADER( portalstaticoverlay_ps20 );
 			}
 		}
 	}

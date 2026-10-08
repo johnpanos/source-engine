@@ -6,9 +6,6 @@
 //=============================================================================//
 
 #include "BaseVSShader.h"
-#include "screenspaceeffect_vs20.inc"
-#include "hsv_ps20.inc"
-#include "hsv_ps20b.inc"
 
 BEGIN_VS_SHADER_FLAGS( HSV, "Help for HSV", SHADER_NOT_EDITABLE )
 	BEGIN_SHADER_PARAMS
@@ -42,18 +39,12 @@ BEGIN_VS_SHADER_FLAGS( HSV, "Help for HSV", SHADER_NOT_EDITABLE )
 			int fmt = VERTEX_POSITION;
 			pShaderShadow->VertexShaderVertexFormat( fmt, 1, 0, 0 );
 
-			DECLARE_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( hsv_ps20b );
-				SET_STATIC_PIXEL_SHADER( hsv_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( hsv_ps20 );
-				SET_STATIC_PIXEL_SHADER( hsv_ps20 );
 			}
 		}
 		Draw();

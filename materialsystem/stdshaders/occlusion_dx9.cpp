@@ -7,9 +7,6 @@
 
 #include "BaseVSShader.h"
 
-#include "writez_vs20.inc"
-#include "white_ps20.inc"
-#include "white_ps20b.inc"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -49,14 +46,10 @@ BEGIN_VS_SHADER_FLAGS( Occlusion_DX9, "Help for Occlusion", SHADER_NOT_EDITABLE 
 			pShaderShadow->EnableAlphaWrites( false );
 			pShaderShadow->EnableDepthWrites( false );
 
-			DECLARE_STATIC_VERTEX_SHADER( writez_vs20 );
-			SET_STATIC_VERTEX_SHADER( writez_vs20 );
 
 			// No pixel shader on Direct3D, doubles fill rate
 			if ( g_pHardwareConfig->PlatformRequiresNonNullPixelShaders() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( white_ps20 );
-				SET_STATIC_PIXEL_SHADER( white_ps20 );
 
 				// Workaround for weird AMD bug - if sRGB write isn't enabled here then sRGB write enable in subsequent world rendering passes will randomly not take effect (even though we're enabling it) in the driver.
 				if ( ( IsLinux() || IsWindows() || IsBSD() ) && gl_amd_occlusion_workaround.GetBool() )

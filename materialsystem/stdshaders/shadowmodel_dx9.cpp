@@ -9,8 +9,6 @@
 //Note: Not upgraded to vs/ps 2.0 fxc's because this shader is unused and there are no test cases to verify against.
 #include "BaseVSShader.h"
 
-#include "shadowmodel_ps20.inc"
-#include "shadowmodel_vs20.inc"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -74,11 +72,7 @@ SHADER_DRAW
 		int fmt = VERTEX_POSITION | VERTEX_NORMAL;
 		pShaderShadow->VertexShaderVertexFormat( fmt, 1, 0, 0 );
 
-		DECLARE_STATIC_VERTEX_SHADER( shadowmodel_vs20 );
-		SET_STATIC_VERTEX_SHADER( shadowmodel_vs20 );
 
-		DECLARE_STATIC_PIXEL_SHADER( shadowmodel_ps20 );
-		SET_STATIC_PIXEL_SHADER( shadowmodel_ps20 );
 
 		// We need to fog to *white* regardless of overbrighting...
 		FogToWhite();

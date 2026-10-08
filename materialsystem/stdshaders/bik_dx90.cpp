@@ -9,9 +9,6 @@
 #include "BaseVSShader.h"
 #include "cpp_shader_constant_register_map.h"
 
-#include "bik_ps20.inc"
-#include "bik_ps20b.inc"
-#include "bik_vs20.inc"
 
 BEGIN_VS_SHADER( Bik, "Help for Bik" )
 	BEGIN_SHADER_PARAMS
@@ -68,18 +65,12 @@ BEGIN_VS_SHADER( Bik, "Help for Bik" )
 			int numTexCoords = 1;
 			pShaderShadow->VertexShaderVertexFormat( flags, numTexCoords, 0, 0 );
 
-			DECLARE_STATIC_VERTEX_SHADER( bik_vs20 );
-			SET_STATIC_VERTEX_SHADER( bik_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( bik_ps20b );
-				SET_STATIC_PIXEL_SHADER( bik_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( bik_ps20 );
-				SET_STATIC_PIXEL_SHADER( bik_ps20 );
 			}
 
 			// The 360 needs an sRGB write, but NOT an sRGB read!

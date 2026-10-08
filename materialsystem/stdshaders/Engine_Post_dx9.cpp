@@ -7,9 +7,6 @@
 
 #include "BaseVSShader.h"
 
-#include "screenspaceeffect_vs20.inc"
-#include "engine_post_ps20.inc"
-#include "engine_post_ps20b.inc"
 
 #include "../materialsystem_global.h"
 
@@ -119,20 +116,12 @@ BEGIN_VS_SHADER_FLAGS( Engine_Post_dx9, "Engine post-processing effects (softwar
 			int		userDataSize		= 0;
 			pShaderShadow->VertexShaderVertexFormat( format, numTexCoords, pTexCoordDimensions, userDataSize );
 
-			DECLARE_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
 			
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() ) // GL always goes the ps2b way for this shader, even on "ps20" parts
 			{
-				DECLARE_STATIC_PIXEL_SHADER( engine_post_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( LINEAR_INPUT,  bLinearInput );
-				SET_STATIC_PIXEL_SHADER_COMBO( LINEAR_OUTPUT, bLinearOutput );
-				SET_STATIC_PIXEL_SHADER( engine_post_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( engine_post_ps20 );
-				SET_STATIC_PIXEL_SHADER( engine_post_ps20 );
 			}
 		}
 		Draw();

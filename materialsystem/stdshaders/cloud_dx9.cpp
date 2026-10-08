@@ -5,8 +5,6 @@
 //===============================================================================
 
 #include "BaseVSShader.h"
-#include "cloud_vs20.inc"
-#include "cloud_ps20.inc"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -64,11 +62,7 @@ BEGIN_VS_SHADER( Cloud_dx9, "Help for Cloud" )
 
 			pShaderShadow->VertexShaderVertexFormat( VERTEX_POSITION, 2, 0, 0 );
 
-			DECLARE_STATIC_VERTEX_SHADER( cloud_vs20 );
-			SET_STATIC_VERTEX_SHADER( cloud_vs20 );
 
-			DECLARE_STATIC_PIXEL_SHADER( cloud_ps20 );
-			SET_STATIC_PIXEL_SHADER( cloud_ps20 );
 
 			DefaultFog();
 		}

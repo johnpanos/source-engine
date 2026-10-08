@@ -6,9 +6,6 @@
 #include "convar.h"
 
 // Auto generated inc files
-#include "volume_clouds_vs20.inc"
-#include "volume_clouds_ps20.inc"
-#include "volume_clouds_ps20b.inc"
 
 
 void InitParamsVolumeClouds( CBaseVSShader *pShader, IMaterialVar** params, const char *pMaterialName, VolumeCloudsVars_t &info )
@@ -54,19 +51,13 @@ void DrawVolumeClouds( CBaseVSShader *pShader, IMaterialVar** params, IShaderDyn
 		pShaderShadow->VertexShaderVertexFormat( flags, nTexCoordCount, NULL, userDataSize );
 
 		// Vertex Shader
-		DECLARE_STATIC_VERTEX_SHADER( volume_clouds_vs20 );
-		SET_STATIC_VERTEX_SHADER( volume_clouds_vs20 );
 	
 		// Pixel Shader
 		if( g_pHardwareConfig->SupportsPixelShaders_2_b() && !IsOpenGL() ) // Always send POSIX down the 20 path (rg - why?)
 		{
-			DECLARE_STATIC_PIXEL_SHADER( volume_clouds_ps20b );
-			SET_STATIC_PIXEL_SHADER( volume_clouds_ps20b );
 		}
 		else
 		{
-			DECLARE_STATIC_PIXEL_SHADER( volume_clouds_ps20 );
-			SET_STATIC_PIXEL_SHADER( volume_clouds_ps20 );
 		}
 
 		// Textures

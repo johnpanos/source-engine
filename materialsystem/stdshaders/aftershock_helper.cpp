@@ -6,9 +6,6 @@
 #include "convar.h"
 
 // Auto generated inc files
-#include "aftershock_vs20.inc"
-#include "aftershock_ps20.inc"
-#include "aftershock_ps20b.inc"
 
 
 void InitParamsAftershock( CBaseVSShader *pShader, IMaterialVar** params, const char *pMaterialName, AftershockVars_t &info )
@@ -87,19 +84,13 @@ void DrawAftershock( CBaseVSShader *pShader, IMaterialVar** params, IShaderDynam
 		pShaderShadow->VertexShaderVertexFormat( flags, nTexCoordCount, NULL, userDataSize );
 
 		// Vertex Shader
-		DECLARE_STATIC_VERTEX_SHADER( aftershock_vs20 );
-		SET_STATIC_VERTEX_SHADER( aftershock_vs20 );
 	
 		// Pixel Shader
 		if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 		{
-			DECLARE_STATIC_PIXEL_SHADER( aftershock_ps20b );
-			SET_STATIC_PIXEL_SHADER( aftershock_ps20b );
 		}
 		else
 		{
-			DECLARE_STATIC_PIXEL_SHADER( aftershock_ps20 );
-			SET_STATIC_PIXEL_SHADER( aftershock_ps20 );
 		}
 
 		// Textures

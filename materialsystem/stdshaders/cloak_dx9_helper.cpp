@@ -9,12 +9,7 @@
 #include "cloak_dx9_helper.h"
 #include "convar.h"
 #include "cpp_shader_constant_register_map.h"
-#include "cloak_vs20.inc"
-#include "cloak_ps20.inc"
-#include "cloak_ps20b.inc"
 
-#include "cloak_vs30.inc"
-#include "cloak_ps30.inc"
 
 static ConVar r_lightwarpidentity( "r_lightwarpidentity", "0", FCVAR_CHEAT );
 
@@ -106,23 +101,13 @@ void DrawCloak_DX9( CBaseVSShader *pShader, IMaterialVar** params, IShaderDynami
 		{
 			bool bUseStaticControlFlow = g_pHardwareConfig->SupportsStaticControlFlow();
 
-			DECLARE_STATIC_VERTEX_SHADER( cloak_vs20 );
-			SET_STATIC_VERTEX_SHADER_COMBO( MODEL,  bIsModel );
-			SET_STATIC_VERTEX_SHADER_COMBO( USE_STATIC_CONTROL_FLOW, bUseStaticControlFlow );
-			SET_STATIC_VERTEX_SHADER( cloak_vs20 );
 
 			// Bind ps_2_b shader so we can get Phong terms
 			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( cloak_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( LIGHTWARPTEXTURE, hasDiffuseWarp );
-				SET_STATIC_PIXEL_SHADER( cloak_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( cloak_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( LIGHTWARPTEXTURE, hasDiffuseWarp );
-				SET_STATIC_PIXEL_SHADER( cloak_ps20 );
 			}
 		}
 		else
@@ -130,14 +115,8 @@ void DrawCloak_DX9( CBaseVSShader *pShader, IMaterialVar** params, IShaderDynami
 			// The vertex shader uses the vertex id stream
 			SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
 
-			DECLARE_STATIC_VERTEX_SHADER( cloak_vs30 );
-			SET_STATIC_VERTEX_SHADER_COMBO( MODEL,  bIsModel );
-			SET_STATIC_VERTEX_SHADER( cloak_vs30 );
 
 			// Bind ps_2_b shader so we can get Phong terms
-			DECLARE_STATIC_PIXEL_SHADER( cloak_ps30 );
-			SET_STATIC_PIXEL_SHADER_COMBO( LIGHTWARPTEXTURE, hasDiffuseWarp );
-			SET_STATIC_PIXEL_SHADER( cloak_ps30 );
 		}
 
 		pShader->DefaultFog();

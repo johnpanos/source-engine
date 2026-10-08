@@ -8,9 +8,6 @@
 
 #include "BaseVSShader.h"
 
-#include "ShatteredGlass_ps20.inc"
-#include "ShatteredGlass_ps20b.inc"
-#include "ShatteredGlass_vs20.inc"
 
 BEGIN_VS_SHADER( ShatteredGlass,
 			  "Help for ShatteredGlass" )
@@ -196,29 +193,12 @@ BEGIN_VS_SHADER( ShatteredGlass,
 
 			pShaderShadow->VertexShaderVertexFormat( flags, 3, 0, 0 );
 
-			DECLARE_STATIC_VERTEX_SHADER( shatteredglass_vs20 );
-			SET_STATIC_VERTEX_SHADER_COMBO( ENVMAP_MASK,  bHasEnvmapMask );
-			SET_STATIC_VERTEX_SHADER( shatteredglass_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( shatteredglass_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( CUBEMAP,  bHasEnvmap );
-				SET_STATIC_PIXEL_SHADER_COMBO( VERTEXCOLOR,  bHasVertexColor );
-				SET_STATIC_PIXEL_SHADER_COMBO( ENVMAPMASK,  bHasEnvmapMask );
-				SET_STATIC_PIXEL_SHADER_COMBO( BASEALPHAENVMAPMASK,  bHasBaseAlphaEnvmapMask );
-				SET_STATIC_PIXEL_SHADER_COMBO( HDRTYPE,  g_pHardwareConfig->GetHDRType() );
-				SET_STATIC_PIXEL_SHADER( shatteredglass_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( shatteredglass_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( CUBEMAP,  bHasEnvmap );
-				SET_STATIC_PIXEL_SHADER_COMBO( VERTEXCOLOR,  bHasVertexColor );
-				SET_STATIC_PIXEL_SHADER_COMBO( ENVMAPMASK,  bHasEnvmapMask );
-				SET_STATIC_PIXEL_SHADER_COMBO( BASEALPHAENVMAPMASK,  bHasBaseAlphaEnvmapMask );
-				SET_STATIC_PIXEL_SHADER_COMBO( HDRTYPE,  g_pHardwareConfig->GetHDRType() );
-				SET_STATIC_PIXEL_SHADER( shatteredglass_ps20 );
 			}
 
 			DefaultFog();

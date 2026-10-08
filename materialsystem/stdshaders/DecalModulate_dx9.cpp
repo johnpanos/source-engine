@@ -9,12 +9,7 @@
 #include "BaseVSShader.h"
 #include "cpp_shader_constant_register_map.h"
 
-#include "VertexLit_and_unlit_Generic_vs20.inc"
-#include "decalmodulate_ps20.inc"
-#include "decalmodulate_ps20b.inc"
 
-#include "vertexlit_and_unlit_generic_vs30.inc"
-#include "decalmodulate_ps30.inc"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -79,45 +74,17 @@ BEGIN_VS_SHADER( DecalModulate_dx9,
 			{
 				bool bUseStaticControlFlow = g_pHardwareConfig->SupportsStaticControlFlow();
 
-				DECLARE_STATIC_VERTEX_SHADER( vertexlit_and_unlit_generic_vs20 );
-				SET_STATIC_VERTEX_SHADER_COMBO( VERTEXCOLOR,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( CUBEMAP,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( HALFLAMBERT,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( FLASHLIGHT,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( SEAMLESS_BASE,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( SEAMLESS_DETAIL,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( SEPARATE_DETAIL_UVS, false );
-				SET_STATIC_VERTEX_SHADER_COMBO( USE_STATIC_CONTROL_FLOW, bUseStaticControlFlow );
-				SET_STATIC_VERTEX_SHADER_COMBO( DONT_GAMMA_CONVERT_VERTEX_COLOR, 0 );
-				SET_STATIC_VERTEX_SHADER( vertexlit_and_unlit_generic_vs20 );
 
 				if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 				{
-					DECLARE_STATIC_PIXEL_SHADER( decalmodulate_ps20b );
-					SET_STATIC_PIXEL_SHADER( decalmodulate_ps20b );
 				}
 				else
 				{
-					DECLARE_STATIC_PIXEL_SHADER( decalmodulate_ps20 );
-					SET_STATIC_PIXEL_SHADER( decalmodulate_ps20 );
 				}
 			}
 			else
 			{
-				DECLARE_STATIC_VERTEX_SHADER( vertexlit_and_unlit_generic_vs30 );
-				SET_STATIC_VERTEX_SHADER_COMBO( VERTEXCOLOR,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( CUBEMAP,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( HALFLAMBERT,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( FLASHLIGHT,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( SEAMLESS_BASE,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( SEAMLESS_DETAIL,  false );
-				SET_STATIC_VERTEX_SHADER_COMBO( SEPARATE_DETAIL_UVS, false );
-				SET_STATIC_VERTEX_SHADER_COMBO( DECAL, true );
-				SET_STATIC_VERTEX_SHADER_COMBO( DONT_GAMMA_CONVERT_VERTEX_COLOR, 0 );
-				SET_STATIC_VERTEX_SHADER( vertexlit_and_unlit_generic_vs30 );
 
-				DECLARE_STATIC_PIXEL_SHADER( decalmodulate_ps30 );
-				SET_STATIC_PIXEL_SHADER( decalmodulate_ps30 );
 			}
 
 			// Set stream format (note that this shader supports compression)

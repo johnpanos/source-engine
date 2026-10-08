@@ -16,8 +16,6 @@
 #include "BaseVSShader.h"
 #include "convar.h"
 #include "cpp_shader_constant_register_map.h"
-#include "lightmappedgeneric_vs20.inc"
-#include "lightmappedpaint_ps20b.inc"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -113,24 +111,7 @@ SHADER_DRAW
 		unsigned int flags = VERTEX_POSITION | VERTEX_NORMAL | VERTEX_TANGENT_S | VERTEX_TANGENT_T;
 		pShaderShadow->VertexShaderVertexFormat( flags, 3, 0, 0 );
 
-		DECLARE_STATIC_VERTEX_SHADER( lightmappedgeneric_vs20 );
-		SET_STATIC_VERTEX_SHADER_COMBO( ENVMAP_MASK, false );
-		SET_STATIC_VERTEX_SHADER_COMBO( TANGENTSPACE, true );
-		SET_STATIC_VERTEX_SHADER_COMBO( BUMPMAP, true );
-		SET_STATIC_VERTEX_SHADER_COMBO( DIFFUSEBUMPMAP, true );
-		SET_STATIC_VERTEX_SHADER_COMBO( VERTEXCOLOR, false );
-		SET_STATIC_VERTEX_SHADER_COMBO( VERTEXALPHATEXBLENDFACTOR, false );
-		SET_STATIC_VERTEX_SHADER_COMBO( BUMPMASK, false );
-		SET_STATIC_VERTEX_SHADER_COMBO( RELIEF_MAPPING, false );
-		SET_STATIC_VERTEX_SHADER_COMBO( SEAMLESS, false );
-		SET_STATIC_VERTEX_SHADER( lightmappedgeneric_vs20 );
 
-		DECLARE_STATIC_PIXEL_SHADER( lightmappedpaint_ps20b );
-		SET_STATIC_PIXEL_SHADER_COMBO( BUMPMAP, 1 );
-		SET_STATIC_PIXEL_SHADER_COMBO( CUBEMAP, bHasEnvmap ? 1 : 0 );
-		SET_STATIC_PIXEL_SHADER_COMBO( SEAMLESS, false );
-		SET_STATIC_PIXEL_SHADER_COMBO( THICKPAINT, ThickPaint( params ) );
-		SET_STATIC_PIXEL_SHADER( lightmappedpaint_ps20b );
 
 		pShaderShadow->EnableAlphaWrites( false );
 		pShaderShadow->EnableSRGBWrite( true );

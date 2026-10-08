@@ -10,9 +10,6 @@
 
 #include "convar.h"
 
-#include "lightmappedgeneric_vs20.inc"
-#include "WorldTwoTextureBlend_ps20.inc"
-#include "WorldTwoTextureBlend_ps20b.inc"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -246,44 +243,14 @@ END_SHADER_PARAMS
 
 			pShaderShadow->EnableSRGBWrite( true );
 
-			DECLARE_STATIC_VERTEX_SHADER( lightmappedgeneric_vs20 );
-			SET_STATIC_VERTEX_SHADER_COMBO( ENVMAP_MASK,  false );
-			SET_STATIC_VERTEX_SHADER_COMBO( BUMPMASK,  false );
-			SET_STATIC_VERTEX_SHADER_COMBO( TANGENTSPACE,  hasFlashlight );
-			SET_STATIC_VERTEX_SHADER_COMBO( BUMPMAP,  hasBump );
-			SET_STATIC_VERTEX_SHADER_COMBO( DIFFUSEBUMPMAP,  hasDiffuseBumpmap );
-			SET_STATIC_VERTEX_SHADER_COMBO( VERTEXCOLOR,  hasVertexColor );
-			SET_STATIC_VERTEX_SHADER_COMBO( VERTEXALPHATEXBLENDFACTOR, false );
-			SET_STATIC_VERTEX_SHADER_COMBO( RELIEF_MAPPING, 0 ); //( bumpmap_variant == 2 )?1:0);
-			SET_STATIC_VERTEX_SHADER_COMBO( SEAMLESS, bSeamlessMapping ); //( bumpmap_variant == 2 )?1:0);
-			SET_STATIC_VERTEX_SHADER( lightmappedgeneric_vs20 );
+ //( bumpmap_variant == 2 )?1:0);
+ //( bumpmap_variant == 2 )?1:0);
 
 			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( worldtwotextureblend_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( DETAILTEXTURE,  hasDetailTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( BUMPMAP,  hasBump );
-				SET_STATIC_PIXEL_SHADER_COMBO( DIFFUSEBUMPMAP,  hasDiffuseBumpmap );
-				SET_STATIC_PIXEL_SHADER_COMBO( VERTEXCOLOR,  hasVertexColor );
-				SET_STATIC_PIXEL_SHADER_COMBO( SELFILLUM,  hasSelfIllum );
-				SET_STATIC_PIXEL_SHADER_COMBO( DETAIL_ALPHA_MASK_BASE_TEXTURE,  bHasDetailAlpha );
-				SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHT,  hasFlashlight );
-				SET_STATIC_PIXEL_SHADER_COMBO( SEAMLESS,  bSeamlessMapping );
-				SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHTDEPTHFILTERMODE, nShadowFilterMode );
-				SET_STATIC_PIXEL_SHADER( worldtwotextureblend_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( worldtwotextureblend_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( DETAILTEXTURE,  hasDetailTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( BUMPMAP,  hasBump );
-				SET_STATIC_PIXEL_SHADER_COMBO( DIFFUSEBUMPMAP,  hasDiffuseBumpmap );
-				SET_STATIC_PIXEL_SHADER_COMBO( VERTEXCOLOR,  hasVertexColor );
-				SET_STATIC_PIXEL_SHADER_COMBO( SELFILLUM,  hasSelfIllum );
-				SET_STATIC_PIXEL_SHADER_COMBO( DETAIL_ALPHA_MASK_BASE_TEXTURE,  bHasDetailAlpha );
-				SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHT,  hasFlashlight );
-				SET_STATIC_PIXEL_SHADER_COMBO( SEAMLESS,  bSeamlessMapping );
-				SET_STATIC_PIXEL_SHADER( worldtwotextureblend_ps20 );
 			}
 
 			// HACK HACK HACK - enable alpha writes all the time so that we have them for

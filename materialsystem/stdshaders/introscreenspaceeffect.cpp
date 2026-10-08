@@ -7,9 +7,6 @@
 
 #include "BaseVSShader.h"
 
-#include "screenspaceeffect_vs20.inc"
-#include "IntroScreenSpaceEffect_ps20.inc"
-#include "IntroScreenSpaceEffect_ps20b.inc"
 
 BEGIN_VS_SHADER_FLAGS( IntroScreenSpaceEffect, "Help for IntroScreenSpaceEffect", SHADER_NOT_EDITABLE )
 	BEGIN_SHADER_PARAMS
@@ -59,19 +56,12 @@ BEGIN_VS_SHADER_FLAGS( IntroScreenSpaceEffect, "Help for IntroScreenSpaceEffect"
 
 			pShaderShadow->VertexShaderVertexFormat( VERTEX_POSITION, 1, 0, 0 );
 
-			DECLARE_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
 			
 			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() ) // GL always goes the ps2b way for this shader, even on "ps20" parts
 			{
-				DECLARE_STATIC_PIXEL_SHADER( introscreenspaceeffect_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( LINEAR_TO_SRGB, bNeedsSRGBAdapter );
-				SET_STATIC_PIXEL_SHADER( introscreenspaceeffect_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( introscreenspaceeffect_ps20 );
-				SET_STATIC_PIXEL_SHADER( introscreenspaceeffect_ps20 );
 			}
 
 			pShaderShadow->EnableBlending( true );

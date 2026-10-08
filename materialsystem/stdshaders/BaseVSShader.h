@@ -38,25 +38,25 @@
 #define SET_STATIC_PS2X_PIXEL_SHADER_NO_COMBOS( basename )		\
 		if( g_pHardwareConfig->SupportsPixelShaders_2_b() )		\
 		{														\
-			DECLARE_STATIC_PIXEL_SHADER( basename##_ps20b );	\
-			SET_STATIC_PIXEL_SHADER( basename##_ps20b );		\
+	\
+		\
 		}														\
 		else													\
 		{														\
-			DECLARE_STATIC_PIXEL_SHADER( basename##_ps20 );		\
-			SET_STATIC_PIXEL_SHADER( basename##_ps20 );			\
+		\
+			\
 		}
 
 #define SET_DYNAMIC_PS2X_PIXEL_SHADER_NO_COMBOS( basename )		\
 		if( g_pHardwareConfig->SupportsPixelShaders_2_b() )		\
 		{														\
-			DECLARE_DYNAMIC_PIXEL_SHADER( basename##_ps20b );	\
-			SET_DYNAMIC_PIXEL_SHADER( basename##_ps20b );		\
+	\
+		\
 		}														\
 		else													\
 		{														\
-			DECLARE_DYNAMIC_PIXEL_SHADER( basename##_ps20 );		\
-			SET_DYNAMIC_PIXEL_SHADER( basename##_ps20 );			\
+		\
+			\
 		}
 
 

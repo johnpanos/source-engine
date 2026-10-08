@@ -6,9 +6,6 @@
 //=============================================================================//
 
 #include "BaseVSShader.h"
-#include "portal_vs20.inc"
-#include "portal_ps20.inc"
-#include "portal_ps20b.inc"
 #include "convar.h"
 #include "cpp_shader_constant_register_map.h"
 
@@ -152,25 +149,12 @@ BEGIN_VS_SHADER( Portal_DX90,
 			if( bStaticBlendTexture && bAlphaMaskTexture )
 				pShaderShadow->EnableTexture( SHADER_SAMPLER2, true );
 			
-			DECLARE_STATIC_VERTEX_SHADER( portal_vs20 );
-			SET_STATIC_VERTEX_SHADER_COMBO( HASALPHAMASK, bAlphaMaskTexture );
-			SET_STATIC_VERTEX_SHADER_COMBO( HASSTATICTEXTURE, bStaticBlendTexture );
-			SET_STATIC_VERTEX_SHADER_COMBO( USEALTERNATEVIEW, (params[USEALTERNATEVIEWMATRIX]->GetIntValue() != 0) );
-			SET_STATIC_VERTEX_SHADER( portal_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( portal_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( HASALPHAMASK, bAlphaMaskTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( HASSTATICTEXTURE, bStaticBlendTexture );
-				SET_STATIC_PIXEL_SHADER( portal_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( portal_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( HASALPHAMASK, bAlphaMaskTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( HASSTATICTEXTURE, bStaticBlendTexture );
-				SET_STATIC_PIXEL_SHADER( portal_ps20 );
 			}
 
 		}

@@ -7,9 +7,6 @@
 
 #include "BaseVSShader.h"
 #include "common_hlsl_cpp_consts.h"
-#include "screenspaceeffect_vs20.inc"
-#include "accumbuff4sample_ps20.inc"
-#include "accumbuff4sample_ps20b.inc"
 #include "convar.h"
 
 BEGIN_VS_SHADER_FLAGS( accumbuff4sample, "Help for AccumBuff4Sample", SHADER_NOT_EDITABLE )
@@ -71,18 +68,12 @@ BEGIN_VS_SHADER_FLAGS( accumbuff4sample, "Help for AccumBuff4Sample", SHADER_NOT
 			pShaderShadow->EnableSRGBRead( SHADER_SAMPLER3, bForceSRGBReadAndWrite );
 			pShaderShadow->EnableSRGBWrite( bForceSRGBReadAndWrite );
 
-			DECLARE_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
 			
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( accumbuff4sample_ps20b );
-				SET_STATIC_PIXEL_SHADER( accumbuff4sample_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( accumbuff4sample_ps20 );
-				SET_STATIC_PIXEL_SHADER( accumbuff4sample_ps20 );
 			}
 		}
 

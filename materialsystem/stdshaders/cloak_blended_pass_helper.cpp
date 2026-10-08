@@ -135,12 +135,7 @@
 #include "convar.h"
 
 // Auto generated inc files
-#include "cloak_blended_pass_vs20.inc"
-#include "cloak_blended_pass_ps20.inc"
-#include "cloak_blended_pass_ps20b.inc"
 
-#include "cloak_blended_pass_vs30.inc"
-#include "cloak_blended_pass_ps30.inc"
 
 void InitParamsCloakBlendedPass( CBaseVSShader *pShader, IMaterialVar** params, const char *pMaterialName, CloakBlendedPassVars_t &info )
 {
@@ -202,22 +197,13 @@ void DrawCloakBlendedPass( CBaseVSShader *pShader, IMaterialVar** params, IShade
 		if ( !g_pHardwareConfig->HasFastVertexTextures() )
 		{
 			// Vertex Shader
-			DECLARE_STATIC_VERTEX_SHADER( cloak_blended_pass_vs20 );
-			SET_STATIC_VERTEX_SHADER_COMBO( BUMPMAP, bBumpMapping ? 1 : 0 );
-			SET_STATIC_VERTEX_SHADER( cloak_blended_pass_vs20 );
 
 			// Pixel Shader
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( cloak_blended_pass_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( BUMPMAP, bBumpMapping ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER( cloak_blended_pass_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( cloak_blended_pass_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( BUMPMAP, bBumpMapping ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER( cloak_blended_pass_ps20 );
 			}
 		}
 		else
@@ -226,14 +212,8 @@ void DrawCloakBlendedPass( CBaseVSShader *pShader, IMaterialVar** params, IShade
 			SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
 
 			// Vertex Shader
-			DECLARE_STATIC_VERTEX_SHADER( cloak_blended_pass_vs30 );
-			SET_STATIC_VERTEX_SHADER_COMBO( BUMPMAP, bBumpMapping ? 1 : 0 );
-			SET_STATIC_VERTEX_SHADER( cloak_blended_pass_vs30 );
 
 			// Pixel Shader
-			DECLARE_STATIC_PIXEL_SHADER( cloak_blended_pass_ps30 );
-			SET_STATIC_PIXEL_SHADER_COMBO( BUMPMAP, bBumpMapping ? 1 : 0 );
-			SET_STATIC_PIXEL_SHADER( cloak_blended_pass_ps30 );
 		}
 
 		// Textures

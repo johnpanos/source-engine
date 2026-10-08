@@ -8,12 +8,7 @@
 
 #include "BaseVSShader.h"
 
-#include "depthwrite_ps20.inc"
-#include "depthwrite_ps20b.inc"
-#include "depthwrite_vs20.inc"
 
-#include "depthwrite_ps30.inc"
-#include "depthwrite_vs30.inc"
 
 BEGIN_VS_SHADER_FLAGS( DepthWrite, "Help for Depth Write", SHADER_NOT_EDITABLE )
 
@@ -72,10 +67,7 @@ BEGIN_VS_SHADER_FLAGS( DepthWrite, "Help for Depth Write", SHADER_NOT_EDITABLE )
 
 			if ( !g_pHardwareConfig->HasFastVertexTextures() )
 			{
-				DECLARE_STATIC_VERTEX_SHADER( depthwrite_vs20 );
-				SET_STATIC_VERTEX_SHADER_COMBO( ONLY_PROJECT_POSITION, !bAlphaClip && false && !nColorDepth ); //360 needs to know if it *shouldn't* output texture coordinates to avoid shader patches
-				SET_STATIC_VERTEX_SHADER_COMBO( COLOR_DEPTH, nColorDepth );
-				SET_STATIC_VERTEX_SHADER( depthwrite_vs20 );
+ //360 needs to know if it *shouldn't* output texture coordinates to avoid shader patches
 				
 				if ( bAlphaClip || g_pHardwareConfig->PlatformRequiresNonNullPixelShaders() || nColorDepth )
 				{
@@ -87,15 +79,9 @@ BEGIN_VS_SHADER_FLAGS( DepthWrite, "Help for Depth Write", SHADER_NOT_EDITABLE )
 
 					if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 					{
-						DECLARE_STATIC_PIXEL_SHADER( depthwrite_ps20b );
-						SET_STATIC_PIXEL_SHADER_COMBO( COLOR_DEPTH, nColorDepth );
-						SET_STATIC_PIXEL_SHADER( depthwrite_ps20b );
 					}
 					else
 					{
-						DECLARE_STATIC_PIXEL_SHADER( depthwrite_ps20 );
-						SET_STATIC_PIXEL_SHADER_COMBO( COLOR_DEPTH, nColorDepth );
-						SET_STATIC_PIXEL_SHADER( depthwrite_ps20 );
 					}
 				}
 			}
@@ -103,17 +89,11 @@ BEGIN_VS_SHADER_FLAGS( DepthWrite, "Help for Depth Write", SHADER_NOT_EDITABLE )
 			{
 				SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
 
-				DECLARE_STATIC_VERTEX_SHADER( depthwrite_vs30 );
-				SET_STATIC_VERTEX_SHADER_COMBO( ONLY_PROJECT_POSITION, 0 ); //360 only combo, and this is a PC path
-				SET_STATIC_VERTEX_SHADER_COMBO( COLOR_DEPTH, nColorDepth );
-				SET_STATIC_VERTEX_SHADER( depthwrite_vs30 );
+ //360 only combo, and this is a PC path
 
 				pShaderShadow->EnableTexture( SHADER_SAMPLER0, true );
 				pShaderShadow->EnableSRGBRead( SHADER_SAMPLER0, true );
 
-				DECLARE_STATIC_PIXEL_SHADER( depthwrite_ps30 );
-				SET_STATIC_PIXEL_SHADER_COMBO( COLOR_DEPTH, nColorDepth );
-				SET_STATIC_PIXEL_SHADER( depthwrite_ps30 );
 			}
 		}
 	// DYNAMIC_STATE

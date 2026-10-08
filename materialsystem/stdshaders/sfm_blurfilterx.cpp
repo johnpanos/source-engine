@@ -6,9 +6,6 @@
 //===========================================================================//
 
 #include "BaseVSShader.h"
-#include "BlurFilter_vs20.inc"
-#include "BlurFilter_ps20.inc"
-#include "BlurFilter_ps20b.inc"
 
 BEGIN_VS_SHADER_FLAGS( sfm_blurfilterx_shader, "Help for BlurFilterX", SHADER_NOT_EDITABLE )
 	BEGIN_SHADER_PARAMS
@@ -45,19 +42,12 @@ BEGIN_VS_SHADER_FLAGS( sfm_blurfilterx_shader, "Help for BlurFilterX", SHADER_NO
 			pShaderShadow->VertexShaderVertexFormat( fmt, 1, 0, 0 );
 
 			// Pre-cache shaders
-			blurfilter_vs20_Static_Index vshIndex;
-			pShaderShadow->SetVertexShader( "BlurFilter_vs20", vshIndex.GetIndex() );
 			
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( blurfilter_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( APPROX_SRGB_ADAPTER, 0 );
-				SET_STATIC_PIXEL_SHADER( blurfilter_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( blurfilter_ps20 );
-				SET_STATIC_PIXEL_SHADER( blurfilter_ps20 );
 			}
 			
 			

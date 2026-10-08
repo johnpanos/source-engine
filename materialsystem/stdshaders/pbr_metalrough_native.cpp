@@ -178,8 +178,6 @@ SHADER_DRAW
 		// Models need the tangent (user data) for normal maps; WMSH batches
 		// carry their own vertex layout.
 		pShaderShadow->VertexShaderVertexFormat( VERTEX_POSITION | VERTEX_NORMAL, 3, 0, 4 );
-		pShaderShadow->SetVertexShader( "pbr_metalrough_world_vs", 0 );
-		pShaderShadow->SetPixelShader( "pbr_metalrough_world_ps", 0 );
 	}
 	// Source needs a snapshot even for rejected materials; without Draw() in
 	// that phase it reports "No render states in shader" and loses the map.

@@ -7,7 +7,6 @@
 
 #include "BaseVSShader.h"
 
-#include "screenspaceeffect_vs20.inc"
 
 DEFINE_FALLBACK_SHADER( screenspace_general, screenspace_general_dx9 )
 BEGIN_VS_SHADER_FLAGS( screenspace_general_dx9, "Help for screenspace_general", SHADER_NOT_EDITABLE )
@@ -177,10 +176,6 @@ BEGIN_VS_SHADER_FLAGS( screenspace_general_dx9, "Help for screenspace_general", 
 			pShaderShadow->EnableSRGBWrite( srgb_write );
 
 			// Pre-cache shaders
-			DECLARE_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_STATIC_VERTEX_SHADER_COMBO( X360APPCHOOSER, IS_PARAM_DEFINED( X360APPCHOOSER ) ? params[X360APPCHOOSER]->GetIntValue() : 0 );
-			vsh_forgot_to_set_static_X360APPCHOOSER = 0; // This is a dirty workaround to the shortcut [= 0] in the fxc
-			SET_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
 
 			if (params[DISABLE_COLOR_WRITES]->GetIntValue())
 			{
@@ -224,16 +219,13 @@ BEGIN_VS_SHADER_FLAGS( screenspace_general_dx9, "Help for screenspace_general", 
 					memcpy( szNewName, szPixelShader, sizeof( char ) * iLength );
 					szNewName[iLength] = 'b';
 					szNewName[iLength + 1] = '\0';
-					pShaderShadow->SetPixelShader( szNewName, 0 );
 				}
 				else
 				{
-					pShaderShadow->SetPixelShader( params[PIXSHADER]->GetStringValue(), 0 );
 				}
 			}
 			else
 			{
-				pShaderShadow->SetPixelShader( params[PIXSHADER]->GetStringValue(), 0 );
 			}
 		}
 

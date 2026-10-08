@@ -7,9 +7,6 @@
 
 #include "BaseVSShader.h"
 
-#include "screenspaceeffect_vs20.inc"
-#include "floatcombine_ps20.inc"
-#include "floatcombine_ps20b.inc"
 
 BEGIN_VS_SHADER_FLAGS( floatcombine, "Help for floatcombine", SHADER_NOT_EDITABLE )
 	BEGIN_SHADER_PARAMS
@@ -62,18 +59,12 @@ BEGIN_VS_SHADER_FLAGS( floatcombine, "Help for floatcombine", SHADER_NOT_EDITABL
 			pShaderShadow->EnableSRGBWrite( true );
 
 			// Pre-cache shaders
-			DECLARE_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( floatcombine_ps20b );
-				SET_STATIC_PIXEL_SHADER( floatcombine_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( floatcombine_ps20 );
-				SET_STATIC_PIXEL_SHADER( floatcombine_ps20 );
 			}
 		}
 

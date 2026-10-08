@@ -8,9 +8,6 @@
 
 #include "BaseVSShader.h"
 
-#include "cable_vs20.inc"
-#include "cable_ps20.inc"
-#include "cable_ps20b.inc"
 #include "cpp_shader_constant_register_map.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -89,18 +86,12 @@ BEGIN_VS_SHADER( Cable_DX9,
 				VERTEX_POSITION | VERTEX_COLOR | VERTEX_TANGENT_S | VERTEX_TANGENT_T, 
 				2, tCoordDimensions, 0 );
 
-			DECLARE_STATIC_VERTEX_SHADER( cable_vs20 );
-			SET_STATIC_VERTEX_SHADER( cable_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( cable_ps20b );
-				SET_STATIC_PIXEL_SHADER( cable_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( cable_ps20 );
-				SET_STATIC_PIXEL_SHADER( cable_ps20 );
 			}
 
 			// we are writing linear values from this shader.

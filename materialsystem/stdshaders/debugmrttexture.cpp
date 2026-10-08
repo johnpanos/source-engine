@@ -8,9 +8,6 @@
 
 #include "BaseVSShader.h"
 
-#include "debugmrttexture_ps20.inc"
-#include "debugmrttexture_ps20b.inc"
-#include "debugmrttexture_vs20.inc"
 
 BEGIN_VS_SHADER_FLAGS( DebugMRTTexture, "Help for DebugMRTTexture", SHADER_NOT_EDITABLE )
 
@@ -43,20 +40,12 @@ BEGIN_VS_SHADER_FLAGS( DebugMRTTexture, "Help for DebugMRTTexture", SHADER_NOT_E
 			pShaderShadow->EnableTexture( SHADER_SAMPLER0, true );
 			pShaderShadow->EnableTexture( SHADER_SAMPLER1, true );
 
-			DECLARE_STATIC_VERTEX_SHADER( debugmrttexture_vs20 );
-			SET_STATIC_VERTEX_SHADER( debugmrttexture_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( debugmrttexture_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( MRTINDEX,  params[MRTINDEX]->GetIntValue() );
-				SET_STATIC_PIXEL_SHADER( debugmrttexture_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( debugmrttexture_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( MRTINDEX,  params[MRTINDEX]->GetIntValue() );
-				SET_STATIC_PIXEL_SHADER( debugmrttexture_ps20 );
 			}
 
 			int numTexCoords = 2;

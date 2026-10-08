@@ -7,9 +7,6 @@
 
 #include "BaseVSShader.h"
 
-#include "writez_vs20.inc"
-#include "white_ps20.inc"
-#include "white_ps20b.inc"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -45,14 +42,10 @@ BEGIN_VS_SHADER_FLAGS( WriteStencil_DX9, "Help for WriteStencil", SHADER_NOT_EDI
 			pShaderShadow->EnableAlphaWrites( false );	//	Write ONLY to stencil
 			pShaderShadow->EnableDepthWrites( false );	//
 
-			DECLARE_STATIC_VERTEX_SHADER( writez_vs20 );
-			SET_STATIC_VERTEX_SHADER( writez_vs20 );
 
 			// No pixel shader on Direct3D, doubles fill rate
 			if ( g_pHardwareConfig->PlatformRequiresNonNullPixelShaders() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( white_ps20 );
-				SET_STATIC_PIXEL_SHADER( white_ps20 );
 			}
 
 			// Set stream format (note that this shader supports compression)

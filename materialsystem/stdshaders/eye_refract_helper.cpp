@@ -7,12 +7,7 @@
 #include "cpp_shader_constant_register_map.h"
 
 
-#include "eye_refract_vs20.inc"
-#include "eye_refract_ps20.inc"
-#include "eye_refract_ps20b.inc"
 
-#include "eye_refract_vs30.inc"
-#include "eye_refract_ps30.inc"
 
 #include "convar.h"
 
@@ -139,25 +134,12 @@ void Draw_Eyes_Refract_Internal( CBaseVSShader *pShader, IMaterialVar** params, 
 
 		if ( !g_pHardwareConfig->HasFastVertexTextures() )
 		{
-			DECLARE_STATIC_VERTEX_SHADER( eye_refract_vs20 );
-			SET_STATIC_VERTEX_SHADER_COMBO( HALFLAMBERT, IS_FLAG_SET( MATERIAL_VAR_HALFLAMBERT ) );
-			SET_STATIC_VERTEX_SHADER_COMBO( INTRO, bIntro ? 1 : 0 );
-			SET_STATIC_VERTEX_SHADER_COMBO( FLASHLIGHT, bDrawFlashlightAdditivePass ? 1 : 0 );
-			SET_STATIC_VERTEX_SHADER_COMBO( LIGHTWARPTEXTURE, bDiffuseWarp ? 1 : 0 );
-			SET_STATIC_VERTEX_SHADER( eye_refract_vs20 );
 
 			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
 				bool bSphereTexKillCombo = IS_PARAM_DEFINED( info.m_nSphereTexKillCombo ) ? ( params[info.m_nSphereTexKillCombo]->GetIntValue() ? true : false ) : ( kDefaultSphereTexKillCombo ? true : false );
 				bool bRayTraceSphere = IS_PARAM_DEFINED( info.m_nRaytraceSphere ) ? ( params[info.m_nRaytraceSphere]->GetIntValue() ? true : false ) : ( kDefaultRaytraceSphere ? true : false );
 
-				DECLARE_STATIC_PIXEL_SHADER( eye_refract_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( SPHERETEXKILLCOMBO, bSphereTexKillCombo ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER_COMBO( RAYTRACESPHERE, bRayTraceSphere ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHT, bDrawFlashlightAdditivePass ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER_COMBO( LIGHTWARPTEXTURE, bDiffuseWarp ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHTDEPTHFILTERMODE, nShadowFilterMode );
-				SET_STATIC_PIXEL_SHADER( eye_refract_ps20b );
 
 				if ( bDrawFlashlightAdditivePass == true )
 				{
@@ -168,10 +150,6 @@ void Draw_Eyes_Refract_Internal( CBaseVSShader *pShader, IMaterialVar** params, 
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( eye_refract_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHT, bDrawFlashlightAdditivePass ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER_COMBO( LIGHTWARPTEXTURE, bDiffuseWarp ? 1 : 0 );
-				SET_STATIC_PIXEL_SHADER( eye_refract_ps20 );
 			}
 		}
 		else
@@ -179,23 +157,10 @@ void Draw_Eyes_Refract_Internal( CBaseVSShader *pShader, IMaterialVar** params, 
 			// The vertex shader uses the vertex id stream
 			SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
 
-			DECLARE_STATIC_VERTEX_SHADER( eye_refract_vs30 );
-			SET_STATIC_VERTEX_SHADER_COMBO( HALFLAMBERT, IS_FLAG_SET( MATERIAL_VAR_HALFLAMBERT ) );
-			SET_STATIC_VERTEX_SHADER_COMBO( INTRO, bIntro ? 1 : 0 );
-			SET_STATIC_VERTEX_SHADER_COMBO( FLASHLIGHT, bDrawFlashlightAdditivePass ? 1 : 0 );
-			SET_STATIC_VERTEX_SHADER_COMBO( LIGHTWARPTEXTURE, bDiffuseWarp ? 1 : 0 );
-			SET_STATIC_VERTEX_SHADER( eye_refract_vs30 );
 
 			bool bSphereTexKillCombo = IS_PARAM_DEFINED( info.m_nSphereTexKillCombo ) ? ( params[info.m_nSphereTexKillCombo]->GetIntValue() ? true : false ) : ( kDefaultSphereTexKillCombo ? true : false );
 			bool bRayTraceSphere = IS_PARAM_DEFINED( info.m_nRaytraceSphere ) ? ( params[info.m_nRaytraceSphere]->GetIntValue() ? true : false ) : ( kDefaultRaytraceSphere ? true : false );
 
-			DECLARE_STATIC_PIXEL_SHADER( eye_refract_ps30 );
-			SET_STATIC_PIXEL_SHADER_COMBO( SPHERETEXKILLCOMBO, bSphereTexKillCombo ? 1 : 0 );
-			SET_STATIC_PIXEL_SHADER_COMBO( RAYTRACESPHERE, bRayTraceSphere ? 1 : 0 );
-			SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHT, bDrawFlashlightAdditivePass ? 1 : 0 );
-			SET_STATIC_PIXEL_SHADER_COMBO( LIGHTWARPTEXTURE, bDiffuseWarp ? 1 : 0 );
-			SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHTDEPTHFILTERMODE, nShadowFilterMode );
-			SET_STATIC_PIXEL_SHADER( eye_refract_ps30 );
 
 			if ( bDrawFlashlightAdditivePass == true )
 			{

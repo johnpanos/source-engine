@@ -8,11 +8,6 @@
 #include "BaseVSShader.h"
 #include "commandbuilder.h"
 
-#include "pyro_vision_ps20.inc"
-#include "pyro_vision_ps20b.inc"
-#include "pyro_vision_vs20.inc"
-#include "pyro_vision_ps30.inc"
-#include "pyro_vision_vs30.inc"
 
 #include "../materialsystem_global.h"
 
@@ -544,68 +539,17 @@ BEGIN_VS_SHADER( pyro_vision, "Help for pyro vision" )
 
 			if ( !g_pHardwareConfig->HasFastVertexTextures() )
 			{
-				DECLARE_STATIC_VERTEX_SHADER( pyro_vision_vs20 );
-				SET_STATIC_VERTEX_SHADER_COMBO( EFFECT, params[ EFFECT ]->GetIntValue() );
-				SET_STATIC_VERTEX_SHADER_COMBO( VERTEXCOLOR, IS_FLAG_SET( MATERIAL_VAR_VERTEXCOLOR ) );
-				SET_STATIC_VERTEX_SHADER_COMBO( VERTEX_LIT, bVertexLit );
-				SET_STATIC_VERTEX_SHADER_COMBO( FULLBRIGHT, bFullBright );
-				SET_STATIC_VERTEX_SHADER_COMBO( HALFLAMBERT,  bHalfLambert );
-				SET_STATIC_VERTEX_SHADER_COMBO( BASETEXTURE2, bHasBaseTexture2 );
-				SET_STATIC_VERTEX_SHADER_COMBO( STRIPES, bHasStripes );
-				SET_STATIC_VERTEX_SHADER_COMBO( STRIPES_USE_NORMAL2, bHasStripesNormal2 );
-				SET_STATIC_VERTEX_SHADER_COMBO( USE_STATIC_CONTROL_FLOW, bUseStaticControlFlow );
-				SET_STATIC_VERTEX_SHADER( pyro_vision_vs20 );
 
 				if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 				{
-					DECLARE_STATIC_PIXEL_SHADER( pyro_vision_ps20b );
-					SET_STATIC_PIXEL_SHADER_COMBO( EFFECT, params[ EFFECT ]->GetIntValue() );
-					SET_STATIC_PIXEL_SHADER_COMBO( VERTEX_LIT, bVertexLit );
-					SET_STATIC_PIXEL_SHADER_COMBO( BASETEXTURE2, bHasBaseTexture2 );
-					SET_STATIC_PIXEL_SHADER_COMBO( FANCY_BLENDING, bHasBlendModulateTexture );
-					SET_STATIC_PIXEL_SHADER_COMBO( SELFILLUM, bSelfIllum );
-					SET_STATIC_PIXEL_SHADER_COMBO( COLOR_BAR, bHasColorbar );
-					SET_STATIC_PIXEL_SHADER_COMBO( STRIPES, bHasStripes );
-					SET_STATIC_PIXEL_SHADER_COMBO( STRIPES_USE_NORMAL2, bHasStripesNormal2 );
-					SET_STATIC_PIXEL_SHADER( pyro_vision_ps20b );
 				}
 				else
 				{
-					DECLARE_STATIC_PIXEL_SHADER( pyro_vision_ps20 );
-					SET_STATIC_PIXEL_SHADER_COMBO( EFFECT, params[ EFFECT ]->GetIntValue() );
-					SET_STATIC_PIXEL_SHADER_COMBO( VERTEX_LIT, bVertexLit );
-					SET_STATIC_PIXEL_SHADER_COMBO( BASETEXTURE2, bHasBaseTexture2 );
-					SET_STATIC_PIXEL_SHADER_COMBO( FANCY_BLENDING, bHasBlendModulateTexture );
-					SET_STATIC_PIXEL_SHADER_COMBO( SELFILLUM, bSelfIllum );
-					SET_STATIC_PIXEL_SHADER_COMBO( COLOR_BAR, bHasColorbar );
-					SET_STATIC_PIXEL_SHADER_COMBO( STRIPES, bHasStripes );
-					SET_STATIC_PIXEL_SHADER_COMBO( STRIPES_USE_NORMAL2, bHasStripesNormal2 );
-					SET_STATIC_PIXEL_SHADER( pyro_vision_ps20 );
 				}
 			}
 			else
 			{
-				DECLARE_STATIC_VERTEX_SHADER( pyro_vision_vs30 );
-				SET_STATIC_VERTEX_SHADER_COMBO( EFFECT, params[ EFFECT ]->GetIntValue() );
-				SET_STATIC_VERTEX_SHADER_COMBO( VERTEXCOLOR, IS_FLAG_SET( MATERIAL_VAR_VERTEXCOLOR ) );
-				SET_STATIC_VERTEX_SHADER_COMBO( VERTEX_LIT, bVertexLit );
-				SET_STATIC_VERTEX_SHADER_COMBO( FULLBRIGHT, bFullBright );
-				SET_STATIC_VERTEX_SHADER_COMBO( HALFLAMBERT,  bHalfLambert );
-				SET_STATIC_VERTEX_SHADER_COMBO( BASETEXTURE2, bHasBaseTexture2 );
-				SET_STATIC_VERTEX_SHADER_COMBO( STRIPES, bHasStripes );
-				SET_STATIC_VERTEX_SHADER_COMBO( STRIPES_USE_NORMAL2, bHasStripesNormal2 );
-				SET_STATIC_VERTEX_SHADER( pyro_vision_vs30 );
 
-				DECLARE_STATIC_PIXEL_SHADER( pyro_vision_ps30 );
-				SET_STATIC_PIXEL_SHADER_COMBO( EFFECT, params[ EFFECT ]->GetIntValue() );
-				SET_STATIC_PIXEL_SHADER_COMBO( VERTEX_LIT, bVertexLit );
-				SET_STATIC_PIXEL_SHADER_COMBO( BASETEXTURE2, bHasBaseTexture2 );
-				SET_STATIC_PIXEL_SHADER_COMBO( FANCY_BLENDING, bHasBlendModulateTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( SELFILLUM, bSelfIllum );
-				SET_STATIC_PIXEL_SHADER_COMBO( COLOR_BAR, bHasColorbar );
-				SET_STATIC_PIXEL_SHADER_COMBO( STRIPES, bHasStripes );
-				SET_STATIC_PIXEL_SHADER_COMBO( STRIPES_USE_NORMAL2, bHasStripesNormal2 );
-				SET_STATIC_PIXEL_SHADER( pyro_vision_ps30 );
 			}
 		}
 

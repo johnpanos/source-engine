@@ -8,7 +8,6 @@
 #include "worldvertextransition_dx8_helper.h"
 #include "BaseVSShader.h"
 
-#include "WorldVertexTransition.inc"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -45,9 +44,6 @@ void DrawWorldVertexTransitionEditor_DX8( CBaseVSShader *pShader, IMaterialVar**
 		int fmt = VERTEX_POSITION | VERTEX_COLOR;
 		pShaderShadow->VertexShaderVertexFormat( fmt, 2, 0, 0 );
 
-		worldvertextransition_Static_Index vshIndex;
-		pShaderShadow->SetVertexShader( "WorldVertexTransition", vshIndex.GetIndex() );
-		pShaderShadow->SetPixelShader( "WorldVertexTransition_Editor" );
 	
 		pShader->FogToFogColor();
 	}

@@ -7,11 +7,6 @@
 
 #include "BaseVSShader.h"
 
-#include "screenspaceeffect_vs20.inc"
-#include "floattoscreen_vanilla_ps20.inc"
-#include "floattoscreen_vanilla_ps20b.inc"
-#include "floattoscreen_ps20.inc"
-#include "floattoscreen_ps20b.inc"
 
 BEGIN_VS_SHADER_FLAGS( floattoscreen_vanilla, "Help for floattoscreen_vanilla", SHADER_NOT_EDITABLE )
 	BEGIN_SHADER_PARAMS
@@ -51,18 +46,12 @@ BEGIN_VS_SHADER_FLAGS( floattoscreen_vanilla, "Help for floattoscreen_vanilla", 
 			pShaderShadow->EnableSRGBWrite( true );
 
 			// Pre-cache shaders
-			DECLARE_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
-			SET_STATIC_VERTEX_SHADER( screenspaceeffect_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( floattoscreen_ps20b );
-				SET_STATIC_PIXEL_SHADER( floattoscreen_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( floattoscreen_ps20 );
-				SET_STATIC_PIXEL_SHADER( floattoscreen_ps20 );
 			}
 		}
 

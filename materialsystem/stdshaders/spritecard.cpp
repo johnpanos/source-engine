@@ -10,16 +10,9 @@
 #include "convar.h"
 
 // STDSHADER_DX9_DLL_EXPORT
-#include "spritecard_ps20.inc"
-#include "spritecard_ps20b.inc"
-#include "spritecard_vs20.inc"
-#include "splinecard_vs20.inc"
 
 #if SUPPORT_DX8
 // STDSHADER_DX8_DLL_EXPORT
-#include "spritecard_vs11.inc"
-#include "spritecard_ps11.inc"
-#include "splinecard_vs11.inc"
 #endif
 
 #include "tier0/icommandline.h" //command line
@@ -299,74 +292,29 @@ SHADER_DRAW
 #if SUPPORT_DX8
 			if ( nSplineType )
 			{
-				DECLARE_STATIC_VERTEX_SHADER( splinecard_vs11 );
-				SET_STATIC_VERTEX_SHADER( splinecard_vs11 );
 			}
 			else
 			{
-				DECLARE_STATIC_VERTEX_SHADER( spritecard_vs11 );
 				if ( bSecondSequence )
 					bAdditive2ndTexture = false;
-				SET_STATIC_VERTEX_SHADER_COMBO( DUALSEQUENCE, false );
-				SET_STATIC_VERTEX_SHADER_COMBO( ZOOM_ANIMATE_SEQ2, false );
-				SET_STATIC_VERTEX_SHADER_COMBO( EXTRACTGREENALPHA, bExtractGreenAlpha );
-				SET_STATIC_VERTEX_SHADER( spritecard_vs11 );
 			}
 
-			DECLARE_STATIC_PIXEL_SHADER( spritecard_ps11 );
-			SET_STATIC_PIXEL_SHADER_COMBO( ADDBASETEXTURE2, bAdditive2ndTexture );
-			SET_STATIC_PIXEL_SHADER_COMBO( ADDSELF, bAddSelf );
-			SET_STATIC_PIXEL_SHADER_COMBO( USEALPHAASRGB, bSecondSequence );
-			SET_STATIC_PIXEL_SHADER( spritecard_ps11 );
 #endif
 		}
 		else
 		{
 			if ( nSplineType )
 			{
-				DECLARE_STATIC_VERTEX_SHADER( splinecard_vs20 );
-				SET_STATIC_VERTEX_SHADER( splinecard_vs20 );
 			}
 			else
 			{
-				DECLARE_STATIC_VERTEX_SHADER( spritecard_vs20 );
-				SET_STATIC_VERTEX_SHADER_COMBO( DUALSEQUENCE, bSecondSequence );
-				SET_STATIC_VERTEX_SHADER_COMBO( ZOOM_ANIMATE_SEQ2, bZoomSeq2 );
-				SET_STATIC_VERTEX_SHADER_COMBO( EXTRACTGREENALPHA, bExtractGreenAlpha );
-				SET_STATIC_VERTEX_SHADER_COMBO( USE_INSTANCING, bUseInstancing );
-				SET_STATIC_VERTEX_SHADER( spritecard_vs20 );
 			}
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( spritecard_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( ADDBASETEXTURE2, bAdditive2ndTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( ADDSELF, bAddSelf );
-				SET_STATIC_PIXEL_SHADER_COMBO( ANIMBLEND, bBlendFrames );
-				SET_STATIC_PIXEL_SHADER_COMBO( DUALSEQUENCE, bSecondSequence );
-				SET_STATIC_PIXEL_SHADER_COMBO( SEQUENCE_BLEND_MODE, bSecondSequence ? params[SEQUENCE_BLEND_MODE]->GetIntValue() : 0 );
-				SET_STATIC_PIXEL_SHADER_COMBO( MAXLUMFRAMEBLEND1, params[MAXLUMFRAMEBLEND1]->GetIntValue() );
-				SET_STATIC_PIXEL_SHADER_COMBO( MAXLUMFRAMEBLEND2, bSecondSequence? params[MAXLUMFRAMEBLEND1]->GetIntValue() : 0 );
-				SET_STATIC_PIXEL_SHADER_COMBO( COLORRAMP, bUseRampTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( EXTRACTGREENALPHA, bExtractGreenAlpha );
-				SET_STATIC_PIXEL_SHADER_COMBO( DEPTHBLEND, bDepthBlend );
-				SET_STATIC_PIXEL_SHADER_COMBO( MOD2X, bMod2X );
-				SET_STATIC_PIXEL_SHADER( spritecard_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( spritecard_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( ADDBASETEXTURE2, bAdditive2ndTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( DUALSEQUENCE, bSecondSequence );
-				SET_STATIC_PIXEL_SHADER_COMBO( ADDSELF, bAddSelf );
-				SET_STATIC_PIXEL_SHADER_COMBO( ANIMBLEND, bBlendFrames );
-				SET_STATIC_PIXEL_SHADER_COMBO( SEQUENCE_BLEND_MODE, bSecondSequence ? params[SEQUENCE_BLEND_MODE]->GetIntValue() : 0 );
-				SET_STATIC_PIXEL_SHADER_COMBO( MAXLUMFRAMEBLEND1, params[MAXLUMFRAMEBLEND1]->GetIntValue() );
-				SET_STATIC_PIXEL_SHADER_COMBO( MAXLUMFRAMEBLEND2, bSecondSequence? params[MAXLUMFRAMEBLEND1]->GetIntValue() : 0 );
-				SET_STATIC_PIXEL_SHADER_COMBO( COLORRAMP, bUseRampTexture );
-				SET_STATIC_PIXEL_SHADER_COMBO( EXTRACTGREENALPHA, bExtractGreenAlpha );
-				SET_STATIC_PIXEL_SHADER_COMBO( MOD2X, bMod2X );
-				SET_STATIC_PIXEL_SHADER( spritecard_ps20 );
 			}
 
 			if ( !bDX8 )

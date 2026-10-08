@@ -3,9 +3,6 @@
 #include "BaseVSShader.h"
 #include "shaderlib/cshader.h"
 
-#include "debugtextureview_vs20.inc"
-#include "debugtextureview_ps20.inc"
-#include "debugtextureview_ps20b.inc"
 
 DEFINE_FALLBACK_SHADER( DebugTextureView, DebugTextureView_dx9 )
 BEGIN_VS_SHADER( DebugTextureView_dx9, "Help for DebugTextureView" )
@@ -45,20 +42,12 @@ BEGIN_VS_SHADER( DebugTextureView_dx9, "Help for DebugTextureView" )
 			int userDataSize = 0;
 			pShaderShadow->VertexShaderVertexFormat( flags, nTexCoordCount, NULL, userDataSize );
 
-			DECLARE_STATIC_VERTEX_SHADER( debugtextureview_vs20 );
-			SET_STATIC_VERTEX_SHADER( debugtextureview_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( debugtextureview_ps20b );
-				SET_STATIC_PIXEL_SHADER_COMBO( SHOWALPHA, params[SHOWALPHA]->GetIntValue() != 0 );
-				SET_STATIC_PIXEL_SHADER( debugtextureview_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( debugtextureview_ps20 );
-				SET_STATIC_PIXEL_SHADER_COMBO( SHOWALPHA, params[SHOWALPHA]->GetIntValue() != 0 );
-				SET_STATIC_PIXEL_SHADER( debugtextureview_ps20 );
 			}
 		}
 

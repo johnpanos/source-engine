@@ -7,9 +7,6 @@
 #include "BaseVSShader.h"
 #include "cpp_shader_constant_register_map.h"
 
-#include "windowimposter_vs20.inc"
-#include "windowimposter_ps20.inc"
-#include "windowimposter_ps20b.inc"
 
 
 
@@ -52,18 +49,12 @@ BEGIN_VS_SHADER( WindowImposter_DX90,
 
 			pShaderShadow->EnableTexture( SHADER_SAMPLER0, true );
 
-			DECLARE_STATIC_VERTEX_SHADER( windowimposter_vs20 );
-			SET_STATIC_VERTEX_SHADER( windowimposter_vs20 );
 
 			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 			{
-				DECLARE_STATIC_PIXEL_SHADER( windowimposter_ps20b );
-				SET_STATIC_PIXEL_SHADER( windowimposter_ps20b );
 			}
 			else
 			{
-				DECLARE_STATIC_PIXEL_SHADER( windowimposter_ps20 );
-				SET_STATIC_PIXEL_SHADER( windowimposter_ps20 );
 			}
 
 			pShaderShadow->VertexShaderVertexFormat( VERTEX_POSITION, 1, 0, 0 );

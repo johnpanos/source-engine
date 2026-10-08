@@ -17,8 +17,6 @@
 #include "cpp_shader_constant_register_map.h"
 
 // Auto generated inc files
-#include "solidenergy_vs20.inc"
-#include "solidenergy_ps20b.inc"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -169,31 +167,7 @@ void DrawSolidEnergy( CBaseVSShader *pShader, IMaterialVar **params, IShaderDyna
 		int nTexCoordCount = 1;
 		pShaderShadow->VertexShaderVertexFormat( flags, nTexCoordCount, NULL, userDataSize );
 
-		DECLARE_STATIC_VERTEX_SHADER( solidenergy_vs20 );
-		SET_STATIC_VERTEX_SHADER_COMBO( VERTEXCOLOR, bHasVertexColor || bHasVertexAlpha );
-		SET_STATIC_VERTEX_SHADER_COMBO( DETAIL1, bDetail1 );
-		SET_STATIC_VERTEX_SHADER_COMBO( DETAIL2, bDetail2 );
-		SET_STATIC_VERTEX_SHADER_COMBO( TANGENTTOPACITY, bTangentT );
-		SET_STATIC_VERTEX_SHADER_COMBO( TANGENTSOPACITY, bTangentS );
-		SET_STATIC_VERTEX_SHADER_COMBO( FRESNELOPACITY, bFresnel );
-		SET_STATIC_VERTEX_SHADER_COMBO( FLOWMAP, bHasFlowmap );
-		SET_STATIC_VERTEX_SHADER_COMBO( MODELFORMAT, bModel );
-		SET_STATIC_VERTEX_SHADER( solidenergy_vs20 );
 
-		DECLARE_STATIC_PIXEL_SHADER( solidenergy_ps20b );
-		SET_STATIC_PIXEL_SHADER_COMBO( ADDITIVE, bAdditiveBlend );
-		SET_STATIC_PIXEL_SHADER_COMBO( DETAIL1, bDetail1 );
-		SET_STATIC_PIXEL_SHADER_COMBO( DETAIL2, bDetail2 );
-		SET_STATIC_PIXEL_SHADER_COMBO( DETAIL1BLENDMODE, nDetail1BlendMode );
-		SET_STATIC_PIXEL_SHADER_COMBO( DETAIL2BLENDMODE, nDetail2BlendMode );
-		SET_STATIC_PIXEL_SHADER_COMBO( VERTEXCOLOR, ( bHasVertexColor || bHasVertexAlpha ) );
-		SET_STATIC_PIXEL_SHADER_COMBO( TANGENTTOPACITY, bTangentT );
-		SET_STATIC_PIXEL_SHADER_COMBO( TANGENTSOPACITY, bTangentS );
-		SET_STATIC_PIXEL_SHADER_COMBO( FRESNELOPACITY, bFresnel );
-		SET_STATIC_PIXEL_SHADER_COMBO( DEPTHBLEND, 0 );
-		SET_STATIC_PIXEL_SHADER_COMBO( FLOWMAP, bHasFlowmap );
-		SET_STATIC_PIXEL_SHADER_COMBO( FLOW_CHEAP, bHasCheapFlow );
-		SET_STATIC_PIXEL_SHADER( solidenergy_ps20b );
 
 		// Textures
 		pShaderShadow->EnableTexture( SHADER_SAMPLER0, true ); // [sRGB] Base

@@ -16,8 +16,6 @@
 #include "cpp_shader_constant_register_map.h"
 
 // Auto generated inc files
-#include "paintblob_vs20.inc"
-#include "paintblob_ps20b.inc"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -178,22 +176,8 @@ void DrawPaintBlob( CBaseVSShader *pShader, IMaterialVar **params, IShaderDynami
 		}
 
 		// Vertex Shader
-		DECLARE_STATIC_VERTEX_SHADER( paintblob_vs20 );
-		SET_STATIC_VERTEX_SHADER_COMBO( FLATTEN_STATIC_CONTROL_FLOW, bFlattenStaticControlFlow );
-		SET_STATIC_VERTEX_SHADER( paintblob_vs20 );
 
 		// Pixel Shader
-		DECLARE_STATIC_PIXEL_SHADER( paintblob_ps20b );
-		SET_STATIC_PIXEL_SHADER_COMBO( BACK_SURFACE, bBackSurface );
-		SET_STATIC_PIXEL_SHADER_COMBO( LIGHT_WARP, bLightWarp );
-		SET_STATIC_PIXEL_SHADER_COMBO( FRESNEL_WARP, bFresnelWarp );
-		SET_STATIC_PIXEL_SHADER_COMBO( OPACITY_TEXTURE, bOpacityTexture );
-		SET_STATIC_PIXEL_SHADER_COMBO( INTERIOR_LAYER, bInteriorLayer );
-		SET_STATIC_PIXEL_SHADER_COMBO(
-		    HIGH_PRECISION_DEPTH, ( g_pHardwareConfig->GetHDRType() == HDR_TYPE_FLOAT ) );
-		SET_STATIC_PIXEL_SHADER_COMBO( FLASHLIGHTDEPTHFILTERMODE, nShadowFilterMode );
-		SET_STATIC_PIXEL_SHADER_COMBO( CONTACT_SHADOW, bContactShadows );
-		SET_STATIC_PIXEL_SHADER( paintblob_ps20b );
 
 		// Textures
 		pShaderShadow->EnableTexture( SHADER_SAMPLER0, true ); //[sRGB] Base

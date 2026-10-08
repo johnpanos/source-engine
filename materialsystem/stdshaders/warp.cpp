@@ -8,11 +8,6 @@
 #include "BaseVSShader.h"
 #include "commandbuilder.h"
 
-#include "warp_ps20.inc"
-#include "warp_ps20b.inc"
-#include "warp_vs20.inc"
-#include "warp_ps30.inc"
-#include "warp_vs30.inc"
 
 #include "../materialsystem_global.h"
 
@@ -136,27 +131,17 @@ BEGIN_VS_SHADER( warp, "Help for warp" )
 
 			if ( !g_pHardwareConfig->SupportsShaderModel_3_0() )
 			{
-				DECLARE_STATIC_VERTEX_SHADER( warp_vs20 );
-				SET_STATIC_VERTEX_SHADER( warp_vs20 );
 
 				if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 				{
-					DECLARE_STATIC_PIXEL_SHADER( warp_ps20b );
-					SET_STATIC_PIXEL_SHADER( warp_ps20b );
 				}
 				else
 				{
-					DECLARE_STATIC_PIXEL_SHADER( warp_ps20 );
-					SET_STATIC_PIXEL_SHADER( warp_ps20 );
 				}
 			}
 			else
 			{
-				DECLARE_STATIC_VERTEX_SHADER( warp_vs30 );
-				SET_STATIC_VERTEX_SHADER( warp_vs30 );
 
-				DECLARE_STATIC_PIXEL_SHADER( warp_ps30 );
-				SET_STATIC_PIXEL_SHADER( warp_ps30 );
 			}
 		}
 
