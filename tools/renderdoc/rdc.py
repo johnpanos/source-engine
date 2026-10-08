@@ -226,10 +226,8 @@ def capture(forwarded):
             "--headless"] + ([] if release else ["--shader-debug"]) + forwarded
     if "--renderer" not in forwarded:
         boot += ["--renderer", "native-vulkan"]
-    if "--runtime" not in forwarded:
-        boot += ["--runtime", str(ROOT / "run/runtime-native")]
-    if "--build" not in forwarded:
-        boot += ["--build", str(ROOT / "build")]
+    if "--profile" not in forwarded and "--runtime" not in forwarded:
+        boot += ["--profile", "portal"]
     code = subprocess.run(boot, cwd=ROOT).returncode
     out = Path(forwarded[forwarded.index("--out") + 1])
     evidence = json.loads((out / "evidence.json").read_text()) \

@@ -159,3 +159,13 @@ def run_test(profile, flavor, runtime, arguments, log, timeout, environment=None
             break
         time.sleep(poll_seconds)
     return run.returncode, timed_out, time.monotonic() - started, run.error
+
+
+def game_of(profile):
+    """The game directory a profile launches (its launch.game)."""
+    try:
+        return session().resolve(profile)["launch"]["game"]
+    except LoadError:
+        raise
+    except Exception as error:  # sepipe.KilnError, or a profile without a game
+        raise LoadError("%s names no launch.game: %s" % (profile, error)) from error

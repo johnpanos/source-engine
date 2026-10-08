@@ -108,7 +108,7 @@ def main(argv=None):
                         help="extra startup cfg line for every run, e.g. 'r_core_world 1'")
     args = parser.parse_args(argv)
     try:
-        args.game = sepipe_loader.session().resolve(args.profile)["launch"]["game"]
+        args.game = sepipe_loader.game_of(args.profile)
     except Exception as error:  # sepipe_loader.LoadError, sepipe.KilnError
         parser.error("kiln: %s" % error)
     args.map = args.map or DEFAULT_MAP[args.game]

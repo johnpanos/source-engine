@@ -292,7 +292,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.command == "check":
         try:
-            args.game = sepipe_loader.session().resolve(args.profile)["launch"]["game"]
+            args.game = sepipe_loader.game_of(args.profile)
         except Exception as error:  # sepipe_loader.LoadError, sepipe.KilnError
             parser.error("kiln: %s" % error)
     if args.command == "check" and args.seed == "glowimage" and args.game != "portal2":

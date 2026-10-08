@@ -871,7 +871,7 @@ def main(argv=None):
         try:
             args.sepipe = sepipe_loader.load()
             args.session = args.sepipe.Session(str(conformance.repo_root()))
-            args.game = args.session.resolve(args.profile)["launch"]["game"]
+            args.game = sepipe_loader.game_of(args.profile)
         except (sepipe_loader.LoadError, KeyError) as error:
             parser.error("kiln: %s" % error)
         except Exception as error:  # sepipe.KilnError

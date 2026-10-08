@@ -50,10 +50,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "quality"))
+sys.path.insert(0, str(ROOT / "tools" / "kiln"))
+import sepipe_loader  # noqa: E402
 from conformance_result import Checks  # noqa: E402
 
 PORTAL_BOOT = ROOT / "tools" / "quality" / "portal_boot.py"
-RUNTIME = ROOT.parent / "source-engine" / "run" / "runtime"
 
 HATCH_DARK = 137   # 0.25 linear through the sRGB view
 HATCH_LIGHT = 188  # 0.5
@@ -153,8 +154,8 @@ def judge_filter(counts, total):
 
 def boot_desktop(args, out):
     """Portal on native Vulkan, headless; returns (console text, screenshots)."""
-    command = [sys.executable, str(PORTAL_BOOT), "--runtime", str(args.runtime),
-               "--build", str(args.build), "--renderer", "native-vulkan", "--headless",
+    command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
+               "--renderer", "native-vulkan", "--headless",
                "--map", args.map, "--out", str(out / "boot"),
                "--capture-wait", str(len(SHOTS) * 60 + 200), "--timeout", "600",
                "--startup-command", "sv_cheats 1", "--startup-command", "r_core_world 1",
@@ -357,8 +358,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     run_parser = sub.add_parser("run")
     run_parser.add_argument("--out", required=True)
-    run_parser.add_argument("--build", default=str(ROOT / "build-rc-client" / "install"))
-    run_parser.add_argument("--runtime", default=str(RUNTIME))
+    sepipe_loader.add_arguments(run_parser, "portal")
     run_parser.add_argument("--content-root",
                             help="a published map's tree (run/maps/<map>) staged into the game")
     run_parser.add_argument("--map", default="testchmb_a_01")

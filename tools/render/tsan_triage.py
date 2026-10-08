@@ -2,14 +2,14 @@
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 """The queued TSan lane for RFC 0016 K3 ("Threading").
 
-    python3 tools/render/tsan_triage.py run --build <TSan install> \\
-        --runtime ../source-engine/run/runtime --out DIR [--mode 0 --mode 2] [--map M]
+    python3 tools/render/tsan_triage.py run [--profile portal-tsan-linux] \\
+        --out DIR [--mode 0 --mode 2] [--map M]
         [--content-root DIR]
     python3 tools/render/tsan_triage.py check --logs DIR [--logs DIR ...]
     python3 tools/render/tsan_triage.py selftest
 
-  run        boots the installed Portal product of a ThreadSanitizer tree
-             (./waf configure --sanitize=thread with clang) headless through
+  run        boots the ThreadSanitizer profile (portal-tsan-linux: clang,
+             --sanitize=thread; kiln builds and packages it) headless through
              portal_boot.py, once per material-system queue mode, with TSan
              writing its reports under DIR/mode<N>/tsan, then checks them.
   check      parses every TSan report in the given directories into
@@ -44,6 +44,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "quality"))
+sys.path.insert(0, str(ROOT / "tools" / "kiln"))
+import sepipe_loader  # noqa: E402
 from conformance_result import Checks  # noqa: E402
 
 SCHEMA = "render-tsan-triage/v1"
@@ -194,7 +196,7 @@ def run(args):
             "log_path=%s" % (tsan_dir / "tsan"), "halt_on_error=0", "report_signal_unsafe=0",
             "history_size=4", "second_deadlock_stack=1", "exitcode=0"])
         command = [sys.executable, str(ROOT / "tools" / "quality" / "portal_boot.py"),
-                   "--runtime", args.runtime, "--build", args.build,
+                   *sepipe_loader.boot_arguments(args),
                    "--renderer", "native-vulkan", "--headless", "--map", args.map,
                    "--timeout", str(args.timeout),
                    "--engine-arg=+mat_queue_mode", "--engine-arg=%d" % mode,
@@ -267,10 +269,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
     run_parser = sub.add_parser("run")
-    run_parser.add_argument("--build", default=os.environ.get("RENDER_TSAN_BUILD"),
-                            help="the TSan tree's install (default $RENDER_TSAN_BUILD)")
-    run_parser.add_argument("--runtime", default=os.environ.get("RENDER_TSAN_RUNTIME"),
-                            help="the Portal runtime (default $RENDER_TSAN_RUNTIME)")
+    sepipe_loader.add_arguments(run_parser, "portal-tsan-linux")
     run_parser.add_argument("--out", required=True)
     run_parser.add_argument("--mode", type=int, action="append", choices=(0, 2))
     run_parser.add_argument("--map", default="testchmb_a_01")
@@ -283,8 +282,6 @@ def main():
     check_parser.add_argument("--logs", action="append", required=True)
     sub.add_parser("selftest")
     args = parser.parse_args()
-    if args.command == "run" and not (args.build and args.runtime):
-        parser.error("run needs --build and --runtime (or RENDER_TSAN_BUILD, RENDER_TSAN_RUNTIME)")
     if args.command == "run":
         return run(args)
     if args.command == "check":

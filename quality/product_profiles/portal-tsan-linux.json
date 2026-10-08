@@ -1,0 +1,23 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal-tsan-linux-v2",
+  "description": "Portal on Linux x86_64 built with ThreadSanitizer (clang, waf --sanitize=thread) for the queued render TSan lane (RFC 0016 K3 'Threading', tools/render/tsan_triage.py). The launch is Portal's; the tree is out/portal-tsan-linux/<flavor>.",
+  "extends": [
+    "portal-linux-native-vulkan.json"
+  ],
+  "aliases": [
+    "portal-tsan@linux-x86_64"
+  ],
+  "toolchain": {
+    "cc": "clang",
+    "cxx": "clang++",
+    "family": "clang",
+    "version": "22.1.8"
+  },
+  "configure_options": {
+    "sanitize": "thread"
+  },
+  "build": {
+    "toolchain": "linux-clang"
+  }
+}
