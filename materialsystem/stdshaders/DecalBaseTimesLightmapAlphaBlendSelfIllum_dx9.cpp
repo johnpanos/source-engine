@@ -6,7 +6,6 @@
 
 #include "BaseVSShader.h"
 #include "mathlib/bumpvects.h"
-#include "cpp_shader_constant_register_map.h"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -91,40 +90,6 @@ BEGIN_VS_SHADER( DecalBaseTimesLightmapAlphaBlendSelfIllum_DX9, "" )
 
 			FogToFogColor();
 		}
-		else
-		{
-			BindTexture( SHADER_SAMPLER0, BASETEXTURE, FRAME );
-
-			// Load the z^2 components of the lightmap coordinate axes only
-			// This is (N dot basis)^2
-			Vector vecZValues( g_localBumpBasis[0].z, g_localBumpBasis[1].z, g_localBumpBasis[2].z );
-			vecZValues *= vecZValues;
-
-			Vector4D basis[3];
-			basis[0].Init( vecZValues.x, vecZValues.x, vecZValues.x, 0.0f );
-			basis[1].Init( vecZValues.y, vecZValues.y, vecZValues.y, 0.0f );
-			basis[2].Init( vecZValues.z, vecZValues.z, vecZValues.z, 0.0f );
-			pShaderAPI->SetPixelShaderConstant( 0, (float*)basis, 3 );
-
-			pShaderAPI->BindStandardTexture( SHADER_SAMPLER1, TEXTURE_LIGHTMAP_BUMPED );
-			SetVertexShaderTextureTransform( VERTEX_SHADER_SHADER_SPECIFIC_CONST_0, BASETEXTURETRANSFORM );
-			SetModulationPixelShaderDynamicState( 3 );
-
-
-			pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );			
-
-			float vEyePos_SpecExponent[4];
-			pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-			vEyePos_SpecExponent[3] = 0.0f;
-			pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
-		}
 		Draw();
 
 		if( IsSnapshotting() )
@@ -152,25 +117,6 @@ BEGIN_VS_SHADER( DecalBaseTimesLightmapAlphaBlendSelfIllum_DX9, "" )
 			}
 
 			FogToFogColor();
-		}
-		else
-		{
-			BindTexture( SHADER_SAMPLER0, SELFILLUMTEXTURE, SELFILLUMTEXTUREFRAME );
-
-
-			pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );					
-
-			float vEyePos_SpecExponent[4];
-			pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-			vEyePos_SpecExponent[3] = 0.0f;
-			pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 		}
 		Draw();
 	}

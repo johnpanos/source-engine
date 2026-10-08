@@ -6,7 +6,6 @@
 //=============================================================================
 
 #include "BaseVSShader.h"
-#include "common_hlsl_cpp_consts.h"
 #include "convar.h"
 
 BEGIN_VS_SHADER_FLAGS( accumbuff5sample, "Help for AccumBuff5Sample", SHADER_NOT_EDITABLE )

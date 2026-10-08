@@ -5,7 +5,6 @@
 //============================================================================//
 
 #include "BaseVSShader.h"
-#include "common_hlsl_cpp_consts.h"
 #include "convar.h"
 
 

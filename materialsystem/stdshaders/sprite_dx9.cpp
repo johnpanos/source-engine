@@ -10,7 +10,6 @@
 #include <string.h>
 #include "const.h"
 
-#include "cpp_shader_constant_register_map.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -143,46 +142,6 @@ BEGIN_VS_SHADER( Sprite_DX9,
 		s_pShaderShadow->EnableSRGBWrite( bSRGB || ( IsOSX() && !g_pHardwareConfig->FakeSRGBWrite() ) );
 	}
 
-	void SetSpriteCommonDynamicState( unsigned int shaderFlags )
-	{
-		IShaderDynamicAPI *pShaderAPI = s_pShaderAPI;
-		bool bSRGB = s_ppParams[NOSRGB]->GetIntValue() == 0;
-
-		BindTexture( SHADER_SAMPLER0, BASETEXTURE, FRAME );
-
-		MaterialFogMode_t fogType = s_pShaderAPI->GetSceneFogMode();
-		int fogIndex = ( fogType == MATERIAL_FOG_LINEAR_BELOW_FOG_Z ) ? 1 : 0;
-
-		if( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() ) // Always send GL down this path
-		{
-		}
-		else
-		{
-		}
-
-		pShaderAPI->SetPixelShaderFogParams( PSREG_FOG_PARAMS );
-
-		float vEyePos_SpecExponent[4];
-		pShaderAPI->GetWorldSpaceCameraPosition( vEyePos_SpecExponent );
-		vEyePos_SpecExponent[3] = 0.0f;
-		pShaderAPI->SetPixelShaderConstant( PSREG_EYEPOS_SPEC_EXPONENT, vEyePos_SpecExponent, 1 );
-
-		if( shaderFlags & SHADER_USE_CONSTANT_COLOR )
-		{
-			if ( bSRGB )
-				SetPixelShaderConstantGammaToLinear( 0, COLOR, ALPHA );
-			else
-				SetPixelShaderConstant( 0, COLOR, ALPHA );
-		}
-
-		if( IsHDREnabled() )
-		{
-			if ( bSRGB )
-				SetPixelShaderConstantGammaToLinear( 1, HDRCOLORSCALE );
-			else
-				SetPixelShaderConstant( 1, HDRCOLORSCALE );
-		}
-	}
 
 	SHADER_DRAW
 	{

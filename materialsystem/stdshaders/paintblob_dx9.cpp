@@ -7,7 +7,6 @@
 
 #include "BaseVSShader.h"
 #include "paintblob_helper.h"
-#include "cpp_shader_constant_register_map.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"

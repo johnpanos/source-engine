@@ -4,7 +4,6 @@
 #include "mathlib/vmatrix.h"
 #include "eye_refract_helper.h"
 
-#include "cpp_shader_constant_register_map.h"
 
 
 

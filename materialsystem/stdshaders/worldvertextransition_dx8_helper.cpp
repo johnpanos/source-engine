@@ -14,23 +14,7 @@
 #include "tier0/memdbgon.h"
 
 
-void InitParamsWorldVertexTransitionEditor_DX8( IMaterialVar** params, WorldVertexTransitionEditor_DX8_Vars_t &info )
-{
-	SET_FLAGS2( MATERIAL_VAR2_LIGHTING_LIGHTMAP );
-}
 
-void InitWorldVertexTransitionEditor_DX8( CBaseVSShader *pShader, IMaterialVar** params, WorldVertexTransitionEditor_DX8_Vars_t &info )
-{
-	if ( params[info.m_nBaseTextureVar]->IsDefined() )
-	{
-		pShader->LoadTexture( info.m_nBaseTextureVar );
-	}
-
-	if ( params[info.m_nBaseTexture2Var]->IsDefined() )
-	{
-		pShader->LoadTexture( info.m_nBaseTexture2Var );
-	}
-}
 
 void DrawWorldVertexTransitionEditor_DX8( CBaseVSShader *pShader, IMaterialVar** params, IShaderDynamicAPI *pShaderAPI, IShaderShadow* pShaderShadow, WorldVertexTransitionEditor_DX8_Vars_t &info )
 {

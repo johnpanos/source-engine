@@ -13,7 +13,6 @@
 
 #include "BaseVSShader.h"
 #include "paintblob_helper.h"
-#include "cpp_shader_constant_register_map.h"
 
 // Auto generated inc files
 

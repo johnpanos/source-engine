@@ -8,7 +8,6 @@
 #include "BaseVSShader.h"
 #include "refract_dx9_helper.h"
 #include "convar.h"
-#include "cpp_shader_constant_register_map.h"
 
 #define MAXBLUR 1
 

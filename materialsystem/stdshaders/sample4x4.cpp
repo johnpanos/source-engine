@@ -6,7 +6,6 @@
 //=============================================================================//
 
 #include "BaseVSShader.h"
-#include "common_hlsl_cpp_consts.h"
 
 
 BEGIN_VS_SHADER_FLAGS( Sample4x4, "Help for Sample4x4", SHADER_NOT_EDITABLE )

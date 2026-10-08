@@ -38,10 +38,6 @@ struct ParticleLitGeneric_DX9_Vars_t
 	int m_nFlashlightTextureFrame;
 };
 
-void InitParamsParticleLitGeneric_DX9( CBaseVSShader *pShader, IMaterialVar** params, const char *pMaterialName, ParticleLitGeneric_DX9_Vars_t &info );
-void InitParticleLitGeneric_DX9( CBaseVSShader *pShader, IMaterialVar** params, ParticleLitGeneric_DX9_Vars_t &info );
-void DrawParticleLitGeneric_DX9( CBaseVSShader *pShader, IMaterialVar** params, 
-	IShaderDynamicAPI *pShaderAPI, IShaderShadow* pShaderShadow, ParticleLitGeneric_DX9_Vars_t &info );
 
 
 #endif // PARTICLELITGENERIC_DX9_HELPER_H

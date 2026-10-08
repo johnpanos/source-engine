@@ -7,7 +7,6 @@
 
 #include "BaseVSShader.h"
 #include "convar.h"
-#include "cpp_shader_constant_register_map.h"
 
 BEGIN_VS_SHADER( PortalStaticOverlay, 
 				"Help for PortalStaticOverlay shader" )

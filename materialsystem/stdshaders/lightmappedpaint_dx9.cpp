@@ -15,7 +15,6 @@
 
 #include "BaseVSShader.h"
 #include "convar.h"
-#include "cpp_shader_constant_register_map.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -72,14 +71,6 @@ SHADER_INIT
 		LoadCubeMap( PAINTENVMAP );
 }
 
-bool ThickPaint( IMaterialVar **params ) const
-{
-	int nThick = params[THICKPAINT]->GetIntValue();
-	if ( nThick >= 0 )
-		return nThick != 0;
-	static ConVarRef gpu_level( "gpu_level", true );
-	return !gpu_level.IsValid() || gpu_level.GetInt() > 1;
-}
 
 SHADER_DRAW
 {

@@ -6,7 +6,6 @@
 //=============================================================================//
 
 #include "BaseVSShader.h"
-#include "common_hlsl_cpp_consts.h"
 
 
 BEGIN_VS_SHADER( Sample4x4_Blend, "Help for Sample4x4_Blend" )

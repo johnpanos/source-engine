@@ -8,7 +8,6 @@
 #include "BaseVSShader.h"
 #include "cloak_dx9_helper.h"
 #include "convar.h"
-#include "cpp_shader_constant_register_map.h"
 
 
 static ConVar r_lightwarpidentity( "r_lightwarpidentity", "0", FCVAR_CHEAT );

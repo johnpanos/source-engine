@@ -7,7 +7,6 @@
 //===========================================================================//
 
 #include "BaseVSShader.h"
-#include "cpp_shader_constant_register_map.h"
 
 
 

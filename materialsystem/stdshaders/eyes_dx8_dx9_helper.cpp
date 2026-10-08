@@ -8,7 +8,6 @@
 #include "tier1/convar.h"
 #include "mathlib/vmatrix.h"
 #include "eyes_dx8_dx9_helper.h"
-#include "cpp_shader_constant_register_map.h"
 
 
 

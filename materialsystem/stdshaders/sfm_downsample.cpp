@@ -6,7 +6,6 @@
 //===========================================================================//
 
 #include "BaseVSShader.h"
-#include "common_hlsl_cpp_consts.h"
 
 
 BEGIN_VS_SHADER_FLAGS( sfm_downsample_shader, "Help for Downsample", SHADER_NOT_EDITABLE )

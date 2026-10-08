@@ -14,7 +14,6 @@
 
 #include "BaseVSShader.h"
 #include "solidenergy_dx9_helper.h"
-#include "cpp_shader_constant_register_map.h"
 
 // Auto generated inc files
 

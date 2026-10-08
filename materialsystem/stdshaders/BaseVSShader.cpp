@@ -9,7 +9,6 @@
 #include "BaseVSShader.h"
 #include "mathlib/vmatrix.h"
 #include "mathlib/bumpvects.h"
-#include "cpp_shader_constant_register_map.h"
 #include "convar.h"
 
 #ifndef GAME_SHADER_DLL
@@ -230,52 +229,9 @@ void CBaseVSShader::SetVertexShaderTextureScaledTransform( int vertexReg, int tr
 }
 
 
-void CBaseVSShader::SetPixelShaderTextureTransform( int pixelReg, int transformVar )
-{
-	Vector4D transformation[2];
-	IMaterialVar* pTransformationVar = s_ppParams[transformVar];
-	if (pTransformationVar && (pTransformationVar->GetType() == MATERIAL_VAR_TYPE_MATRIX))
-	{
-		const VMatrix &mat = pTransformationVar->GetMatrixValue();
-		transformation[0].Init( mat[0][0], mat[0][1], mat[0][2], mat[0][3] );
-		transformation[1].Init( mat[1][0], mat[1][1], mat[1][2], mat[1][3] );
-	}
-	else
-	{
-		transformation[0].Init( 1.0f, 0.0f, 0.0f, 0.0f );
-		transformation[1].Init( 0.0f, 1.0f, 0.0f, 0.0f );
-	}
-	s_pShaderAPI->SetPixelShaderConstant( pixelReg, transformation[0].Base(), 2 ); 
-}
 
-void CBaseVSShader::SetModulationPixelShaderDynamicState( int modulationVar )
-{
-	float color[4] = { 1.0, 1.0, 1.0, 1.0 };
-	ComputeModulationColor( color );
-	s_pShaderAPI->SetPixelShaderConstant( modulationVar, color );
-}
 
-void CBaseVSShader::SetModulationPixelShaderDynamicState_LinearColorSpace( int modulationVar )
-{
-	float color[4] = { 1.0, 1.0, 1.0, 1.0 };
-	ComputeModulationColor( color );
-	color[0] = color[0] > 1.0f ? color[0] : GammaToLinear( color[0] );
-	color[1] = color[1] > 1.0f ? color[1] : GammaToLinear( color[1] );
-	color[2] = color[2] > 1.0f ? color[2] : GammaToLinear( color[2] );
 
-	s_pShaderAPI->SetPixelShaderConstant( modulationVar, color );
-}
-
-void CBaseVSShader::SetModulationPixelShaderDynamicState_LinearColorSpace_LinearScale( int modulationVar, float flScale )
-{
-	float color[4] = { 1.0, 1.0, 1.0, 1.0 };
-	ComputeModulationColor( color );
-	color[0] = ( color[0] > 1.0f ? color[0] : GammaToLinear( color[0] ) ) * flScale;
-	color[1] = ( color[1] > 1.0f ? color[1] : GammaToLinear( color[1] ) ) * flScale;
-	color[2] = ( color[2] > 1.0f ? color[2] : GammaToLinear( color[2] ) ) * flScale;
-
-	s_pShaderAPI->SetPixelShaderConstant( modulationVar, color );
-}
 
 
 #ifdef _DEBUG
@@ -355,30 +311,6 @@ float CBaseVSShader::GetAmbientLightCubeLuminance( )
 }
 
 #ifndef GAME_SHADER_DLL
-//-----------------------------------------------------------------------------
-// Sets up hw morphing state for the vertex shader
-//-----------------------------------------------------------------------------
-void CBaseVSShader::SetHWMorphVertexShaderState( int nDimConst, int nSubrectConst, VertexTextureSampler_t morphSampler )
-{
-	if ( !s_pShaderAPI->IsHWMorphingEnabled() )
-		return;
-
-	int nMorphWidth, nMorphHeight;
-	s_pShaderAPI->GetStandardTextureDimensions( &nMorphWidth, &nMorphHeight, TEXTURE_MORPH_ACCUMULATOR );
-
-	int nDim = s_pShaderAPI->GetIntRenderingParameter( INT_RENDERPARM_MORPH_ACCUMULATOR_4TUPLE_COUNT );
-	float pMorphAccumSize[4] = { (float)nMorphWidth, (float)nMorphHeight, (float)nDim, 0.0f };
-	s_pShaderAPI->SetVertexShaderConstant( nDimConst, pMorphAccumSize );
-
-	int nXOffset = s_pShaderAPI->GetIntRenderingParameter( INT_RENDERPARM_MORPH_ACCUMULATOR_X_OFFSET );
-	int nYOffset = s_pShaderAPI->GetIntRenderingParameter( INT_RENDERPARM_MORPH_ACCUMULATOR_Y_OFFSET );
-	int nWidth = s_pShaderAPI->GetIntRenderingParameter( INT_RENDERPARM_MORPH_ACCUMULATOR_SUBRECT_WIDTH );
-	int nHeight = s_pShaderAPI->GetIntRenderingParameter( INT_RENDERPARM_MORPH_ACCUMULATOR_SUBRECT_HEIGHT );
-	float pMorphAccumSubrect[4] = { (float)nXOffset, (float)nYOffset, (float)nWidth, (float)nHeight };
-	s_pShaderAPI->SetVertexShaderConstant( nSubrectConst, pMorphAccumSubrect );
-
-	s_pShaderAPI->BindStandardVertexTexture( morphSampler, TEXTURE_MORPH_ACCUMULATOR );
-}
 
 
 //#define USE_DEST_ALPHA
@@ -576,13 +508,6 @@ void CBaseVSShader::DrawEqualDepthToDestAlpha( void )
 
 			s_pShaderShadow->DepthFunc( SHADER_DEPTHFUNC_EQUAL );
 
-		}
-		if( s_pShaderAPI )
-		{
-			s_pShaderAPI->SetVertexShaderIndex( 0 );
-			s_pShaderAPI->SetPixelShaderIndex( 0 );
-
-			bMakeActualDrawCall = s_pShaderAPI->ShouldWriteDepthToDestAlpha();
 		}
 		Draw( bMakeActualDrawCall );
 	}

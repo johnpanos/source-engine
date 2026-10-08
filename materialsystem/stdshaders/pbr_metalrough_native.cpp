@@ -17,7 +17,6 @@
 
 #include "BaseVSShader.h"
 #include "render/pbr_material_schema.h"
-#include "cpp_shader_constant_register_map.h"
 
 #include <cstdlib>
 

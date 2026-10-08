@@ -92,7 +92,6 @@ public:
 	void SetVertexShaderTextureScaledTransform( int vertexReg, 
 											int transformVar, int scaleVar );
 
- 	void SetPixelShaderTextureTransform( int pixelReg, int transformVar );
 
 
 
@@ -107,9 +106,6 @@ public:
 	void SetEnvMapTintPixelShaderDynamicState( int pixelReg, int tintVar, int alphaVar, bool bConvertFromGammaToLinear = false );
 	
 
-	void SetModulationPixelShaderDynamicState( int modulationVar );
-	void SetModulationPixelShaderDynamicState_LinearColorSpace( int modulationVar );
-	void SetModulationPixelShaderDynamicState_LinearColorSpace_LinearScale( int modulationVar, float flScale );
 
 
 
@@ -134,7 +130,6 @@ public:
 
 	
 	// Sets up hw morphing state for the vertex shader
-	void SetHWMorphVertexShaderState( int nDimConst, int nSubrectConst, VertexTextureSampler_t morphSampler );
 
 	// Computes the shader index for vertex lit materials
 	int ComputeVertexLitShaderIndex( bool bVertexLitGeneric, bool hasBump, bool hasEnvmap, bool hasVertexColor, bool bHasNormal ) const;

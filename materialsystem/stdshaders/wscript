@@ -81,7 +81,6 @@ def build(bld):
 		'paintblob_dx9.cpp',
 		'paintblob_helper.cpp',
 		'particlelitgeneric_dx9.cpp',
-		'particlelitgeneric_dx9_helper.cpp',
 		'particlesphere_dx9.cpp',
 		'pbr_dx9.cpp',
 		'portal.cpp',

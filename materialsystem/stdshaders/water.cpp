@@ -7,7 +7,6 @@
 
 #include "BaseVSShader.h"
 #include "mathlib/vmatrix.h"
-#include "common_hlsl_cpp_consts.h" // hack hack hack!
 #include "convar.h"
 
 
@@ -206,19 +205,6 @@ BEGIN_VS_SHADER( Water_DX90,
 			LoadTexture( FLOW_NOISE_TEXTURE );
 	}
 
-	inline void GetVecParam( int constantVar, float *val )
-	{
-		if( constantVar == -1 )
-			return;
-
-		IMaterialVar* pVar = s_ppParams[constantVar];
-		Assert( pVar );
-
-		if (pVar->GetType() == MATERIAL_VAR_TYPE_VECTOR)
-			pVar->GetVecValue( val, 4 );
-		else
-			val[0] = val[1] = val[2] = val[3] = pVar->GetFloatValue();
-	}
 
 	inline void DrawReflectionRefraction( IMaterialVar **params, IShaderShadow* pShaderShadow,
 		IShaderDynamicAPI* pShaderAPI, bool bReflection, bool bRefraction ) 
