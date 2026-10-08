@@ -83,8 +83,10 @@ PROVIDER_KINDS = ("executable", "env", "path", "vulkan-device")
 # executables, content and pinned host toolchains (--runner corpus). The
 # apple-device class holds suites of Apple-only providers (Objective-C++ over
 # system frameworks); tools/quality/ios_conformance.py runs them on iOS and
-# tvOS devices, and this runner reports them unavailable.
-RUNNER_CLASSES = ("headless", "gpu", "corpus", "apple-device")
+# tvOS devices, and this runner reports them unavailable. The windows-pe class
+# holds suites of Win32-only providers; tools/quality/parity_wine.py builds them
+# as Windows PE and runs them under Wine.
+RUNNER_CLASSES = ("headless", "gpu", "corpus", "apple-device", "windows-pe")
 DEFAULT_RUNNER = "headless"
 # `vulkan-device:<type>` accepts these device classes from `vulkaninfo`.
 VULKAN_DEVICE_TYPES = {

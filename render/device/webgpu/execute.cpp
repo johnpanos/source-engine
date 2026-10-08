@@ -9,6 +9,7 @@
 #include "webgpu_device.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <unordered_set>
 
@@ -360,6 +361,23 @@ bool Replay::Execute( const Command &command )
 	case Op::kDrawIndexed:
 		if ( !PrepareDraw() )
 			return false;
+		if ( std::getenv( "SOURCE_WEBGPU_LOG_DRAWS" ) && m_Pipeline )
+		{
+			static int s_logged = 0;
+			if ( s_logged < 400 )
+			{
+				++s_logged;
+				const BufferRecord *vb = m_D.ExistingBuffer( m_VertexBuffers[0].buffer );
+				const BufferRecord *ib = m_D.ExistingBuffer( m_Index.buffer );
+				std::fprintf( stderr,
+				    "render.device.webgpu: draw %s count %u inst %u first %u base %d fi %u vb %llu+%llu ib %llu+%llu fmt %d\n",
+				    m_Pipeline->name.c_str(), command.count, command.instances, command.first,
+				    int( command.vertexOffset ), command.firstInstance,
+				    (unsigned long long)( vb ? vb->desc.size : 0 ), (unsigned long long)m_VertexBuffers[0].offset,
+				    (unsigned long long)( ib ? ib->desc.size : 0 ), (unsigned long long)m_Index.offset,
+				    int( m_IndexFormat ) );
+			}
+		}
 		wgpuRenderPassEncoderDrawIndexed( m_Render, command.count, command.instances, command.first,
 		    command.vertexOffset, command.firstInstance );
 		break;

@@ -414,8 +414,8 @@ bool Texture::CreateTarget( int width, int height )
 	desc.format = Format::kRGBA8Unorm;
 	desc.width = std::uint32_t( width );
 	desc.height = std::uint32_t( height );
-	desc.usages = {
-	    ResourceUsage::kColorAttachment, ResourceUsage::kSampled, ResourceUsage::kCopySource };
+	desc.usages = { ResourceUsage::kColorAttachment, ResourceUsage::kSampled,
+	    ResourceUsage::kCopySource, ResourceUsage::kCopyDestination };
 	auto texture = Device().CreateTexture( desc );
 	if ( !texture )
 		return false;
@@ -767,6 +767,8 @@ void Clear( bool color, bool depth, std::uint32_t rgba )
 		BeginFrame();
 	if ( ( !color && !depth ) || g_state.dropTargetDraws )
 		return;
+	if ( std::getenv( "SOURCE_EXPERIMENT_NO_CLEAR" ) && !g_state.target )
+		color = false;
 	// A new pass that clears; the viewport's region is the whole target, as
 	// the legacy renderer's clear was.
 	BeginPass( color, depth, rgba );

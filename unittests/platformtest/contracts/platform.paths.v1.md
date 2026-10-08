@@ -29,9 +29,13 @@ buffer-handling clauses are **required** for every available location.
 
 ## 3. Results and guarantees
 
-- Returned paths are normalized engine paths: UTF-8, `/`-separated, no `//`, and
-  no trailing `/` except a lone root `/`. No native separators (`\`) and no
-  embedded NUL.
+- Returned paths are normalized engine paths: well-formed UTF-8, `/`-separated,
+  no `//`, and no trailing `/` except a lone root `/`. No native separators
+  (`\`) and no embedded NUL.
+- Paths are absolute (`/...`, or a drive root `C:/...` on Windows) and contain
+  no `.` or `..` segment (amended 2026-10-08, R26).
+- When both are available, `kExecutableDir` is the parent directory of
+  `kExecutableFile` (amended 2026-10-08, R26).
 - `GetPath` returns the length written (excluding NUL) on success, or **-1**
   without a partial write when the location is unavailable, `buffer` is null,
   `bufferSize <= 0`, or the path plus NUL does not fit.
@@ -66,14 +70,23 @@ buffer-handling clauses are **required** for every available location.
 - `test_paths.cpp` runs it against the deterministic backend (`CFakePlatformPaths`,
   which reports `kNativeLibraryDir` unavailable to exercise the absence path).
   **Positive; certifies contract semantics, not native path resolution.**
-- `test_paths_negative.cpp` (`sensitivity`) feeds the same predicate four broken
+- The predicate also checks absoluteness, dot segments, UTF-8 validity and the
+  executable directory's parent relation (2026-10-08).
+- `test_paths_negative.cpp` (`sensitivity`) feeds the same predicate eight broken
   providers (backslash separator, trailing slash, double slash,
-  fabricated-path-when-unavailable) and asserts each is caught while the
-  conforming backend passes.
+  fabricated-path-when-unavailable, relative path, `..` segment, invalid UTF-8,
+  executable directory not the file's parent) and asserts each is caught while
+  the conforming backend passes.
 
-### Native providers (added as they land)
+### Native providers (installed 2026-10-08, R26)
 
-A real POSIX (`/proc/self/exe`, `$XDG_DATA_HOME`, `$TMPDIR`) or Win32
-(`GetModuleFileName`, known folders) provider adds one manifest row running the
-same shared suite. Documented per-platform normalization/encoding is certified by
-the native run, not by the fake.
+- POSIX (`platform/posix/foundation_providers.h`, library `platform_posix`):
+  `CreateLinuxPlatformPaths` (/proc/self/exe, XDG data, TMPDIR) and `CreateSuppliedPlatformPaths` for app containers. Row `platform.foundation.posix` runs this suite and the native
+  clauses on Linux with g++ and clang++, in release, under TSan and ASan/UBSan
+  (`.tsan`, `.asan`) and as i386 (`.i386`). The same source cross-builds for
+  Android arm64-v8a and x86_64 at API 29 (`tools/quality/android_foundation.py`)
+  and compiles for iOS arm64.
+- Win32 (`platform/win32/foundation_providers.h`): `CreateWin32PlatformPaths` (GetModuleFileNameW, Local AppData, GetTempPathW). Row
+  `platform.foundation.win32` runs as a static PE under Wine
+  (`tools/quality/parity_wine.py check --suite platform.foundation.win32`).
+- Evidence and what is still unverified: `RFC/0001-foundation-providers-progress.md`.

@@ -78,16 +78,101 @@ inline bool IsNormalizedEnginePath( const char *p, int len )
 	return true;
 }
 
+// True for an absolute engine path: "/..." or a drive root "C:/...".
+inline bool IsAbsoluteEnginePath( const char *p )
+{
+	if ( p[0] == '/' )
+	{
+		return true;
+	}
+	const bool letter = ( p[0] >= 'A' && p[0] <= 'Z' ) || ( p[0] >= 'a' && p[0] <= 'z' );
+	return letter && p[1] == ':' && p[2] == '/';
+}
+
+// True when no '/'-separated segment is "." or "..".
+inline bool HasNoDotSegments( const char *p )
+{
+	const char *segment = p;
+	for ( const char *c = p;; ++c )
+	{
+		if ( *c == '/' || *c == '\0' )
+		{
+			const long n = static_cast<long>( c - segment );
+			if ( ( n == 1 && segment[0] == '.' ) ||
+			     ( n == 2 && segment[0] == '.' && segment[1] == '.' ) )
+			{
+				return false;
+			}
+			if ( *c == '\0' )
+			{
+				return true;
+			}
+			segment = c + 1;
+		}
+	}
+}
+
+// True for well-formed UTF-8 (no overlong forms, surrogates or values past U+10FFFF).
+inline bool IsValidUtf8( const char *text )
+{
+	const unsigned char *p = reinterpret_cast<const unsigned char *>( text );
+	while ( *p != 0 )
+	{
+		const unsigned char c = *p;
+		int extra = 0;
+		unsigned int cp = 0;
+		if ( c < 0x80 )
+		{
+			++p;
+			continue;
+		}
+		else if ( c >= 0xc2 && c <= 0xdf )
+		{
+			extra = 1;
+			cp = c & 0x1f;
+		}
+		else if ( c >= 0xe0 && c <= 0xef )
+		{
+			extra = 2;
+			cp = c & 0x0f;
+		}
+		else if ( c >= 0xf0 && c <= 0xf4 )
+		{
+			extra = 3;
+			cp = c & 0x07;
+		}
+		else
+		{
+			return false;
+		}
+		for ( int i = 1; i <= extra; ++i )
+		{
+			if ( ( p[i] & 0xc0 ) != 0x80 )
+			{
+				return false;
+			}
+			cp = ( cp << 6 ) | ( p[i] & 0x3f );
+		}
+		if ( ( extra == 2 && ( cp < 0x800 || ( cp >= 0xd800 && cp <= 0xdfff ) ) ) ||
+		     ( extra == 3 && ( cp < 0x10000 || cp > 0x10ffff ) ) )
+		{
+			return false;
+		}
+		p += extra + 1;
+	}
+	return true;
+}
+
 inline PathsReport RunPlatformPathsConformance( const platform::IPlatformPaths &paths )
 {
 	using platform::PlatformPathId;
 
 	const PlatformPathId ids[] = {
-		PlatformPathId::kExecutableFile,
-		PlatformPathId::kExecutableDir,
-		PlatformPathId::kUserData,
-		PlatformPathId::kTemp,
-		PlatformPathId::kNativeLibraryDir,
+	    PlatformPathId::kExecutableFile,
+	    PlatformPathId::kExecutableDir,
+	    PlatformPathId::kUserData,
+	    PlatformPathId::kTemp,
+	    PlatformPathId::kNativeLibraryDir,
 	};
 
 	PathsReport r;
@@ -107,10 +192,12 @@ inline PathsReport RunPlatformPathsConformance( const platform::IPlatformPaths &
 			if ( len > 0 )
 			{
 				PP_CHECK( r, IsNormalizedEnginePath( buf, len ) );
+				PP_CHECK( r, IsAbsoluteEnginePath( buf ) );
+				PP_CHECK( r, HasNoDotSegments( buf ) );
+				PP_CHECK( r, IsValidUtf8( buf ) );
 
 				// Stable: a second call yields the identical string.
-				const int len2 =
-					paths.GetPath( id, buf2, static_cast<int>( sizeof( buf2 ) ) );
+				const int len2 = paths.GetPath( id, buf2, static_cast<int>( sizeof( buf2 ) ) );
 				PP_CHECK( r, len2 == len );
 				PP_CHECK( r, std::strcmp( buf, buf2 ) == 0 );
 			}
@@ -136,6 +223,22 @@ inline PathsReport RunPlatformPathsConformance( const platform::IPlatformPaths &
 		}
 	}
 
+	// The executable directory, when both are available, is the file's parent.
+	if ( paths.IsAvailable( PlatformPathId::kExecutableFile ) &&
+	     paths.IsAvailable( PlatformPathId::kExecutableDir ) )
+	{
+		const int fileLen = paths.GetPath(
+		    PlatformPathId::kExecutableFile, buf, static_cast<int>( sizeof( buf ) ) );
+		const int dirLen = paths.GetPath(
+		    PlatformPathId::kExecutableDir, buf2, static_cast<int>( sizeof( buf2 ) ) );
+		const char *slash = fileLen > 0 ? std::strrchr( buf, '/' ) : nullptr;
+		const int parentLen = slash == nullptr ? -1
+		                      : slash == buf   ? 1
+		                                       : static_cast<int>( slash - buf );
+		PP_CHECK( r, dirLen > 0 && dirLen == parentLen &&
+		                 std::strncmp( buf, buf2, static_cast<std::size_t>( dirLen ) ) == 0 );
+	}
+
 	return r;
 }
 
@@ -144,8 +247,8 @@ inline int RunPathsPositive( const char *suiteName, const platform::IPlatformPat
 	PathsReport r = RunPlatformPathsConformance( paths );
 	if ( r.failures != 0 )
 	{
-		std::printf( "FAIL %s: %d/%d checks failed; first: %s (line %d)\n",
-			suiteName, r.failures, r.checks, r.firstFailure, r.firstFailureLine );
+		std::printf( "FAIL %s: %d/%d checks failed; first: %s (line %d)\n", suiteName, r.failures,
+		    r.checks, r.firstFailure, r.firstFailureLine );
 		return 1;
 	}
 	std::printf( "ok %s: %d checks passed\n", suiteName, r.checks );

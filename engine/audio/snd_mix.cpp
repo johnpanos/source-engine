@@ -14,6 +14,7 @@
 #include "video/ivideoservices.h"
 #include "engine/IEngineSound.h"
 #include "snd_op_sys/sos_system.h"
+#include "snd_hardware_voices.h"
 
 #if defined( REPLAY_ENABLED )
 #include "demo.h"
@@ -413,12 +414,17 @@ CHANNEL MIXING
 // word in a sentence, release the sentence.
 // Works for static, dynamic, sentence and stream sounds
 
+IAudioHardwareVoices *g_pAudioHardwareVoices = NULL;
+
 void S_FreeChannel(channel_t *ch)
 {
 	// Don't reenter in here (can happen inside voice code).
 	if ( ch->flags.m_bIsFreeingChannel )
 		return;
 	ch->flags.m_bIsFreeingChannel = true;
+
+	if ( g_pAudioHardwareVoices )
+		g_pAudioHardwareVoices->Release( ch, false );
 
 	SND_CloseMouth(ch);
 
@@ -570,6 +576,11 @@ void MIX_MixChannelsToPaintbuffer( CChannelList &list, int endtime, int flags, i
 			ch->pMixer->SkipSamples( ch, sampleCount, outputRate, 0 );
 			// DevMsg("Quashed channel %d (%s)\n", i, ch->sfx->GetFileName());
 		}
+		else if ( g_pAudioHardwareVoices && g_pAudioHardwareVoices->Play( ch ) )
+		{
+			// The device's hardware plays it; keep the mixer's position.
+			ch->pMixer->SkipSamples( ch, sampleCount, outputRate, 0 );
+		}
 		else
 		{
 			tmZone( TELEMETRY_LEVEL0, TMZF_NONE, "MixDataToDevice" );
@@ -589,6 +600,8 @@ void MIX_MixChannelsToPaintbuffer( CChannelList &list, int endtime, int flags, i
 				ch->m_pStackList->Execute( CSosOperatorStack::SOS_STOP, ch, &g_scratchpad );
 			}
 
+			if ( g_pAudioHardwareVoices )
+				g_pAudioHardwareVoices->Release( ch, true );
 			S_FreeChannel( ch );
 			list.RemoveChannelFromList(i);
 		}
@@ -2498,6 +2511,9 @@ void MIX_PaintChannels( int endtime, bool bIsUnderwater )
 
 		g_paintedtime = end;
 	}
+
+	if ( g_pAudioHardwareVoices )
+		g_pAudioHardwareVoices->EndPaint();
 
 	// the cache needs to hold the audio in memory during mixing, so tell it that mixing is complete
 	wavedatacache->OnMixEnd();

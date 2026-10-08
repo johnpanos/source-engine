@@ -35,8 +35,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BUDGETS = ROOT / "quality/budgets/render-v1.json"
-REQUIRED_ROWS = ("linux-wayland-portal-frame-pacing", "android-fold7-portal-frame-pacing",
-                 "linux-desktop-high-120")
+REQUIRED_ROWS = ("linux-wayland-portal-frame-pacing", "linux-desktop-high-120")
+# Rows of optional runners (the Fold7: user decision, 2026-10-08; AGENTS.md) are
+# validated like required rows when present, but may be absent.
+OPTIONAL_ROWS = ("android-fold7-portal-frame-pacing",)
 LIMITS = ("max_p50_ms", "max_p95_ms", "max_p99_ms", "max_gpu_render_p99_ms", "max_submission_p99_ms",
           "max_hitches")
 # k0_record field <- frame_pacing warm-pass summary field
@@ -68,7 +70,7 @@ def find(budgets, row_id):
     raise ValueError("no budget row %s" % row_id)
 
 
-def check(budgets, root=ROOT, required=REQUIRED_ROWS):
+def check(budgets, root=ROOT, required=REQUIRED_ROWS, optional=OPTIONAL_ROWS):
     problems = []
     allowance = budgets.get("allowance", {})
     for key in ("median", "p99"):
@@ -79,7 +81,7 @@ def check(budgets, root=ROOT, required=REQUIRED_ROWS):
         if row_id not in ids:
             problems.append("required row %s is missing" % row_id)
     for row in budgets["rows"]:
-        if row.get("id") not in required:
+        if row.get("id") not in required and row.get("id") not in optional:
             continue
         name = row["id"]
         for key in ("profile", "workload"):

@@ -940,7 +940,8 @@ Value ExplainJson( const product::ResolvedProfile &profile )
 	return value;
 }
 
-SessionConfig DefaultSessionConfig( const std::filesystem::path &root, std::string hostTag )
+SessionConfig DefaultSessionConfig( const std::filesystem::path &root, std::string hostTag,
+    const platform::IProcessEnvironment &environment )
 {
 	SessionConfig config;
 	config.sourceRoot = std::filesystem::absolute( root ).lexically_normal();
@@ -948,8 +949,16 @@ SessionConfig DefaultSessionConfig( const std::filesystem::path &root, std::stri
 	config.outRoot = config.sourceRoot / "out";
 	config.dependencyRoot = config.sourceRoot / "dependencies";
 	config.hostTag = std::move( hostTag );
-	if ( const char *home = std::getenv( "HOME" ) )
-		config.homeDirectory = home;
+	const int homeLength = environment.VariableLength( "HOME" );
+	if ( homeLength > 0 )
+	{
+		std::string home( static_cast<std::size_t>( homeLength ) + 1, '\0' );
+		if ( environment.GetVariable( "HOME", home.data(), homeLength + 1 ) == homeLength )
+		{
+			home.resize( static_cast<std::size_t>( homeLength ) );
+			config.homeDirectory = home;
+		}
+	}
 	if ( std::ifstream stream{ config.sourceRoot / config.workspaceFile, std::ios::binary } )
 	{
 		std::ostringstream text;

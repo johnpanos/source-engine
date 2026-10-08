@@ -52,6 +52,7 @@ sys.path.insert(0, str(ROOT / "tools/quality"))
 
 import make_bitmap_font  # noqa: E402
 import model_lod  # noqa: E402
+import stage_sounds  # noqa: E402
 from PIL import Image  # noqa: E402
 
 DEFAULT_MAX_SIZE = 128
@@ -958,7 +959,7 @@ def stage_map(stager, bsp_path, resolver, keep_pak):
 
 def stage(bsp_paths, runtime, out, max_size=DEFAULT_MAX_SIZE, mod=DEFAULT_MOD, out_format="auto",
           extra_boot=(), with_boot=True, keep_ani=False, keep_pak=False, model_lod_index=0,
-          use_vpk=True, bitmap_font=True):
+          use_vpk=True, bitmap_font=True, sound_budget_mb=stage_sounds.DEFAULT_BUDGET_MB):
     """Stage one or more maps into one content tree whose materials, models and textures are
     shared: each file is written once, whichever maps reference it. Returns the report dict."""
     if isinstance(bsp_paths, (str, Path)):
@@ -974,6 +975,11 @@ def stage(bsp_paths, runtime, out, max_size=DEFAULT_MAX_SIZE, mod=DEFAULT_MOD, o
     if with_boot:
         stager.boot(extra_boot)
     stager.textures()
+    sounds = None
+    if sound_budget_mb > 0:
+        # Converted for the DSP's hardware voices (stage_sounds.py).
+        sounds = stage_sounds.stage_sounds(
+            stager, [(read_bsp(path), path.stem) for path in bsp_paths], sound_budget_mb)
     if bitmap_font:
         # The 3DS's own tiny bitmap font (make_bitmap_font.py); the VTF is already page-sized.
         for logical, data in make_bitmap_font.build_font(BITMAP_FONT_NAME).items():
@@ -1019,6 +1025,7 @@ def stage(bsp_paths, runtime, out, max_size=DEFAULT_MAX_SIZE, mod=DEFAULT_MOD, o
         "bsp_pak_bytes_after": sum(m["bsp_pak_bytes_after"] for m in maps),
         "dropped_pak_files": sorted({n for m in maps for n in m["dropped_pak_files"]}),
         "editor_models_skipped": sorted(stager.skipped_editor),
+        "sounds": sounds,
         "largest": [(str(p.relative_to(out_mod)), size)
                     for p, size in sorted(loose, key=lambda item: -item[1])[:12]],
         "by_kind": {},
@@ -1123,13 +1130,16 @@ def main(argv=None):
                         help="do not add resource/n3ds_small.vbf and its page texture, nor point the "
                              "schemes' fonts at it")
     parser.add_argument("--no-boot", action="store_true", help="closure only, no boot set")
+    parser.add_argument("--sound-budget-mb", type=int, default=stage_sounds.DEFAULT_BUDGET_MB,
+                        help="sounds converted for the DSP (stage_sounds.py), at most this many MB; "
+                             "0 stages no sounds")
     args = parser.parse_args(argv)
     if args.max_size < 1 or args.max_size & (args.max_size - 1):
         parser.error("--max-size must be a power of two")
     report = stage(expand_maps(args.bsp, args.runtime, args.mod), args.runtime, args.out, args.max_size, args.mod, args.format,
                    args.boot_extra, not args.no_boot, args.keep_ani, args.keep_pak,
                    None if args.no_lod_trim else args.model_lod, args.vpk,
-                   not args.no_bitmap_font)
+                   not args.no_bitmap_font, args.sound_budget_mb)
     stage_platform_fonts(args.runtime, args.out)
     print(format_report(report))
     return 0

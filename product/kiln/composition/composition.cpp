@@ -17,6 +17,7 @@
 #include "product/toolchain_emscripten.h"
 #include "product/toolchain_n3ds.h"
 
+#include "../../../platform/posix/foundation_providers.h"
 #include "../../../platform/posix/process_spawner.h"
 #include "../../../platform/posix/tool_process_provider.h"
 
@@ -109,9 +110,10 @@ foundation::Expected<product::ProviderCatalog, Error> ComposeDefaultCatalog(
 	return catalog;
 }
 
-foundation::Expected<DefaultComposition, Error> ComposeDefault()
+foundation::Expected<DefaultComposition, Error> ComposeDefault( int argc, const char *const *argv )
 {
 	DefaultComposition composition;
+	composition.environment = platform::CreatePosixProcessEnvironment( argc, argv );
 	composition.processes = platform::CreatePosixToolProcessProvider();
 	if ( !composition.processes )
 		return foundation::MakeUnexpected( Error{ "composition", "no process provider" } );

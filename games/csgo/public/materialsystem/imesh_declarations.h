@@ -1,4 +1,4 @@
-//===== Copyright © Valve Corporation, All rights reserved. ======//
+//===== Copyright Â© Valve Corporation, All rights reserved. ======//
 #ifndef IMESH_DECLARATIONS_HDR
 #define IMESH_DECLARATIONS_HDR
 

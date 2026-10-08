@@ -68,7 +68,7 @@ def _includes(root, profile):
 def build_command(root, cxx, profile, suite, out_bin, static):
     sources = [os.path.join(root, s) for s in suite["sources"]]
     return [cxx, *_flags(profile, suite, static), *_includes(root, profile), *sources,
-            "-o", out_bin]
+            *suite.get("link_flags", []), "-o", out_bin]
 
 
 def build_commands(root, cxx, profile, suite, out_bin, static, launcher=None):
@@ -85,7 +85,7 @@ def build_commands(root, cxx, profile, suite, out_bin, static, launcher=None):
         objects.append(obj)
         commands.append([launcher, cxx, *flags, *includes, "-c", os.path.join(root, source),
                          "-o", obj])
-    commands.append([launcher, cxx, *flags, *objects, "-o", out_bin])
+    commands.append([launcher, cxx, *flags, *objects, *suite.get("link_flags", []), "-o", out_bin])
     return commands
 
 
@@ -195,12 +195,23 @@ def cmd_check(args):
 
     # Mixed-dialect unit suites prove same-toolchain ABI combinations on their
     # native profile; they are not Windows parity suites.
-    suites = [
-        s for s in manifest["suites"]
-        if s.get("units") is None
-        and (args.rfc is None or s.get("rfc") == args.rfc)
-        and (args.domain is None or s.get("domain") == args.domain)
-    ]
+    if args.suite:
+        # Explicit selection: exactly these suites, whatever their rfc/domain
+        # (the windows-pe class of Win32-only providers is selected this way).
+        wanted = set(args.suite)
+        suites = [s for s in manifest["suites"] if s["id"] in wanted and s.get("units") is None]
+        missing = wanted - {s["id"] for s in suites}
+        if missing:
+            print("FATAL: unknown or unbuildable suite(s): %s" % ", ".join(sorted(missing)),
+                  file=sys.stderr)
+            return 2
+    else:
+        suites = [
+            s for s in manifest["suites"]
+            if s.get("units") is None
+            and (args.rfc is None or s.get("rfc") == args.rfc)
+            and (args.domain is None or s.get("domain") == args.domain)
+        ]
 
     if not suites:
         # Zero discovery certifies nothing (RFC 0005 runner contract).
@@ -263,6 +274,8 @@ def main(argv=None):
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     check = sub.add_parser("check", help="build+run suites as Windows PE under Wine")
+    check.add_argument("--suite", action="append", default=[],
+                       help="run exactly this suite id (repeatable); overrides --rfc/--domain")
     check.add_argument("--rfc", default="0002")
     check.add_argument("--domain", default="Q-EDITOR")
     check.add_argument("--cxx", default="x86_64-w64-mingw32-g++")

@@ -287,6 +287,7 @@ protected:
     // loading image
     IVTFTexture         *m_pBackgroundTexture;
     IVTFTexture         *m_pLoadingTexture;
+    bool                m_bLoadingIsGameLogo;
 };
 
 
@@ -325,6 +326,7 @@ CVideoMode_Common::CVideoMode_Common( void )
     m_bClientViewRectDirty = false;
     m_pBackgroundTexture   = NULL;
     m_pLoadingTexture      = NULL;
+    m_bLoadingIsGameLogo   = false;
     m_bWindowed            = false;
     m_nModeWidth           = IsPC() ? 1024 : 640;
     m_nModeHeight          = IsPC() ? 768 : 480;
@@ -902,10 +904,18 @@ void CVideoMode_Common::SetupStartupGraphic()
 
     // loading.vtf
 	buf.Clear();	// added this Clear() because we saw cases where LoadVTF was not emptying the buf fully in the above section
+    // The Steam Deck logo is optional content (Portal 2 ships none); fall back
+    // to the standard loading image when the game lacks it.
     const char* loading = "materials/console/startup_loading.vtf";
+    m_pLoadingTexture = NULL;
     if ( IsSteamDeck() )
-        loading = "materials/gamepadui/game_logo.vtf";
-    m_pLoadingTexture = LoadVTF( buf, loading );
+    {
+        m_pLoadingTexture = LoadVTF( buf, "materials/gamepadui/game_logo.vtf" );
+        buf.Clear();
+    }
+    m_bLoadingIsGameLogo = ( m_pLoadingTexture != NULL );
+    if ( !m_pLoadingTexture )
+        m_pLoadingTexture = LoadVTF( buf, loading );
     if ( !m_pLoadingTexture )
     {
         Error( "Can't find background image '%s'\n", loading );
@@ -968,7 +978,7 @@ void CVideoMode_Common::DrawStartupGraphic()
     IMaterial *pMaterial = g_pMaterialSystem->CreateMaterial( "__background", pVMTKeyValues );
 
     const char* loading = "console/startup_loading.vtf";
-    if ( IsSteamDeck() )
+    if ( m_bLoadingIsGameLogo )
         loading = "gamepadui/game_logo.vtf";
 
     pVMTKeyValues = new KeyValues( "UnlitGeneric" );

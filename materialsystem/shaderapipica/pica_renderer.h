@@ -140,6 +140,11 @@ public:
 	int Height() const { return m_height; }
 	std::size_t Bytes() const { return m_bytes; }
 	std::uint32_t Id() const { return m_texture; } // the device's TextureId value
+	// The colour usage the renderer keeps current across recordings
+	// (render::device::ResourceUsage), for work recorded in a core section
+	// (core_copies.cpp): read before transitioning, set to where it is left.
+	std::uint8_t Usage() const { return m_usage; }
+	void SetUsage( std::uint8_t usage ) { m_usage = usage; }
 
 private:
 	friend struct TargetAccess;

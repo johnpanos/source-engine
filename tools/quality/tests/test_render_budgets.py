@@ -44,6 +44,16 @@ class RenderBudgetsTest(unittest.TestCase):
     def test_missing_required_row_fails(self):
         self.assertTrue(render_budgets.check(self.budgets, self.root, ("desk", "fold7")))
 
+    def test_optional_row_may_be_absent(self):
+        self.assertEqual(render_budgets.check(self.budgets, self.root, ("desk",), ("fold7",)), [])
+
+    def test_optional_row_present_is_validated(self):
+        budgets = copy.deepcopy(self.budgets)
+        budgets["rows"][0]["id"] = "fold7"
+        del budgets["rows"][0]["modes"]["headroom"]["max_p95_ms"]
+        problems = render_budgets.check(budgets, self.root, (), ("fold7",))
+        self.assertTrue(any("max_p95_ms" in p for p in problems))
+
     def test_missing_limit_fails(self):
         budgets = copy.deepcopy(self.budgets)
         del budgets["rows"][0]["modes"]["headroom"]["max_p95_ms"]

@@ -165,7 +165,9 @@ public:
 	Session( const std::string &root, nb::object diagnostics )
 	    : m_Composition( Take( kiln::ComposeDefault() ) ), m_Sink( std::move( diagnostics ) ),
 	      m_Session( m_Composition.catalog, *m_Composition.processes, *m_Composition.executor,
-	          m_Sink, kiln::DefaultSessionConfig( root, m_Composition.hostTag ) )
+	          m_Sink,
+	          kiln::DefaultSessionConfig(
+	              root, m_Composition.hostTag, *m_Composition.environment ) )
 	{
 	}
 

@@ -42,6 +42,7 @@
 #include "shaderapi/commandbuffer.h"
 #include "bitmap/imageformat.h"
 #include "tier0/icommandline.h"
+#include "core_copies.h"
 #include "pica_renderer.h"
 #include "renderparm.h"
 #include "pixelwriter.h"
@@ -446,6 +447,8 @@ struct DrawPathCounters
 	unsigned coreMeshDraws = 0;  // model draws the render core took (EmitToCore)
 	unsigned errorMaterialDraws = 0; // draws with the error material, dropped
 	unsigned refusedDraws = 0;   // draws the render core refused, dropped
+	unsigned targetCopies = 0;   // render-target copies recorded (core_copies.cpp)
+	unsigned copiesSkipped = 0;  // ... not done: stretched or moved regions, refusals
 };
 // Texture path counters since startup.
 struct TexturePathCounters
@@ -522,8 +525,14 @@ PicaTexture *TextureFor( ShaderAPITextureHandle_t handle )
 // targets keep being skipped until their own cohort is brought over.
 bool DrawableTarget( PicaTexture &texture )
 {
+#if defined( PLATFORM_3DS )
 	if ( !texture.renderTarget || texture.depth || V_strnicmp( texture.name, "_rt_PortalPlane", 15 ) != 0 )
 		return false;
+#else
+	// The full model draws into and samples every colour target.
+	if ( !texture.renderTarget || texture.depth )
+		return false;
+#endif
 	if ( !texture.gpu.IsTarget() && !texture.gpu.CreateTarget( texture.width, texture.height ) )
 		return false;
 	return true;
@@ -934,6 +943,9 @@ public:
 				g_Counters.renderPasses, g_Counters.targetSkips, g_Counters.clears, g_Counters.overrunDraws, g_Counters.wideTexCoordLocks, g_Counters.coreMeshDraws,
 				g_Counters.refusedDraws, g_Counters.errorMaterialDraws );
 		if ( s_frame % 120 == 1 )
+			printf( "pica: target copies %u skipped %u\n", g_Counters.targetCopies,
+				g_Counters.copiesSkipped );
+		if ( s_frame % 120 == 1 )
 			printf( "pica: textures: images %u rejected %u convert failed %u uploads %u failed %u "
 				"corrupted %u\n",
 				g_TextureCounters.images, g_TextureCounters.rejected, g_TextureCounters.convertFailed,
@@ -1132,10 +1144,38 @@ public:
 	void BindFBTexture( TextureStage_t stage, int textureIdex );
 	void CopyRenderTargetToTexture( ShaderAPITextureHandle_t texID )
 	{
+		CopyRenderTargetToTextureEx( texID, 0, nullptr, nullptr );
 	}
 
+	// R91: the current target's region into a render target, in frame order
+	// (core_copies.cpp). Copies keep their texels' place (D37): a source and
+	// destination rectangle that differ (a stretch or a move) are counted and
+	// skipped until a blit does them.
 	void CopyRenderTargetToTextureEx( ShaderAPITextureHandle_t texID, int nRenderTargetID, Rect_t *pSrcRect, Rect_t *pDstRect )
 	{
+		PicaTexture *texture = TextureFor( texID );
+		if ( nRenderTargetID != 0 || !texture || !pica::Initialized() )
+		{
+			++g_Counters.copiesSkipped;
+			return;
+		}
+		const Rect_t *rect = pSrcRect ? pSrcRect : pDstRect;
+		if ( pSrcRect && pDstRect &&
+			 ( pSrcRect->x != pDstRect->x || pSrcRect->y != pDstRect->y ||
+			   pSrcRect->width != pDstRect->width || pSrcRect->height != pDstRect->height ) )
+		{
+			++g_Counters.copiesSkipped;
+			return;
+		}
+		pica::CopyRect region;
+		region.width = rect ? rect->width : texture->width;
+		region.height = rect ? rect->height : texture->height;
+		region.x = rect ? rect->x : 0;
+		region.y = rect ? rect->y : 0;
+		if ( pica::CopyTargetRegion( texture->gpu, region ) == pica::CopyResult::kCopied )
+			++g_Counters.targetCopies;
+		else
+			++g_Counters.copiesSkipped;
 	}
 
 	void CopyTextureToRenderTargetEx( int nRenderTargetID, ShaderAPITextureHandle_t textureHandle, Rect_t *pSrcRect, Rect_t *pDstRect )
@@ -2059,8 +2099,14 @@ public:
 				srgb ? "sRGB view" : "no such texture" );
 			return render::device::TextureId{};
 		}
-		if ( texture->dirty )
+		if ( texture && texture->dirty )
 			UploadTexture( *texture );
+#if !defined( PLATFORM_3DS )
+		// A render target the core samples before anything drew into it: its
+		// image is made now (WebGPU and Vulkan clear it to zero).
+		if ( texture && texture->renderTarget && !texture->gpu.Valid() )
+			(void)DrawableTarget( *texture );
+#endif
 		if ( !texture->gpu.Valid() )
 			printf( "pica: core import of texture %d (%s) refused: not uploaded (%d levels, %dx%d)\n",
 				handle, texture->name, texture->levels.Count(), texture->baseWidth, texture->baseHeight );
@@ -2085,6 +2131,10 @@ public:
 	bool Pending( int handle ) override
 	{
 		const PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
+#if !defined( PLATFORM_3DS )
+		if ( texture && texture->renderTarget && !texture->depth )
+			return false; // Import makes its image
+#endif
 		return texture && !texture->gpu.Valid() && texture->levels.Count() == 0;
 	}
 };
@@ -2148,6 +2198,14 @@ public:
 			g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_PREVIOUS_FOLIAGE_TIME );
 		target.foliageAvailable =
 			g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_AVAILABLE ) > 0.0f;
+		if ( getenv( "SOURCE_PICA_LOG_SLOTS" ) )
+		{
+			static int s_logged = 0;
+			if ( s_logged++ < 20000 )
+				printf( "pica: slot %08x color %u depth %u %ux%u frame %llu\n", tag,
+					unsigned( section.color ), unsigned( section.depth ), section.width,
+					section.height, (unsigned long long)section.serial );
+		}
 		g_CorePassRecorder->RecordSlot( tag, *encoder, target );
 		pica::EndCoreSection();
 	}

@@ -41,14 +41,20 @@ class VulkanFeaturesTest(unittest.TestCase):
 
     def test_required_profile_unavailable_fails(self):
         record = copy.deepcopy(self.record)
-        record["profiles"]["android-fold7"] = {"required": True, "status": "unavailable",
+        record["profiles"]["linux-desktop"] = {"required": True, "status": "unavailable",
                                                "reason": "not attached", "date": "2026-09-28"}
-        self.assertEqual(failures(record), ["android-fold7.measured"])
+        self.assertEqual(failures(record), ["linux-desktop.measured"])
+
+    def test_optional_fold7_unavailable_passes(self):
+        record = copy.deepcopy(self.record)
+        record["profiles"]["android-fold7"] = {"required": False, "status": "unavailable",
+                                               "reason": "not attached", "date": "2026-10-08"}
+        self.assertEqual(failures(record), [])
 
     def test_required_flag_cleared_fails(self):
         record = copy.deepcopy(self.record)
-        record["profiles"]["android-fold7"]["required"] = False
-        self.assertEqual(failures(record), ["android-fold7.required"])
+        record["profiles"]["linux-desktop"]["required"] = False
+        self.assertEqual(failures(record), ["linux-desktop.required"])
 
     def test_missing_evidence_fails(self):
         record = copy.deepcopy(self.record)
@@ -89,8 +95,8 @@ class VulkanFeaturesTest(unittest.TestCase):
 
     def test_host_only_required_profile_fails(self):
         record = copy.deepcopy(self.record)
-        record["profiles"]["android-fold7"]["adapter_path"] = "host-only"
-        self.assertEqual(failures(record), ["android-fold7.host-only"])
+        record["profiles"]["linux-desktop"]["adapter_path"] = "host-only"
+        self.assertEqual(failures(record), ["linux-desktop.host-only"])
 
     def test_port_path_without_dynamic_rendering_fails(self):
         record = copy.deepcopy(self.record)

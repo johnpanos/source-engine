@@ -50,7 +50,8 @@ PROBE_SOURCE = ROOT / "tools" / "render" / "vulkan_features_probe.c"
 ANDROID_PROFILE = ROOT / "quality" / "product_profiles" / "portal-android-native-vulkan.json"
 FEATURES = ("timeline_semaphore", "synchronization2", "dynamic_rendering")
 HOST_FEATURES = ("timeline_semaphore", "synchronization2")
-REQUIRED_PROFILES = ("linux-desktop", "android-fold7")
+# The Fold7 is an optional runner (user decision, 2026-10-08; AGENTS.md).
+REQUIRED_PROFILES = ("linux-desktop",)
 EVIDENCE_FIELDS = ("date", "command", "host", "probe_sha256", "loader_api")
 DEVICE_FIELDS = ("name", "vendor_id", "device_id", "api_version", "driver_name", "driver_info")
 DEVICE_TMP = "/data/local/tmp/render_vulkan_features_probe"

@@ -683,6 +683,9 @@ static bool BindAudioMediaProviders( IEngineAPI *engine )
 static bool BindAudioProviders( IEngineAPI *engine )
 {
 	const audio::DeviceProvider *catalog[] = {
+#ifdef AUDIO_PROVIDER_N3DS
+	    Audio_N3dsProvider(),
+#endif
 #ifdef AUDIO_PROVIDER_SDL
 	    Audio_SDLProvider(),
 #endif

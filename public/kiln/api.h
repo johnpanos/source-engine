@@ -23,6 +23,7 @@
 
 #include "foundation/expected.h"
 #include "foundation/json.h"
+#include "platform/contracts/process_environment.h"
 #include "product/contracts.h"
 #include "product/profile.h"
 
@@ -252,11 +253,11 @@ private:
 
 // Results as versioned JSON (`kiln --json`, sepipe).
 // The session configuration of a checkout at `root`: its profile, out and
-// dependency directories, HOME for content-locator defaults, and the
-// workspace file (.kiln/local.json) when present. The kiln app and sepipe
-// both use it.
-[[nodiscard]] SessionConfig DefaultSessionConfig(
-    const std::filesystem::path &root, std::string hostTag );
+// dependency directories, HOME (read from `environment`) for content-locator
+// defaults, and the workspace file (.kiln/local.json) when present. The kiln
+// app and sepipe both use it.
+[[nodiscard]] SessionConfig DefaultSessionConfig( const std::filesystem::path &root,
+    std::string hostTag, const platform::IProcessEnvironment &environment );
 
 foundation::json::Value ToJson( const ProfileSummary &summary );
 // `kiln profiles list`: {"schema": kJsonSchema, "profiles": [...]}.
