@@ -666,7 +666,10 @@ void UploadTexture( PicaTexture &texture )
 #else
 	// Upload refills an image of the same shape in place (the core keeps its id).
 	if ( texture.cube )
+	{
 		texture.gpu.Release();
+		texture.gpuSrgb.Release();
+	}
 #endif
 	if ( texture.cube )
 	{
@@ -681,6 +684,12 @@ void UploadTexture( PicaTexture &texture )
 			++g_TextureCounters.uploads;
 		else
 			++g_TextureCounters.uploadFailed;
+#if !defined( PLATFORM_3DS )
+		// An env map read as linear values decodes through its sRGB twin, as
+		// shaderapivulkan's sRGB view of the cube does.
+		if ( texture.wantsSrgb )
+			(void)texture.gpuSrgb.UploadCube( texture.cubeSize, faces, true );
+#endif
 		return;
 	}
 	if ( texture.levels.Count() == 0 || texture.baseWidth < 8 || texture.baseHeight < 8 )
@@ -2198,7 +2207,7 @@ public:
 		// The PICA200 decodes no sRGB: the reduced model asks for none.
 		// Elsewhere an sRGB import reads the texture's sRGB twin.
 #if !defined( PLATFORM_3DS )
-		if ( texture && srgb && !texture->renderTarget && !texture->cube )
+		if ( texture && srgb && !texture->renderTarget )
 		{
 			if ( !texture->wantsSrgb )
 			{

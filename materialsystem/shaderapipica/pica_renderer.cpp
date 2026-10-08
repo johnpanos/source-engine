@@ -524,14 +524,14 @@ bool Texture::Upload(
 	return true;
 }
 
-bool Texture::UploadCube( int size, const std::uint8_t *const *faces )
+bool Texture::UploadCube( int size, const std::uint8_t *const *faces, bool srgb )
 {
 	Release();
 	if ( size < 1 || !g_state.initialized )
 		return false;
 	TextureDesc desc;
 	desc.dimension = TextureDimension::kCube;
-	desc.format = Format::kRGBA8Unorm;
+	desc.format = srgb ? Format::kRGBA8Srgb : Format::kRGBA8Unorm;
 	desc.width = desc.height = std::uint32_t( size );
 	desc.depthOrLayers = 6;
 	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };

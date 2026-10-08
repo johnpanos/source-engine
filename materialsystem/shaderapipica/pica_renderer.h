@@ -124,7 +124,8 @@ public:
 	    const std::uint8_t *const *levels );
 	// A cube map (RGBA8, one level, size x size a face): faces[i] is face i
 	// in the port's order (+X, -X, +Y, -Y, +Z, -Z). Replaces any previous image.
-	bool UploadCube( int size, const std::uint8_t *const *faces );
+	// srgb: an sRGB image, read as linear values (an env map off the 3DS).
+	bool UploadCube( int size, const std::uint8_t *const *faces, bool srgb = false );
 	// A render target (RGBA8, one level, sides powers of two from 8 to 512):
 	// SetTarget draws into it, later draws sample what it holds. Replaces
 	// any previous image.
