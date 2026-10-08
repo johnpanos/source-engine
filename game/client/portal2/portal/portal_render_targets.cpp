@@ -87,6 +87,13 @@ ITexture* CPortalRenderTargets::InitDepthDoublerTexture( IMaterialSystem* pMater
 		CREATERENDERTARGETFLAGS_HDR | (IsX360() ? CREATERENDERTARGETFLAGS_NOEDRAM : 0) );
 }
 
+ITexture* CPortalRenderTargets::GetPortalPlaneTexture( int nPortal, int nSlot )
+{
+	if ( nPortal < 0 || nPortal > 1 || nSlot < 0 || nSlot > 1 )
+		return NULL;
+	return m_PortalPlaneTextures[nPortal][nSlot];
+}
+
 ITexture* CPortalRenderTargets::GetDepthDoublerTexture()
 {
 	return m_DepthDoublerTexture;
@@ -151,6 +158,23 @@ void CPortalRenderTargets::InitClientRenderTargets( IMaterialSystem* pMaterialSy
 
 	m_DepthDoublerTexture.Init( InitDepthDoublerTexture( pMaterialSystem ) );
 
+	// Texture portals, only where stencil portals cannot draw (no stencil
+	// bits): RGBA8 with power-of-two sides, which the 3DS samples.
+	if ( pMaterialSystem->StencilBufferBits() == 0 )
+	{
+		for ( int nPortal = 0; nPortal < 2; ++nPortal )
+		{
+			for ( int nSlot = 0; nSlot < 2; ++nSlot )
+			{
+				char szName[32];
+				V_snprintf( szName, sizeof( szName ), "_rt_PortalPlane%d%c", nPortal + 1, 'a' + nSlot );
+				m_PortalPlaneTextures[nPortal][nSlot].Init( pMaterialSystem->CreateNamedRenderTargetTextureEx2(
+					szName, PORTAL_PLANE_WIDTH, PORTAL_PLANE_HEIGHT, RT_SIZE_NO_CHANGE, IMAGE_FORMAT_RGBA8888,
+					MATERIAL_RT_DEPTH_SEPARATE, TEXTUREFLAGS_CLAMPS | TEXTUREFLAGS_CLAMPT, 0 ) );
+			}
+		}
+	}
+
 	//if ( IsPC() || !IsGameConsole() )
 	{
 		InitPortalWaterTextures( pMaterialSystem );
@@ -166,6 +190,11 @@ void CPortalRenderTargets::ShutdownClientRenderTargets()
 	m_Portal1Texture.Shutdown();
 	m_Portal2Texture.Shutdown();
 	m_DepthDoublerTexture.Shutdown();
+	for ( int nPortal = 0; nPortal < 2; ++nPortal )
+	{
+		for ( int nSlot = 0; nSlot < 2; ++nSlot )
+			m_PortalPlaneTextures[nPortal][nSlot].Shutdown();
+	}
 
 
 	// Clean up standard HL2 RTs (camera and water)

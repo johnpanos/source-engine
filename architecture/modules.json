@@ -1128,6 +1128,25 @@
         ]
       },
       {
+        "id": "render.lab.pica-portals",
+        "kind": "native-test",
+        "description": "RFC 0026: the 3DS portal lab, a standalone program on render.device.pica that draws one portal scene with each portal technique (stencil, cropped stencil, screen texture, portal-plane textures with caching and recursion) over one camera path and measures CPU time, draws, indices and rasterized fragments; its geometry is checked on the host by portal_math_test.",
+        "paths": [
+          "render/lab/pica_portals/"
+        ],
+        "allowedEdges": [
+          "foundation",
+          "testing.contracts",
+          "render.contracts",
+          "render.device",
+          "render.device.pica"
+        ],
+        "externalHeaders": [
+          "3ds.h",
+          "sys/stat.h"
+        ]
+      },
+      {
         "id": "rendertest.lab-device",
         "kind": "native-test",
         "description": "RFC 0016 K11 device suites of render_lab's presenting host (render.lab.hdr), judged with the output oracle of render.core-tests.",
@@ -2693,7 +2712,8 @@
           [
             "render.core-tests",
             "render.lab",
-            "render.lab.app"
+            "render.lab.app",
+            "render.lab.pica-portals"
           ]
         ],
         "externalBases": [
@@ -2739,7 +2759,8 @@
           "render.composition",
           "render.core-tests",
           "render.lab",
-          "render.lab.app"
+          "render.lab.app",
+          "render.lab.pica-portals"
         ],
         "planned": [],
         "outside": [

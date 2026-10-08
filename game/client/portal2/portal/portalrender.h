@@ -271,6 +271,32 @@ private:
 	void RenderPortalEffects( IMatRenderContext *pRenderContext, IMesh *pPortalQuadMesh, const CUtlVector< CPortalRenderable* > &actualActivePortals,
 		const CUtlVector< int > &actualActivePortalQuadVBIndex ) const;
 
+	// Texture portals (r_portal_texture: devices without a stencil buffer, the
+	// 3DS). Each open, linked portal shows a texture holding its view with the
+	// portal as the image plane (an off-axis projection from the transferred
+	// eye): it depends on the eye's position only, so it is kept while the eye
+	// moves less than a texel (turning costs nothing), and a portal seen
+	// through a portal shows its previous texture (recursion without passes).
+	// Called where the stencil paths reach their maximum depth; draws every
+	// portal (the others through DrawPortal) and returns whether views were
+	// rendered (the caller rebuilds its draw lists).
+	bool UsingPortalTextures() const;
+	bool DrawPortalsUsingTextures( CViewRender *pViewRender, IMatRenderContext *pRenderContext,
+		const CUtlVector< CPortalRenderable* > &portals );
+
+	struct PortalPlaneCache_t
+	{
+		CPortalRenderable *m_pPortal;	// whose view the textures hold
+		bool m_bValid;
+		int m_nFront;					// the slot shown
+		int m_nFrame;					// gpGlobals->framecount when rendered
+		Vector m_vEye;					// the eye it was rendered for
+		Vector m_vPose[4];				// both portals' origins and forwards then
+	};
+	PortalPlaneCache_t m_PortalPlaneCache[2];
+	CMaterialReference m_PortalPlaneMaterials[2][2];
+	CMaterialReference m_PortalPlaneRimMaterial;
+
 private:
 
 	PortalRenderingMaterials_t	m_Materials;

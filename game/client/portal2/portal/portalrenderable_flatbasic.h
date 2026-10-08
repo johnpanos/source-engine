@@ -46,6 +46,18 @@ public:
 
 	virtual void	RenderPortalViewToBackBuffer( CViewRender *pViewRender, const CViewSetup &cameraView );
 	virtual void	RenderPortalViewToTexture( CViewRender *pViewRender, const CViewSetup &cameraView );
+	// Texture portals (CPortalRender::DrawPortalsUsingTextures): this
+	// portal's view into pRenderTarget with the portal as its image plane:
+	// the transferred eye looking along the linked portal's normal through an
+	// off-centre frustum whose window is the linked portal's rectangle, its
+	// near plane just behind that portal. Texel (u, v) is what the eye sees
+	// through the portal's texture coordinate (u, v) (DrawSimplePortalMesh's).
+	// False when it cannot be drawn (no linked portal, the eye at or past the
+	// plane, a grazing angle).
+	bool			RenderPortalViewToPlaneTexture( CViewRender *pViewRender, const CViewSetup &cameraView, ITexture *pRenderTarget );
+	// The interior ellipse sampling such a texture, and its edge ring.
+	void			DrawPortalPlaneInterior( IMatRenderContext *pRenderContext, IMaterial *pMaterial );
+	void			DrawPortalPlaneRim( IMatRenderContext *pRenderContext, IMaterial *pMaterial );
 
 	void			AddToVisAsExitPortal( ViewCustomVisibility_t *pCustomVisibility );
 

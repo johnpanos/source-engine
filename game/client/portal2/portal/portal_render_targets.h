@@ -35,12 +35,20 @@ public:
 	ITexture* GetPortal2Texture( void );
 	ITexture* GetDepthDoublerTexture( void );
 
+	// Texture portals (devices without a stencil buffer, the 3DS): each
+	// portal's view rendered with the portal as its image plane, two
+	// textures per portal (the one shown and the one drawn next, so a portal
+	// seen through a portal shows the previous view). Null when not made.
+	enum { PORTAL_PLANE_WIDTH = 128, PORTAL_PLANE_HEIGHT = 256 };
+	ITexture* GetPortalPlaneTexture( int nPortal, int nSlot );
+
 	//recursive views require different water textures
 
 private:
 	CTextureReference m_Portal1Texture;
 	CTextureReference m_Portal2Texture;
 	CTextureReference m_DepthDoublerTexture;
+	CTextureReference m_PortalPlaneTextures[2][2];
 
 
 	ITexture* InitPortal1Texture ( IMaterialSystem* pMaterialSystem );

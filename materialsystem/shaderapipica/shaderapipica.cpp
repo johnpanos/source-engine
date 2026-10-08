@@ -332,8 +332,11 @@ constexpr int kPicaMaxLights = 4;
 LightDesc_t g_Lights[kPicaMaxLights];
 CEmptyMesh *g_pRenderMesh = NULL;
 int g_CurrentSnapshot = -1;
+// Whether draws reach a target: the back buffer, or a render target
+// DrawableTarget admits (SetRenderTargetEx).
 bool g_bDrawingToBackBuffer = true;
-unsigned int g_ClearColor = 0x000000FF;
+// R in the low byte, A in the high one (pica::Clear's rgba).
+unsigned int g_ClearColor = 0xFF000000;
 // The presented frame number, and the frame whose draws are listed
 // (-pica_dump_draws <frame>; each draw's material, size, texture and NDC bounds).
 int g_PicaFrame = 0;
@@ -470,6 +473,19 @@ PicaTexture *TextureFor( ShaderAPITextureHandle_t handle )
 	if ( index < 0 || index >= g_Textures.Count() || !g_Textures[index] || !g_Textures[index]->used )
 		return NULL;
 	return g_Textures[index];
+}
+
+// The render targets the 3DS draws into (RFC 0026): the portal-plane targets
+// of the client's texture portals (`_rt_PortalPlane*`, which the client makes
+// only when the device has no stencil), RGBA8 with power-of-two sides. Other
+// targets keep being skipped until their own cohort is brought over.
+bool DrawableTarget( PicaTexture &texture )
+{
+	if ( !texture.renderTarget || texture.depth || V_strnicmp( texture.name, "_rt_PortalPlane", 15 ) != 0 )
+		return false;
+	if ( !texture.gpu.IsTarget() && !texture.gpu.CreateTarget( texture.width, texture.height ) )
+		return false;
+	return true;
 }
 
 pica::Compare DepthCompare( ShaderDepthFunc_t func )
@@ -861,6 +877,9 @@ public:
 				"corrupted %u\n",
 				g_TextureCounters.images, g_TextureCounters.rejected, g_TextureCounters.convertFailed,
 				g_TextureCounters.uploads, g_TextureCounters.uploadFailed, g_TextureCounters.corrupted );
+		if ( s_frame % 120 == 1 && ( stats.targetSwitches || stats.feedbackRefusals ) )
+			printf( "pica: frame %d target switches %u feedback refusals %u\n", s_frame,
+				(unsigned)stats.targetSwitches, (unsigned)stats.feedbackRefusals );
 		g_Counters = DrawPathCounters();
 	}
 	virtual bool AddView( void* hwnd );
@@ -1208,10 +1227,22 @@ public:
 
 	void SetRenderTargetEx( int nRenderTargetID, ShaderAPITextureHandle_t colorTextureHandle, ShaderAPITextureHandle_t depthTextureHandle )
 	{
-		// Only the back buffer is drawn; views into render targets (monitors,
-		// portals, water, post) are skipped.
-		if ( nRenderTargetID == 0 )
-			g_bDrawingToBackBuffer = colorTextureHandle == SHADER_RENDERTARGET_BACKBUFFER;
+		// The back buffer and the render targets DrawableTarget admits are
+		// drawn (the frame's target follows); views into any other target
+		// (monitors, water, post) are skipped. The depth handle is the
+		// renderer's own per target size.
+		if ( nRenderTargetID != 0 )
+			return;
+		if ( colorTextureHandle == SHADER_RENDERTARGET_BACKBUFFER )
+		{
+			g_bDrawingToBackBuffer = true;
+			pica::SetTarget( nullptr );
+			return;
+		}
+		PicaTexture *texture = TextureFor( colorTextureHandle );
+		g_bDrawingToBackBuffer = texture && pica::Initialized() && DrawableTarget( *texture );
+		if ( g_bDrawingToBackBuffer )
+			pica::SetTarget( &texture->gpu );
 	}
 
 	// Indicates we're going to be modifying this texture
@@ -4704,12 +4735,12 @@ void CShaderAPIEmpty::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t tex
 
 void CShaderAPIEmpty::ClearColor3ub( unsigned char r, unsigned char g, unsigned char b )
 {
-	g_ClearColor = ( unsigned( r ) << 24 ) | ( unsigned( g ) << 16 ) | ( unsigned( b ) << 8 ) | 0xFF;
+	g_ClearColor = unsigned( r ) | ( unsigned( g ) << 8 ) | ( unsigned( b ) << 16 ) | 0xFF000000u;
 }
 
 void CShaderAPIEmpty::ClearColor4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a )
 {
-	g_ClearColor = ( unsigned( r ) << 24 ) | ( unsigned( g ) << 16 ) | ( unsigned( b ) << 8 ) | a;
+	g_ClearColor = unsigned( r ) | ( unsigned( g ) << 8 ) | ( unsigned( b ) << 16 ) | ( unsigned( a ) << 24 );
 }
 
 // Indicates we're going to be modifying this texture

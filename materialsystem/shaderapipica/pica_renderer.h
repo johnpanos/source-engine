@@ -126,8 +126,17 @@ public:
 	// next level half each side). Replaces any previous image.
 	bool Upload( UploadFormat format, int width, int height, int levelCount,
 	    const std::uint8_t *const *levels );
+	// A render target (RGBA8, one level, sides powers of two from 8 to 512):
+	// SetTarget draws into it, later draws sample what it holds. Replaces
+	// any previous image.
+	bool CreateTarget( int width, int height );
 	void Release();
 	bool Valid() const { return m_texture != 0; }
+	bool IsTarget() const { return m_target; }
+	// Whether a draw may sample it: a target only once something was drawn
+	// into it (its contents are undefined before) and while it is not the
+	// target being drawn.
+	bool Sampleable() const;
 	// Repeat on both axes, else clamped (the port's sampler has one mode).
 	void SetWrap( bool wrapS, bool wrapT );
 	int Width() const { return m_width; }
@@ -137,8 +146,13 @@ public:
 	std::uint32_t Id() const { return m_texture; } // the device's TextureId value
 
 private:
+	friend struct TargetAccess;
 	std::uint32_t m_texture; // TextureId
 	std::uint32_t m_group;   // BindGroupId, made on first draw
+	bool m_target = false;
+	// A target's colour usage (render::device::ResourceUsage): the renderer
+	// keeps it current across recordings.
+	std::uint8_t m_usage = 0;
 	std::uint8_t m_wrap; // bit 0 repeats u, bit 1 repeats v
 	int m_width;
 	int m_height;
@@ -154,6 +168,8 @@ struct Stats
 	std::uint32_t submits = 0;
 	std::uint32_t submitFailures = 0; // frames the device refused (not presented)
 	std::uint32_t residencyRefusals = 0; // draws whose mesh found no linear memory
+	std::uint32_t targetSwitches = 0;    // SetTarget changes of the drawn target
+	std::uint32_t feedbackRefusals = 0;  // draws that sampled the target they draw into
 	std::size_t textureBytes = 0;
 	std::size_t meshBytes = 0; // linear memory of the meshes (AllocLinear)
 	std::size_t ringPeak[2] = {}; // the most of each transient ring a frame used
@@ -178,8 +194,14 @@ void BeginFrame();
 void EndFrame(); // presents; waits for vblank when vsync is on
 bool InFrame();
 
+// The target the frame draws into: a render target (Texture::CreateTarget),
+// or null for the screen. Ends the current pass; the next pass loads what
+// the target holds. Clears, viewports, draws and core sections follow it.
+// The frame ends on the screen (EndFrame switches back).
+void SetTarget( Texture *target );
+
 void Clear( bool color, bool depth, std::uint32_t rgba );
-// Screen-space viewport (D3D sense: origin top-left of the 400x240 screen).
+// Target-space viewport (D3D sense: origin top-left of the target).
 void SetViewport( int x, int y, int width, int height );
 
 // Transient memory for one draw of this frame.

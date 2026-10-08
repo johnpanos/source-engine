@@ -549,6 +549,18 @@ See the [progress section](#progress).
       4-frame build measured 15 to 20 ms for the same CPU clear; neither the
       isolated benchmark nor later builds reproduce it, and it is not
       explained.
+  - Recheck at `46a4eddcf` (user request, after the tile-row clears,
+    unzeroed buffers, harness and shader-build changes): the lab builds
+    unchanged with no warnings; the host oracle passes (27 checks, 6 of 6
+    seeds caught); the device run passes 11 of 11 with every summary row
+    within 0.01 ms of the record above. The lab never read a buffer it had
+    not written, so unzeroed buffers change nothing. The clear benchmark now
+    sweeps three sizes: the load-op clear costs 347 us at 8 x 8, 713 us at
+    128 x 128 and 2,495 us at 400 x 240 (about 22 ns of emulated time per
+    texel of colour and depth above a fixed 0.35 ms), the quad 393 us at
+    every size. So the tile-row fill is in effect, but in Azahar's time a
+    straight store loop costs about what the per-texel loop did; the quad
+    wins above about 2,000 texels and the lab keeps it everywhere.
   - Open: New 3DS hardware (frame time, GPU time, fill rate: P5);
     stereoscopic rendering (one plane texture per eye, or one shared within
     a texel's parallax); moving objects in the remote room (the cache is
@@ -678,3 +690,47 @@ See the [progress section](#progress).
     (`MeshStreamsPipeline`, reduced programs only), and no desktop frontend
     writes in-place buffers yet (render.device.v2 has no persistent CPU
     mapping; the PICA provider's `MapUploadBuffer` is that bridge here).
+- 2026-10-07: texture portals in the game (user request: "add this to the
+  game", the portal lab's portal-plane technique).
+  - Before: the 3DS shader API has no stencil (`StencilBufferBits` 0), so
+    Portal 2's stencil paths stop at depth 0 and draw no view; render
+    targets were skipped; a placed portal showed a flat orange rectangle
+    (the `PortalRefract` overlay and the early-z stencil hole reduced to
+    their colour texture).
+  - Frontend (`materialsystem/shaderapipica`): `pica::Texture::CreateTarget`
+    and `pica::SetTarget` make the bridge's current target switchable
+    (clears, viewports, draws and the core's sections follow it; a depth
+    buffer per target size; usages tracked across recordings; a target is
+    sampled only once drawn and never while drawn into: the
+    `feedbackRefusals` counter). `SetRenderTargetEx` admits only the
+    `_rt_PortalPlane*` targets (power-of-two RGBA8); every other render
+    target stays skipped. Fixed on the way: `ClearColor3ub/4ub` packed red
+    into the high byte, so every clear was red.
+  - Client (`game/client/portal2/portal`): when the material system has no
+    stencil bits, `CPortalRenderTargets` makes four 128 x 256 targets (two
+    per portal) and `CPortalRender::DrawPortalsUsingTextures` runs where both
+    stencil paths reach their maximum depth. Each open, linked portal's view
+    is rendered by `CPortalRenderable_FlatBasic::RenderPortalViewToPlaneTexture`:
+    the transferred eye looking along the exit's normal with an off-centre
+    frustum (`m_bOffCenter`) whose window is the exit rectangle and whose
+    near plane is 2 units behind the exit; the engine culls with the
+    enclosing symmetric frustum plus Portal's see-through frustum. The
+    interior ellipse samples it with the portal's own texture coordinates
+    and an edge ring in the portal colour replaces the overlay. The texture
+    is kept while the eye moves less than `r_portal_texture_reuse` texels
+    (1) and is younger than `r_portal_texture_maxage` frames (4), so turning
+    re-renders nothing; a portal seen through a portal shows its previous
+    texture (ping-pong). Early z is skipped in this mode. `r_portal_texture
+    0` restores the previous behaviour.
+  - Evidence (Azahar, headless, build at this change): on `n3ds_chamber` with
+    a placed pair, the orange portal shows the room through the blue one,
+    matching a direct view from the same place in the room; 0 feedback
+    refusals. Frame time with the pair in view (emulated CPU; Azahar charges
+    no GPU time): 5.0 ms without views, 6.6 ms with reuse, 10.0 ms rendering
+    every frame (`r_portal_texture_maxage 1`). `sp_a1_intro4` with a placed
+    pair shows its view (heap 77 of 89 MB); the `intro4` demo still ends ok.
+  - Open: the image has not been compared with a stencil reference (no
+    stencil on the 3DS; the lab's comparison stands for the method); moving
+    objects behind a portal update at most every 4 frames while the eye is
+    still; the PortalRefract overlay effects (static, opening) still draw
+    as the flat fallback; New 3DS hardware.

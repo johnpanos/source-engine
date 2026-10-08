@@ -634,6 +634,196 @@ void CPortalRenderable_FlatBasic::RenderPortalViewToTexture( CViewRender *pViewR
 	CopyToCurrentView( pViewRender, cameraView );
 }
 
+bool CPortalRenderable_FlatBasic::RenderPortalViewToPlaneTexture( CViewRender *pViewRender, const CViewSetup &cameraView, ITexture *pRenderTarget )
+{
+	if ( ( m_pLinkedPortal == NULL ) || ( pRenderTarget == NULL ) )
+		return false;
+
+	// The transferred eye and the linked portal's frame: the camera looks
+	// along its normal with its up, so the camera's right is forward x up
+	// (m_vRight's sense), which puts this portal's -right (texture u = 1) on
+	// the right of the image: no mirroring.
+	const Vector vEye = m_matrixThisToLinked * cameraView.origin;
+	const Vector &vForward = m_pLinkedPortal->m_vForward;
+	const Vector &vUp = m_pLinkedPortal->m_vUp;
+	Vector vRight;
+	CrossProduct( vForward, vUp, vRight );
+
+	// This portal's rectangle carried through, on the unit plane of the
+	// camera: u = 0 at +right (a = +half width), v = 0 at +up.
+	float flLeft = 0.0f, flRight = 0.0f, flBottom = 0.0f, flTop = 0.0f, flDistance = 0.0f;
+	for ( int i = 0; i < 4; ++i )
+	{
+		const float a = ( i & 1 ) ? -m_fHalfWidth : m_fHalfWidth;
+		const float b = ( i & 2 ) ? m_fHalfHeight : -m_fHalfHeight;
+		const Vector vCorner = m_matrixThisToLinked * ( m_ptOrigin + m_vRight * a + m_vUp * b );
+		const Vector q = vCorner - vEye;
+		const float flDepth = DotProduct( q, vForward );
+		if ( flDepth < 1.0f )
+			return false; // the eye at, or past, the portal's plane
+		flDistance = flDepth;
+		const float x = DotProduct( q, vRight ) / flDepth;
+		const float y = DotProduct( q, vUp ) / flDepth;
+		if ( a > 0.0f )
+			flLeft = x;
+		else
+			flRight = x;
+		if ( b < 0.0f )
+			flBottom = y;
+		else
+			flTop = y;
+	}
+	if ( !( flLeft < flRight ) || !( flBottom < flTop ) )
+		return false;
+	// The symmetric frustum holding the window (the engine culls with it),
+	// and the window as fractions of it (MatrixBuildPerspectiveOffCenterX).
+	const float flTanX = MAX( fabsf( flLeft ), fabsf( flRight ) ) * 1.001f;
+	const float flTanY = MAX( fabsf( flBottom ), fabsf( flTop ) ) * 1.001f;
+	if ( flTanX > 50.0f || flTanY > 50.0f )
+		return false; // a grazing view: the frustum would be degenerate
+
+	CViewSetup portalView = cameraView;
+	portalView.x = 0;
+	portalView.y = 0;
+	portalView.width = pRenderTarget->GetActualWidth();
+	portalView.height = pRenderTarget->GetActualHeight();
+	portalView.origin = vEye;
+	VectorAngles( vForward, vUp, portalView.angles );
+	portalView.m_bOrtho = false;
+	portalView.m_bViewToProjectionOverride = false;
+	portalView.fov = RAD2DEG( 2.0f * atanf( flTanX ) );
+	portalView.m_flAspectRatio = flTanX / flTanY;
+	portalView.m_bOffCenter = true;
+	portalView.m_flOffCenterLeft = ( flLeft / flTanX + 1.0f ) * 0.5f;
+	portalView.m_flOffCenterRight = ( flRight / flTanX + 1.0f ) * 0.5f;
+	portalView.m_flOffCenterBottom = ( flBottom / flTanY + 1.0f ) * 0.5f;
+	portalView.m_flOffCenterTop = ( flTop / flTanY + 1.0f ) * 0.5f;
+	// The near plane parallel to the linked portal, 2 units behind it (as
+	// the stencil path's clip plane: objects half through stay whole); the
+	// portal's own wall faces away from this eye and is culled.
+	portalView.zNear = MAX( 1.0f, flDistance - 2.0f );
+
+	Frustum seeThroughFrustum;
+	const bool bUseSeeThroughFrustum = CalcFrustumThroughPortal( cameraView.origin, seeThroughFrustum );
+	Frustum frustumBackup;
+	memcpy( frustumBackup, pViewRender->GetFrustum(), sizeof( Frustum ) );
+
+	render->Push3DView( portalView, VIEW_CLEAR_DEPTH | VIEW_CLEAR_COLOR, pRenderTarget, pViewRender->GetFrustum() );
+	{
+		ViewCustomVisibility_t customVisibility;
+		m_pLinkedPortal->AddToVisAsExitPortal( &customVisibility );
+
+		const int iRemainingBackup = g_pPortalRender->GetRemainingPortalViewDepth();
+		SetRemainingViewDepth( 0 );
+		SetViewRecursionLevel( g_pPortalRender->GetViewRecursionLevel() + 1 );
+
+		CPortalRenderable *pRenderingViewForPortalBackup = g_pPortalRender->GetCurrentViewEntryPortal();
+		CPortalRenderable *pRenderingViewExitPortalBackup = g_pPortalRender->GetCurrentViewExitPortal();
+		SetViewEntranceAndExitPortals( this, m_pLinkedPortal );
+
+		bool bDrew3dSkybox = false;
+		SkyboxVisibility_t nSkyboxVisible = SKYBOX_NOT_VISIBLE;
+		int nClearFlags = 0;
+		Draw3dSkyboxworld_Portal( pViewRender, portalView, nClearFlags, bDrew3dSkybox, nSkyboxVisible, pRenderTarget );
+
+		if ( bUseSeeThroughFrustum )
+			memcpy( pViewRender->GetFrustum(), seeThroughFrustum, sizeof( Frustum ) );
+		render->OverrideViewFrustum( pViewRender->GetFrustum() );
+
+		ViewDrawScene( pViewRender, bDrew3dSkybox, nSkyboxVisible, portalView, nClearFlags,
+			(view_id_t)g_pPortalRender->GetCurrentViewId(), false, 0, &customVisibility );
+
+		SetViewEntranceAndExitPortals( pRenderingViewForPortalBackup, pRenderingViewExitPortalBackup );
+		SetViewRecursionLevel( g_pPortalRender->GetViewRecursionLevel() - 1 );
+		SetRemainingViewDepth( iRemainingBackup );
+
+		memcpy( pViewRender->GetFrustum(), frustumBackup, sizeof( Frustum ) );
+		render->OverrideViewFrustum( pViewRender->GetFrustum() );
+	}
+	render->PopView( pViewRender->GetFrustum() );
+
+	CopyToCurrentView( pViewRender, cameraView );
+	return true;
+}
+
+// The ellipse inscribed in the portal's rectangle, a little in front of the
+// wall, with DrawSimplePortalMesh's texture coordinates (u along -right, v
+// down): a fan from the centre.
+static const int PORTAL_PLANE_SEGMENTS = 24;
+
+void CPortalRenderable_FlatBasic::DrawPortalPlaneInterior( IMatRenderContext *pRenderContext, IMaterial *pMaterial )
+{
+	pRenderContext->Bind( pMaterial, GetClientRenderable() );
+	pRenderContext->MatrixMode( MATERIAL_MODEL );
+	pRenderContext->PushMatrix();
+	pRenderContext->LoadIdentity();
+
+	const Vector vCenter = m_ptOrigin + m_vForward * 0.3f;
+	CMeshBuilder meshBuilder;
+	IMesh *pMesh = pRenderContext->GetDynamicMesh( true );
+	meshBuilder.Begin( pMesh, MATERIAL_TRIANGLES, PORTAL_PLANE_SEGMENTS );
+	for ( int i = 0; i < PORTAL_PLANE_SEGMENTS; ++i )
+	{
+		for ( int k = 0; k < 3; ++k )
+		{
+			float a = 0.0f, b = 0.0f;
+			if ( k != 0 )
+			{
+				const float flAngle = 2.0f * M_PI_F * float( i + k - 1 ) / float( PORTAL_PLANE_SEGMENTS );
+				a = cosf( flAngle );
+				b = sinf( flAngle );
+			}
+			const Vector vPos = vCenter + m_vRight * ( a * m_fHalfWidth ) + m_vUp * ( b * m_fHalfHeight );
+			meshBuilder.Position3fv( vPos.Base() );
+			meshBuilder.Color4ub( 255, 255, 255, 255 );
+			meshBuilder.TexCoord2f( 0, 0.5f - 0.5f * a, 0.5f - 0.5f * b );
+			meshBuilder.Normal3fv( m_vForward.Base() );
+			meshBuilder.AdvanceVertex();
+		}
+	}
+	meshBuilder.End();
+	pMesh->Draw();
+
+	pRenderContext->MatrixMode( MATERIAL_MODEL );
+	pRenderContext->PopMatrix();
+}
+
+void CPortalRenderable_FlatBasic::DrawPortalPlaneRim( IMatRenderContext *pRenderContext, IMaterial *pMaterial )
+{
+	pRenderContext->Bind( pMaterial, GetClientRenderable() );
+	pRenderContext->MatrixMode( MATERIAL_MODEL );
+	pRenderContext->PushMatrix();
+	pRenderContext->LoadIdentity();
+
+	const Color clrPortal = UTIL_Portal_Color( m_bIsPortal2 ? 2 : 1, GetTeamNumber() );
+	const Vector vCenter = m_ptOrigin + m_vForward * 0.35f;
+	CMeshBuilder meshBuilder;
+	IMesh *pMesh = pRenderContext->GetDynamicMesh( true );
+	meshBuilder.Begin( pMesh, MATERIAL_TRIANGLES, 2 * PORTAL_PLANE_SEGMENTS );
+	for ( int i = 0; i < PORTAL_PLANE_SEGMENTS; ++i )
+	{
+		// Two triangles between the ellipse and one 12 % larger.
+		static const int s_Corner[6][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 0 }, { 1, 1 }, { 0, 1 } };
+		for ( int k = 0; k < 6; ++k )
+		{
+			const float flAngle = 2.0f * M_PI_F * float( i + s_Corner[k][0] ) / float( PORTAL_PLANE_SEGMENTS );
+			const float flScale = s_Corner[k][1] ? 1.12f : 1.0f;
+			const Vector vPos = vCenter + m_vRight * ( cosf( flAngle ) * m_fHalfWidth * flScale ) +
+				m_vUp * ( sinf( flAngle ) * m_fHalfHeight * flScale );
+			meshBuilder.Position3fv( vPos.Base() );
+			meshBuilder.Color4ub( clrPortal.r(), clrPortal.g(), clrPortal.b(), 255 );
+			meshBuilder.TexCoord2f( 0, 0.5f, 0.5f );
+			meshBuilder.Normal3fv( m_vForward.Base() );
+			meshBuilder.AdvanceVertex();
+		}
+	}
+	meshBuilder.End();
+	pMesh->Draw();
+
+	pRenderContext->MatrixMode( MATERIAL_MODEL );
+	pRenderContext->PopMatrix();
+}
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // AddToVisAsExitPortal
 // input -  pViewRender: pointer to the CViewRender class used to render this scene.

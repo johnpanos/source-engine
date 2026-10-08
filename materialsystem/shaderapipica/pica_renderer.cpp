@@ -66,6 +66,13 @@ struct Allocation
 	std::uint32_t usedInRecording = 0; // the recording that last read it
 };
 
+// A depth buffer for render targets of one size (D24S8), shared by them.
+struct TargetDepth
+{
+	TextureId id;
+	ResourceUsage usage = ResourceUsage::kUndefined;
+};
+
 struct Ring
 {
 	BufferId buffer;
@@ -87,6 +94,11 @@ struct State
 	std::map<std::uintptr_t, Allocation> allocations;
 	Ring rings[2]; // Memory::kVertices, kIndices
 	std::optional<CommandEncoder> encoder;
+	Texture *target = nullptr; // SetTarget's; null: the screen
+	// A target that could not be drawn (no depth buffer): its draws, clears
+	// and core sections are dropped until the next SetTarget.
+	bool dropTargetDraws = false;
+	std::map<std::uint64_t, TargetDepth> targetDepths; // by width << 32 | height
 	std::uint32_t recording = 1; // increments at every submit
 	bool rendering = false;
 	ResourceUsage colorUsage = ResourceUsage::kUndefined;
@@ -105,6 +117,67 @@ struct State
 
 State g_state;
 IRenderDevice2 *g_bound = nullptr;
+
+} // namespace
+
+// Texture's target fields, for the renderer.
+struct TargetAccess
+{
+	static TextureId Id( const Texture &texture ) { return TextureId{ texture.m_texture }; }
+	static ResourceUsage Usage( const Texture &texture )
+	{
+		return ResourceUsage( texture.m_usage );
+	}
+	static void SetUsage( Texture &texture, ResourceUsage usage )
+	{
+		texture.m_usage = std::uint8_t( usage );
+	}
+};
+
+namespace
+{
+
+// What the frame draws into now: the screen's 400x240, or SetTarget's.
+struct Target
+{
+	TextureId color;
+	TargetDepth *depth = nullptr; // a render target's; the screen keeps its own
+	std::uint32_t width = 0;
+	std::uint32_t height = 0;
+};
+
+IRenderDevice2 &Device();
+
+Target Current()
+{
+	Target t;
+	if ( !g_state.target )
+	{
+		t.color = g_state.color;
+		t.width = kScreenWidth;
+		t.height = kScreenHeight;
+		return t;
+	}
+	const std::uint32_t w = std::uint32_t( g_state.target->Width() );
+	const std::uint32_t h = std::uint32_t( g_state.target->Height() );
+	TargetDepth &depth = g_state.targetDepths[( std::uint64_t( w ) << 32 ) | h];
+	if ( !depth.id.IsValid() )
+	{
+		TextureDesc desc;
+		desc.format = Format::kD24UnormS8;
+		desc.width = w;
+		desc.height = h;
+		desc.usages = { ResourceUsage::kDepthWrite };
+		auto made = Device().CreateTexture( desc );
+		if ( made )
+			depth.id = made.Value();
+	}
+	t.color = TargetAccess::Id( *g_state.target );
+	t.depth = &depth;
+	t.width = w;
+	t.height = h;
+	return t;
+}
 
 IRenderDevice2 &Device()
 {
@@ -330,20 +403,56 @@ void BeginPass( bool clearColor, bool clearDepth, std::uint32_t rgba )
 	CommandEncoder &e = *g_state.encoder;
 	if ( g_state.rendering )
 		e.EndRendering();
+	g_state.rendering = false;
+	Target target = Current();
+	if ( g_state.target && ( !target.depth || !target.depth->id.IsValid() ) )
+	{
+		// No depth buffer for it (out of memory): the screen keeps the frame,
+		// and what was meant for the target is dropped.
+		g_state.target = nullptr;
+		g_state.dropTargetDraws = true;
+		target = Current();
+		g_state.viewport = { 0, 0, float( target.width ), float( target.height ), 0, 1 };
+	}
+	if ( g_state.target )
+	{
+		// A render target's home usages (the screen's are the recording's).
+		const ResourceUsage usage = TargetAccess::Usage( *g_state.target );
+		if ( usage != ResourceUsage::kColorAttachment )
+			e.TransitionTexture( target.color, usage, ResourceUsage::kColorAttachment );
+		TargetAccess::SetUsage( *g_state.target, ResourceUsage::kColorAttachment );
+		if ( target.depth->usage != ResourceUsage::kDepthWrite )
+			e.TransitionTexture(
+			    target.depth->id, target.depth->usage, ResourceUsage::kDepthWrite );
+		target.depth->usage = ResourceUsage::kDepthWrite;
+	}
 	ColorAttachment color{
-	    g_state.color, clearColor ? LoadOp::kClear : LoadOp::kLoad, StoreOp::kStore, {}, {} };
+	    target.color, clearColor ? LoadOp::kClear : LoadOp::kLoad, StoreOp::kStore, {}, {} };
 	color.clear = { float( ( rgba >> 0 ) & 0xFF ) / 255.0f, float( ( rgba >> 8 ) & 0xFF ) / 255.0f,
 	    float( ( rgba >> 16 ) & 0xFF ) / 255.0f, float( ( rgba >> 24 ) & 0xFF ) / 255.0f };
 	const ColorAttachment colors[] = { color };
 	RenderingDesc rendering;
 	rendering.colors = colors;
-	rendering.depth = DepthAttachment{
-	    g_state.depth, clearDepth ? LoadOp::kClear : LoadOp::kLoad, StoreOp::kStore, 1.0f };
-	rendering.width = kScreenWidth;
-	rendering.height = kScreenHeight;
+	rendering.depth = DepthAttachment{ target.depth ? target.depth->id : g_state.depth,
+	    clearDepth ? LoadOp::kClear : LoadOp::kLoad, StoreOp::kStore, 1.0f };
+	rendering.width = target.width;
+	rendering.height = target.height;
 	e.BeginRendering( rendering );
 	e.SetViewport( g_state.viewport );
 	g_state.rendering = true;
+}
+
+// Leaves the current render target sampleable (outside a pass).
+void LeaveTarget( CommandEncoder &e )
+{
+	if ( !g_state.target )
+		return;
+	const ResourceUsage usage = TargetAccess::Usage( *g_state.target );
+	if ( usage == ResourceUsage::kColorAttachment )
+	{
+		e.TransitionTexture( TargetAccess::Id( *g_state.target ), usage, ResourceUsage::kSampled );
+		TargetAccess::SetUsage( *g_state.target, ResourceUsage::kSampled );
+	}
 }
 
 // Opens the frame's recording (the target becomes an attachment).
@@ -420,6 +529,8 @@ Texture::~Texture()
 
 void Texture::Release()
 {
+	if ( this == g_state.target )
+		SetTarget( nullptr );
 	if ( m_texture && g_state.initialized )
 	{
 		// Drawn by the recording, perhaps: released after it is submitted.
@@ -430,6 +541,45 @@ void Texture::Release()
 	}
 	m_texture = m_group = 0;
 	m_bytes = 0;
+	m_target = false;
+	m_usage = 0;
+}
+
+bool Texture::CreateTarget( int width, int height )
+{
+	Release();
+	const auto side = []( int v )
+	{
+		return v >= 8 && v <= 512 && ( v & ( v - 1 ) ) == 0;
+	};
+	if ( !g_state.initialized || !side( width ) || !side( height ) )
+		return false;
+	TextureDesc desc;
+	desc.format = Format::kRGBA8Unorm;
+	desc.width = std::uint32_t( width );
+	desc.height = std::uint32_t( height );
+	desc.usages = {
+	    ResourceUsage::kColorAttachment, ResourceUsage::kSampled, ResourceUsage::kCopySource };
+	auto texture = Device().CreateTexture( desc );
+	if ( !texture )
+		return false;
+	m_texture = texture.Value().value;
+	m_width = width;
+	m_height = height;
+	m_bytes = std::size_t( width ) * height * 4;
+	m_target = true;
+	m_usage = std::uint8_t( ResourceUsage::kUndefined );
+	g_state.textureBytes += m_bytes;
+	return true;
+}
+
+bool Texture::Sampleable() const
+{
+	if ( !m_texture )
+		return false;
+	if ( !m_target )
+		return true;
+	return this != g_state.target && ResourceUsage( m_usage ) == ResourceUsage::kSampled;
 }
 
 bool Texture::Upload(
@@ -639,6 +789,9 @@ void Shutdown()
 		(void)device.Release( allocation.buffer, {} );
 	if ( g_state.reserve.IsValid() )
 		(void)device.Release( g_state.reserve, {} );
+	for ( const auto &[size, depth] : g_state.targetDepths )
+		if ( depth.id.IsValid() )
+			(void)device.Release( depth.id, {} );
 	for ( ResourceId id : { ResourceId( g_state.color ), ResourceId( g_state.depth ),
 			  ResourceId( g_state.materialLayout ), ResourceId( g_state.samplers[0] ),
 			  ResourceId( g_state.samplers[1] ), ResourceId( g_state.samplers[2] ),
@@ -667,7 +820,8 @@ void BeginFrame()
 	for ( Ring &ring : g_state.rings )
 		ring.used = 0;
 	g_state.stats = Stats();
-	g_state.viewport = { 0, 0, float( kScreenWidth ), float( kScreenHeight ), 0, 1 };
+	const Target target = Current();
+	g_state.viewport = { 0, 0, float( target.width ), float( target.height ), 0, 1 };
 	OpenRecording();
 	BeginPass( false, false, 0 );
 }
@@ -678,16 +832,50 @@ void EndFrame()
 		return;
 	g_state.stats.textureBytes = g_state.textureBytes;
 	g_state.stats.meshBytes = g_state.meshBytes;
+	if ( g_state.target && g_state.encoder )
+	{
+		if ( g_state.rendering )
+			g_state.encoder->EndRendering();
+		g_state.rendering = false;
+		LeaveTarget( *g_state.encoder );
+	}
+	g_state.target = nullptr;
+	g_state.dropTargetDraws = false;
 	SubmitRecording( true );
 	(void)pc::PresentTopScreen( Device(), g_state.color, kScreenWidth, kScreenHeight );
 	g_state.inFrame = false;
+}
+
+void SetTarget( Texture *target )
+{
+	if ( !g_state.initialized || target == g_state.target )
+		return;
+	if ( target && ( !target->Valid() || !target->IsTarget() ) )
+		return;
+	if ( !g_state.inFrame || !g_state.encoder )
+	{
+		g_state.target = target;
+		g_state.dropTargetDraws = false;
+		return;
+	}
+	CommandEncoder &e = *g_state.encoder;
+	if ( g_state.rendering )
+		e.EndRendering();
+	g_state.rendering = false;
+	LeaveTarget( e );
+	g_state.target = target;
+	g_state.dropTargetDraws = false;
+	++g_state.stats.targetSwitches;
+	const Target next = Current();
+	g_state.viewport = { 0, 0, float( next.width ), float( next.height ), 0, 1 };
+	BeginPass( false, false, 0 );
 }
 
 void Clear( bool color, bool depth, std::uint32_t rgba )
 {
 	if ( !g_state.inFrame )
 		BeginFrame();
-	if ( !color && !depth )
+	if ( ( !color && !depth ) || g_state.dropTargetDraws )
 		return;
 	// A new pass that clears; the viewport's region is the whole target, as
 	// the legacy renderer's clear was.
@@ -839,7 +1027,7 @@ void Draw( const float clipFromObject[16], const DrawState &state, Texture *text
 {
 	if ( !g_state.inFrame )
 		BeginFrame();
-	if ( vertexCount <= 0 || !vertices || !g_state.encoder )
+	if ( vertexCount <= 0 || !vertices || !g_state.encoder || g_state.dropTargetDraws )
 		return;
 	const std::optional<BlendMode> blend = PortBlend( state );
 	if ( !blend )
@@ -864,6 +1052,12 @@ void Draw( const float clipFromObject[16], const DrawState &state, Texture *text
 		return;
 	}
 	const bool textured = texture && texture->Valid();
+	if ( textured && !texture->Sampleable() )
+	{
+		// A target sampled while it is drawn into, or before anything was.
+		++g_state.stats.feedbackRefusals;
+		return;
+	}
 	const PipelineId pipeline = PipelineFor( state, *blend, textured, primitive );
 	if ( !pipeline.IsValid() )
 		return;
@@ -904,16 +1098,18 @@ render::device::CommandEncoder *BeginCoreSection( CoreSectionTarget &target )
 {
 	if ( !g_state.inFrame )
 		BeginFrame();
-	if ( !g_state.encoder )
+	if ( !g_state.encoder || g_state.dropTargetDraws )
 		return nullptr;
 	if ( g_state.rendering )
 		g_state.encoder->EndRendering();
 	g_state.rendering = false;
+	const Target current = Current();
 	target.device = g_state.device;
-	target.color = std::uint32_t( g_state.color.value );
-	target.depth = std::uint32_t( g_state.depth.value );
-	target.width = kScreenWidth;
-	target.height = kScreenHeight;
+	target.color = std::uint32_t( current.color.value );
+	target.depth =
+	    std::uint32_t( current.depth ? current.depth->id.value : g_state.depth.value );
+	target.width = current.width;
+	target.height = current.height;
 	target.serial = g_state.recording;
 	target.submittedEpoch = g_state.submitted.epoch;
 	target.submittedValue = g_state.submitted.value;

@@ -83,6 +83,9 @@ ConVar r_portal_fastpath( "r_portal_fastpath", "1", 0 );
 ConVar r_portal_fastpath_max_ghost_recursion( "r_portal_fastpath_max_ghost_recursion", "2", 0 );
 ConVar r_portal_earlyz( "r_portal_earlyz", "1", 0 );
 ConVar r_portalscissor( "r_portalscissor", "0", 0 );
+ConVar r_portal_texture( "r_portal_texture", "1", FCVAR_CLIENTDLL, "Without a stencil buffer (the 3DS), draw portals through portal-plane textures: each view rendered with the portal as its image plane" );
+ConVar r_portal_texture_reuse( "r_portal_texture_reuse", "1", FCVAR_CLIENTDLL, "Texture portals: keep a portal's texture while the eye has moved less than this many texels (0: render every frame)" );
+ConVar r_portal_texture_maxage( "r_portal_texture_maxage", "4", FCVAR_CLIENTDLL, "Texture portals: render a kept texture again after this many frames (moving objects behind the portal)" );
 
 extern ConVar portal_draw_ghosting;
 
@@ -251,6 +254,7 @@ CPortalRenderable::~CPortalRenderable( void )
 CPortalRender::CPortalRender()
 : m_MaterialsAccess( m_Materials )
 {
+	memset( m_PortalPlaneCache, 0, sizeof( m_PortalPlaneCache ) );
 	m_iRemainingPortalViewDepth = 1; //let's portals know that they should do "end of the line" kludges to cover up that portals don't go infinitely recursive
 	m_iViewRecursionLevel = 0;
 	m_pRenderingViewForPortal = NULL;
@@ -631,6 +635,18 @@ void CPortalRender::DrawEarlyZPortals( CViewRender *pViewRender )
 		return;
 	}
 
+	// Early z writes the stencil hole: texture portals draw no stencil.
+	if ( UsingPortalTextures() )
+	{
+		return;
+	}
+
+	// Early z writes the stencil hole: texture portals draw no stencil.
+	if ( UsingPortalTextures() )
+	{
+		return;
+	}
+
 	int iDrawFlags = pViewRender->GetDrawFlags();
 
 	if ( (iDrawFlags & DF_RENDER_REFLECTION) != 0 )
@@ -938,6 +954,17 @@ bool CPortalRender::DrawPortalsUsingStencils( CViewRender *pViewRender )
 		}
 
 		m_iRemainingPortalViewDepth = 0; //special case handler for max depth 0 cases
+		if ( UsingPortalTextures() )
+		{
+			if ( pPortalQuadMesh )
+			{
+				pPortalQuadMesh->MarkAsDrawn();
+			}
+			pRenderContext->BeginPIXEvent( PIX_VALVE_ORANGE, "Portal_textures" );
+			const bool bRendered = DrawPortalsUsingTextures( pViewRender, pRenderContext, actualActivePortals );
+			pRenderContext->EndPIXEvent();
+			return bRendered;
+		}
 		pRenderContext->BeginPIXEvent( PIX_VALVE_ORANGE, "Portal_maxrecursion_reached" );
 
 		RenderPortalEffects( pRenderContext, pPortalQuadMesh, actualActivePortals, actualActivePortalQuadVBIndex );
@@ -1479,6 +1506,161 @@ void CPortalRender::RenderPortalEffects( IMatRenderContext *pRenderContext, IMes
 //-----------------------------------------------------------------------------------------------------------------------------------
 //-----------------------------------------------------------------------------------------------------------------------------------
 //-----------------------------------------------------------------------------------------------------------------------------------
+bool CPortalRender::UsingPortalTextures() const
+{
+	return r_portal_texture.GetBool() && ( materials->StencilBufferBits() == 0 ) &&
+		( portalrendertargets->GetPortalPlaneTexture( 0, 0 ) != NULL );
+}
+
+bool CPortalRender::DrawPortalsUsingTextures( CViewRender *pViewRender, IMatRenderContext *pRenderContext,
+	const CUtlVector< CPortalRenderable* > &portals )
+{
+	VPROF_BUDGET( "CPortalRender::DrawPortalsUsingTextures", "DrawPortalsUsingTextures" );
+
+	if ( !m_PortalPlaneRimMaterial.IsValid() )
+	{
+		for ( int nPortal = 0; nPortal < 2; ++nPortal )
+		{
+			for ( int nSlot = 0; nSlot < 2; ++nSlot )
+			{
+				char szTexture[32], szMaterial[32];
+				V_snprintf( szTexture, sizeof( szTexture ), "_rt_PortalPlane%d%c", nPortal + 1, 'a' + nSlot );
+				V_snprintf( szMaterial, sizeof( szMaterial ), "__portalplane%d%c", nPortal + 1, 'a' + nSlot );
+				KeyValues *pKeys = new KeyValues( "UnlitGeneric" );
+				pKeys->SetString( "$basetexture", szTexture );
+				pKeys->SetInt( "$nocull", 1 );
+				m_PortalPlaneMaterials[nPortal][nSlot].Init( materials->CreateMaterial( szMaterial, pKeys ) );
+			}
+		}
+		KeyValues *pKeys = new KeyValues( "UnlitGeneric" );
+		pKeys->SetString( "$basetexture", "vgui/white" );
+		pKeys->SetInt( "$vertexcolor", 1 );
+		pKeys->SetInt( "$nocull", 1 );
+		m_PortalPlaneRimMaterial.Init( materials->CreateMaterial( "__portalplanerim", pKeys ) );
+	}
+
+	const CViewSetup cameraView = *pViewRender->GetViewSetup();
+	bool bRendered = false;
+	if ( m_iViewRecursionLevel == 0 )
+	{
+		// The see-through frustums start from the main view's (as the stencil
+		// paths do on their first entry).
+		m_RecursiveViewComplexFrustums[0].RemoveAll();
+		m_RecursiveViewComplexFrustums[0].AddMultipleToTail( FRUSTUM_NUMPLANES, pViewRender->GetFrustum() );
+	}
+
+	for ( int i = 0; i < portals.Count(); ++i )
+	{
+		CPortalRenderable *pPortal = portals[i];
+		CPortalRenderable_FlatBasic *pFlat = dynamic_cast< CPortalRenderable_FlatBasic* >( pPortal );
+		if ( pPortal == m_pRenderingViewExitPortal )
+			continue; // the view comes out of it: it faces away
+		if ( pFlat && ( DotProduct( cameraView.origin - pFlat->m_ptOrigin, pFlat->m_vForward ) <= 0.0f ) )
+			continue; // seen from behind
+		bool bOpen = ( pFlat != NULL ) && ( pFlat->m_pLinkedPortal != NULL );
+		if ( bOpen && pPortal->IsPropPortal() )
+		{
+			const C_Prop_Portal *pProp = static_cast< const C_Prop_Portal* >( pPortal );
+			// The portal's own static (closing, a fizzle), not the "end of
+			// the line" static ComputeStaticAmountForRendering adds at the
+			// maximum depth, which is where this path draws.
+			bOpen = ( pProp->m_fOpenAmount >= 0.99f ) && ( pProp->m_fStaticAmount <= 0.0f );
+		}
+		if ( !bOpen )
+		{
+			pPortal->DrawPortal( pRenderContext );
+			continue;
+		}
+
+		const int nSlot = pFlat->m_bIsPortal2 ? 1 : 0;
+		PortalPlaneCache_t &cache = m_PortalPlaneCache[nSlot];
+		const Vector vPose[4] = { pFlat->m_ptOrigin, pFlat->m_vForward, pFlat->m_pLinkedPortal->m_ptOrigin,
+			pFlat->m_pLinkedPortal->m_vForward };
+		if ( cache.m_pPortal != pPortal )
+		{
+			if ( m_iViewRecursionLevel != 0 )
+			{
+				pPortal->DrawPortal( pRenderContext );
+				continue;
+			}
+			memset( &cache, 0, sizeof( cache ) );
+			cache.m_pPortal = pPortal;
+		}
+
+		if ( m_iViewRecursionLevel == 0 )
+		{
+			// Kept while it still holds this eye's view: the eye moved less than
+			// r_portal_texture_reuse texels on the portal, neither portal moved,
+			// and it is younger than r_portal_texture_maxage frames.
+			bool bFresh = cache.m_bValid && ( r_portal_texture_reuse.GetFloat() > 0.0f ) &&
+				( gpGlobals->framecount - cache.m_nFrame < r_portal_texture_maxage.GetInt() );
+			for ( int k = 0; bFresh && ( k < 4 ); ++k )
+				bFresh = ( vPose[k] - cache.m_vPose[k] ).LengthSqr() < 0.0001f;
+			if ( bFresh )
+			{
+				const float flTexelsPerUnit =
+					float( CPortalRenderTargets::PORTAL_PLANE_HEIGHT ) / ( 2.0f * pFlat->GetHalfHeight() );
+				bFresh = ( cameraView.origin - cache.m_vEye ).Length() * flTexelsPerUnit <= r_portal_texture_reuse.GetFloat();
+			}
+			if ( !bFresh )
+			{
+				// The other texture of the pair: the shown one stays readable
+				// for this portal seen through the other.
+				const int nTarget = cache.m_bValid ? 1 - cache.m_nFront : 0;
+				ITexture *pTarget = portalrendertargets->GetPortalPlaneTexture( nSlot, nTarget );
+
+				PortalViewIDNode_t *&pNode = m_PortalViewIDNodeChain[0]->ChildNodes[pPortal->m_iPortalViewIDNodeIndex];
+				if ( pNode == NULL )
+				{
+					C_Prop_Portal *pPropPortal = static_cast< C_Prop_Portal* >( pPortal );
+					pNode = AllocPortalViewIDNode( m_HeadPortalViewIDNode.ChildNodes.Count(), nSlot, pPropPortal->GetTeamNumber(), CurrentViewID() );
+				}
+				m_PortalViewIDNodeChain[1] = pNode;
+				m_RecursiveViewComplexFrustums[1].RemoveAll();
+
+				unsigned char fogColorBackup[4];
+				pRenderContext->GetFogColor( fogColorBackup );
+				float fFogStartBackup, fFogEndBackup, fFogZBackup;
+				pRenderContext->GetFogDistances( &fFogStartBackup, &fFogEndBackup, &fFogZBackup );
+				CGlowOverlay::BackupSkyOverlayData( 0 );
+
+				if ( pFlat->RenderPortalViewToPlaneTexture( pViewRender, cameraView, pTarget ) )
+				{
+					cache.m_bValid = true;
+					cache.m_nFront = nTarget;
+					cache.m_nFrame = gpGlobals->framecount;
+					cache.m_vEye = cameraView.origin;
+					for ( int k = 0; k < 4; ++k )
+						cache.m_vPose[k] = vPose[k];
+					bRendered = true;
+				}
+				else
+				{
+					cache.m_bValid = false; // the eye at the plane: nothing to show
+				}
+
+				m_PortalViewIDNodeChain[1] = NULL;
+				CGlowOverlay::RestoreSkyOverlayData( 0 );
+				pRenderContext->FogColor3ubv( fogColorBackup );
+				pRenderContext->FogStart( fFogStartBackup );
+				pRenderContext->FogEnd( fFogEndBackup );
+				pRenderContext->SetFogZ( fFogZBackup );
+			}
+		}
+
+		if ( cache.m_bValid )
+		{
+			pFlat->DrawPortalPlaneInterior( pRenderContext, m_PortalPlaneMaterials[nSlot][cache.m_nFront] );
+			pFlat->DrawPortalPlaneRim( pRenderContext, m_PortalPlaneRimMaterial );
+		}
+		else
+		{
+			pPortal->DrawPortal( pRenderContext );
+		}
+	}
+	return bRendered;
+}
+
 bool CPortalRender::DrawPortalsUsingStencils_Old( CViewRender *pViewRender )
 {
 	int iDrawFlags = pViewRender->GetDrawFlags();
@@ -1546,6 +1728,13 @@ bool CPortalRender::DrawPortalsUsingStencils_Old( CViewRender *pViewRender )
 	if( m_iViewRecursionLevel >= iMaxDepth ) //can't support any more views	
 	{
 		m_iRemainingPortalViewDepth = 0; //special case handler for max depth 0 cases
+		if ( UsingPortalTextures() )
+		{
+			pRenderContext->BeginPIXEvent( PIX_VALVE_ORANGE, "Portal_textures" );
+			const bool bRendered = DrawPortalsUsingTextures( pViewRender, pRenderContext, actualActivePortals );
+			pRenderContext->EndPIXEvent();
+			return bRendered;
+		}
 		pRenderContext->BeginPIXEvent( PIX_VALVE_ORANGE, "Portal_maxrecursion_reached" );
 		for( int i = 0; i != iNumRenderablePortals; ++i )
 		{
