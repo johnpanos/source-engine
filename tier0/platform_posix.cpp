@@ -9,6 +9,7 @@
 #include "tier0/vcrmode.h"
 #include "tier0/memalloc.h"
 #include "tier0/dbg.h"
+#include "tier0/threadtools.h"
 #include "foundation_facade.h"
 #include <algorithm>
 #include <vector>
@@ -112,6 +113,21 @@ unsigned int Plat_MSTime()
 		return (unsigned int)(g_FakeBenchmarkTime * 1000.0);
 	}
 	return ( uint )( Plat_FloatTime() * 1000 );
+}
+
+void Plat_ThreadSleep( unsigned nMilliseconds )
+{
+	tier0_facade::Threads().SleepFor( (uint64)nMilliseconds * 1000000ull );
+}
+
+void Plat_ThreadSleepMicroseconds( unsigned nMicroseconds )
+{
+	tier0_facade::Threads().SleepFor( (uint64)nMicroseconds * 1000ull );
+}
+
+void Plat_ThreadYield()
+{
+	tier0_facade::Threads().SleepFor( 0 );
 }
 
 uint64 Plat_MonotonicNanoseconds()

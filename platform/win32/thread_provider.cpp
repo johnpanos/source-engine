@@ -72,33 +72,60 @@ ThreadResult ApplyPriority( ThreadPriority priority )
 	                                                       : ThreadResult::kUnsupported;
 }
 
+// Two owners: the provider (until join or detach) and the running thread
+// (until its entry returns). A plain count keeps std's shared pointer out of
+// the shared modules that link this.
 struct ThreadRecord
 {
-	HANDLE handle = nullptr;
+	std::atomic<int> refs{ 2 };
+	HANDLE handle = nullptr; // the provider's own handle
+	unsigned long nativeId = 0;
 	std::uint64_t id = 0;
-	ThreadEntry entry = nullptr;
+	ThreadEntry entry = nullptr;			   // a platform.thread.v1 thread, or
+	IWin32Threads::NativeProc proc = nullptr; // a native one, whose result is the exit code
 	void *context = nullptr;
 	char name[kThreadNameMaxBytes + 1] = {};
 	ThreadPriority priority = ThreadPriority::kNormal;
 };
 
-unsigned __stdcall ThreadTrampoline( void *arg )
+void Release( ThreadRecord *record )
 {
-	ThreadRecord &record = *static_cast<ThreadRecord *>( arg );
-	t_threadId = record.id;
-	if ( record.name[0] != '\0' )
+	if ( record != nullptr && record->refs.fetch_sub( 1, std::memory_order_acq_rel ) == 1 )
 	{
-		SetNativeName( record.name );
+		if ( record->handle != nullptr )
+		{
+			CloseHandle( record->handle );
+		}
+		delete record;
 	}
-	if ( record.priority != ThreadPriority::kNormal )
-	{
-		ApplyPriority( record.priority );
-	}
-	record.entry( record.context );
-	return 0;
 }
 
-class CWin32Threads final : public IThreads
+unsigned __stdcall ThreadTrampoline( void *arg )
+{
+	ThreadRecord *record = static_cast<ThreadRecord *>( arg );
+	t_threadId = record->id;
+	if ( record->name[0] != '\0' )
+	{
+		SetNativeName( record->name );
+	}
+	if ( record->priority != ThreadPriority::kNormal )
+	{
+		ApplyPriority( record->priority );
+	}
+	unsigned result = 0;
+	if ( record->proc != nullptr )
+	{
+		IWin32Threads::NativeProc proc = record->proc;
+		void *context = record->context;
+		Release( record );
+		return proc( context );
+	}
+	record->entry( record->context );
+	Release( record );
+	return result;
+}
+
+class CWin32Threads final : public IWin32Threads
 {
 public:
 	~CWin32Threads() override
@@ -121,8 +148,7 @@ public:
 		{
 			return ThreadResult::kInvalidArgument;
 		}
-		auto record = std::make_unique<ThreadRecord>();
-		record->id = g_nextThreadId.fetch_add( 1 );
+		ThreadRecord *record = new ThreadRecord();
 		record->entry = entry;
 		record->context = context;
 		record->priority = options.priority;
@@ -130,28 +156,41 @@ public:
 		{
 			CopyName( options.name, record->name );
 		}
-		if ( options.stackBytes > 0xffffffffULL )
+		return Launch( record, options.stackBytes, false, out );
+	}
+
+	ThreadResult StartNative( std::size_t stackBytes, NativeProc proc, void *arg, bool suspended,
+	    ThreadHandle &out, void *&callerHandle, unsigned long &id ) override
+	{
+		if ( proc == nullptr )
 		{
 			return ThreadResult::kInvalidArgument;
 		}
-		std::lock_guard<std::mutex> lock( m_mutex );
-		const uintptr_t h = _beginthreadex( nullptr, static_cast<unsigned>( options.stackBytes ),
-		    ThreadTrampoline, record.get(), STACK_SIZE_PARAM_IS_A_RESERVATION, nullptr );
-		if ( h == 0 )
+		ThreadRecord *record = new ThreadRecord();
+		record->proc = proc;
+		record->context = arg;
+		ThreadHandle handle;
+		const ThreadResult result = Launch( record, stackBytes, suspended, handle );
+		if ( result != ThreadResult::kOk )
 		{
-			return errno == EAGAIN ? ThreadResult::kResourceExhausted
-			                       : ThreadResult::kInvalidArgument;
+			return result;
 		}
-		record->handle = reinterpret_cast<HANDLE>( h );
-		const std::uint64_t handle = m_nextHandle++;
-		m_threads[handle] = std::move( record );
-		out.value = handle;
+		HANDLE duplicate = nullptr;
+		{
+			std::lock_guard<std::mutex> lock( m_mutex );
+			ThreadRecord *held = m_threads[handle.value];
+			DuplicateHandle( GetCurrentProcess(), held->handle, GetCurrentProcess(), &duplicate, 0,
+			    FALSE, DUPLICATE_SAME_ACCESS );
+			id = held->nativeId;
+		}
+		out = handle;
+		callerHandle = duplicate;
 		return ThreadResult::kOk;
 	}
 
 	ThreadResult Join( ThreadHandle thread ) override
 	{
-		std::unique_ptr<ThreadRecord> record;
+		ThreadRecord *record = nullptr;
 		{
 			std::lock_guard<std::mutex> lock( m_mutex );
 			auto it = m_threads.find( thread.value );
@@ -159,11 +198,11 @@ public:
 			{
 				return ThreadResult::kInvalidArgument;
 			}
-			record = std::move( it->second );
+			record = it->second;
 			m_threads.erase( it );
 		}
 		WaitForSingleObject( record->handle, INFINITE );
-		CloseHandle( record->handle );
+		Release( record );
 		return ThreadResult::kOk;
 	}
 
@@ -248,15 +287,146 @@ public:
 		return n > 0 ? static_cast<unsigned>( n ) : 1u;
 	}
 
+	// --- IWin32Threads ---------------------------------------------------
+
+	unsigned long CurrentNativeId() const override { return GetCurrentThreadId(); }
+	void *CurrentPseudoHandle() const override { return GetCurrentThread(); }
+
+	WaitResult WaitNative( void *handle, unsigned long timeoutMs ) override
+	{
+		const DWORD wait = WaitForSingleObject( static_cast<HANDLE>( handle ), timeoutMs );
+		return wait == WAIT_OBJECT_0 ? WaitResult::kSignaled
+		       : wait == WAIT_TIMEOUT ? WaitResult::kTimeout
+		                              : WaitResult::kFailed;
+	}
+
+	bool IsNativeHandleRunning( void *handle ) const override
+	{
+		DWORD code = 0;
+		return handle != nullptr && GetExitCodeThread( static_cast<HANDLE>( handle ), &code ) &&
+		       code == STILL_ACTIVE;
+	}
+
+	bool IsNativeIdRunning( unsigned long id ) const override
+	{
+		HANDLE thread = OpenThread( THREAD_QUERY_INFORMATION, FALSE, id );
+		if ( thread == nullptr )
+		{
+			return false;
+		}
+		const bool running = IsNativeHandleRunning( thread );
+		CloseHandle( thread );
+		return running;
+	}
+
+	int GetNativePriority( void *handle ) const override
+	{
+		return GetThreadPriority( static_cast<HANDLE>( handle ) );
+	}
+
+	bool SetNativePriority( void *handle, int priority ) override
+	{
+		return SetThreadPriority( static_cast<HANDLE>( handle ), priority ) != 0;
+	}
+
+	void SetNativeAffinity( void *handle, std::uintptr_t mask ) override
+	{
+		SetThreadAffinityMask( static_cast<HANDLE>( handle ), static_cast<DWORD_PTR>( mask ) );
+	}
+
+	bool TerminateNative( void *handle, unsigned long exitCode ) override
+	{
+		return TerminateThread( static_cast<HANDLE>( handle ), exitCode ) != 0;
+	}
+
+	bool ResumeNative( void *handle ) override
+	{
+		return ResumeThread( static_cast<HANDLE>( handle ) ) != static_cast<DWORD>( -1 );
+	}
+
+	bool SuspendNative( void *handle ) override
+	{
+		return SuspendThread( static_cast<HANDLE>( handle ) ) != static_cast<DWORD>( -1 );
+	}
+
+	void *OpenNative( unsigned long id, unsigned long access ) override
+	{
+		return OpenThread( access, FALSE, id );
+	}
+
+	bool CloseNative( void *handle ) override
+	{
+		return handle != nullptr && CloseHandle( static_cast<HANDLE>( handle ) ) != 0;
+	}
+
+	ThreadResult DetachNativeId( unsigned long id ) override
+	{
+		ThreadHandle known;
+		{
+			std::lock_guard<std::mutex> lock( m_mutex );
+			for ( const auto &entry : m_threads )
+			{
+				if ( entry.second->nativeId == id )
+				{
+					known.value = entry.first;
+					break;
+				}
+			}
+		}
+		return known.value != 0 ? Detach( known ) : ThreadResult::kInvalidArgument;
+	}
+
+	ThreadResult Detach( ThreadHandle thread ) override
+	{
+		ThreadRecord *record = nullptr;
+		{
+			std::lock_guard<std::mutex> lock( m_mutex );
+			auto it = m_threads.find( thread.value );
+			if ( it == m_threads.end() )
+			{
+				return ThreadResult::kInvalidArgument;
+			}
+			record = it->second;
+			m_threads.erase( it );
+		}
+		Release( record ); // closes the provider's handle once the thread is done too
+		return ThreadResult::kOk;
+	}
+
 private:
+	ThreadResult Launch( ThreadRecord *record, std::size_t stackBytes, bool suspended, ThreadHandle &out )
+	{
+		record->id = g_nextThreadId.fetch_add( 1 );
+		if ( stackBytes > 0xffffffffULL )
+		{
+			delete record;
+			return ThreadResult::kInvalidArgument;
+		}
+		std::lock_guard<std::mutex> lock( m_mutex );
+		unsigned nativeId = 0;
+		const uintptr_t h = _beginthreadex( nullptr, static_cast<unsigned>( stackBytes ), ThreadTrampoline,
+		    record, STACK_SIZE_PARAM_IS_A_RESERVATION | ( suspended ? CREATE_SUSPENDED : 0 ), &nativeId );
+		if ( h == 0 )
+		{
+			delete record; // the thread never ran, so it holds no reference
+			return errno == EAGAIN ? ThreadResult::kResourceExhausted : ThreadResult::kInvalidArgument;
+		}
+		record->handle = reinterpret_cast<HANDLE>( h );
+		record->nativeId = nativeId;
+		const std::uint64_t handle = m_nextHandle++;
+		m_threads[handle] = record;
+		out.value = handle;
+		return ThreadResult::kOk;
+	}
+
 	mutable std::mutex m_mutex;
 	std::uint64_t m_nextHandle = 1;
-	std::map<std::uint64_t, std::unique_ptr<ThreadRecord>> m_threads;
+	std::map<std::uint64_t, ThreadRecord *> m_threads;
 };
 
 } // namespace
 
-std::unique_ptr<IThreads> CreateWin32Threads()
+std::unique_ptr<IWin32Threads> CreateWin32Threads()
 {
 	return std::make_unique<CWin32Threads>();
 }

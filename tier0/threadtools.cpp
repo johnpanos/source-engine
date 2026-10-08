@@ -129,7 +129,7 @@ struct ThreadProcInfo_t
 //---------------------------------------------------------
 
 #ifdef _WIN32
-static DWORD WINAPI ThreadProcConvert( void *pParam )
+static unsigned __stdcall ThreadProcConvert( void *pParam )
 {
 	ThreadProcInfo_t info = *((ThreadProcInfo_t *)pParam);
 	AllocateThreadID();
@@ -137,6 +137,22 @@ static DWORD WINAPI ThreadProcConvert( void *pParam )
 	unsigned nRet = (*info.pfnThread)(info.pParam);
 	FreeThreadID();
 	return nRet;
+}
+
+// Starts a thread through Tier 0's thread provider (R103). The returned HANDLE
+// is the caller's own, as CreateThread's was; ReleaseThreadHandle closes it.
+static HANDLE StartWin32Thread( ThreadFunc_t pfnThread, void *pParam, unsigned stackSize, unsigned long &threadID )
+{
+	platform::ThreadHandle handle;
+	void *caller = NULL;
+	ThreadProcInfo_t *info = new ThreadProcInfo_t( pfnThread, pParam );
+	if ( tier0_facade::Threads().StartNative( stackSize, ThreadProcConvert, info, false, handle, caller,
+			 threadID ) != platform::ThreadResult::kOk )
+	{
+		delete info;
+		return NULL;
+	}
+	return (HANDLE)caller;
 }
 #elif defined( PS3 )
 union ThreadProcInfoUnion_t
@@ -170,15 +186,36 @@ static void* ThreadProcConvert( void *pParam )
 }
 
 #else
-static void* ThreadProcConvert( void *pParam )
+// The provider's entry type returns nothing; the thread function's result is
+// not observable on POSIX (nothing reads the pthread exit value).
+static void ThreadEntryConvert( void *pParam )
 {
 	ThreadProcInfo_t info = *((ThreadProcInfo_t *)pParam);
 	AllocateThreadID();
 	delete ((ThreadProcInfo_t *)pParam);
-	unsigned nRet = (*info.pfnThread)(info.pParam);
+	(*info.pfnThread)(info.pParam);
 	FreeThreadID();
-	return ( void * ) (uintp) nRet;
 }
+
+// Starts a thread through Tier 0's thread provider (R103) and returns its
+// pthread_t, which is what ThreadHandle_t and ThreadId_t are on POSIX.
+static bool StartPosixThread( ThreadFunc_t pfnThread, void *pParam, unsigned stackSize, pthread_t &tid )
+{
+	platform::ThreadOptions options;
+	options.stackBytes = stackSize;
+	platform::ThreadHandle handle;
+	ThreadProcInfo_t *info = new ThreadProcInfo_t( pfnThread, pParam );
+	if ( tier0_facade::Threads().Start( options, ThreadEntryConvert, info, handle ) != platform::ThreadResult::kOk )
+	{
+		delete info;
+		return false;
+	}
+	std::uintptr_t native = 0;
+	tier0_facade::Threads().NativeOf( handle, native );
+	memcpy( &tid, &native, sizeof( tid ) );
+	return true;
+}
+
 #endif
 
 
@@ -259,8 +296,8 @@ static void RemoveThreadHandleToIDMap( HANDLE hThread )
 
 static uint LookupThreadIDFromHandle( HANDLE hThread )
 {
-	if ( hThread == NULL || hThread == GetCurrentThread() )
-		return GetCurrentThreadId();
+	if ( hThread == NULL || hThread == tier0_facade::Threads().CurrentPseudoHandle() )
+		return tier0_facade::Threads().CurrentNativeId();
 
 	float flStartTime = Plat_FloatTime();
 	while ( Plat_FloatTime() - flStartTime < 2 )
@@ -346,8 +383,8 @@ void JoinTestThreads( ThreadHandle_t *pHandles )
 ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, unsigned stackSize )
 {
 #ifdef _WIN32
-	DWORD threadID;
-	HANDLE hThread = (HANDLE)CreateThread( NULL, stackSize, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ), stackSize ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0, &threadID );
+	unsigned long threadID = 0;
+	HANDLE hThread = StartWin32Thread( pfnThread, pParam, stackSize, threadID );
 	AddThreadHandleToIDMap( hThread, threadID );
 	return (ThreadHandle_t)hThread;
 #elif PS3
@@ -364,12 +401,9 @@ ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, unsigne
 	}
 	return th;
 #elif POSIX
-	pthread_t tid;
-#ifdef PLATFORM_3DS
-	n3ds_pthread_create( &tid, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ), stackSize );
-#else
-	pthread_create( &tid, NULL, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ) );
-#endif
+	pthread_t tid{};
+	if ( !StartPosixThread( pfnThread, pParam, stackSize, tid ) )
+		return 0;
 	return ( ThreadHandle_t ) tid;
 #else
 	Assert( 0 );
@@ -381,19 +415,16 @@ ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, unsigne
 ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, ThreadId_t *pID, unsigned stackSize )
 {
 #ifdef _WIN32
-	DWORD threadID;
-	HANDLE hThread = (HANDLE)CreateThread( NULL, stackSize, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ), stackSize ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0, &threadID );
+	unsigned long threadID = 0;
+	HANDLE hThread = StartWin32Thread( pfnThread, pParam, stackSize, threadID );
 	if( pID )
 		*pID = (ThreadId_t)threadID;
 	AddThreadHandleToIDMap( hThread, threadID );
 	return (ThreadHandle_t)hThread;
 #elif POSIX
-	pthread_t tid;
-#ifdef PLATFORM_3DS
-	n3ds_pthread_create( &tid, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ), stackSize );
-#else
-	pthread_create( &tid, NULL, ThreadProcConvert, new ThreadProcInfo_t( pfnThread, pParam ) );
-#endif
+	pthread_t tid{};
+	if ( !StartPosixThread( pfnThread, pParam, stackSize, tid ) )
+		return 0;
 	if( pID )
 		*pID = (ThreadId_t)tid;
 	return ( ThreadHandle_t ) tid;
@@ -408,10 +439,15 @@ ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, ThreadI
 bool ReleaseThreadHandle( ThreadHandle_t hThread )
 {
 #ifdef _WIN32
-	bool bRetVal = ( CloseHandle( hThread ) != 0 );
+	// The provider's own handle goes too, once the thread is done (R103).
+	tier0_facade::Threads().DetachNativeId( LookupThreadIDFromHandle( (HANDLE)hThread ) );
+	bool bRetVal = tier0_facade::Threads().CloseNative( hThread );
 	RemoveThreadHandleToIDMap( (HANDLE)hThread );
 	return bRetVal;
 #else
+	// A thread released without a join is detached so its record goes when it
+	// ends; one already joined is no longer held, which is fine.
+	tier0_facade::Threads().DetachNative( (std::uintptr_t)hThread );
 	return true;
 #endif
 }
@@ -426,9 +462,9 @@ bool ReleaseThreadHandle( ThreadHandle_t hThread )
 ThreadId_t ThreadGetCurrentId()
 {
 #ifdef _WIN32
-	return GetCurrentThreadId();
+	return tier0_facade::Threads().CurrentNativeId();
 #elif defined(POSIX)
-	return (ThreadId_t)pthread_self();
+	return (ThreadId_t)tier0_facade::Threads().CurrentNative();
 #else
 	Assert(0);
 	DebuggerBreak();
@@ -441,9 +477,9 @@ ThreadId_t ThreadGetCurrentId()
 ThreadHandle_t ThreadGetCurrentHandle()
 {
 #ifdef _WIN32
-	return (ThreadHandle_t)GetCurrentThread();
+	return (ThreadHandle_t)tier0_facade::Threads().CurrentPseudoHandle();
 #elif defined(POSIX)
-	return (ThreadHandle_t)pthread_self();
+	return (ThreadHandle_t)tier0_facade::Threads().CurrentNative();
 #else
 	Assert(0);
 	DebuggerBreak();
@@ -455,27 +491,9 @@ ThreadHandle_t ThreadGetCurrentHandle()
 bool ThreadIsThreadIdRunning( ThreadId_t uThreadId )
 {
 #ifdef _WIN32
-	bool bRunning = true;
-	HANDLE hThread = ::OpenThread( THREAD_QUERY_INFORMATION , false, uThreadId );
-	if ( hThread )
-	{
-		DWORD dwExitCode;
-		if( !::GetExitCodeThread( hThread, &dwExitCode ) || dwExitCode != STILL_ACTIVE )
-			bRunning = false;
-
-		CloseHandle( hThread );
-	}
-	else
-	{
-		bRunning = false;
-	}
-	return bRunning;
+	return tier0_facade::Threads().IsNativeIdRunning( uThreadId );
 #elif defined(POSIX)
-	int iResult = pthread_kill( OS_TO_PTHREAD(uThreadId), 0 );
-	if ( iResult == 0 )
-		return true;
-
-	return false;
+	return tier0_facade::Threads().IsNativeAlive( (std::uintptr_t)OS_TO_PTHREAD( uThreadId ) );
 #endif
 }
 
@@ -489,7 +507,7 @@ int ThreadGetPriority( ThreadHandle_t hThread )
 	}
 
 #ifdef _WIN32
-	return ::GetThreadPriority( (HANDLE)hThread );
+	return tier0_facade::Threads().GetNativePriority( (void *)hThread );
 #else
 	return 0;
 #endif
@@ -505,7 +523,7 @@ bool ThreadSetPriority( ThreadHandle_t hThread, int priority )
 	}
 
 #ifdef _WIN32
-	return ( SetThreadPriority(hThread, priority) != 0 );
+	return tier0_facade::Threads().SetNativePriority( (void *)hThread, priority );
 #elif defined(POSIX)
 	struct sched_param thread_param; 
 	thread_param.sched_priority = priority; 
@@ -524,7 +542,7 @@ void ThreadSetAffinity( ThreadHandle_t hThread, int nAffinityMask )
 	}
 
 #ifdef _WIN32
-	SetThreadAffinityMask( hThread, nAffinityMask );
+	tier0_facade::Threads().SetNativeAffinity( (void *)hThread, (std::uintptr_t)(unsigned)nAffinityMask );
 #elif defined(POSIX)
 // 	cpu_set_t cpuSet;
 // 	CPU_ZERO( cpuSet );
@@ -567,16 +585,18 @@ bool ThreadJoin( ThreadHandle_t hThread, unsigned timeout )
 	}
 
 #ifdef _WIN32
-	DWORD dwWait = WaitForSingleObject( (HANDLE)hThread, timeout );
-	if ( dwWait == WAIT_TIMEOUT)
-		return false;
-	if ( dwWait != WAIT_OBJECT_0 && ( dwWait != WAIT_FAILED && GetLastError() != 0 ) )
+	switch ( tier0_facade::Threads().WaitNative( (void *)hThread, timeout ) )
 	{
+	case platform::IWin32Threads::WaitResult::kSignaled:
+		break;
+	case platform::IWin32Threads::WaitResult::kTimeout:
+		return false;
+	default:
 		Assert( 0 );
 		return false;
 	}
 #elif defined(POSIX)
-	if ( pthread_join( (pthread_t)hThread, NULL ) != 0 )
+	if ( tier0_facade::Threads().JoinNative( (std::uintptr_t)hThread ) != platform::ThreadResult::kOk )
 		return false;
 #else
 	Assert(0);
@@ -1770,7 +1790,8 @@ void CThreadFastMutex::Lock( const uint32 threadId, unsigned nSpinSleepTime ) vo
 		}
 
 #ifdef _WIN32
-		if ( !nSpinSleepTime && GetThreadPriority( GetCurrentThread() ) > THREAD_PRIORITY_NORMAL )
+		if ( !nSpinSleepTime && tier0_facade::Threads().GetNativePriority(
+				 tier0_facade::Threads().CurrentPseudoHandle() ) > THREAD_PRIORITY_NORMAL )
 		{
 			nSpinSleepTime = 1;
 		} 
@@ -2190,6 +2211,39 @@ void CThreadSpinRWLock::UnlockWrite()
 
 // The CThread implementation needs to be inlined for performance on the PS3 - It makes a difference of more than 1ms/frame
 // for other platforms, we include the .inl in the .cpp file where it existed before
+#if defined( POSIX ) && !defined( PS3 )
+// CThread::Start's thread, through Tier 0's thread provider (R103).
+struct CThreadStart_t
+{
+	void *( *proc )( void * );
+	void *arg;
+};
+
+static void CThreadEntry( void *pParam )
+{
+	const CThreadStart_t start = *(CThreadStart_t *)pParam;
+	delete (CThreadStart_t *)pParam;
+	start.proc( start.arg );
+}
+
+static bool Tier0_StartCThread( void *( *proc )( void * ), void *arg, unsigned stackSize, pthread_t &tid )
+{
+	platform::ThreadOptions options;
+	options.stackBytes = stackSize;
+	platform::ThreadHandle handle;
+	CThreadStart_t *start = new CThreadStart_t{ proc, arg };
+	if ( tier0_facade::Threads().Start( options, CThreadEntry, start, handle ) != platform::ThreadResult::kOk )
+	{
+		delete start;
+		return false;
+	}
+	std::uintptr_t native = 0;
+	tier0_facade::Threads().NativeOf( handle, native );
+	memcpy( &tid, &native, sizeof( tid ) );
+	return true;
+}
+#endif
+
 #include "../public/tier0/threadtools.inl"
 
 //-----------------------------------------------------------------------------

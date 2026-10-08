@@ -21,6 +21,8 @@
 
 #include <time.h>
 
+#include "foundation_facade.h"
+
 // MiniDumpWriteDump() function declaration (so we can just get the function directly from windows)
 typedef BOOL (WINAPI *MINIDUMPWRITEDUMP)
 	(
@@ -152,7 +154,7 @@ bool WriteMiniDumpUsingExceptionInfo(
 		{
 			// dump the exception information into the file
 			_MINIDUMP_EXCEPTION_INFORMATION	ExInfo;
-			ExInfo.ThreadId	= ::GetCurrentThreadId();
+			ExInfo.ThreadId	= tier0_facade::Threads().CurrentNativeId();
 			ExInfo.ExceptionPointers = pExceptionInfo;
 			ExInfo.ClientPointers = FALSE;
 

@@ -21,6 +21,7 @@
 #include <string.h>
 #include "tier0/vcrmode.h"
 #include "tier0/dbg.h"
+#include "foundation_facade.h"
 
 // FIXME: We totally have a bad tier dependency here
 #include "inputsystem/inputenums.h"
@@ -150,7 +151,7 @@ bool g_bVCRStartCalled = false;
 
 unsigned short GetCurrentVCRThreadIndex()
 {
-	DWORD hCurThread = GetCurrentThreadId();
+	DWORD hCurThread = tier0_facade::Threads().CurrentNativeId();
 	for ( int i=0; i < g_nVCRThreads; i++ )
 	{
 		if ( g_pVCRThreads[i].m_ThreadID == hCurThread )
@@ -241,7 +242,7 @@ static void VCR_Error( const char *pFormat, ... )
 {
 	#ifdef _DEBUG
 		// Figure out which thread we're in, for the debugger.
-		DWORD curThreadId = GetCurrentThreadId();
+		DWORD curThreadId = tier0_facade::Threads().CurrentNativeId();
 		int iCurThread = -1;
 		for ( int i=0; i < g_nVCRThreads; i++ )
 		{
@@ -417,13 +418,13 @@ static int VCR_Start( char const *pFilename, bool bRecord, IVCRHelpers *pHelpers
 {
 	unsigned long version;
 	
-	g_VCRMainThreadID = GetCurrentThreadId();
+	g_VCRMainThreadID = tier0_facade::Threads().CurrentNativeId();
 	g_bVCRStartCalled = true;
 
 	
 	// Setup the initial VCR thread list.
 	g_pVCRThreads = new CVCRThreadInfo[MAX_VCR_THREADS];
-	g_pVCRThreads[0].m_ThreadID = GetCurrentThreadId();
+	g_pVCRThreads[0].m_ThreadID = tier0_facade::Threads().CurrentNativeId();
 	g_pVCRThreads[0].m_hWaitEvent = CreateEvent( NULL, false, false, NULL );
 	g_pVCRThreads[0].m_bEnabled = true;
 	g_nVCRThreads = 1;
@@ -1537,6 +1538,24 @@ double VCR_GetPercentCompleted()
 	}
 }
 
+// VCR threads through Tier 0's thread provider (R103). The returned handle is
+// the caller's own, as _beginthreadex's was; security attributes were never
+// passed by any caller and are not supported.
+static HANDLE VCR_StartThread( unsigned long dwStackSize, void *lpStartAddress, void *lpParameter,
+	bool bSuspended, unsigned &dwThreadID )
+{
+	platform::ThreadHandle handle;
+	void *caller = NULL;
+	unsigned long id = 0;
+	if ( tier0_facade::Threads().StartNative( dwStackSize, (platform::IWin32Threads::NativeProc)lpStartAddress,
+			 lpParameter, bSuspended, handle, caller, id ) != platform::ThreadResult::kOk )
+	{
+		return NULL;
+	}
+	dwThreadID = id;
+	return (HANDLE)caller;
+}
+
 void* VCR_CreateThread( 
 	void *lpThreadAttributes,
 	unsigned long dwStackSize,
@@ -1555,13 +1574,8 @@ void* VCR_CreateThread(
 	{
 		if ( g_VCRMode == VCR_Disabled )
 		{
-			HANDLE hThread = (void *)_beginthreadex( 
-				(LPSECURITY_ATTRIBUTES)lpThreadAttributes,
-				dwStackSize,
-				(unsigned (__stdcall *) (void *))lpStartAddress,
-				lpParameter,
-				dwCreationFlags,
-				&dwThreadID );
+			HANDLE hThread = VCR_StartThread( dwStackSize, lpStartAddress, lpParameter,
+				( dwCreationFlags & CREATE_SUSPENDED ) != 0, dwThreadID );
 
 			if ( lpThreadID )
 				*lpThreadID = dwThreadID;
@@ -1575,7 +1589,7 @@ void* VCR_CreateThread(
 	}
 	
 	// We could make this work without too much pain.
-	if ( GetCurrentThreadId() != g_VCRMainThreadID )
+	if ( tier0_facade::Threads().CurrentNativeId() != g_VCRMainThreadID )
 	{
 		Error( "VCR_CreateThread called outside main thread." );
 	}
@@ -1591,13 +1605,7 @@ void* VCR_CreateThread(
 	VCR_Event( VCREvent_CreateThread );
 
 	// Create the thread.
-	HANDLE hThread = (void*)_beginthreadex( 
-		(LPSECURITY_ATTRIBUTES)lpThreadAttributes,
-		dwStackSize,
-		(unsigned (__stdcall *) (void *))lpStartAddress,
-		lpParameter,
-		dwCreationFlags | CREATE_SUSPENDED,
-		&dwThreadID );
+	HANDLE hThread = VCR_StartThread( dwStackSize, lpStartAddress, lpParameter, true, dwThreadID );
 
 	if ( lpThreadID )
 		*lpThreadID = dwThreadID;
@@ -1620,7 +1628,7 @@ void* VCR_CreateThread(
 	// Now resume the thread.
 	if ( !( dwCreationFlags & CREATE_SUSPENDED ) )
 	{
-		ResumeThread( hThread );
+		tier0_facade::Threads().ResumeNative( hThread );
 	}
 
 	return hThread;

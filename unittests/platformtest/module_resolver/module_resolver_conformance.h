@@ -92,7 +92,7 @@ class CFakeVerifier final : public platform::IModuleVerifier
 public:
 	explicit CFakeVerifier( bool accept ) : m_accept( accept ) {}
 
-	platform::VerifyResult Verify( const platform::NativePath &candidate ) override
+	platform::VerifyResult VerifyCandidate( const platform::NativePath &candidate ) override
 	{
 		seen.push_back( candidate );
 		return m_accept ? platform::VerifyResult::kAccepted : platform::VerifyResult::kRejected;

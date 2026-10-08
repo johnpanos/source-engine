@@ -16,6 +16,7 @@
 #include "tier0/minidump.h"
 #include "tier0/native_module_load_telemetry.h"
 #include "tier0/vcrmode.h"
+#include "tier0/threadtools.h"
 #include "foundation_facade.h"
 #if !defined(STEAM) && !defined(NO_MALLOC_OVERRIDE)
 #include "tier0/memalloc.h"
@@ -76,6 +77,31 @@ uint64 Plat_USTime()
 		return (uint64)(g_FakeBenchmarkTime * 1e6);
 	}
 	return (uint64)( Plat_FloatTime() * 1e6 );
+}
+
+void Plat_ThreadSleep( unsigned nMilliseconds )
+{
+#ifdef _WIN32_PC
+	// As the inline ThreadSleep did: a 1 ms timer resolution, so short sleeps
+	// do not round up to the default 15.6 ms tick.
+	static bool bInitialized = false;
+	if ( !bInitialized )
+	{
+		bInitialized = true;
+		timeBeginPeriod( 1 );
+	}
+#endif
+	tier0_facade::Threads().SleepFor( (uint64)nMilliseconds * 1000000ull );
+}
+
+void Plat_ThreadSleepMicroseconds( unsigned nMicroseconds )
+{
+	tier0_facade::Threads().SleepFor( (uint64)nMicroseconds * 1000ull );
+}
+
+void Plat_ThreadYield()
+{
+	tier0_facade::Threads().SleepFor( 0 );
 }
 
 uint64 Plat_MonotonicNanoseconds()

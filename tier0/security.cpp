@@ -16,6 +16,7 @@
 #include "tier0/platform.h"
 #include "tier0/vcrmode.h"
 #include "tier0/memalloc.h"
+#include "tier0/threadtools.h"
 
 #ifdef REQUIRE_HARDWARE_KEY
 	// This is the previous key, which was compromised.
@@ -81,7 +82,7 @@ bool Plat_VerifyHardwareKeyPrompt()
 			}
 
 			// Sleep 2 / 3 of a second before trying again, in case the os recognizes the key slightly after it's being inserted:
-			Sleep(666);
+			Plat_ThreadSleep( 666 );
 		}
 	}
 

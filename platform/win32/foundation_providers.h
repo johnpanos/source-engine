@@ -20,6 +20,8 @@
 #include "platform/contracts/virtual_memory.h"
 #include "platform/contracts/wall_clock.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
 namespace platform
@@ -32,9 +34,57 @@ namespace platform
 // time zone (SystemTimeToTzSpecificLocalTimeEx).
 [[nodiscard]] std::unique_ptr<IWallClock> CreateWin32WallClock();
 
+// The Win32 thread provider's backend-only extension: native identity and the
+// native operations a legacy facade's exports perform (Tier 0's ThreadHandle_t
+// is a HANDLE the caller owns, ThreadId_t a thread id; R103). Not part of
+// platform.thread.v1 and declared only in this backend header. Handles are
+// HANDLE values as void*, ids are DWORDs.
+class IWin32Threads : public IThreads
+{
+public:
+	using NativeProc = unsigned( __stdcall * )( void * );
+
+	// Starts `proc( arg )` as a thread whose exit code is proc's result (the
+	// _beginthreadex contract), optionally suspended. `callerHandle` is a
+	// duplicate the caller owns and closes with CloseNative; the provider keeps
+	// its own until Join, Detach or DetachNativeId.
+	virtual ThreadResult StartNative( std::size_t stackBytes, NativeProc proc, void *arg,
+		bool suspended, ThreadHandle &out, void *&callerHandle, unsigned long &id ) = 0;
+
+	virtual unsigned long CurrentNativeId() const = 0;  // GetCurrentThreadId
+	virtual void *CurrentPseudoHandle() const = 0;       // GetCurrentThread
+
+	enum class WaitResult
+	{
+		kSignaled = 0,
+		kTimeout,
+		kFailed,
+	};
+	// WaitForSingleObject on a thread handle; kTimeout after `timeoutMs`
+	// (0xFFFFFFFF waits forever).
+	virtual WaitResult WaitNative( void *handle, unsigned long timeoutMs ) = 0;
+
+	virtual bool IsNativeHandleRunning( void *handle ) const = 0; // exit code STILL_ACTIVE
+	virtual bool IsNativeIdRunning( unsigned long id ) const = 0;  // OpenThread on the id
+	virtual int GetNativePriority( void *handle ) const = 0;
+	virtual bool SetNativePriority( void *handle, int priority ) = 0;
+	virtual void SetNativeAffinity( void *handle, std::uintptr_t mask ) = 0;
+	virtual bool TerminateNative( void *handle, unsigned long exitCode ) = 0;
+	virtual bool ResumeNative( void *handle ) = 0;
+	virtual bool SuspendNative( void *handle ) = 0;
+	// OpenThread( access, FALSE, id ): a new handle the caller closes with CloseNative.
+	virtual void *OpenNative( unsigned long id, unsigned long access ) = 0;
+	virtual bool CloseNative( void *handle ) = 0;
+
+	// Releases the provider's own handle of a thread it started, by id; the
+	// thread runs on. kInvalidArgument when the provider holds no such thread.
+	virtual ThreadResult DetachNativeId( unsigned long id ) = 0;
+	virtual ThreadResult Detach( ThreadHandle thread ) = 0;
+};
+
 // _beginthreadex. Sleeps against QueryPerformanceCounter. Destroying the
 // provider while a started thread is unjoined aborts.
-[[nodiscard]] std::unique_ptr<IThreads> CreateWin32Threads();
+[[nodiscard]] std::unique_ptr<IWin32Threads> CreateWin32Threads();
 
 // VirtualAlloc/VirtualProtect/VirtualFree. Destroying the provider releases any
 // reservation still held.

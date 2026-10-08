@@ -19,6 +19,8 @@
 
 #if defined(_DEBUG) && defined(WIN32)
 
+#include "foundation_facade.h"
+
 
 #pragma comment( lib, "imagehlp.lib" )
 
@@ -35,7 +37,7 @@ void OutputDebugStringFormat( PRINTF_FORMAT_STRING LPCTSTR, ... );
 #define SRCLINKTRACE( Msg )                        SrcLinkTrace( Msg, __FILE__, __LINE__ )
 #define FNPARAMTRACE()							         FunctionParameterInfo()
 #define STACKTRACEMSG( Msg )					         StackTrace( Msg )
-#define STACKTRACE()							            StackTrace( GetCurrentThread(), _T("") )
+#define STACKTRACE()							            StackTrace( tier0_facade::Threads().CurrentPseudoHandle(), _T("") )
 #define THREADSTACKTRACEMSG( hThread, Msg )		   StackTrace( hThread, Msg )
 #define THREADSTACKTRACE( hThread )				      StackTrace( hThread, _T("") )
 

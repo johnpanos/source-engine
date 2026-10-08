@@ -115,16 +115,26 @@ INLINE_ON_PS3 bool CThread::Start( unsigned nBytesStack, ThreadPriorityEnum_t nP
 #endif
 
 #ifdef _WIN32
-	m_hThread = (HANDLE)CreateThread( NULL,
-		nBytesStack,
-		(LPTHREAD_START_ROUTINE)GetThreadProc(),
-		new ThreadInit_t(init),
-		nBytesStack ? STACK_SIZE_PARAM_IS_A_RESERVATION : 0,
-		(LPDWORD)&m_threadId );
+	// Through Tier 0's thread provider (R103): m_hThread is the caller-owned
+	// handle CreateThread returned, m_threadId the thread id.
+	{
+		platform::ThreadHandle handle;
+		void *caller = NULL;
+		unsigned long id = 0;
+		ThreadInit_t *pInit = new ThreadInit_t( init );
+		if ( tier0_facade::Threads().StartNative( nBytesStack,
+				 (platform::IWin32Threads::NativeProc)GetThreadProc(), pInit, false, handle, caller,
+				 id ) != platform::ThreadResult::kOk )
+		{
+			delete pInit;
+		}
+		m_hThread = (HANDLE)caller;
+		m_threadId = id;
+	}
 
 	if( nPriority != TP_PRIORITY_DEFAULT )
 	{
-		SetThreadPriority( m_hThread, nPriority );
+		tier0_facade::Threads().SetNativePriority( m_hThread, nPriority );
 	}
 
 	if ( !m_hThread )
@@ -133,18 +143,11 @@ INLINE_ON_PS3 bool CThread::Start( unsigned nBytesStack, ThreadPriorityEnum_t nP
 		return false;
 	}
 #elif POSIX
-	pthread_attr_t attr;
-	pthread_attr_init( &attr );
-	pthread_attr_setstacksize( &attr, MAX( nBytesStack, 1024u*1024 ) );
 	//lwss - fix memory leak here
 	m_threadInit = ThreadInit_t( init );
-	//if ( pthread_create( &m_threadId, &attr, (void *(*)(void *))GetThreadProc(), new ThreadInit_t( init ) ) != 0 )
-#ifdef PLATFORM_3DS
-	if ( n3ds_pthread_create( &m_threadId, (void *(*)(void *))GetThreadProc(), &m_threadInit,
-			 MAX( nBytesStack, 1024u * 1024 ) ) != 0 )
-#else
-	if ( pthread_create( &m_threadId, &attr, (void *(*)(void *))GetThreadProc(), &m_threadInit ) != 0 )
-#endif
+	// Through Tier 0's thread provider (R103); m_threadId keeps the pthread_t.
+	if ( !Tier0_StartCThread( (void *(*)(void *))GetThreadProc(), &m_threadInit,
+			 MAX( nBytesStack, 1024u * 1024 ), m_threadId ) )
 	//lwss end
 	{
 		AssertMsg1( 0, "Failed to create thread (error 0x%x)", GetLastError() );
@@ -161,7 +164,8 @@ INLINE_ON_PS3 bool CThread::Start( unsigned nBytesStack, ThreadPriorityEnum_t nP
 	{
 		Msg( "Thread failed to initialize\n" );
 #ifdef _WIN32
-		CloseHandle( m_hThread );
+		tier0_facade::Threads().DetachNativeId( m_threadId );
+		tier0_facade::Threads().CloseNative( m_hThread );
 		m_hThread = NULL;
 #endif
 
@@ -172,7 +176,8 @@ INLINE_ON_PS3 bool CThread::Start( unsigned nBytesStack, ThreadPriorityEnum_t nP
 	{
 		Msg( "Thread failed to initialize\n" );
 #ifdef _WIN32
-		CloseHandle( m_hThread );
+		tier0_facade::Threads().DetachNativeId( m_threadId );
+		tier0_facade::Threads().CloseNative( m_hThread );
 		m_hThread = NULL;
 #elif defined( POSIX )
 		m_threadId = 0;
@@ -204,11 +209,7 @@ INLINE_ON_PS3 bool CThread::Start( unsigned nBytesStack, ThreadPriorityEnum_t nP
 INLINE_ON_PS3 bool CThread::IsAlive()
 {
 #ifdef _WIN32
-	DWORD dwExitCode;
-	return (
-		m_hThread 
-		&& GetExitCodeThread(m_hThread, &dwExitCode) 
-		&& dwExitCode == STILL_ACTIVE );
+	return tier0_facade::Threads().IsNativeHandleRunning( m_hThread );
 #elif defined(POSIX)
 	return !!m_threadId;
 #endif
@@ -284,7 +285,8 @@ INLINE_ON_PS3 void CThread::Stop(int exitCode)
 			g_pCurThread = NULL;
 
 #ifdef _WIN32
-			CloseHandle( m_hThread );
+			tier0_facade::Threads().DetachNativeId( m_threadId );
+			tier0_facade::Threads().CloseNative( m_hThread );
 			RemoveThreadHandleToIDMap( m_hThread );
 			m_hThread = NULL;
 #else
@@ -307,7 +309,7 @@ INLINE_ON_PS3 void CThread::Stop(int exitCode)
 INLINE_ON_PS3 int CThread::GetPriority() const
 {
 #ifdef _WIN32
-	return GetThreadPriority(m_hThread);
+	return tier0_facade::Threads().GetNativePriority( m_hThread );
 #elif defined(POSIX)
 	struct sched_param thread_param;
 	int policy;
@@ -366,13 +368,18 @@ INLINE_ON_PS3 bool CThread::Terminate(int exitCode)
 {
 #if defined( _WIN32 )
 	// I hope you know what you're doing!
-	if (!TerminateThread(m_hThread, exitCode))
+	if ( !tier0_facade::Threads().TerminateNative( m_hThread, exitCode ) )
 		return false;
-	CloseHandle( m_hThread );
+	tier0_facade::Threads().DetachNativeId( m_threadId );
+	tier0_facade::Threads().CloseNative( m_hThread );
 	RemoveThreadHandleToIDMap( m_hThread );
 	m_hThread = NULL;
 #elif defined(POSIX)
-	pthread_kill( m_threadId, SIGKILL );
+	// SIGKILL ends the process, as it always has here (R103: through Tier 0's
+	// thread provider).
+	std::uintptr_t native = 0;
+	memcpy( &native, &m_threadId, sizeof( m_threadId ) );
+	tier0_facade::Threads().SignalNative( native, SIGKILL );
 	m_threadId = 0;
 #endif
 	return true;
@@ -402,11 +409,7 @@ INLINE_ON_PS3 CThread *CThread::GetCurrentCThread()
 #endif
 INLINE_ON_PS3 void CThread::Yield()
 {
-#ifdef _WIN32
-	::Sleep(0);
-#elif defined(POSIX)
-	sched_yield();
-#endif
+	Plat_ThreadYield(); // Tier 0's thread provider (R103)
 }
 
 //---------------------------------------------------------
@@ -417,11 +420,7 @@ INLINE_ON_PS3 void CThread::Yield()
 
 INLINE_ON_PS3 void CThread::Sleep( unsigned duration )
 {
-#ifdef _WIN32
-	::Sleep(duration);
-#elif defined(POSIX)
-	usleep( duration * 1000 );
-#endif
+	Plat_ThreadSleep( duration ); // Tier 0's thread provider (R103)
 }
 
 //---------------------------------------------------------
@@ -491,10 +490,8 @@ INLINE_ON_PS3 void* CThread::ThreadProc(LPVOID pv)
 	// thread is never renamed here, so the process name is unchanged.
 	if ( pThread->m_szName[0] )
 	{
-		char szName[16];
-		strncpy( szName, pThread->m_szName, sizeof( szName ) - 1 );
-		szName[sizeof( szName ) - 1] = 0;
-		pthread_setname_np( pthread_self(), szName );
+		// The provider keeps the kernel's 15 characters (R103).
+		tier0_facade::Threads().SetCurrentName( pThread->m_szName );
 	}
 #endif
 

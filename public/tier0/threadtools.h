@@ -161,10 +161,14 @@ typedef uintp (*ThreadedLoadLibraryFunc_t)(void *pParam);
 PLATFORM_INTERFACE void SetThreadedLoadLibraryFunc( ThreadedLoadLibraryFunc_t func );
 PLATFORM_INTERFACE ThreadedLoadLibraryFunc_t GetThreadedLoadLibraryFunc();
 
-#if defined( PLATFORM_WINDOWS_PC32 )
-DLL_IMPORT unsigned long STDCALL GetCurrentThreadId();
-#define ThreadGetCurrentId GetCurrentThreadId
-#endif
+// 32-bit Windows used to map ThreadGetCurrentId straight to the OS here; it is
+// Tier 0's export everywhere now (R103). Old binaries keep their own call.
+
+// Tier 0's thread provider sleeps and yields (R103). Added exports: the inline
+// helpers below used to call the OS themselves.
+PLATFORM_INTERFACE void Plat_ThreadSleep( unsigned nMilliseconds );
+PLATFORM_INTERFACE void Plat_ThreadSleepMicroseconds( unsigned nMicroseconds );
+PLATFORM_INTERFACE void Plat_ThreadYield();
 
 inline void ThreadPause()
 {
@@ -176,9 +180,9 @@ inline void ThreadPause()
 	// The 3DS kernel does not preempt between threads of a core, and a yield
 	// only runs threads of equal or higher priority: a spin-wait on a worker
 	// (created at a lower priority) would never let it run. A short sleep does.
-	usleep( 50 );
+	Plat_ThreadSleepMicroseconds( 50 );
 #elif defined( POSIX )
-        sched_yield();
+	Plat_ThreadYield();
 #elif defined ( COMPILER_MSVC64 )
 	_mm_pause();
 #elif defined( COMPILER_MSVC32 )
@@ -201,25 +205,10 @@ inline void ThreadSleep(unsigned nMilliseconds = 0)
 		return;
         }
 
-#ifdef _WIN32
-
-#ifdef _WIN32_PC
-        static bool bInitialized = false;
-        if ( !bInitialized )
-        {
-                bInitialized = true;
-                // Set the timer resolution to 1 ms (default is 10.0, 15.6, 2.5, 1.0 or
-                // some other value depending on hardware and software) so that we can
-                // use Sleep( 1 ) to avoid wasting CPU time without missing our frame
-                // rate.
-                timeBeginPeriod( 1 );
-        }
-#endif
-	Sleep( nMilliseconds );
-#elif PS3
+#if PS3
 	sys_timer_usleep( nMilliseconds * 1000 );
-#elif defined(POSIX)
-        usleep( nMilliseconds * 1000 );
+#else
+	Plat_ThreadSleep( nMilliseconds );
 #endif
 }
 

@@ -32,6 +32,7 @@
 #include <set>
 #include <limits.h>
 #include "tier0/threadtools.h"
+#include "foundation_facade.h"
 #if ( !defined(_DEBUG) && defined(USE_MEM_DEBUG) )
 #pragma message ("USE_MEM_DEBUG is enabled in a release build. Don't check this in!")
 #endif
@@ -77,7 +78,7 @@ __declspec(naked) DWORD GetEIP()
 int WalkStack( void **ppAddresses, int nMaxAddresses, int nSkip = 0 )
 {
 	HANDLE hProcess = GetCurrentProcess();
-	HANDLE hThread = GetCurrentThread();
+	HANDLE hThread = tier0_facade::Threads().CurrentPseudoHandle();
 
 	STACKFRAME64 frame;
 

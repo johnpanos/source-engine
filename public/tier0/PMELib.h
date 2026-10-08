@@ -10,6 +10,7 @@
 
 #include "Windows.h"
 #include "tier0/platform.h"
+#include "tier0/threadtools.h"
 
 // Get rid of a bunch of STL warnings!
 #pragma warning( push, 3 )
@@ -141,13 +142,13 @@ public:
         case ProcessPriorityNormal:
 			{
 				SetPriorityClass (GetCurrentProcess(),NORMAL_PRIORITY_CLASS);
-				SetThreadPriority (GetCurrentThread(),THREAD_PRIORITY_NORMAL);
+				ThreadSetPriority( (ThreadHandle_t)NULL, THREAD_PRIORITY_NORMAL ); // Tier 0 (R103)
 				break;
 			}
         case ProcessPriorityHigh:
 			{
 				SetPriorityClass (GetCurrentProcess(),REALTIME_PRIORITY_CLASS);
-				SetThreadPriority (GetCurrentThread(),THREAD_PRIORITY_HIGHEST);
+				ThreadSetPriority( (ThreadHandle_t)NULL, THREAD_PRIORITY_HIGHEST ); // Tier 0 (R103)
 				break;
 			}
         }

@@ -11,6 +11,7 @@ stay compile-time (RFC 0001 "Initial foundation capabilities").
 
   tools/quality/tier0_ratchet.py check
   tools/quality/tier0_ratchet.py write      # record lower counts after a slice
+  tools/quality/tier0_ratchet.py redefine   # after a reviewed change to COHORTS or SCANNED
   tools/quality/tier0_ratchet.py report
   tools/quality/tier0_ratchet.py selftest
 """
@@ -34,7 +35,16 @@ COHORTS = {
                    r"\bpthread_getname_np\s*\(", r"\busleep\s*\(", r"\bnanosleep\s*\(",
                    r"\bsched_yield\s*\(", r"\bsetpriority\s*\(", r"\bSYS_gettid\b", r"\bgettid\s*\(",
                    r"\b_beginthreadex\s*\(", r"\bCreateThread\s*\(", r"\bSetThreadPriority\s*\(",
-                   r"\bGetCurrentThreadId\s*\(", r"\bSwitchToThread\s*\(", r"(?<![\w.:>])Sleep\s*\("],
+                   r"\bGetCurrentThreadId\s*\(", r"\bSwitchToThread\s*\(", r"(?<![\w.>])(?<!\w::)(?<!__stdcall )(?<!void )Sleep\s*\(",
+                   # Handle and identity operations (added 2026-10-08 with .inl scanning).
+                   # WaitForSingleObject is not counted: Tier 0 also waits on events and
+                   # mutexes with it, which are synchronization, not thread mechanism.
+                   r"\bpthread_kill\s*\(", r"\bpthread_self\s*\(", r"\bpthread_attr_\w+\s*\(",
+                   r"\bpthread_detach\s*\(", r"\bpthread_cancel\s*\(", r"\bpthread_setaffinity_np\s*\(",
+                   r"\bn3ds_pthread_create\s*\(", r"\bOpenThread\s*\(", r"\bGetCurrentThread\s*\(",
+                   r"\bSetThreadAffinityMask\s*\(",
+                   r"\bGetThreadPriority\s*\(", r"\bResumeThread\s*\(", r"\bTerminateThread\s*\(",
+                   r"\bGetExitCodeThread\s*\(", r"\bSetThreadDescription\s*\("],
     "T3-process-environment": [r"/proc/self/cmdline", r"\bGetCommandLine[AW]?\s*\(", r"TracerPid",
                                r"\bIsDebuggerPresent\s*\(", r"\bgetenv\s*\(", r"\benviron\b",
                                r"\bP_TRACED\b"],
@@ -49,8 +59,11 @@ COHORTS = {
 
 
 def strip_comments(text):
+    """Comments and string literals removed (a call named in a message is not a
+    call), line structure kept."""
     text = re.sub(r"/\*.*?\*/", lambda m: "\n" * m.group(0).count("\n"), text, flags=re.S)
-    return re.sub(r"//[^\n]*", "", text)
+    text = re.sub(r"//[^\n]*", "", text)
+    return re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', text)
 
 
 def scan(root=ROOT):
@@ -58,7 +71,7 @@ def scan(root=ROOT):
     for directory in SCANNED:
         base = os.path.join(root, directory)
         for name in sorted(os.listdir(base)):
-            if not name.endswith((".cpp", ".h", ".c", ".mm")):
+            if not name.endswith((".cpp", ".h", ".inl", ".c", ".mm")):
                 continue
             path = os.path.join(base, name)
             with open(path, encoding="latin-1") as handle:
@@ -94,6 +107,15 @@ def totals(counts):
 def main(argv):
     command = argv[1] if len(argv) > 1 else "check"
     current = scan()
+    if command == "redefine":
+        # A reviewed change to what the ratchet counts (patterns or scanned
+        # files) re-records everything; the commit says why.
+        with open(BASELINE, "w", encoding="utf-8") as handle:
+            json.dump({"schema": SCHEMA, "counts": current, "totals": totals(current)}, handle,
+                      indent=1, sort_keys=True)
+            handle.write("\n")
+        print("redefined: %s" % totals(current))
+        return 0
     if command == "write":
         if os.path.exists(BASELINE):
             with open(BASELINE, encoding="utf-8") as handle:
@@ -135,8 +157,11 @@ def main(argv):
                 path = next(iter(files))
                 more[cohort][path] += 1
                 expect(bool(compare(baseline, more)[0]), "%s growth is caught" % cohort)
-        expect(len(re.findall(COHORTS["T2-threads"][-1], "x.Sleep( 1 ); Sleep( 2 ); ThreadSleep( 3 );")) == 1,
-               "Sleep( matches only the bare Win32 call")
+        sleep = next(p for p in COHORTS["T2-threads"] if "Sleep" in p and "Switch" not in p)
+        expect(len(re.findall(sleep, "x.Sleep( 1 ); Sleep( 2 ); ThreadSleep( 3 ); void __stdcall Sleep( long ); static void Sleep( unsigned ); CThread::Sleep( 4 ); ::Sleep( 5 );")) == 2,
+               "Sleep( matches the Win32 call (bare or ::), not a declaration or a method")
+        expect(strip_comments('Error( "CreateThread() failed" ); x(); // Sleep( 1 )').count("CreateThread") == 0,
+               "string literals and comments are not counted")
         print("CONFORMANCE %d %d" % (checks, failures))
         return 1 if failures else 0
     problems, lower = compare(baseline, current)

@@ -18,6 +18,7 @@
 #include "tier0/platform.h"
 #include "tier0/dbg.h"
 #include "tier0/threadtools.h"
+#include "foundation_facade.h"
 
 unsigned long Plat_GetCurrentThreadID()
 {
@@ -67,19 +68,22 @@ static void X86ApplyBreakpointsToThread( DWORD dwThreadId )
 	}
 
 	// Freeze this thread, adjust its breakpoint state
-	HANDLE hThread = OpenThread( THREAD_SUSPEND_RESUME | THREAD_SET_CONTEXT, FALSE, dwThreadId );
-	if ( hThread != INVALID_HANDLE_VALUE )
+	// Through Tier 0's thread provider (R103); the register context itself is
+	// this file's (debugging) business.
+	platform::IWin32Threads &threads = tier0_facade::Threads();
+	HANDLE hThread = (HANDLE)threads.OpenNative( dwThreadId, THREAD_SUSPEND_RESUME | THREAD_SET_CONTEXT );
+	if ( hThread != NULL && hThread != INVALID_HANDLE_VALUE )
 	{
-		if ( SuspendThread( hThread ) != -1 )
+		if ( threads.SuspendNative( hThread ) )
 		{
 			SetThreadContext( hThread, &ctx );
-			ResumeThread( hThread );
+			threads.ResumeNative( hThread );
 		}
-		CloseHandle( hThread );
+		threads.CloseNative( hThread );
 	}
 }
 
-static DWORD STDCALL ThreadProcX86SetDataBreakpoints( LPVOID pvParam )
+static unsigned __stdcall ThreadProcX86SetDataBreakpoints( LPVOID pvParam )
 {
 	if ( pvParam )
 	{
@@ -88,10 +92,10 @@ static DWORD STDCALL ThreadProcX86SetDataBreakpoints( LPVOID pvParam )
 	}
 
 	// This function races against creation and destruction of new threads. Try to execute as quickly as possible.
-	SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_HIGHEST );
+	tier0_facade::Threads().SetNativePriority( tier0_facade::Threads().CurrentPseudoHandle(), THREAD_PRIORITY_HIGHEST );
 
 	DWORD dwProcId = GetCurrentProcessId();
-	DWORD dwThisThreadId = GetCurrentThreadId();
+	DWORD dwThisThreadId = tier0_facade::Threads().CurrentNativeId();
 	HANDLE hSnap = CreateToolhelp32Snapshot( TH32CS_SNAPTHREAD, 0 );
 	if ( hSnap != INVALID_HANDLE_VALUE )
 	{
@@ -118,6 +122,20 @@ static DWORD STDCALL ThreadProcX86SetDataBreakpoints( LPVOID pvParam )
 		CloseHandle( hSnap );
 	}
 	return 0;
+}
+
+// Runs the breakpoint worker to completion on its own thread (R103).
+static void RunBreakpointWorker( void *pvParam )
+{
+	platform::ThreadHandle handle;
+	void *caller = NULL;
+	unsigned long id = 0;
+	if ( tier0_facade::Threads().StartNative( 0, ThreadProcX86SetDataBreakpoints, pvParam, false, handle,
+			 caller, id ) == platform::ThreadResult::kOk )
+	{
+		tier0_facade::Threads().Join( handle );
+		tier0_facade::Threads().CloseNative( caller );
+	}
 }
 
 void Plat_SetHardwareDataBreakpoint( const void *pAddress, int nWatchBytes, bool bBreakOnRead )
@@ -174,12 +192,7 @@ void Plat_SetHardwareDataBreakpoint( const void *pAddress, int nWatchBytes, bool
 	}
 	
 
-	HANDLE hWorkThread = CreateThread( NULL, NULL, &ThreadProcX86SetDataBreakpoints, NULL, 0, NULL );
-	if ( hWorkThread != INVALID_HANDLE_VALUE )
-	{
-		WaitForSingleObject( hWorkThread, INFINITE );
-		CloseHandle( hWorkThread );
-	}
+	RunBreakpointWorker( NULL );
 
 	s_BreakpointStateMutex.Unlock();
 }
@@ -187,18 +200,13 @@ void Plat_SetHardwareDataBreakpoint( const void *pAddress, int nWatchBytes, bool
 void Plat_ApplyHardwareDataBreakpointsToNewThread( unsigned long dwThreadID )
 {
 	s_BreakpointStateMutex.Lock();
-	if ( dwThreadID != GetCurrentThreadId() )
+	if ( dwThreadID != tier0_facade::Threads().CurrentNativeId() )
 	{
 		X86ApplyBreakpointsToThread( dwThreadID );
 	}
 	else
 	{
-		HANDLE hWorkThread = CreateThread( NULL, NULL, &ThreadProcX86SetDataBreakpoints, &dwThreadID, 0, NULL );
-		if ( hWorkThread != INVALID_HANDLE_VALUE )
-		{
-			WaitForSingleObject( hWorkThread, INFINITE );
-			CloseHandle( hWorkThread );
-		}
+		RunBreakpointWorker( &dwThreadID );
 
 	}
 	s_BreakpointStateMutex.Unlock();

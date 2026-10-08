@@ -210,6 +210,58 @@ void ThreadSuites()
 	NATIVE_CHECK( RunMode( L"--unjoined" ) == 3 );
 }
 
+// The backend-only extension Tier 0's exports use (R103).
+struct NativeProbe
+{
+	std::atomic<unsigned long> id{ 0 };
+	std::atomic<int> go{ 0 };
+};
+
+unsigned __stdcall NativeProc( void *arg )
+{
+	NativeProbe &probe = *static_cast<NativeProbe *>( arg );
+	probe.id.store( GetCurrentThreadId() );
+	while ( probe.go.load() == 0 )
+	{
+		SwitchToThread();
+	}
+	return 0x1234;
+}
+
+void Win32ThreadExtension()
+{
+	auto threads = platform::CreateWin32Threads();
+	NativeProbe probe;
+	platform::ThreadHandle handle;
+	void *caller = nullptr;
+	unsigned long id = 0;
+	NATIVE_CHECK( threads->StartNative( 0, NativeProc, &probe, /*suspended=*/true, handle, caller, id ) ==
+	              platform::ThreadResult::kOk );
+	NATIVE_CHECK( caller != nullptr && id != 0 );
+	NATIVE_CHECK( threads->WaitNative( caller, 30 ) == platform::IWin32Threads::WaitResult::kTimeout );
+	NATIVE_CHECK( probe.id.load() == 0 ); // suspended: has not run
+	NATIVE_CHECK( threads->IsNativeHandleRunning( caller ) );
+	NATIVE_CHECK( threads->IsNativeIdRunning( id ) );
+	NATIVE_CHECK( threads->SetNativePriority( caller, THREAD_PRIORITY_BELOW_NORMAL ) );
+	NATIVE_CHECK( threads->GetNativePriority( caller ) == THREAD_PRIORITY_BELOW_NORMAL );
+	NATIVE_CHECK( threads->ResumeNative( caller ) );
+	while ( probe.id.load() == 0 )
+	{
+		SwitchToThread();
+	}
+	NATIVE_CHECK( probe.id.load() == id );
+	probe.go.store( 1 );
+	NATIVE_CHECK( threads->WaitNative( caller, 0xFFFFFFFF ) == platform::IWin32Threads::WaitResult::kSignaled );
+	DWORD code = 0;
+	NATIVE_CHECK( GetExitCodeThread( static_cast<HANDLE>( caller ), &code ) && code == 0x1234 );
+	NATIVE_CHECK( !threads->IsNativeHandleRunning( caller ) );
+	NATIVE_CHECK( threads->DetachNativeId( id ) == platform::ThreadResult::kOk );
+	NATIVE_CHECK( threads->DetachNativeId( id ) == platform::ThreadResult::kInvalidArgument );
+	NATIVE_CHECK( threads->CloseNative( caller ) ); // the caller's duplicate is its own
+	NATIVE_CHECK( threads->CurrentNativeId() == GetCurrentThreadId() );
+	NATIVE_CHECK( threads->CurrentPseudoHandle() == GetCurrentThread() );
+}
+
 void VirtualMemorySuites()
 {
 	auto vm = platform::CreateWin32VirtualMemory();
@@ -583,6 +635,7 @@ int main( int argc, char **argv )
 
 	ClockSuites();
 	ThreadSuites();
+	Win32ThreadExtension();
 	VirtualMemorySuites();
 	ProcessEnvironmentSuites();
 	PathsSuites();

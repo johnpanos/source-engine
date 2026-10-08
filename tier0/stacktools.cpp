@@ -26,6 +26,7 @@
 #endif
 
 #include "tier0/valve_on.h"
+#include "foundation_facade.h"
 
 #include "tier0/memdbgon.h"
 
@@ -858,7 +859,7 @@ int CrawlStack_StackWalk64( CONTEXT *pExceptionContext, void **pReturnAddressesO
 	sfFrame.AddrFrame.Offset = currentContext.Ebp;
 #endif
 
-	HANDLE hThread = GetCurrentThread();
+	HANDLE hThread = tier0_facade::Threads().CurrentPseudoHandle();
 
 	int i;
 	for( i = 0; i != iSkipCount; ++i ) //skip entries that the requesting function thinks are uninformative

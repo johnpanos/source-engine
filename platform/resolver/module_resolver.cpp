@@ -96,7 +96,7 @@ public:
 					continue;
 				}
 				if ( m_verifier != nullptr &&
-				     m_verifier->Verify( candidate.Value() ) == VerifyResult::kRejected )
+				     m_verifier->VerifyCandidate( candidate.Value() ) == VerifyResult::kRejected )
 				{
 					failure.status = ResolveStatus::kRejected;
 					return foundation::MakeUnexpected( std::move( failure ) );

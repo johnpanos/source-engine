@@ -555,6 +555,24 @@
    ],
    "kind": "T"
   },
+  "Plat_ThreadSleep": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void Plat_ThreadSleep( unsigned nMilliseconds )"
+   ],
+   "kind": "T"
+  },
+  "Plat_ThreadSleepMicroseconds": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void Plat_ThreadSleepMicroseconds( unsigned nMicroseconds )"
+   ],
+   "kind": "T"
+  },
+  "Plat_ThreadYield": {
+   "declarations": [
+    "threadtools.h: PLATFORM_INTERFACE void Plat_ThreadYield()"
+   ],
+   "kind": "T"
+  },
   "Plat_USTime": {
    "declarations": [
     "platform.h: PLATFORM_INTERFACE uint64 Plat_USTime()"

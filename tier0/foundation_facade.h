@@ -16,6 +16,12 @@
 #include "platform/contracts/thread.h"
 #include "platform/contracts/wall_clock.h"
 
+#if defined( _WIN32 )
+#include "../platform/win32/foundation_providers.h"
+#else
+#include "../platform/posix/foundation_providers.h"
+#endif
+
 namespace tier0_facade
 {
 
@@ -32,8 +38,13 @@ std::uint64_t MonotonicNanoseconds();
 // The process's wall clock (civil time, deadlines for CLOCK_REALTIME waits).
 const platform::IWallClock &WallClock();
 
-// The process's thread provider (sleep, names, priorities, ids).
-platform::IThreads &Threads();
+// The process's thread provider (sleep, names, priorities, ids), with the
+// backend extension the legacy exports need for native identity.
+#if defined( _WIN32 )
+platform::IWin32Threads &Threads();
+#else
+platform::IPosixThreads &Threads();
+#endif
 
 } // namespace tier0_facade
 

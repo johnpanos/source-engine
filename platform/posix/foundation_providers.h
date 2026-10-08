@@ -21,6 +21,7 @@
 #include "platform/contracts/virtual_memory.h"
 #include "platform/contracts/wall_clock.h"
 
+#include <cstdint>
 #include <memory>
 
 namespace platform
@@ -32,9 +33,49 @@ namespace platform
 // CLOCK_REALTIME; local breakdown through localtime_r and tm_gmtoff.
 [[nodiscard]] std::unique_ptr<IWallClock> CreatePosixWallClock();
 
+// The POSIX thread provider's backend-only extension: native identity for a
+// legacy facade whose exports return native values (Tier 0's ThreadHandle_t
+// and ThreadId_t are pthread_t; R103). Not part of platform.thread.v1, and
+// declared only in this backend header, so portable code never sees it.
+// Native values are pthread_t as an integer (a pointer on Apple).
+class IPosixThreads : public IThreads
+{
+public:
+	// The pthread_t of a thread this provider started and has not released.
+	virtual bool NativeOf( ThreadHandle thread, std::uintptr_t &native ) const = 0;
+
+	// The calling thread's pthread_self().
+	virtual std::uintptr_t CurrentNative() const = 0;
+
+	// Whether the thread `native` names still exists (pthread_kill( t, 0 )).
+	virtual bool IsNativeAlive( std::uintptr_t native ) const = 0;
+
+	// Waits for `native` to end: a thread this provider started is joined and
+	// released; any other joinable pthread is joined directly. kInvalidArgument
+	// when it cannot be joined (unknown, detached, or the caller itself).
+	virtual ThreadResult JoinNative( std::uintptr_t native ) = 0;
+
+	// Releases a thread this provider started without waiting: it runs to its
+	// end and its resources go with it. The handle is invalid afterwards.
+	virtual ThreadResult Detach( ThreadHandle thread ) = 0;
+
+	// Detach by native value; kInvalidArgument when this provider does not hold
+	// a thread with that value (already joined or released, or never its own).
+	virtual ThreadResult DetachNative( std::uintptr_t native ) = 0;
+
+	// Names the thread `native` names (UTF-8, truncated like SetCurrentName).
+	// kUnsupported where only the calling thread can be named (Apple) and
+	// `native` is another thread.
+	virtual ThreadResult SetNativeName( std::uintptr_t native, const char *name ) = 0;
+
+	// pthread_kill( native, signal ). A signal whose action ends the process
+	// (SIGKILL) ends the process, whichever thread it is sent to.
+	virtual ThreadResult SignalNative( std::uintptr_t native, int signal ) = 0;
+};
+
 // pthreads. Sleeps against CLOCK_MONOTONIC, the clock CreatePosixMonotonicClock
 // reads. Destroying the provider while a started thread is unjoined aborts.
-[[nodiscard]] std::unique_ptr<IThreads> CreatePosixThreads();
+[[nodiscard]] std::unique_ptr<IPosixThreads> CreatePosixThreads();
 
 // mmap/mprotect. Decommit maps fresh anonymous pages over the range, so a
 // recommit reads zero on every POSIX kernel (MADV_DONTNEED does not zero on

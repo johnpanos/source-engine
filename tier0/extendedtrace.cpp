@@ -300,7 +300,7 @@ void StackTrace( HANDLE hThread, LPCTSTR lpszMessage )
 	HANDLE         hProcess = GetCurrentProcess();
 
    // If it's not this thread, let's suspend it, and resume it at the end
-	if ( hThread != GetCurrentThread() )
+	if ( hThread != tier0_facade::Threads().CurrentPseudoHandle() )
 		if ( SuspendThread( hThread ) == -1 )
 		{
 		   // whaaat ?!
@@ -350,8 +350,8 @@ void StackTrace( HANDLE hThread, LPCTSTR lpszMessage )
 		OutputDebugStringFormat( _T("     %s : %s\n"), srcInfo, symInfo );
 	}
 
-	if ( hThread != GetCurrentThread() )
-		ResumeThread( hThread );
+	if ( hThread != tier0_facade::Threads().CurrentPseudoHandle() )
+		tier0_facade::Threads().ResumeNative( hThread );
 }
 
 void FunctionParameterInfo()
@@ -361,7 +361,7 @@ void FunctionParameterInfo()
 	CONTEXT        context;
 	TCHAR          lpszFnInfo[BUFFERSIZE];
 	HANDLE         hProcess = GetCurrentProcess();
-	HANDLE         hThread = GetCurrentThread();
+	HANDLE         hThread = tier0_facade::Threads().CurrentPseudoHandle();
 
 	::ZeroMemory( &context, sizeof(context) );
 	context.ContextFlags = CONTEXT_FULL;
@@ -397,7 +397,7 @@ void FunctionParameterInfo()
 	if ( bResult && callStack.AddrFrame.Offset != 0) 
 	{
 	   GetFunctionInfoFromAddresses( callStack.AddrPC.Offset, callStack.AddrFrame.Offset, lpszFnInfo );
-	   OutputDebugStringFormat( _T("Function info(thread=0x%X) : %s\n"), GetCurrentThreadId(), lpszFnInfo );
+	   OutputDebugStringFormat( _T("Function info(thread=0x%X) : %s\n"), tier0_facade::Threads().CurrentNativeId(), lpszFnInfo );
 	}
 	else
 	   OutputDebugStringFormat( _T("Function info(thread=0x%X) failed.\n") );

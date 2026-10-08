@@ -58,16 +58,20 @@ const platform::IWallClock &WallClock()
 	return clock;
 }
 
-platform::IThreads &Threads()
-{
-	// The provider aborts if destroyed with threads unjoined; leaked, it never is.
+// The provider aborts if destroyed with threads unjoined; leaked, it never is.
 #if defined( _WIN32 )
-	static platform::IThreads &threads = Leak( platform::CreateWin32Threads() );
-#else
-	static platform::IThreads &threads = Leak( platform::CreatePosixThreads() );
-#endif
+platform::IWin32Threads &Threads()
+{
+	static platform::IWin32Threads &threads = Leak( platform::CreateWin32Threads() );
 	return threads;
 }
+#else
+platform::IPosixThreads &Threads()
+{
+	static platform::IPosixThreads &threads = Leak( platform::CreatePosixThreads() );
+	return threads;
+}
+#endif
 
 std::uint64_t MonotonicNanoseconds()
 {

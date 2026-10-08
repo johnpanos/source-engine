@@ -35,6 +35,8 @@
 #include <vector>
 
 #include <dirent.h>
+#include <pthread.h>
+#include <sched.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <sys/mman.h>
@@ -189,6 +191,85 @@ void ThreadSuites()
 		    threads.reset();
 	    } );
 	NATIVE_CHECK( WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT );
+}
+
+// The backend-only extension a legacy facade uses (R103): native identity,
+// joins by native value, detach and naming another thread.
+void PosixThreadExtension()
+{
+	auto threads = platform::CreatePosixThreads();
+	struct Probe
+	{
+		std::atomic<std::uintptr_t> self{ 0 };
+		std::atomic<int> go{ 0 };
+		std::atomic<int> done{ 0 };
+		char name[32] = {};
+	};
+	auto entry = []( void *p ) {
+		Probe &probe = *static_cast<Probe *>( p );
+		std::uintptr_t value = 0;
+		const pthread_t me = pthread_self();
+		std::memcpy( &value, &me, sizeof( me ) );
+		probe.self.store( value );
+		while ( probe.go.load() == 0 )
+		{
+			sched_yield();
+		}
+#if !defined( __APPLE__ )
+		pthread_getname_np( pthread_self(), probe.name, sizeof( probe.name ) );
+#endif
+		probe.done.store( 1 );
+	};
+
+	Probe a;
+	platform::ThreadHandle handle;
+	NATIVE_CHECK( threads->Start( {}, entry, &a, handle ) == platform::ThreadResult::kOk );
+	std::uintptr_t native = 0;
+	NATIVE_CHECK( threads->NativeOf( handle, native ) && native != 0 );
+	while ( a.self.load() == 0 )
+	{
+		sched_yield();
+	}
+	NATIVE_CHECK( a.self.load() == native );
+	NATIVE_CHECK( threads->IsNativeAlive( native ) );
+	NATIVE_CHECK( threads->CurrentNative() != native );
+#if defined( __APPLE__ )
+	NATIVE_CHECK( threads->SetNativeName( native, "other" ) == platform::ThreadResult::kUnsupported );
+#else
+	NATIVE_CHECK( threads->SetNativeName( native, "r103-renamed" ) == platform::ThreadResult::kOk );
+#endif
+	a.go.store( 1 );
+	NATIVE_CHECK( threads->JoinNative( native ) == platform::ThreadResult::kOk );
+	NATIVE_CHECK( a.done.load() == 1 );
+#if !defined( __APPLE__ )
+	NATIVE_CHECK( std::strcmp( a.name, "r103-renamed" ) == 0 );
+#endif
+	NATIVE_CHECK( !threads->NativeOf( handle, native ) ); // released by the join
+	NATIVE_CHECK( threads->JoinNative( threads->CurrentNative() ) == platform::ThreadResult::kInvalidArgument );
+
+	// A pthread the provider never started is joined directly.
+	pthread_t foreign;
+	static std::atomic<int> foreignRan{ 0 };
+	pthread_create( &foreign, nullptr, []( void * ) -> void * { foreignRan.store( 1 ); return nullptr; }, nullptr );
+	std::uintptr_t foreignNative = 0;
+	std::memcpy( &foreignNative, &foreign, sizeof( foreign ) );
+	NATIVE_CHECK( threads->JoinNative( foreignNative ) == platform::ThreadResult::kOk );
+	NATIVE_CHECK( foreignRan.load() == 1 );
+
+	// Detach: the thread runs to its end after its handle is gone.
+	Probe b;
+	platform::ThreadHandle detached;
+	NATIVE_CHECK( threads->Start( {}, entry, &b, detached ) == platform::ThreadResult::kOk );
+	NATIVE_CHECK( threads->Detach( detached ) == platform::ThreadResult::kOk );
+	NATIVE_CHECK( threads->Detach( detached ) == platform::ThreadResult::kInvalidArgument );
+	NATIVE_CHECK( threads->Join( detached ) == platform::ThreadResult::kInvalidArgument );
+	b.go.store( 1 );
+	for ( int i = 0; i < 2000000 && b.done.load() == 0; ++i )
+	{
+		sched_yield();
+	}
+	NATIVE_CHECK( b.done.load() == 1 );
+	// The provider is destroyed now with no unjoined thread: no abort.
 }
 
 void VirtualMemorySuites()
@@ -755,6 +836,7 @@ int main( int argc, char **argv )
 
 	ClockSuites();
 	ThreadSuites();
+	PosixThreadExtension();
 	VirtualMemorySuites();
 	ProcessEnvironmentSuites( argc, argv );
 	PathsSuites();

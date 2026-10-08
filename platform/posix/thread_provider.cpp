@@ -15,6 +15,7 @@
 #include <mutex>
 
 #include <pthread.h>
+#include <signal.h>
 #include <sched.h>
 #include <sys/resource.h>
 #include <time.h>
@@ -46,8 +47,12 @@ std::uint64_t CurrentThreadIdValue()
 	return t_threadId;
 }
 
+// Two owners: the provider (until join, detach or provider teardown) and the
+// running thread (until its entry returns). A plain count keeps std's shared
+// pointer, and its typeinfo, out of the shared objects that link this.
 struct ThreadRecord
 {
+	std::atomic<int> refs{ 2 };
 	pthread_t thread{};
 	std::uint64_t id = 0;
 	ThreadEntry entry = nullptr;
@@ -56,7 +61,7 @@ struct ThreadRecord
 	ThreadPriority priority = ThreadPriority::kNormal;
 };
 
-void SetNativeName( const char *name )
+void NameCallingThread( const char *name )
 {
 #if defined( __APPLE__ )
 	pthread_setname_np( name );
@@ -93,20 +98,46 @@ ThreadResult ApplyPriority( ThreadPriority priority )
 #endif
 }
 
+void Release( ThreadRecord *record )
+{
+	if ( record != nullptr && record->refs.fetch_sub( 1, std::memory_order_acq_rel ) == 1 )
+	{
+		delete record;
+	}
+}
+
+// The thread shares its record with the provider, so a detached thread's
+// record lives until the thread itself is done with it.
 void *ThreadTrampoline( void *arg )
 {
-	ThreadRecord &record = *static_cast<ThreadRecord *>( arg );
-	t_threadId = record.id;
-	if ( record.name[0] != '\0' )
+	ThreadRecord *record = static_cast<ThreadRecord *>( arg );
+	t_threadId = record->id;
+	if ( record->name[0] != '\0' )
 	{
-		SetNativeName( record.name );
+		NameCallingThread( record->name );
 	}
-	if ( record.priority != ThreadPriority::kNormal )
+	if ( record->priority != ThreadPriority::kNormal )
 	{
-		ApplyPriority( record.priority );
+		ApplyPriority( record->priority );
 	}
-	record.entry( record.context );
+	record->entry( record->context );
+	Release( record );
 	return nullptr;
+}
+
+std::uintptr_t ToNative( pthread_t thread )
+{
+	std::uintptr_t value = 0;
+	static_assert( sizeof( pthread_t ) <= sizeof( value ), "pthread_t fits an integer" );
+	std::memcpy( &value, &thread, sizeof( thread ) );
+	return value;
+}
+
+pthread_t FromNative( std::uintptr_t value )
+{
+	pthread_t thread{};
+	std::memcpy( &thread, &value, sizeof( thread ) );
+	return thread;
 }
 
 void CopyName( const char *name, char ( &out )[kThreadNameMaxBytes + 1] )
@@ -120,7 +151,7 @@ void CopyName( const char *name, char ( &out )[kThreadNameMaxBytes + 1] )
 	out[n] = '\0';
 }
 
-class CPosixThreads final : public IThreads
+class CPosixThreads final : public IPosixThreads
 {
 public:
 	~CPosixThreads() override
@@ -143,7 +174,12 @@ public:
 		{
 			return ThreadResult::kInvalidArgument;
 		}
-		auto record = std::make_unique<ThreadRecord>();
+		pthread_attr_t attr;
+		if ( pthread_attr_init( &attr ) != 0 )
+		{
+			return ThreadResult::kResourceExhausted;
+		}
+		ThreadRecord *record = new ThreadRecord();
 		record->id = g_nextThreadId.fetch_add( 1 );
 		record->entry = entry;
 		record->context = context;
@@ -153,11 +189,6 @@ public:
 			CopyName( options.name, record->name );
 		}
 
-		pthread_attr_t attr;
-		if ( pthread_attr_init( &attr ) != 0 )
-		{
-			return ThreadResult::kResourceExhausted;
-		}
 		if ( options.stackBytes != 0 )
 		{
 			const long page = sysconf( _SC_PAGESIZE );
@@ -170,6 +201,7 @@ public:
 			if ( pthread_attr_setstacksize( &attr, size ) != 0 )
 			{
 				pthread_attr_destroy( &attr );
+				delete record;
 				return ThreadResult::kInvalidArgument;
 			}
 		}
@@ -177,21 +209,28 @@ public:
 		// The record is published under the lock before the thread can run, so
 		// IdOf and Join see it as soon as Start returns.
 		std::lock_guard<std::mutex> lock( m_mutex );
-		const int rc = pthread_create( &record->thread, &attr, ThreadTrampoline, record.get() );
+#if defined( PLATFORM_3DS )
+		// The 3DS creates threads with an explicit stack through its compat layer.
+		const int rc = n3ds_pthread_create( &record->thread, ThreadTrampoline, record,
+			options.stackBytes != 0 ? options.stackBytes : 64 * 1024 );
+#else
+		const int rc = pthread_create( &record->thread, &attr, ThreadTrampoline, record );
+#endif
 		pthread_attr_destroy( &attr );
 		if ( rc != 0 )
 		{
+			delete record; // the thread never ran, so it holds no reference
 			return rc == EAGAIN ? ThreadResult::kResourceExhausted : ThreadResult::kInvalidArgument;
 		}
 		const std::uint64_t handle = m_nextHandle++;
-		m_threads[handle] = std::move( record );
+		m_threads[handle] = record;
 		out.value = handle;
 		return ThreadResult::kOk;
 	}
 
 	ThreadResult Join( ThreadHandle thread ) override
 	{
-		std::unique_ptr<ThreadRecord> record;
+		ThreadRecord *record = nullptr;
 		{
 			std::lock_guard<std::mutex> lock( m_mutex );
 			auto it = m_threads.find( thread.value );
@@ -199,10 +238,11 @@ public:
 			{
 				return ThreadResult::kInvalidArgument;
 			}
-			record = std::move( it->second );
+			record = it->second;
 			m_threads.erase( it );
 		}
 		pthread_join( record->thread, nullptr );
+		Release( record );
 		return ThreadResult::kOk;
 	}
 
@@ -233,7 +273,7 @@ public:
 		}
 		char copy[kThreadNameMaxBytes + 1];
 		CopyName( name, copy );
-		SetNativeName( copy );
+		NameCallingThread( copy );
 		return ThreadResult::kOk;
 	}
 
@@ -314,15 +354,125 @@ public:
 		return n > 0 ? static_cast<unsigned>( n ) : 1u;
 	}
 
+	// --- IPosixThreads ---------------------------------------------------
+
+	bool NativeOf( ThreadHandle thread, std::uintptr_t &native ) const override
+	{
+		std::lock_guard<std::mutex> lock( m_mutex );
+		auto it = m_threads.find( thread.value );
+		if ( it == m_threads.end() )
+		{
+			return false;
+		}
+		native = ToNative( it->second->thread );
+		return true;
+	}
+
+	std::uintptr_t CurrentNative() const override { return ToNative( pthread_self() ); }
+
+	bool IsNativeAlive( std::uintptr_t native ) const override
+	{
+		return native != 0 && pthread_kill( FromNative( native ), 0 ) == 0;
+	}
+
+	ThreadResult JoinNative( std::uintptr_t native ) override
+	{
+		if ( native == 0 || native == CurrentNative() )
+		{
+			return ThreadResult::kInvalidArgument;
+		}
+		ThreadHandle known;
+		{
+			std::lock_guard<std::mutex> lock( m_mutex );
+			for ( const auto &entry : m_threads )
+			{
+				if ( ToNative( entry.second->thread ) == native )
+				{
+					known.value = entry.first;
+					break;
+				}
+			}
+		}
+		if ( known.value != 0 )
+		{
+			return Join( known );
+		}
+		return pthread_join( FromNative( native ), nullptr ) == 0 ? ThreadResult::kOk
+		                                                           : ThreadResult::kInvalidArgument;
+	}
+
+	ThreadResult Detach( ThreadHandle thread ) override
+	{
+		ThreadRecord *record = nullptr;
+		{
+			std::lock_guard<std::mutex> lock( m_mutex );
+			auto it = m_threads.find( thread.value );
+			if ( it == m_threads.end() )
+			{
+				return ThreadResult::kInvalidArgument;
+			}
+			record = it->second;
+			m_threads.erase( it );
+		}
+		pthread_detach( record->thread );
+		Release( record );
+		return ThreadResult::kOk;
+	}
+
+	ThreadResult SignalNative( std::uintptr_t native, int signal ) override
+	{
+		return native != 0 && pthread_kill( FromNative( native ), signal ) == 0
+		           ? ThreadResult::kOk
+		           : ThreadResult::kInvalidArgument;
+	}
+
+	ThreadResult DetachNative( std::uintptr_t native ) override
+	{
+		ThreadHandle known;
+		{
+			std::lock_guard<std::mutex> lock( m_mutex );
+			for ( const auto &entry : m_threads )
+			{
+				if ( ToNative( entry.second->thread ) == native )
+				{
+					known.value = entry.first;
+					break;
+				}
+			}
+		}
+		return known.value != 0 ? Detach( known ) : ThreadResult::kInvalidArgument;
+	}
+
+	ThreadResult SetNativeName( std::uintptr_t native, const char *name ) override
+	{
+		if ( name == nullptr || native == 0 )
+		{
+			return ThreadResult::kInvalidArgument;
+		}
+		char copy[kThreadNameMaxBytes + 1];
+		CopyName( name, copy );
+		if ( native == CurrentNative() )
+		{
+			NameCallingThread( copy );
+			return ThreadResult::kOk;
+		}
+#if defined( __APPLE__ ) || defined( __EMSCRIPTEN__ )
+		return ThreadResult::kUnsupported; // only the calling thread can be named
+#else
+		return pthread_setname_np( FromNative( native ), copy ) == 0 ? ThreadResult::kOk
+		                                                             : ThreadResult::kInvalidArgument;
+#endif
+	}
+
 private:
 	mutable std::mutex m_mutex;
 	std::uint64_t m_nextHandle = 1;
-	std::map<std::uint64_t, std::unique_ptr<ThreadRecord>> m_threads;
+	std::map<std::uint64_t, ThreadRecord *> m_threads;
 };
 
 } // namespace
 
-std::unique_ptr<IThreads> CreatePosixThreads()
+std::unique_ptr<IPosixThreads> CreatePosixThreads()
 {
 	return std::make_unique<CPosixThreads>();
 }

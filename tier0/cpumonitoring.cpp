@@ -176,7 +176,7 @@ static float GetSampledFrequency( int iterations )
 static float s_frequencies[ nMaxCPUs ];
 
 // Measurement thread, designed to be one per core.
-static DWORD WINAPI MeasureThread( LPVOID vThreadNum )
+static unsigned __stdcall MeasureThread( LPVOID vThreadNum )
 {
 	ThreadSetDebugName( "CPUMonitoringMeasureThread" );
 	int threadNum = (int)vThreadNum;
@@ -211,11 +211,11 @@ typedef struct _PROCESSOR_POWER_INFORMATION {
 } PROCESSOR_POWER_INFORMATION, *PPROCESSOR_POWER_INFORMATION;
 
 // Master control thread to periodically wake the measurement threads.
-static DWORD WINAPI HeartbeatThread( LPVOID )
+static unsigned __stdcall HeartbeatThread( LPVOID )
 {
 	ThreadSetDebugName( "CPUMonitoringHeartbeatThread" );
 	// Arbitrary/hacky time to wait for results to become available.
-	Sleep( kFirstInterval );
+	Plat_ThreadSleep( kFirstInterval );
 	for ( ; ; )
 	{
 		unsigned delay;
@@ -253,7 +253,7 @@ static DWORD WINAPI HeartbeatThread( LPVOID )
 			// Wait until all of the measurement threads should have run.
 			// This is just to avoid having the heartbeat thread fighting for cycles
 			// but isn't strictly necessary.
-			Sleep( kPostMeasureInterval );
+			Plat_ThreadSleep( kPostMeasureInterval );
 
 			// Wait for all of the worker threads to finish.
 			for ( DWORD i = 0; i < g_numCPUs; ++i )
@@ -285,12 +285,12 @@ static DWORD WINAPI HeartbeatThread( LPVOID )
 				delay = s_nDelayMilliseconds;
 			}
 
-			Sleep( delay );
+			Plat_ThreadSleep( delay );
 		}
 		else
 		{
 			// If there is nothing to do then just sleep for a bit.
-			Sleep( kMinimumDelay );
+			Plat_ThreadSleep( kMinimumDelay );
 		}
 	}
 
@@ -347,13 +347,25 @@ PLATFORM_INTERFACE void SetCPUMonitoringInterval( unsigned nDelayMilliseconds )
 		// ensure that they will run promptly on a specific CPU.
 		for ( DWORD i = 0; i < g_numCPUs; ++i )
 		{
-			HANDLE thread = CreateThread( NULL, 0x10000, MeasureThread, (void*)i, 0, NULL );
-			SetThreadAffinityMask( thread, 1u << i );
-			SetThreadPriority( thread, THREAD_PRIORITY_HIGHEST );
+			// Through Tier 0's thread provider (R103); the threads run until exit.
+			platform::ThreadHandle handle;
+			void *thread = NULL;
+			unsigned long id = 0;
+			tier0_facade::Threads().StartNative( 0x10000, MeasureThread, (void*)(uintptr_t)i, false, handle,
+				thread, id );
+			tier0_facade::Threads().SetNativeAffinity( thread, 1u << i );
+			tier0_facade::Threads().SetNativePriority( thread, THREAD_PRIORITY_HIGHEST );
+			tier0_facade::Threads().CloseNative( thread );
 		}
 
 		// Create the thread which tells the measurement threads to wake up periodically
-		CreateThread( NULL, 0x10000, HeartbeatThread, NULL, 0, NULL );
+		{
+			platform::ThreadHandle handle;
+			void *thread = NULL;
+			unsigned long id = 0;
+			tier0_facade::Threads().StartNative( 0x10000, HeartbeatThread, NULL, false, handle, thread, id );
+			tier0_facade::Threads().CloseNative( thread );
+		}
 	}
 
 	AUTO_LOCK( s_lock );

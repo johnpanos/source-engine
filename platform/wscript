@@ -113,6 +113,9 @@ def build(bld):
 			features  = 'cxx capability_strict',
 			includes  = [ '../public' ],
 			defines   = legacy_abi,
+			# Linked into Tier 0 and other shared modules: keep std template
+			# instantiations out of their export lists, as their own code does.
+			cxxflags  = [ '-fvisibility=hidden', '-fvisibility-inlines-hidden' ],
 			use       = [],
 			subsystem = bld.env.MSVC_SUBSYSTEM,
 			idx       = bld.get_taskgen_count()
@@ -123,9 +126,12 @@ def build(bld):
 	# builds; see platform_composition_legacyabi.
 	for target, defines in ( ( 'platform_resolver', [] ),
 	                         ( 'platform_resolver_legacyabi', legacy_abi ) ):
+		hidden = [ '-fvisibility=hidden', '-fvisibility-inlines-hidden' ] \
+			if target.endswith( '_legacyabi' ) and bld.env.DEST_OS != 'win32' else []
 		bld.stlib(
 			env       = bld.strict_cpp20_env(),
 			source    = [ 'resolver/module_resolver.cpp' ],
+			cxxflags  = hidden,
 			target    = target,
 			name      = target,
 			arch_module = 'platform.resolver',
@@ -146,6 +152,9 @@ def build(bld):
 			features  = 'cxx capability_strict',
 			includes  = [ '../public' ],
 			defines   = legacy_abi,
+			# Linked into Tier 0 and other shared modules: keep std template
+			# instantiations out of their export lists, as their own code does.
+			cxxflags  = [ '-fvisibility=hidden', '-fvisibility-inlines-hidden' ],
 			use       = [],
 			subsystem = bld.env.MSVC_SUBSYSTEM,
 			idx       = bld.get_taskgen_count()
