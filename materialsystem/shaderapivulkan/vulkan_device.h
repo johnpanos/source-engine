@@ -1568,7 +1568,7 @@ private:
 	bool m_dynFramePresented = false;
 	DynDraw &AppendRecord( int kind );
 
-	// Occlusion queries: one pool slot per query object. `issued` counts begins
+	// Occlusion queries: one slot per query object. `issued` counts begins
 	// recorded; `submitted` is the issue whose frame was last submitted, so a
 	// result is readable only when the two agree.
 	struct OcclusionQuerySlot
@@ -1578,7 +1578,6 @@ private:
 		uint64_t submitted = 0;
 		bool failed = false; // the latest issue cannot produce a result
 	};
-	VkQueryPool m_queryPool = VK_NULL_HANDLE;
 	std::vector<OcclusionQuerySlot> m_querySlots;
 	int m_queuedOcclusionQuery = -1;
 	bool m_preciseOcclusion = false;

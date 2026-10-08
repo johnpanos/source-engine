@@ -2863,20 +2863,8 @@ int CVulkanContext::CreateOcclusionQuery( std::string *outError )
 		                    "(occlusionQueryPrecise is not supported)" );
 		return -1;
 	}
-	if ( m_queryPool == VK_NULL_HANDLE )
-	{
-		VkQueryPoolCreateInfo info = {};
-		info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
-		info.queryType = VK_QUERY_TYPE_OCCLUSION;
-		info.queryCount = kMaxOcclusionQueries;
-		const VkResult r = vkCreateQueryPool( m_device, &info, nullptr, &m_queryPool );
-		if ( r != VK_SUCCESS )
-		{
-			SetError( outError, std::string( "vkCreateQueryPool failed: " ) + ResultString( r ) );
-			return -1;
-		}
+	if ( m_querySlots.empty() )
 		m_querySlots.assign( kMaxOcclusionQueries, OcclusionQuerySlot() );
-	}
 	for ( size_t slot = 0; slot < m_querySlots.size(); ++slot )
 	{
 		if ( !m_querySlots[slot].live )
@@ -2933,20 +2921,10 @@ int64_t CVulkanContext::OcclusionQueryResult( int query, bool wait )
 		// a failure rather than a wait that never ends.
 		return wait ? kQueryFailed : kQueryPending;
 	}
-	uint64_t result[2] = { 0, 0 }; // samples passed, availability
-	VkQueryResultFlags flags = VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT;
-	if ( wait )
-		flags |= VK_QUERY_RESULT_WAIT_BIT;
-	const uint64_t readStart = wait ? FrameClockMicros() : 0;
-	const VkResult r = vkGetQueryPoolResults( m_device, m_queryPool, static_cast<uint32_t>( query ),
-	    1, sizeof( result ), result, sizeof( result ), flags );
-	if ( wait )
-		m_frameCost.Add( kCostQueryWait, FrameClockMicros() - readStart );
-	if ( r != VK_SUCCESS && r != VK_NOT_READY )
-		return kQueryFailed;
-	if ( !result[1] )
-		return kQueryPending;
-	return static_cast<int64_t>( result[0] );
+	// Every draw reaches the core at a slot, and a slot, copy or target switch
+	// between Begin and End ends the query as failed (the replay), so a query
+	// that completed counted only clears: zero samples, known once submitted.
+	return 0;
 }
 
 std::string CVulkanContext::DescribeStream() const
@@ -4580,14 +4558,6 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 	m_lastFrameSceneDepthCaptures = 0;
 	m_lastFrameDepthToAlpha = 0;
 	m_lastFrameDepthToAlphaSkipped = 0;
-	if ( m_queryPool != VK_NULL_HANDLE && m_dynamicResourcesReady )
-	{
-		for ( const DynDraw &d : m_dynDrawRecords )
-		{
-			if ( d.kind == kRecordQueryBegin )
-				vkCmdResetQueryPool( cmd, m_queryPool, static_cast<uint32_t>( d.query ), 1 );
-		}
-	}
 
 	VkClearValue clears[2] = {};
 	clears[0].color = m_clearColor;
@@ -4638,7 +4608,6 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 		{
 			if ( activeQuery < 0 )
 				return;
-			vkCmdEndQuery( cmd, m_queryPool, static_cast<uint32_t>( activeQuery ) );
 			if ( !complete )
 				m_querySlots[static_cast<size_t>( activeQuery )].failed = true;
 			activeQuery = -1;
@@ -4781,8 +4750,7 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 			if ( d.kind == kRecordQueryBegin )
 			{
 				endActiveQuery( false );
-				// A slot is reset once per replay, so a second issue of the same
-				// query in one frame cannot begin; that issue fails.
+				// One issue of a query per replay; a second issue in one frame fails.
 				bool reissued = false;
 				for ( const std::pair<int, uint64_t> &issue : m_replayedQueries )
 					reissued = reissued || issue.first == d.query;
@@ -4791,8 +4759,6 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 					m_querySlots[static_cast<size_t>( d.query )].failed = true;
 					continue;
 				}
-				vkCmdBeginQuery( cmd, m_queryPool, static_cast<uint32_t>( d.query ),
-				    VK_QUERY_CONTROL_PRECISE_BIT );
 				activeQuery = d.query;
 				m_replayedQueries.emplace_back( d.query, d.querySerial );
 				continue;
@@ -6589,11 +6555,6 @@ void CVulkanContext::Shutdown()
 		DestroyMsaaTargets();
 		DestroyMsaaPasses();
 		DestroyPresentGamma();
-		if ( m_queryPool != VK_NULL_HANDLE )
-		{
-			vkDestroyQueryPool( m_device, m_queryPool, nullptr );
-			m_queryPool = VK_NULL_HANDLE;
-		}
 		if ( m_timestampPool != VK_NULL_HANDLE )
 		{
 			vkDestroyQueryPool( m_device, m_timestampPool, nullptr );
