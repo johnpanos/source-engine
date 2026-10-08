@@ -153,7 +153,9 @@ void CShaderDeviceFacade::GetAdapterInfo( int nAdapter, MaterialAdapterInfo_t &i
 	info.m_nDriverVersionLow = static_cast<unsigned int>( adapter.driverVersion & 0xffffffffu );
 	const int level = m_Services.hardware ? m_Services.hardware->GetMaxDXSupportLevel() : 0;
 	info.m_nDXSupportLevel = level;
-	info.m_nMaxDXSupportLevel = level;
+	// A software adapter (the null backend) reports no maximum, as its own
+	// manager always did; the material system then keeps its configured level.
+	info.m_nMaxDXSupportLevel = adapter.isSoftware ? 0 : level;
 }
 
 // dxsupport.cfg through the shared render.dxsupport-policy.v1 owner, for this
@@ -230,6 +232,10 @@ void CShaderDeviceFacade::ClampToCapabilities( KeyValues *pConfiguration ) const
 bool CShaderDeviceFacade::QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const
 {
 	*pDesktop = render::DisplayModeFacts();
+	// A software adapter presents nothing, so it has no display modes.
+	render::RenderAdapterInfo adapter;
+	if ( Describe( 0, &adapter ) && adapter.isSoftware )
+		return false;
 	if ( m_pDesktopSource )
 		m_pDesktopSource( m_pDesktopContext, pDesktop );
 #if defined( USE_SDL )
@@ -245,9 +251,7 @@ bool CShaderDeviceFacade::QueryDesktopDisplay( render::DisplayModeFacts *pDeskto
 #endif
 	if ( pDesktop->width > 0 && pDesktop->height > 0 )
 		return true;
-	render::RenderAdapterInfo adapter;
-	const bool software = Describe( 0, &adapter ) && adapter.isSoftware;
-	if ( !software && !m_bWarnedNoDisplay )
+	if ( !m_bWarnedNoDisplay )
 	{
 		Warning( "[ShaderDevice] no desktop display to enumerate video modes from\n" );
 		m_bWarnedNoDisplay = true;

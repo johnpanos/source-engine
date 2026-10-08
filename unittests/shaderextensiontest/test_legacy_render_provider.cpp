@@ -192,6 +192,10 @@ void CheckNullProvider()
 	render::RenderAdapterInfo info;
 	CHECK( backend.GetAdapterInfo( 0, &info ) );
 	CHECK( strcmp( info.name, "Null (no GPU)" ) == 0 );
+	MaterialAdapterInfo_t legacy;
+	facade.GetAdapterInfo( 0, legacy );
+	CHECK( legacy.m_nDXSupportLevel == 90 && legacy.m_nMaxDXSupportLevel == 0 );
+	CHECK( facade.GetModeCount( 0 ) == 0 );
 	CHECK( info.supportedFeatures.bits == 0 );
 
 	// The null adapter offers no feature, so a required one fails structurally.
@@ -535,8 +539,14 @@ void CheckDeviceFacade()
 	facade.GetCurrentModeInfo( &mode, 0 );
 	CHECK( mode.m_nWidth == 1920 && mode.m_nHeight == 1080 && mode.m_nRefreshRateNumerator == 60 );
 
-	// A software adapter has no recommended configuration to apply.
+	// A software adapter has no recommended configuration to apply, no
+	// display modes and no maximum level (the null manager's answers).
 	g_bBackendSoftware = true;
+	CHECK( facade.GetModeCount( 0 ) == 0 );
+	facade.GetCurrentModeInfo( &mode, 0 );
+	CHECK( mode.m_nWidth == 0 );
+	facade.GetAdapterInfo( 0, info );
+	CHECK( info.m_nMaxDXSupportLevel == 0 && info.m_nDXSupportLevel == services.hardware->GetMaxDXSupportLevel() );
 	KeyValues *config = new KeyValues( "config" );
 	CHECK( facade.GetRecommendedConfigurationInfo( 0, 0, config ) );
 	CHECK( config->GetFirstSubKey() == NULL );

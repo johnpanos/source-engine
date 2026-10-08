@@ -19537,6 +19537,40 @@
       "expect": "pass"
     },
     {
+      "id": "render.legacy-provider",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0016",
+      "migration": "R15",
+      "contract": "unittests/rendertest/contracts/render.backend.v1.md",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "The legacy render backends through the render.backend.v1 provider contract, composed as the material system composes them: the real null and native Vulkan modules behind the material system's one IShaderDeviceMgr (CShaderDeviceFacade, RFC 0016 legacy device facade F1), five bad legacy backends rejected, and the facade itself against a forwarding backend manager: adapter identity from the render core's source and semantic facts from the backend, an adapter either source refuses is not enumerated, video modes only from the desktop display, a software adapter with no modes, maximum level or recommendation, lifecycle and bring-up forwarded. Built and run in the native Vulkan client tree (build/) by tools/quality/waf_tree_suite.py, since it links the legacy module stack.",
+      "command": [
+        "{python}",
+        "tools/quality/waf_tree_suite.py",
+        "--tree",
+        "build",
+        "--target",
+        "legacy_render_provider_conformance",
+        "--program",
+        "unittests/shaderextensiontest/legacy_render_provider_conformance"
+      ],
+      "sources": [
+        "tools/quality/waf_tree_suite.py",
+        "unittests/shaderextensiontest/test_legacy_render_provider.cpp",
+        "materialsystem/shader_device_facade.cpp",
+        "materialsystem/legacy_render_backend_provider.cpp"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 150,
+      "timeout_seconds": 1800,
+      "requires": [
+        "path:build/c4che",
+        "vulkan-device:gpu"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "render.record-replay",
       "domain": "Q-ARCH",
       "rfc": "0016",

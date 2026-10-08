@@ -1506,21 +1506,20 @@ copy deleted in the change that replaces it:
 | F4 | `IShaderDevice`'s remaining device answers (back-buffer format, stencil bits, window size, views) from the core device and bridge; the backends implement neither interface | open |
 
 F1 evidence (2026-10-07, Linux, Radeon 8060S): `legacy_render_provider_conformance`
-(Waf target in the native Vulkan client tree) passes 156 checks, among them the
+(Waf target in the native Vulkan client tree) passes 161 checks, among them the
 facade against a forwarding backend manager: identity from the core source,
 semantic facts from the backend, an adapter either source refuses is not
 enumerated, modes only from the desktop display, no recommendation for a
 software adapter, lifecycle and bring-up forwarded. `portal_boot.py --headless`
 passes on `testchmb_a_01` with `native-vulkan` and `null`. The
-`testchmb_a_00` capture is the same washed-out frame with and without F1
-(mean difference 0.02/255; pre-existing, it passes or fails the scene-detail
-threshold by a few pixels). Behavior changes: the null backend now lists the
-desktop's video modes where a launcher exists (it listed none), and reports
-`m_nMaxDXSupportLevel` 90 (it reported 0). The suite is not in the
-conformance manifest, whose suites are source-built; it links the legacy
-module stack. Reproduce: `(cd build && python3 ../waf build --targets=legacy_render_provider_conformance)`
-then run `build/unittests/shaderextensiontest/legacy_render_provider_conformance`
-with the tree's library directories on `LD_LIBRARY_PATH`.
+`testchmb_a_00` capture was the same washed-out frame with and without F1
+(mean difference 0.02/255; pre-existing, it passed or failed the scene-detail
+threshold by a few pixels; fixed in `1e401cb71`: colour-correction volumes
+were bound as 2D images). A software adapter (the null backend) answers as
+its own manager did: no display modes and no maximum DX level. The suite runs as
+`render.legacy-provider` (`conformance.py check --suite render.legacy-provider
+--runner gpu`): `tools/quality/waf_tree_suite.py` builds it in the native
+Vulkan client tree and runs it with that tree's modules.
 
 ### The surface model: legacy definitions in the modern core (plan, 2026-09-28; amended 2026-10-03)
 
