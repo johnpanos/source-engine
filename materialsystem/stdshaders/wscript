@@ -20,7 +20,6 @@ def configure(conf):
 def build(bld):
 	source = [
 		'builtin_shader_provider.cpp',
-		'AccumBuff4Sample.cpp',
 		'BaseVSShader.cpp',
 		'fixed_state_shaders.cpp',
 		'BufferClearObeyStencil_dx9.cpp',

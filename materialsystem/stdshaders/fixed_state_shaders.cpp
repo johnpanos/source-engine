@@ -50,6 +50,7 @@ enum class Op
 	DepthFunc,      // DepthFunc( ShaderDepthFunc_t( a ) )
 	AmdOcclusion,   // EnableSRGBWrite( true ) under gl_amd_occlusion_workaround
 	OsxSrgb,        // EnableSRGBRead( SAMPLER0, x ); EnableSRGBWrite( x ), x = OSX sRGB RTs
+	OsxSrgb4,       // OsxSrgb over samplers 0 to 3
 	CompressedPos,  // VertexShaderVertexFormat( POSITION | COMPRESSED, 1, NULL, 0 )
 	Pos1,           // VertexShaderVertexFormat( POSITION, 1, 0, 0 )
 	Pos3EyeGlint,   // VertexShaderVertexFormat( POSITION, 3, { 2, 2, 3 }, 0 )
@@ -161,7 +162,7 @@ struct Load
 };
 
 constexpr int kMaxParams = 12;
-constexpr int kMaxLoads = 3;
+constexpr int kMaxLoads = 4;
 constexpr int kMaxSteps = 16;
 
 struct FixedStateRow
@@ -281,6 +282,14 @@ const FixedStateRow kRows[] = {
 	        { Op::Pos1, 0, 0 }, { Op::OsxSrgb, 0, 0 },
 	        { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ONE, When::Flag, MATERIAL_VAR_ADDITIVE } },
 	    0, { { 0, F, 1.0f } } },
+	{ "accumbuff4sample", nullptr, SHADER_NOT_EDITABLE, 0,
+	    { { "$TEXTURE0", T, "", "" }, { "$TEXTURE1", T, "", "" }, { "$TEXTURE2", T, "", "" },
+	        { "$TEXTURE3", T, "", "" }, { "$WEIGHTS", V4, "", "Weight for Samples" } },
+	    -1, 0, { { true, 0, false }, { true, 1, false }, { true, 2, false }, { true, 3, false } },
+	    { { Op::DepthWrites, 0, 0 }, { Op::DepthTest, 0, 0 }, { Op::AlphaWrites, 0, 0 },
+	        { Op::BlendEnable, 0, 0 }, { Op::Culling, 0, 0 }, { Op::Texture, SHADER_SAMPLER0, 0 },
+	        { Op::Texture, SHADER_SAMPLER1, 0 }, { Op::Texture, SHADER_SAMPLER2, 0 },
+	        { Op::Texture, SHADER_SAMPLER3, 0 }, { Op::Pos1, 0, 0 }, { Op::OsxSrgb4, 0, 0 } } },
 	{ "Downsample_nohdr", nullptr, SHADER_NOT_EDITABLE, 0,
 	    { { "$BLOOMTINTENABLE", I, "1", "" }, { "$CSTRIKE", I, "0", "" } }, 0, 1,
 	    { { false, BASETEXTURE, false } },
@@ -753,6 +762,14 @@ private:
 			// Render targets are pegged as sRGB on OSX, so force these reads and writes.
 			const bool force = IsOSX() && g_pHardwareConfig->CanDoSRGBReadFromRTs();
 			pShaderShadow->EnableSRGBRead( SHADER_SAMPLER0, force );
+			pShaderShadow->EnableSRGBWrite( force );
+			break;
+		}
+		case Op::OsxSrgb4:
+		{
+			const bool force = IsOSX() && g_pHardwareConfig->CanDoSRGBReadFromRTs();
+			for ( int sampler = 0; sampler < 4; ++sampler )
+				pShaderShadow->EnableSRGBRead( Sampler_t( SHADER_SAMPLER0 + sampler ), force );
 			pShaderShadow->EnableSRGBWrite( force );
 			break;
 		}
