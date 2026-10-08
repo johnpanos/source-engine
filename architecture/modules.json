@@ -765,7 +765,8 @@
           "render.contracts",
           "render.vulkan.core",
           "platform.sdl3.render-surface",
-          "render.device.vulkan"
+          "render.device.vulkan",
+          "render.device"
         ],
         "externalHeaders": [
           "QuartzCore/QuartzCore.h",

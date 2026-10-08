@@ -105,6 +105,13 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #if defined( LINKED_PICA_BACKEND )
 #include "render/device/pica/host_binding.h"
 #endif
+#if defined( LINKED_CORE_PRESENTER )
+#include "../render/bridge/sdl3-vulkan/core_presenter.h"
+#include "appframework/ilaunchermgr.h"
+#include "render/device/device.h"
+#include "render/pass/output/encoded_copy.h"
+extern ILauncherMgr *g_pLauncherMgr;
+#endif
 #if defined( LINKED_PICA_BACKEND ) && defined( LINKED_WEBGPU_DEVICE )
 #include "render/device/webgpu/provider.h"
 #endif
@@ -636,6 +643,17 @@ private:
 	// The process compute pool lent to the core; destroyed after it.
 	jobsystem::IWorkerBackend *m_pRenderCoreWorkers = nullptr;
 #endif
+#if defined( LINKED_CORE_PRESENTER )
+	// RFC 0016 R91 part f: the desktop core shader API's presentation. Its
+	// device is the one the core borrows on Vulkan; it goes after the core.
+	struct CorePresentation
+	{
+		std::unique_ptr<render_vulkan::ICorePresenter> presenter;
+		std::unique_ptr<render::pass::output::EncodedCopy> copy;
+		render::device::TextureId source;
+	};
+	std::unique_ptr<CorePresentation> m_pCorePresentation;
+#endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
 	// RFC 0016 legacy device facade F2: the owner of the native Vulkan
 	// backend's device; the backend borrows it, and the material system has
@@ -1024,6 +1042,26 @@ bool CSourceAppSystemGroup::Create()
 		// engine starts later; until then it runs inline.
 		m_pRenderCoreWorkers = CreateComputePoolWorkerBackend();
 		config.computeWorkers = m_pRenderCoreWorkers;
+#if defined( LINKED_CORE_PRESENTER )
+		// On Vulkan the core shader API's frames show in the engine's window:
+		// the core draws on the presenter's device. Without a window system
+		// (the offscreen driver) frames are drawn and not shown.
+		if ( !Q_stricmp( config.device, "vulkan" ) && !Q_stricmp( selected->id, "pica" ) )
+		{
+			char presenterError[512] = {};
+			auto presentation = std::make_unique<CorePresentation>();
+			presentation->presenter = render_vulkan::CreateSdl3CorePresenter(
+			    config.validation, presenterError, sizeof( presenterError ) );
+			if ( presentation->presenter )
+			{
+				config.borrowedDevice = &presentation->presenter->Port();
+				m_pCorePresentation = std::move( presentation );
+			}
+			else
+				Msg( "Core shader API presentation unavailable (%s): frames are not shown.\n",
+				    presenterError );
+		}
+#endif
 		RenderCoreResult result;
 		m_pRenderCore = RenderCore_Create( &config, &result );
 		if ( !m_pRenderCore )
@@ -1049,16 +1087,83 @@ bool CSourceAppSystemGroup::Create()
 		PicaShaderBackend_BindDevice( binding->device );
 		PicaShaderBackend_BindCorePassRecorder( binding->corePasses );
 #endif
+#if defined( LINKED_CORE_PRESENTER )
+		if ( m_pCorePresentation )
+		{
+			m_pCorePresentation->copy =
+			    render::pass::output::EncodedCopy::Create( m_pCorePresentation->presenter->Port() );
+			PicaShaderBackend_BindPresenter(
+			    []( void *context, render::device::IRenderDevice2 &, std::uint64_t color,
+			        unsigned int width, unsigned int height )
+			    {
+				    CorePresentation &p = *static_cast<CorePresentation *>( context );
+				    if ( !p.copy || !g_pLauncherMgr )
+					    return false;
+				    p.source = render::device::TextureId{ color };
+				    render::device::CompletionToken submitted;
+				    char error[256] = {};
+				    // The video mode's vsync (mat_vsync), as the material system set it.
+				    static ConVarRef s_vsync( "mat_vsync" );
+				    const bool shown = p.presenter->PresentFrame(
+				        g_pLauncherMgr->GetWindowRef(), width, height,
+				        s_vsync.IsValid() ? s_vsync.GetBool() : true,
+				        []( void *user, render::device::CommandEncoder &encoder,
+				            const render_vulkan::ICorePresenter::Target &target )
+				        {
+					        CorePresentation &q = *static_cast<CorePresentation *>( user );
+					        render::pass::output::EncodedCopyTargets targets;
+					        targets.source = q.source;
+					        targets.sourceUsage = render::device::ResourceUsage::kSampled;
+					        targets.target = target.texture;
+					        targets.targetFormat = target.format;
+					        targets.targetUsage = target.usage;
+					        targets.width = target.width;
+					        targets.height = target.height;
+					        return q.copy->Record( encoder, targets );
+				        },
+				        &p, &submitted, error, sizeof( error ) );
+				    if ( submitted.NamesSubmission() )
+					    p.copy->Collect( submitted );
+				    // Tests and evidence: -core_present_capture <frame> <path> writes that
+				    // presented frame, as the window's swapchain holds it.
+				    static int s_presented = 0;
+				    static const int s_captureFrame =
+				        CommandLine()->ParmValue( "-core_present_capture", -1 );
+				    if ( ++s_presented == s_captureFrame )
+					    (void)p.presenter->CaptureNextPresented( CommandLine()->ParmValue(
+					        "-core_present_capture_path", "core_present.ppm" ) );
+				    static bool s_firstShown = false;
+				    if ( shown && !s_firstShown )
+				    {
+					    s_firstShown = true;
+					    Msg( "Core shader API presentation: first frame shown (%ux%u)\n", width,
+					        height );
+				    }
+				    if ( error[0] )
+				    {
+					    static bool s_reported = false;
+					    if ( !s_reported )
+						    Warning( "Core shader API presentation: %s\n", error );
+					    s_reported = true;
+				    }
+				    return shown;
+			    },
+			    m_pCorePresentation.get() );
+		}
+#endif
 #if defined( LINKED_PICA_BACKEND ) && defined( LINKED_WEBGPU_DEVICE )
 		// RFC 0029: frames on the WebGPU device show on the page's canvas.
-		PicaShaderBackend_BindPresenter(
-		    []( void *, render::device::IRenderDevice2 &device, std::uint64_t color,
-		        unsigned int width, unsigned int height )
-		    {
-			    return render::device::webgpu::PresentToCanvas(
-			        device, render::device::TextureId{ color }, width, height, "#canvas" );
-		    },
-		    nullptr );
+		if ( !Q_stricmp( config.device, "webgpu" ) )
+		{
+			PicaShaderBackend_BindPresenter(
+			    []( void *, render::device::IRenderDevice2 &device, std::uint64_t color,
+			        unsigned int width, unsigned int height )
+			    {
+				    return render::device::webgpu::PresentToCanvas(
+				        device, render::device::TextureId{ color }, width, height, "#canvas" );
+			    },
+			    nullptr );
+		}
 #endif
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 		// RFC 0016 legacy device facade (F1): the material system reports the
@@ -1232,15 +1337,24 @@ void CSourceAppSystemGroup::Destroy()
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 	NativeVulkanShaderBackend_BindCorePassRecorder( nullptr );
 #endif
-#if defined( LINKED_PICA_BACKEND ) && defined( LINKED_WEBGPU_DEVICE )
+#if defined( LINKED_PICA_BACKEND ) &&                                                              \
+    ( defined( LINKED_WEBGPU_DEVICE ) || defined( LINKED_CORE_PRESENTER ) )
 	PicaShaderBackend_BindPresenter( nullptr, nullptr );
 #endif
 #if defined( LINKED_PICA_BACKEND )
 	PicaShaderBackend_BindCorePassRecorder( nullptr );
 	PicaShaderBackend_BindDevice( nullptr );
 #endif
+#if defined( LINKED_CORE_PRESENTER )
+	if ( m_pCorePresentation )
+		m_pCorePresentation->copy.reset();
+#endif
 	RenderCore_Destroy( m_pRenderCore );
 	m_pRenderCore = nullptr;
+#if defined( LINKED_CORE_PRESENTER )
+	// The core borrowed its device.
+	m_pCorePresentation.reset();
+#endif
 	DestroyComputePoolWorkerBackend( m_pRenderCoreWorkers );
 	m_pRenderCoreWorkers = nullptr;
 #endif

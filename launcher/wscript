@@ -56,6 +56,12 @@ def build(bld):
 	if bld.env.CORE_SHADER_API:
 		libs += ['shaderapipica']
 		defines += ['LINKED_PICA_BACKEND']
+		# RFC 0016 R91 part f: on the Linux desktop the core shader API's
+		# frames show through the SDL3-Vulkan bridge's core presenter.
+		if bld.env.RENDER_CORE_VULKAN and bld.env.DEST_OS == 'linux':
+			libs += ['render_bridge_sdl3_vulkan_core', 'render_pass_output', 'render_device_vulkan',
+				'SDL3', 'VULKAN']
+			defines += ['LINKED_CORE_PRESENTER']
 	# RFC 0016: this root composes the render core (render.composition). Its
 	# modules are static libraries of client, tool and test builds only.
 	if bld.env.RENDER_CORE:

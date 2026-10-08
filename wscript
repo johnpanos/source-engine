@@ -1241,6 +1241,8 @@ def configure(conf):
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
 		if conf.env.CORE_SHADER_API:
 			projects['game'] += ['materialsystem/shaderapipica']
+			if conf.env.RENDER_CORE_VULKAN and not conf.env.NATIVE_VULKAN:
+				projects['game'] += ['render/bridge/sdl3-vulkan']
 		if conf.env.NATIVE_VULKAN:
 			projects['game'] += ['materialsystem/shaderapivulkan', 'render/bridge/sdl3-vulkan']
 			if not conf.env.ANDROID_SDL3:
@@ -1426,6 +1428,8 @@ def build(bld):
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
 		if bld.env.CORE_SHADER_API:
 			projects['game'] += ['materialsystem/shaderapipica']
+			if bld.env.RENDER_CORE_VULKAN and not bld.env.NATIVE_VULKAN:
+				projects['game'] += ['render/bridge/sdl3-vulkan']
 		if bld.env.NATIVE_VULKAN:
 			projects['game'] += ['materialsystem/shaderapivulkan', 'render/bridge/sdl3-vulkan']
 			if not bld.env.ANDROID_SDL3:

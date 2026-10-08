@@ -38,6 +38,26 @@ def build(bld):
 			'wayland/color-management-v1-protocol.c']
 		bridge_libs += ['WAYLAND_CLIENT']
 		bridge_defines += ['SDL3_WAYLAND_COLOR']
+	# The desktop core shader API's presentation (core_presenter.h, RFC 0016
+	# R91 cutover part f): the render.backend.v1 device, the SDL3 surfaces and
+	# the bridge's own presentation, which the composition root owns.
+	if bld.env.CORE_SHADER_API and bld.env.RENDER_CORE_VULKAN and bld.env.DEST_OS == 'linux':
+		core_source = ['core_presenter.cpp', 'sdl3_vulkan_presentation.cpp',
+			'../../device/vulkan/backend_v1/render_backend_v1.cpp',
+			'../../../platform/sdl3/render_surface/sdl3_render_surfaces.cpp'] + \
+			[s for s in bridge_source if s.startswith('sdl3_dynamic_range') or s.startswith('wayland/')]
+		bld.stlib(
+			features = 'c cxx',
+			source = core_source,
+			target = 'render_bridge_sdl3_vulkan_core',
+			name = 'render_bridge_sdl3_vulkan_core',
+			arch_module = 'render.bridge.sdl3-vulkan',
+			includes = [ '.', '../../../public' ] + bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
+			defines = bridge_defines,
+			use = bridge_libs + ['render_device_vulkan', 'render_device'],
+			install_path = None)
+	if not bld.env.NATIVE_VULKAN:
+		return
 	bld.stlib(
 		features = 'c cxx',
 		source = bridge_source,
