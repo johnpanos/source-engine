@@ -41,6 +41,11 @@ namespace jobsystem
 class IWorkerBackend;
 }
 
+namespace render::device
+{
+class IRenderDevice2;
+}
+
 struct RenderCoreConfig
 {
 	// "null", "vulkan" or "gl"; the root takes it from -render-device, with
@@ -77,6 +82,12 @@ struct RenderCoreConfig
 	// such as the material system's MatQueue pool: the core's pooled work would
 	// then wait behind its own caller (RFC 0003's forbidden nested wait).
 	jobsystem::IWorkerBackend *computeWorkers = nullptr;
+	// A device of the `device` adapter the root created and owns, in place of
+	// one the core creates: the desktop core shader API's presentable Vulkan
+	// host device (render/device/vulkan/host_device.h), whose swapchain the
+	// root's presenter drives. It must outlive the core; null: the core
+	// creates its own.
+	render::device::IRenderDevice2 *borrowedDevice = nullptr;
 };
 
 enum RenderCoreStatus

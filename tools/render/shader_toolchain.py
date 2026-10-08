@@ -258,7 +258,8 @@ GENERATED = {
     "output_spv.h": ("render::pass::output::spirv",
         "the output pass: exposure, tone map and output encoding (RFC 0016, render.output.v1)", (
         ("kOutputVertex", OUTPUT + "/output.vert", DEVICE_OPTIONS),
-        ("kOutputFragment", OUTPUT + "/output.frag", DEVICE_OPTIONS))),
+        ("kOutputFragment", OUTPUT + "/output.frag", DEVICE_OPTIONS),
+        ("kOutputEncodedCopyFragment", OUTPUT + "/encoded_copy.frag", DEVICE_OPTIONS))),
     "legacy_depth_alpha_spv.h": ("render::legacy::spirv",
         "render.legacy-frontend's depth-alpha copy (WRITE_DEPTH_TO_DESTALPHA, RFC 0016 K9)", (
         ("kDepthAlphaFragment", "render/legacy/depth_alpha.frag", DEVICE_OPTIONS),)),
@@ -327,6 +328,8 @@ GENERATED = {
          DEVICE_OPTIONS + ("-DSSR_DIAGNOSTICS", "-DSEEDED_SSR_HARD_SWITCH")))),
     "output_defects_spv.h": ("rendertest::output::spirv",
         "the output suite's seeded fragment programs (render.output)", (
+        ("kOutputEncodedCopySwapsRedBlue", OUTPUT + "/encoded_copy.frag",
+         DEVICE_OPTIONS + ("-DSEEDED_ENCODED_COPY_SWAPS_RED_BLUE",)),
         ("kOutputAlwaysCompress", OUTPUT + "/output.frag",
          DEVICE_OPTIONS + ("-DSEEDED_ALWAYS_COMPRESS",)),
         ("kOutputPerChannel", OUTPUT + "/output.frag",

@@ -51,7 +51,10 @@
 
 struct RenderCore
 {
+	// The device the core draws on: its own, or (RenderCoreConfig::
+	// borrowedDevice) the root's, which outlives the core.
 	std::unique_ptr<render::device::IRenderDevice2> device;
+	render::device::IRenderDevice2 *port = nullptr;
 	std::unique_ptr<render::legacy::ILegacyFrontend> frontend;
 	// The BSP world drawn by the core; the frontend forwards its slots to it.
 	std::unique_ptr<render::composition::CoreWorld> world;
@@ -105,8 +108,8 @@ struct RenderCore
 		world.reset();
 		renderer.reset();
 		cullJobs.reset();
-		if ( device )
-			(void)device->WaitIdle(); // reviewed idle wait: teardown
+		if ( port )
+			(void)port->WaitIdle(); // reviewed idle wait: teardown
 		frontend.reset();
 		device.reset();
 	}
@@ -315,25 +318,38 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	// The core starts no threads: compute work runs on the workers the root
 	// lends it (RFC 0003 "capacity policy").
 	core->cullJobs = std::make_unique<jobsystem::TaskExecutor>( config->computeWorkers );
-	render::device::DeviceRequest request;
-	request.validation = config->validation;
-	auto device = CreateDevice( *descriptor, request, *masked );
-	if ( !device )
-		return Fail( result, RENDER_CORE_DEVICE_FAILED,
-		    std::string( "render device '" ) + config->device + "' failed" +
-		        ( masked->Bits() ? " with capabilities masked" : "" ) + ": " +
-		        render::device::DescribeStatus( device.Error().status ) + " in " +
-		        render::device::DescribeOperation( device.Error().operation ) );
-	core->device = std::move( device ).Value();
+	if ( config->borrowedDevice )
+	{
+		// The root's device of this adapter (a presentable host device): the
+		// core masks nothing on a device it did not create.
+		if ( masked->Bits() )
+			return Fail( result, RENDER_CORE_INVALID_CONFIG,
+			    "masked capabilities need a device the core creates" );
+		core->port = config->borrowedDevice;
+	}
+	else
+	{
+		render::device::DeviceRequest request;
+		request.validation = config->validation;
+		auto device = CreateDevice( *descriptor, request, *masked );
+		if ( !device )
+			return Fail( result, RENDER_CORE_DEVICE_FAILED,
+			    std::string( "render device '" ) + config->device + "' failed" +
+			        ( masked->Bits() ? " with capabilities masked" : "" ) + ": " +
+			        render::device::DescribeStatus( device.Error().status ) + " in " +
+			        render::device::DescribeOperation( device.Error().operation ) );
+		core->device = std::move( device ).Value();
+		core->port = core->port;
+	}
 	core->deviceName = std::string( descriptor->id );
 	core->frontend = render::legacy::CreateLegacyFrontend( config->legacyBackend );
 
 	render::renderer::RendererDeps deps;
-	deps.device = core->device.get();
+	deps.device = core->port;
 	// Capability negotiation (RFC 0016 K10): declared fallbacks only, each
 	// reported by name.
 	render::composition::Negotiation negotiated = render::composition::Negotiate( config->features,
-	    config->fallbacks ? config->fallbacks : "", core->device->Facts().capabilities,
+	    config->fallbacks ? config->fallbacks : "", core->port->Facts().capabilities,
 	    [&core]( std::string_view name )
 	    {
 		    return RenderCore_CreateFeature( name, *core->frontend );
@@ -366,7 +382,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->renderer = std::move( renderer ).Value();
 	core->frontend->BindRenderer( core->renderer.get() );
 
-	core->binding.device = core->device.get();
+	core->binding.device = core->port;
 	core->binding.renderer = core->renderer.get();
 	core->binding.sceneFactory.create = &render::scene::CreateRenderScene;
 	core->binding.sceneFactory.makeView = &render::scene::MakeView;
@@ -402,7 +418,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	}
 	core->panels =
 	    std::make_unique<render::composition::CorePanels>( *core->frontend, *core->renderer,
-	        core->device->Facts().capabilities.Has( render::device::Capability::kCompute ) );
+	        core->port->Facts().capabilities.Has( render::device::Capability::kCompute ) );
 	core->ui = std::make_unique<render::composition::CoreUi>( *core->frontend, *core->world );
 	core->luminance = std::make_unique<render::composition::CoreLuminance>( *core->frontend );
 	core->visibility = std::make_unique<render::composition::CoreVisibility>( *core->frontend );
