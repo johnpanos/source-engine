@@ -157,7 +157,7 @@ class PlanTest(unittest.TestCase):
                   "scene": str(self.model), "quality": "source2"}, self.tmp / "failed")
         self.assertFalse(set(visited) & set(light_baker.OPERATIONS))
 
-    def check_back_end(self, pipeline, moving_light_gi=False):
+    def check_back_end(self, pipeline, moving_light_gi=False, props=False):
         # Moving-light GI is out of scope (user decision, 2026-09-30): no
         # profile bakes the radiosity transfer or the SDF volume; a manifest
         # may still ask for them, through the same seam.
@@ -172,8 +172,16 @@ class PlanTest(unittest.TestCase):
         self.assertLess(order.index("identity"), order.index("finish"))
         self.assertEqual([script for _, script in pipeline.baked],
                          [light_baker.OPERATIONS[op][0] for op, _ in pipeline.baked])
+        # A scene derived from the BSP gives its static props per-vertex light
+        # from the atlas (lightmap.prop_vertex_light, on by default), from
+        # their sample points; every map bakes its static lights' shadow masks
+        # (light-masks, the Source 2 defaults of 2026-10-06).
+        if props:
+            self.assertLess(order.index("prop-points"), order.index("prop-vertices"))
         self.assertEqual({op for op, _ in pipeline.baked},
-                         {"bake", "probe-volume"} | (set(gi) if moving_light_gi else set()))
+                         {"bake", "probe-volume", "light-masks"} |
+                         ({"prop-vertices"} if props else set()) |
+                         (set(gi) if moving_light_gi else set()))
 
     def test_a_private_fixture_can_ask_for_moving_light_gi(self):
         pipeline = plan({"schema": "pbrt-map-manifest/v1", "map": "room", "bsp": str(self.bsp),
@@ -181,7 +189,7 @@ class PlanTest(unittest.TestCase):
                          "radiosity": {"patch_size_m": 1.0, "transfer_rays": 16,
                                        "gather_rays": 64, "samples": 16},
                          "sdf_volume": {"voxel_m": 0.4}}, self.tmp / "gi")
-        self.check_back_end(pipeline, moving_light_gi=True)
+        self.check_back_end(pipeline, moving_light_gi=True, props=True)
 
     def test_derived_scene(self):
         pipeline = plan({"schema": "pbrt-map-manifest/v1", "map": "room", "bsp": str(self.bsp),
@@ -190,7 +198,7 @@ class PlanTest(unittest.TestCase):
         self.assertEqual(pipeline.order[0], "legacy-scene")
         self.assertNotIn("collision", pipeline.order)
         self.assertEqual(pipeline.paths["bsp"], self.bsp)
-        self.check_back_end(pipeline)
+        self.check_back_end(pipeline, props=True)
 
     def test_authored_scene_over_a_given_bsp(self):
         pipeline = plan({"schema": "pbrt-map-manifest/v1", "map": "room", "bsp": str(self.bsp),

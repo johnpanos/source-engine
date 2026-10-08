@@ -118,6 +118,11 @@
       "verdict": "safe",
       "note": "Reads its arguments and entity or rules members only."
     },
+    "game/server/fstop/npc_android_missile.cpp::PhysicsSolidMaskForEntity#0": {
+      "digest": "6a50eee0ce2f3fd4",
+      "verdict": "safe",
+      "note": "Combines the base mask with constant contents flags; reads no shared state."
+    },
     "game/server/func_break.cpp::PhysicsSolidMaskForEntity#0": {
       "digest": "76c7aa0deae3eeec",
       "verdict": "safe",
@@ -252,9 +257,9 @@
       "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
     },
     "game/shared/gamerules.cpp::ShouldCollide#0": {
-      "digest": "982eec63cbf39682",
+      "digest": "af76fc2934f90898",
       "verdict": "safe",
-      "note": "Debug wrapper (#if _DEBUG) that calls ShouldCollide_2 both ways and asserts symmetry; release builds use the ShouldCollide_2 body."
+      "note": "Pure collision-group rules on its arguments; the F-Stop camera/placement groups (2026-10) added only further argument comparisons."
     },
     "game/shared/hl1/hl1_gamerules.cpp::ShouldCollide#0": {
       "digest": "8a0ea031bf899a04",

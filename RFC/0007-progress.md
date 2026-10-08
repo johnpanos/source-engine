@@ -2236,3 +2236,17 @@ on 202 surfaces, two static brush placements and the omitted metal-grate
 coverage. Its 4096 chart layout passes with 1170 charts. This is producer
 evidence, not a published full-quality Intro4 rebake or game-image acceptance.
 R49's complete baker gate, R50, R95 and R96 remain open.
+
+## Known defect: a placed probe can straddle a doorway (recorded 2026-10-08)
+
+Since joint coverage selection (`select_coverage`, 22bfc7b16, 2026-10-02),
+`reflection_probe_set.place` on the two-rooms fixture chooses a capture 0.42 m
+inside room B whose depth fit sees through the doorway: it covers walkable
+samples in both rooms, so it wins the first pick, and its box spans x 3.08 to
+10.2. `room_bounded` cuts only open faces (sky or void), so a face that saw
+the neighbouring room's wall stays. `test_no_probe_straddles_a_doorway` is
+marked an expected failure that names this defect; the fix belongs to R50
+placement (for example, counting a capture's coverage only inside the room its
+fit encloses). The mirror test was updated to the joint design (the mirror is
+served by a nearby capture whose influence covers it), and the max_probes cap
+test to `MAX_PROBES + 1` (256).

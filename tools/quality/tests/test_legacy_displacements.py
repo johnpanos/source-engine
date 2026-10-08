@@ -73,11 +73,15 @@ class DisplacementReaderTests(unittest.TestCase):
         source, face = fixture()
         for lump, offset, fmt, value in ((26, 12, "i", -1), (26, 16, "i", 200),
                                          (26, 20, "i", 12), (26, 36, "H", 8),
-                                         (33, 0, "f", math.nan), (33, 16, "f", 300)):
+                                         (33, 0, "f", math.nan)):
             changed = bytearray(source.data)
             struct.pack_into("<" + fmt, changed, source.lumps[lump][0] + offset, value)
             with self.subTest(lump=lump, offset=offset), self.assertRaises(ValueError):
                 bsp.LegacyBsp(changed).displacement(face)
+        # Blend alphas above 255 (retail Portal 2 maps hold up to 9600) saturate.
+        changed = bytearray(source.data)
+        struct.pack_into("<f", changed, source.lumps[33][0] + 16, 300)
+        self.assertEqual(bsp.LegacyBsp(changed).displacement(face)["alpha"].max(), 1.0)
         with self.assertRaisesRegex(ValueError, "missing displacement"):
             source.displacement(dict(face, dispinfo=100))
         with self.assertRaisesRegex(ValueError, "start"):

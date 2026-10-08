@@ -19,7 +19,7 @@ class ProductionPolicy(unittest.TestCase):
     def test_quality_cannot_be_overridden(self):
         for key, value in (("lightmap", {"samples": 1}),
                            ("lightmap", {"device": "cpu"}),
-                           ("probe_volume", {"fit_limit": True}),
+                           ("probe_volume", {"fit_limit": False}),
                            ("radiosity", {"patch_size_m": 1}),
                            ("reflection_probe", None),
                            ("audit", {"require_directional": False})):

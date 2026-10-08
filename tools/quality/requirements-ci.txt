@@ -1,0 +1,8 @@
+# Python packages the tools/quality tests import on the hosted runners
+# (composition.yml). numpy and imageio match the developer host; OpenUSD's
+# Python bindings come from usd-core, whose oldest PyPI release (26.5) is
+# newer than the 25.11 the map tools build from source
+# (quality/product_profiles/openusd-linux-tools.json).
+numpy==2.4.4
+imageio==2.37.3
+usd-core==26.5
