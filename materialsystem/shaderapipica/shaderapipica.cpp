@@ -2596,8 +2596,9 @@ extern "C" DLL_EXPORT void PicaShaderBackend_BindPresenter( pica::Presenter pres
 
 DLL_EXPORT const render::LegacyShaderProvider *PicaShaderBackend_Describe()
 {
+	// The render core draws everything this shader API is given (RFC 0026).
 	static const render::LegacyShaderProvider provider = {
-	    "pica", "shaderapipica", CreatePicaShaderBackend, false };
+	    "pica", "shaderapipica", CreatePicaShaderBackend, false, nullptr, nullptr, true };
 	return &provider;
 }
 

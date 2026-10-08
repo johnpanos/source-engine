@@ -177,6 +177,10 @@ struct LegacyShaderProvider
 	// the state. context is owned by the provider and outlives the binding.
 	void *context = nullptr;
 	bool ( *createFor )( void *context, LegacyShaderServices *services ) = nullptr;
+	// The provider draws nothing itself: every draw reaches the screen only
+	// through the render core (the core shader API). The core then takes the
+	// legacy stream's dynamic draws as well (r_core_dynamic_draws).
+	bool drawsOnlyThroughCore = false;
 };
 
 } // namespace render
