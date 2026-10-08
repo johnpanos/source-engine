@@ -212,8 +212,6 @@
       "materialsystem/stdshaders/DecalModulate_dx9.cpp",
       "materialsystem/stdshaders/Downsample.cpp",
       "materialsystem/stdshaders/Engine_Post_dx9.cpp",
-      "materialsystem/stdshaders/HDRCombineTo16Bit.cpp",
-      "materialsystem/stdshaders/HDRSelectRange.cpp",
       "materialsystem/stdshaders/MonitorScreen_dx9.cpp",
       "materialsystem/stdshaders/builtin_shader_provider.cpp",
       "materialsystem/stdshaders/cloak.cpp",
