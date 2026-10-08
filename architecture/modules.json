@@ -1523,7 +1523,9 @@
         "kind": "legacy-interop",
         "legacyIncludes": [
           "appframework/IAppSystem.h",
-          "materialsystem/imaterial.h"
+          "materialsystem/imaterial.h",
+          "materialsystem/imaterialvar.h",
+          "tier1/strtools.h"
         ]
       },
       {
