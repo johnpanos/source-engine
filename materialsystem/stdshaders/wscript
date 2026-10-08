@@ -25,7 +25,6 @@ def build(bld):
 		'AccumBuff4Sample.cpp',
 		'BaseVSShader.cpp',
 		'fixed_state_shaders.cpp',
-		'bik_dx90.cpp',
 		'Bloom.cpp',
 		'BlurFilterX.cpp',
 		'BlurFilterY.cpp',
@@ -34,7 +33,6 @@ def build(bld):
 		'cloak.cpp',
 		'cloak_blended_pass_helper.cpp',
 		'cloak_dx9_helper.cpp',
-		'cloud_dx9.cpp',
 		'colorcorrection.cpp',
 		'compositor.cpp',
 		'core_dx9.cpp',
@@ -53,7 +51,6 @@ def build(bld):
 		'flesh_interior_blended_pass_helper.cpp',
 		'HDRCombineTo16Bit.cpp',
 		'HDRSelectRange.cpp',
-		'introscreenspaceeffect.cpp',
 		'lightmappedgeneric_dx9.cpp',
 		'lightmappedgeneric_dx9_helper.cpp',
 		'lightmappedpaint_dx9.cpp',
@@ -74,10 +71,8 @@ def build(bld):
 		'refract_dx9_helper.cpp',
 		'screenspace_general.cpp',
 		'shadow.cpp',
-		'shadowmodel_dx9.cpp',
 		'shatteredglass.cpp',
 		'skin_dx9_helper.cpp',
-		'sky_dx9.cpp',
 		'sky_hdr_dx9.cpp',
 		'solidenergy_dx9.cpp',
 		'solidenergy_dx9_helper.cpp',
@@ -97,7 +92,6 @@ def build(bld):
 		'worldtwotextureblend.cpp',
 		'worldvertextransition.cpp',
 		'worldvertextransition_dx8_helper.cpp',
-		'eyeball.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]
 	# The canonical shader binds Vulkan's native world pipeline. DX9 keeps the

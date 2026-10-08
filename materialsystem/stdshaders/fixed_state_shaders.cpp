@@ -52,6 +52,13 @@ enum class Op
 	Pos1,           // VertexShaderVertexFormat( POSITION, 1, 0, 0 )
 	Pos3EyeGlint,   // VertexShaderVertexFormat( POSITION, 3, { 2, 2, 3 }, 0 )
 	FogToFogColor,  // FogToFogColor()
+	FogToWhite,     // FogToWhite()
+	DefaultFog,     // DefaultFog()
+	Format,         // VertexShaderVertexFormat( a, b, 0, 0 )
+	Initial,        // SetInitialShadowState()
+	AdditiveBlend,  // EnableBlending( true ); BlendFunc( ONE, ONE ) if $additive, else ( a, b )
+	SkySrgbRead,    // EnableSRGBRead( SAMPLER0, base texture is not 16-bit-per-channel )
+	IntroSrgb,      // with $ENABLESRGB (extra a) or on OSX: sRGB read 0 and 1, sRGB write
 };
 
 struct Step
@@ -76,6 +83,34 @@ enum class LoadAs
 	Texture,
 	CubeMap,
 	OsxSrgbTexture, // TEXTUREFLAGS_SRGB where OSX render targets are sRGB
+	SkyTexture,     // TEXTUREFLAGS_SRGB unless the texture is 16 bits per channel
+};
+
+bool IsSixteenBitPerChannel( ITexture *texture )
+{
+	const ImageFormat fmt = texture->GetImageFormat();
+	return fmt == IMAGE_FORMAT_RGBA16161616F || fmt == IMAGE_FORMAT_RGBA16161616;
+}
+
+// A typed value set at param init on an extra param the material leaves undefined.
+struct Default
+{
+	int extra = -1; // -1 ends the list
+	ShaderParamType_t type = SHADER_PARAM_TYPE_FLOAT; // FLOAT or VEC2
+	float x = 0.0f;
+	float y = 0.0f;
+};
+
+// A base parameter the row redeclares (SHADER_PARAM_OVERRIDE): its default,
+// help and flags. The type is recorded as written but, as with the macro,
+// the base parameter keeps its own.
+struct Override
+{
+	int base = -1; // -1: none
+	ShaderParamType_t type = SHADER_PARAM_TYPE_TEXTURE;
+	const char *defaultValue = nullptr;
+	const char *help = nullptr;
+	int flags = 0;
 };
 
 // An unused slot keeps index -1 (never 0: that is $FLAGS).
@@ -104,6 +139,11 @@ struct FixedStateRow
 	Load loads[kMaxLoads];         // index -1 ends the list
 	Step steps[kMaxSteps];         // Op::End ends the list
 	int initFlags = 0;             // MATERIAL_VAR_* set at init
+	Default defaults[3] = {};
+	Override overrides[2] = {};
+	// A SHADER_FALLBACK block's answer, as opposed to a DEFINE_FALLBACK_SHADER
+	// alias (fallback above): the shader exists in its own right.
+	const char *shaderFallback = nullptr;
 };
 
 #define NO_PARAMS {}
@@ -214,6 +254,60 @@ const FixedStateRow kRows[] = {
 	        { Op::SrgbWrite, 1, 0 }, { Op::AlphaWrites, 1, 0 }, { Op::DepthWrites, 0, 0 },
 	        { Op::DepthFunc, SHADER_DEPTHFUNC_ALWAYS, 0 }, { Op::CompressedPos, 0, 0 } },
 	    MATERIAL_VAR_NO_DEBUG_OVERRIDE },
+	{ "Bik", nullptr, 0, 0,
+	    { { "$YTEXTURE", T, "shadertest/BaseTexture", "Y Bink Texture" },
+	        { "$CRTEXTURE", T, "shadertest/BaseTexture", "Cr Bink Texture" },
+	        { "$CBTEXTURE", T, "shadertest/BaseTexture", "Cb Bink Texture" } },
+	    -1, 0, { { true, 0, true }, { true, 1, true }, { true, 2, true } },
+	    { { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::Texture, SHADER_SAMPLER1, 0 },
+	        { Op::Texture, SHADER_SAMPLER2, 0 }, { Op::Pos1, 0, 0 }, { Op::SrgbWrite, 0, 0 } } },
+	{ "ShadowModel", "ShadowModel_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "ShadowModel_DX9", nullptr, SHADER_NOT_EDITABLE, 0,
+	    { { "$BASETEXTUREOFFSET", SHADER_PARAM_TYPE_VEC2, "[0 0]", "$baseTexture texcoord offset" },
+	        { "$BASETEXTURESCALE", SHADER_PARAM_TYPE_VEC2, "[1 1]", "$baseTexture texcoord scale" },
+	        { "$FALLOFFOFFSET", F, "0", "Distance at which shadow starts to fade" },
+	        { "$FALLOFFDISTANCE", F, "100", "Max shadow distance" },
+	        { "$FALLOFFAMOUNT", F, "0.9", "Amount to brighten the shadow at max dist" } },
+	    -1, 0, { { false, BASETEXTURE, true } },
+	    { { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::Blending, SHADER_BLEND_DST_COLOR, SHADER_BLEND_ZERO },
+	        { Op::DepthWrites, 0, 0 }, { Op::Format, VERTEX_POSITION | VERTEX_NORMAL, 1 },
+	        { Op::FogToWhite, 0, 0 } },
+	    0,
+	    { { 1, SHADER_PARAM_TYPE_VEC2, 1.0f, 1.0f }, { 3, F, 100.0f }, { 4, F, 0.9f } } },
+	// Cloud's source also set $CLOUDSCALE and $MASKSCALE to [1 1] at instance
+	// init, but the type defaults ([0 0]) had defined them by then.
+	{ "Cloud", "Cloud_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "Cloud_dx9", nullptr, 0, 0,
+	    { { "$CLOUDALPHATEXTURE", T, "shadertest/cloudalpha", "cloud alpha texture" },
+	        { "$CLOUDSCALE", SHADER_PARAM_TYPE_VEC2, "[1 1]", "cloudscale" },
+	        { "$MASKSCALE", SHADER_PARAM_TYPE_VEC2, "[1 1]", "maskscale" } },
+	    -1, 0, { { false, BASETEXTURE, false, TEXTUREFLAGS_SRGB }, { true, 0, false, TEXTUREFLAGS_SRGB } },
+	    { { Op::DepthWrites, 0, 0 },
+	        { Op::AdditiveBlend, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA },
+	        { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::Texture, SHADER_SAMPLER1, 0 },
+	        { Op::Format, VERTEX_POSITION, 2 }, { Op::DefaultFog, 0, 0 } },
+	    0, {}, { { BASETEXTURE, T, "shadertest/cloud", "cloud texture", 0 } } },
+	// A dead shader: it only ever falls back to Wireframe.
+	{ "Eyeball", nullptr, 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {}, 0, {},
+	    { { BASETEXTURE, T, "models/alyx/pupil_l", "iris texture", 0 },
+	        { BASETEXTURETRANSFORM, SHADER_PARAM_TYPE_MATRIX,
+	            "center .5 .5 scale 1 1 rotate 0 translate 0 0", "unused",
+	            SHADER_PARAM_NOT_EDITABLE } },
+	    "Wireframe" },
+	{ "Sky_DX9", nullptr, 0, 0, NO_PARAMS, -1, 0,
+	    { { false, BASETEXTURE, true, 0, LoadAs::SkyTexture } },
+	    { { Op::Initial, 0, 0 }, { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::SkySrgbRead, 0, 0 },
+	        { Op::Pos1, 0, 0 }, { Op::SrgbWrite, 1, 0 }, { Op::AlphaWrites, 1, 0 } },
+	    MATERIAL_VAR_NOFOG | MATERIAL_VAR_IGNOREZ, {},
+	    { { COLOR, SHADER_PARAM_TYPE_VEC3, "[ 1 1 1]", "color multiplier", SHADER_PARAM_NOT_EDITABLE },
+	        { ALPHA, F, "1.0", "unused", SHADER_PARAM_NOT_EDITABLE } } },
+	{ "IntroScreenSpaceEffect", nullptr, SHADER_NOT_EDITABLE,
+	    MATERIAL_VAR2_NEEDS_FULL_FRAME_BUFFER_TEXTURE,
+	    { { "$MODE", I, "0", "" }, { "$ENABLESRGB", SHADER_PARAM_TYPE_BOOL, "0", "" } }, 1, 0,
+	    NO_LOADS,
+	    { { Op::Texture, SHADER_SAMPLER0, 0 }, { Op::Texture, SHADER_SAMPLER1, 0 },
+	        { Op::IntroSrgb, 1, 0 }, { Op::Pos1, 0, 0 },
+	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE } } },
 	{ "EyeGlint", "EyeGlint_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
 	{ "EyeGlint_dx9", nullptr, 0, 0, NO_PARAMS, -1, 0, NO_LOADS,
 	    { { Op::DepthWrites, 0, 0 }, { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ONE },
@@ -242,7 +336,7 @@ public:
 	int GetFlags() const override { return m_Row.shaderFlags; }
 	char const *GetFallbackShader( IMaterialVar **params ) const override
 	{
-		return m_Row.fallback;
+		return m_Row.fallback ? m_Row.fallback : m_Row.shaderFallback;
 	}
 	int GetNumParams() const override { return CBaseVSShader::GetNumParams() + m_nParams; }
 	char const *GetParamName( int param ) const override
@@ -252,9 +346,12 @@ public:
 	}
 	char const *GetParamHelp( int param ) const override
 	{
+		if ( const Override *o = BaseOverride( param ) )
+			return o->help;
 		const Param *p = RowParam( param );
 		return p ? p->help : CBaseVSShader::GetParamHelp( param );
 	}
+	// An override keeps the base parameter's type, as SHADER_PARAM_OVERRIDE's does.
 	ShaderParamType_t GetParamType( int param ) const override
 	{
 		const Param *p = RowParam( param );
@@ -262,11 +359,15 @@ public:
 	}
 	char const *GetParamDefault( int param ) const override
 	{
+		if ( const Override *o = BaseOverride( param ) )
+			return o->defaultValue;
 		const Param *p = RowParam( param );
 		return p ? p->defaultValue : CBaseVSShader::GetParamDefault( param );
 	}
 	int GetParamFlags( int param ) const override
 	{
+		if ( const Override *o = BaseOverride( param ) )
+			return o->flags;
 		return RowParam( param ) ? 0 : CBaseVSShader::GetParamFlags( param );
 	}
 
@@ -282,6 +383,18 @@ protected:
 			IMaterialVar *var = params[Extra( m_Row.intDefault )];
 			if ( !var->IsDefined() )
 				var->SetIntValue( m_Row.intDefaultValue );
+		}
+		for ( const Default &value : m_Row.defaults )
+		{
+			if ( value.extra < 0 )
+				break;
+			IMaterialVar *var = params[Extra( value.extra )];
+			if ( var->IsDefined() )
+				continue;
+			if ( value.type == SHADER_PARAM_TYPE_VEC2 )
+				var->SetVecValue( value.x, value.y );
+			else
+				var->SetFloatValue( value.x );
 		}
 	}
 	void OnInitShaderInstance(
@@ -302,6 +415,10 @@ protected:
 			case LoadAs::CubeMap:
 				LoadCubeMap( param, load.textureFlags );
 				break;
+			case LoadAs::SkyTexture:
+				LoadTexture( param, IsSixteenBitPerChannel( params[param]->GetTextureValue() )
+				                        ? 0 : TEXTUREFLAGS_SRGB );
+				break;
 			case LoadAs::OsxSrgbTexture:
 				LoadTexture( param, IsOSX() && g_pHardwareConfig->CanDoSRGBReadFromRTs()
 				                        ? TEXTUREFLAGS_SRGB : 0 );
@@ -313,7 +430,7 @@ protected:
 	    IShaderDynamicAPI *pShaderAPI, VertexCompressionType_t vertexCompression,
 	    CBasePerMaterialContextData **pContextDataPtr ) override
 	{
-		if ( m_Row.fallback )
+		if ( m_Row.fallback || m_Row.shaderFallback )
 			return;
 		SHADOW_STATE
 		{
@@ -321,7 +438,7 @@ protected:
 			{
 				if ( step.op == Op::End )
 					break;
-				Apply( step, pShaderShadow );
+				Apply( step, params, pShaderShadow );
 			}
 		}
 		Draw();
@@ -335,7 +452,17 @@ private:
 		return index >= 0 && index < m_nParams ? &m_Row.params[index] : nullptr;
 	}
 
-	void Apply( const Step &step, IShaderShadow *pShaderShadow )
+	const Override *BaseOverride( int param ) const
+	{
+		for ( const Override &o : m_Row.overrides )
+		{
+			if ( o.base >= 0 && o.base == param )
+				return &o;
+		}
+		return nullptr;
+	}
+
+	void Apply( const Step &step, IMaterialVar **params, IShaderShadow *pShaderShadow )
 	{
 		switch ( step.op )
 		{
@@ -401,6 +528,38 @@ private:
 		}
 		case Op::FogToFogColor:
 			FogToFogColor();
+			break;
+		case Op::FogToWhite:
+			FogToWhite();
+			break;
+		case Op::DefaultFog:
+			DefaultFog();
+			break;
+		case Op::Format:
+			pShaderShadow->VertexShaderVertexFormat( step.a, step.b, 0, 0 );
+			break;
+		case Op::Initial:
+			SetInitialShadowState();
+			break;
+		case Op::AdditiveBlend:
+			pShaderShadow->EnableBlending( true );
+			if ( IS_FLAG_SET( MATERIAL_VAR_ADDITIVE ) )
+				pShaderShadow->BlendFunc( SHADER_BLEND_ONE, SHADER_BLEND_ONE );
+			else
+				pShaderShadow->BlendFunc(
+				    ShaderBlendFactor_t( step.a ), ShaderBlendFactor_t( step.b ) );
+			break;
+		case Op::SkySrgbRead:
+			pShaderShadow->EnableSRGBRead( SHADER_SAMPLER0,
+			    !IsSixteenBitPerChannel( params[BASETEXTURE]->GetTextureValue() ) );
+			break;
+		case Op::IntroSrgb:
+			if ( params[Extra( step.a )]->GetIntValue() || IsOSX() )
+			{
+				pShaderShadow->EnableSRGBRead( SHADER_SAMPLER0, true );
+				pShaderShadow->EnableSRGBRead( SHADER_SAMPLER1, true );
+				pShaderShadow->EnableSRGBWrite( true );
+			}
 			break;
 		}
 	}
