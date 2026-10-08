@@ -41,6 +41,7 @@ struct RenderCoreHostState
 	render::frame::IRenderer *renderer = nullptr;
 	render::scene::SceneFactory sceneFactory;
 	const char *deviceName = nullptr;
+	bool coreDrawsEverything = false;
 	render::legacy::ILegacyCapabilities *capabilities = nullptr;
 	IRenderCoreWorld *world = nullptr;
 	RenderCoreBinding::TemporalControl temporal;
@@ -248,6 +249,7 @@ DLL_EXPORT bool Engine_BindRenderCore( const RenderCoreBinding *pBinding )
 	host.renderer = pBinding->renderer;
 	host.sceneFactory = pBinding->sceneFactory;
 	host.deviceName = pBinding->deviceName;
+	host.coreDrawsEverything = pBinding->coreDrawsEverything;
 	host.capabilities = pBinding->capabilities;
 	host.world = pBinding->world;
 	if ( host.world )
@@ -486,7 +488,8 @@ void RenderCoreHost_BeginFrame()
 			    r_core_shadow_quality.GetInt(), r_core_depth_prepass.GetInt(),
 			    r_core_shadow_movers.GetInt(), r_core_shadow_pcss.GetInt(),
 			    r_core_runtime_direct.GetInt(), RenderCoreWorldDraw_OnlyCore(),
-			    r_core_dynamic_draws.GetBool(), r_core_volumetric.GetInt(), r_core_ssr.GetInt(),
+			    r_core_dynamic_draws.GetBool() || host.coreDrawsEverything, r_core_volumetric.GetInt(),
+			    r_core_ssr.GetInt(),
 			    r_core_world_gpu_submit.GetInt(), r_core_area_lights.GetInt(),
 			    r_core_probe_bounce.GetInt() };
 			host.world->SetQuality( quality );

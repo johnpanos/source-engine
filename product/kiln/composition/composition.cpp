@@ -106,8 +106,9 @@ foundation::Expected<product::ProviderCatalog, Error> ComposeDefaultCatalog(
 	         catalog, product::CreatePrivateX11DisplaySession(
 	                      { "/usr/share/dbus-1/session.conf", "/etc/dbus-1/session.conf" } ) ) )
 		return foundation::MakeUnexpected( *error );
-	for ( auto *create : { &product::CreateSingleRunProvider,
-	          &product::CreateExternalInstallRunProvider, &product::CreateCoopPairRunProvider } )
+	for ( auto *create :
+	    { &product::CreateSingleRunProvider, &product::CreateExternalInstallRunProvider,
+	        &product::CreateCoopPairRunProvider, &product::CreateBrowserPageRunProvider } )
 	{
 		if ( auto error = AddTo( catalog, ( *create )() ) )
 			return foundation::MakeUnexpected( *error );

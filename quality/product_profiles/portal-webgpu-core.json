@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "portal-webgpu-core-v2",
-  "description": "The browser client's renderer on the Linux desktop (RFC 0029): the core shader API (materialsystem/shaderapipica, render backend core) drawing everything through the render core on the WebGPU adapter over the pinned native Dawn, with no Vulkan backend. Its debugging lane: frames are drawn headless and captured with -pica_capture (no native presenter). A different tree.",
+  "description": "The browser client's renderer on the Linux desktop (RFC 0029): the core shader API (materialsystem/shaderapipica, render backend core) drawing everything through the render core, on the WebGPU adapter over the pinned native Dawn or, with -render-device vulkan, on the core's Vulkan device, whose frames show in the window through the SDL3-Vulkan core presenter. The core takes every legacy draw: this shader API draws nothing another way (LegacyShaderProvider::drawsOnlyThroughCore). Headless frames are captured with -pica_capture. A different tree.",
   "extends": [
     "portal-webgpu.json"
   ],

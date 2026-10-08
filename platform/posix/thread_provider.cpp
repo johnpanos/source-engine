@@ -280,11 +280,19 @@ public:
 	int GetCurrentName( char *buffer, int bufferSize ) const override
 	{
 		char name[64] = {};
+#if defined( __EMSCRIPTEN__ )
+		// Emscripten's threads have no readable name: none is reported.
+		if ( buffer == nullptr || bufferSize <= 0 || name[0] == '\0' )
+		{
+			return -1;
+		}
+#else
 		if ( buffer == nullptr || bufferSize <= 0 ||
 		     pthread_getname_np( pthread_self(), name, sizeof( name ) ) != 0 || name[0] == '\0' )
 		{
 			return -1;
 		}
+#endif
 		const int n = static_cast<int>( std::strlen( name ) );
 		if ( n >= bufferSize )
 		{

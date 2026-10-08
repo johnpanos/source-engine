@@ -171,18 +171,24 @@ public:
 	{
 		if ( process.id <= 0 )
 			return;
+		// The whole process group stops, not only its leader: a wrapper that
+		// exits on SIGTERM (dbus-run-session) must not leave its children
+		// (a compositor, the program) running.
 		const pid_t group = static_cast<pid_t>( process.id );
 		kill( -group, SIGTERM );
 		const auto deadline =
 		    std::chrono::steady_clock::now() + std::chrono::milliseconds( graceMs );
+		bool leaderDone = false;
 		while ( std::chrono::steady_clock::now() < deadline )
 		{
-			if ( Poll( process ) )
+			leaderDone = leaderDone || Poll( process ).has_value();
+			if ( leaderDone && kill( -group, 0 ) != 0 )
 				return;
 			std::this_thread::sleep_for( std::chrono::milliseconds( 50 ) );
 		}
 		kill( -group, SIGKILL );
-		Wait( process );
+		if ( !leaderDone )
+			Wait( process );
 	}
 };
 

@@ -958,8 +958,8 @@ bool CaptureTopScreen( const char *path )
 	e.TransitionTexture( g_state.color, ResourceUsage::kSampled, ResourceUsage::kCopySource );
 	e.TransitionBuffer(
 	    readback.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-	e.CopyTextureToBuffer(
-	    g_state.color, readback.Value(), { 0, 0, 0, kScreenWidth, kScreenHeight } );
+	e.CopyTextureToBuffer( g_state.color, readback.Value(),
+	    { 0, 0, 0, std::uint32_t( kScreenWidth ), std::uint32_t( kScreenHeight ) } );
 	e.TransitionTexture( g_state.color, ResourceUsage::kCopySource, ResourceUsage::kSampled );
 	CommandEncoder list[] = { std::move( e ) };
 	auto token = Device().Submit( QueueKind::kGraphics, list, {} );

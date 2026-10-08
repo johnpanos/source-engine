@@ -10,6 +10,7 @@
 #include "kiln/api.h"
 #include "kiln/composition.h"
 
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -25,6 +26,26 @@ namespace
 {
 
 namespace fs = std::filesystem;
+
+// Ctrl-C and SIGTERM cancel the build or the run: the run providers stop
+// every program they started (each in its own process group, so the
+// terminal's signal reaches only kiln). A lock-free atomic store is safe in
+// the handler.
+product::CancellationFlag g_Interrupted;
+
+void Interrupt( int )
+{
+	g_Interrupted.Cancel();
+}
+
+void CancelOnSignals()
+{
+	struct sigaction action{};
+	action.sa_handler = &Interrupt;
+	sigemptyset( &action.sa_mask );
+	sigaction( SIGINT, &action, nullptr );
+	sigaction( SIGTERM, &action, nullptr );
+}
 using foundation::json::Value;
 
 constexpr const char *kUsage =
@@ -310,6 +331,8 @@ int main( int argc, char **argv )
 		    ( plan.Value().displaySession.empty() || plan.Value().displaySession == "user" );
 		if ( single )
 			return Exec( plan.Value() );
+		CancelOnSignals();
+		request.cancel = &g_Interrupted;
 		auto status = session.Launch( request, *composition.Value().spawner );
 		if ( !status )
 			return Failure( json, status.Error() );

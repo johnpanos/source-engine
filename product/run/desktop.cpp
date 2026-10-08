@@ -1,6 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: product.run.desktop: single, external-install and coop-pair.
+// Purpose: product.run.desktop: single, external-install, coop-pair and
+//			browser-page.
 //
 //=============================================================================//
 
@@ -321,6 +322,91 @@ public:
 	}
 };
 
+// A TCP server listening on the loopback at the port.
+bool LoopbackListens( int port )
+{
+	const int fd = socket( AF_INET, SOCK_STREAM, 0 );
+	if ( fd < 0 )
+		return false;
+	sockaddr_in address{};
+	address.sin_family = AF_INET;
+	address.sin_port = htons( static_cast<uint16_t>( port ) );
+	address.sin_addr.s_addr = htonl( INADDR_LOOPBACK );
+	const bool listening =
+	    connect( fd, reinterpret_cast<sockaddr *>( &address ), sizeof( address ) ) == 0;
+	close( fd );
+	return listening;
+}
+
+class BrowserPageRun final : public IRunProvider
+{
+public:
+	std::string_view Name() const noexcept override { return "browser-page"; }
+	foundation::Expected<int, ProviderError> Run( const RunRequest &request ) override
+	{
+		if ( Cancelled( request ) )
+			return foundation::MakeUnexpected( Fail( std::string( kCancelled ), "" ) );
+		if ( !request.spawner || request.launches.size() != 2 )
+			return foundation::MakeUnexpected(
+			    Fail( "invalid-request", "browser-page runs a server and a browser" ) );
+		const int port = std::atoi( Fact( request, "port", "8080" ).c_str() );
+		const int timeout = std::atoi( Fact( request, "timeout", "60" ).c_str() );
+		if ( LoopbackListens( port ) )
+			return foundation::MakeUnexpected(
+			    Fail( "busy", "a server already listens on 127.0.0.1:" + std::to_string( port ) +
+			                      "; stop it or change the port" ) );
+		// The server draws nothing: it runs outside the display session, whose
+		// compositor (a private one wraps each program it runs) is the browser's.
+		RunRequest outside = request;
+		outside.display = {};
+		auto server = Start( outside, request.launches[0] );
+		if ( !server )
+			return foundation::MakeUnexpected( server.Error() );
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds( timeout );
+		while ( !LoopbackListens( port ) )
+		{
+			std::optional<ProviderError> failure;
+			if ( Cancelled( request ) )
+				failure = Fail( std::string( kCancelled ), "" );
+			else if ( auto status = request.spawner->Poll( server.Value() ) )
+				failure =
+				    Fail( "exited", "server: exited with status " + std::to_string( *status ) );
+			else if ( std::chrono::steady_clock::now() >= deadline )
+				failure = Fail(
+				    "timeout", "server: no listener within " + std::to_string( timeout ) + " s" );
+			if ( failure )
+			{
+				request.spawner->Terminate( server.Value(), 3000 );
+				return foundation::MakeUnexpected( *failure );
+			}
+			std::this_thread::sleep_for( std::chrono::milliseconds( 100 ) );
+		}
+		auto browser = Start( request, request.launches[1] );
+		if ( !browser )
+		{
+			request.spawner->Terminate( server.Value(), 3000 );
+			return foundation::MakeUnexpected( browser.Error() );
+		}
+		// The server ends when the page reports the engine's exit, with that
+		// status; a browser closed first ends the run as cancelled.
+		while ( true )
+		{
+			if ( auto status = request.spawner->Poll( server.Value() ) )
+			{
+				request.spawner->Terminate( browser.Value(), 3000 );
+				return *status;
+			}
+			if ( Cancelled( request ) || request.spawner->Poll( browser.Value() ) )
+			{
+				request.spawner->Terminate( browser.Value(), 3000 );
+				request.spawner->Terminate( server.Value(), 3000 );
+				return 130;
+			}
+			std::this_thread::sleep_for( std::chrono::milliseconds( 100 ) );
+		}
+	}
+};
+
 } // namespace
 
 std::unique_ptr<IRunProvider> CreateSingleRunProvider()
@@ -336,6 +422,11 @@ std::unique_ptr<IRunProvider> CreateExternalInstallRunProvider()
 std::unique_ptr<IRunProvider> CreateCoopPairRunProvider()
 {
 	return std::make_unique<CoopPairRun>();
+}
+
+std::unique_ptr<IRunProvider> CreateBrowserPageRunProvider()
+{
+	return std::make_unique<BrowserPageRun>();
 }
 
 } // namespace product

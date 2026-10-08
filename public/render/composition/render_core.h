@@ -156,6 +156,10 @@ struct RenderCoreBinding
 	gpu_compute::IGpuCompute *gpuCompute = nullptr;
 	// For logs and evidence only (CAP011 rule 5): "null", "vulkan", "gl".
 	const char *deviceName = nullptr;
+	// The composed legacy backend draws nothing itself
+	// (LegacyShaderProvider::drawsOnlyThroughCore): the host hands the core
+	// every dynamic draw, whatever r_core_dynamic_draws says.
+	bool coreDrawsEverything = false;
 	// Main-sequence mode selection through the owning core, without changing
 	// IRenderCoreWorld's advertised vtable. Valid for this binding's lifetime.
 	struct TemporalControl

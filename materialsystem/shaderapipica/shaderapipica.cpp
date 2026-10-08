@@ -386,6 +386,20 @@ bool g_CoreMeshSlotPending = false;
 // shaderapivulkan holds it: the depth-alpha copy's encoding.
 constexpr float kCoreDestAlphaDepthRange = 192.0f;
 CUtlVector<PicaTexture *> g_Textures; // index = handle - 1
+#if !defined( PLATFORM_3DS )
+// Textures the core already imported whose levels changed since (font pages,
+// lightmap pages): refilled in place before the core records its next slot,
+// since the core keeps the ids it imported and does not import them again.
+CUtlVector<PicaTexture *> g_DirtyImported;
+#endif
+static void MarkTextureDirty( PicaTexture *texture )
+{
+	texture->dirty = true;
+#if !defined( PLATFORM_3DS )
+	if ( ( texture->gpu.Valid() || texture->gpuSrgb.Valid() ) && g_DirtyImported.Find( texture ) < 0 )
+		g_DirtyImported.AddToTail( texture );
+#endif
+}
 ShaderAPITextureHandle_t g_ModifyTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
 ShaderAPITextureHandle_t g_BoundTextures[16];
 // The lightmap page BindStandardTexture put on sampler 1 (else invalid).
@@ -983,7 +997,12 @@ public:
 		if ( s_frame == s_captureFrame + 1 )
 		{
 			const char *path = CommandLine()->ParmValue( "-pica_capture_path", "sdmc:/source_pica.ppm" );
-			Msg( "pica: capture %s %s\n", path, pica::CaptureTopScreen( path ) ? "ok" : "failed" );
+			// stdout, as the stats below: the harnesses (the web page hands the
+			// file back on this line) read it, and engine spew stops reaching
+			// stdout once the console exists.
+			printf(
+			    "pica: capture %s %s\n", path, pica::CaptureTopScreen( path ) ? "ok" : "failed" );
+			fflush( stdout );
 		}
 		// Straight to stdout (console.log on the 3DS), not through the engine's
 		// spew, which stops reaching stdout once the console exists.
@@ -2453,6 +2472,14 @@ public:
 	{
 		if ( !g_CorePassRecorder )
 			return;
+#if !defined( PLATFORM_3DS )
+		// What changed in textures the core imported (a font page's new
+		// glyphs) reaches their images before the core records this slot.
+		for ( PicaTexture *texture : g_DirtyImported )
+			if ( texture->dirty )
+				UploadTexture( *texture );
+		g_DirtyImported.RemoveAll();
+#endif
 		pica::CoreSectionTarget section;
 		render::device::CommandEncoder *encoder = pica::BeginCoreSection( section );
 		if ( !encoder )
@@ -2574,8 +2601,9 @@ extern "C" DLL_EXPORT void PicaShaderBackend_BindPresenter( pica::Presenter pres
 
 DLL_EXPORT const render::LegacyShaderProvider *PicaShaderBackend_Describe()
 {
+	// The render core draws everything this shader API is given (RFC 0026).
 	static const render::LegacyShaderProvider provider = {
-	    "pica", "shaderapipica", CreatePicaShaderBackend, false };
+	    "pica", "shaderapipica", CreatePicaShaderBackend, false, nullptr, nullptr, true };
 	return &provider;
 }
 
@@ -5502,7 +5530,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 			memcpy( out.Base(), rgba.Base(), rgba.Count() );
 		else
 			pica::Resample( rgba.Base(), width, height, out.Base(), size, size );
-		texture->dirty = true;
+		MarkTextureDirty( texture );
 		return;
 	}
 	if ( !texture || cubeFace != 0 || zOffset != 0 || width <= 0 || height <= 0 ||
@@ -5531,10 +5559,16 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 		out.SetCount( gpuW * gpuH * 4 );
 		memset( out.Base(), 0, out.Count() );
 		texture->levelHashes.AddToTail( LevelHash( out ) );
-		texture->dirty = true;
+		MarkTextureDirty( texture );
 		return;
 	}
 	const bool mipped = texture->mipLevels > 1;
+	// A texture made without mips keeps its base level: the material system
+	// may still upload a VTF's whole chain to it (sprites/crosshairs), and
+	// each smaller level would replace the base (the crosshair became a 1x1
+	// texel stretched over its glyph).
+	if ( !mipped && level > 0 )
+		return;
 	const int cap = mipped ? g_TextureSizeCap : g_UnmippedSizeCap;
 	// Keep the first level that fits the cap as the GPU's base (smaller mips
 	// follow it); a texture with no fitting level is resampled.
@@ -5584,7 +5618,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 	else
 		pica::Resample( rgba.Base(), width, height, out.Base(), wantW, wantH );
 	texture->levelHashes.AddToTail( LevelHash( out ) );
-	texture->dirty = true;
+	MarkTextureDirty( texture );
 }
 
 void CShaderAPIEmpty::TexSubImage2D( int level, int cubeFace, int xOffset, int yOffset, int zOffset, int width, int height,
@@ -5618,7 +5652,7 @@ void CShaderAPIEmpty::TexSubImage2D( int level, int cubeFace, int xOffset, int y
 	}
 	if ( texture->levelHashes.Count() > 0 )
 		texture->levelHashes[0] = LevelHash( texture->levels[0] );
-	texture->dirty = true;
+	MarkTextureDirty( texture );
 }
 
 void CShaderAPIEmpty::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
@@ -5797,6 +5831,9 @@ void CShaderAPIEmpty::DeleteTexture( ShaderAPITextureHandle_t textureHandle )
 		if ( g_BoundTextures[i] == textureHandle )
 			g_BoundTextures[i] = INVALID_SHADERAPI_TEXTURE_HANDLE;
 	g_Textures[int( textureHandle ) - 1] = NULL;
+#if !defined( PLATFORM_3DS )
+	g_DirtyImported.FindAndRemove( texture );
+#endif
 	delete texture;
 }
 

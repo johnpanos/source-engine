@@ -2,7 +2,7 @@
 """Serves the WebAssembly product to a browser (RFC 0029).
 
     serve.py --build <dir with hl2_launcher.js/.wasm> --content <game tree> [--port N]
-             [--open [--browser google-chrome]] [-- engine args]
+             [--out DIR] [--firefox-profile DIR] [-- engine args]
 
 The page (tools/web/site) runs the engine on the browser's main thread with
 JSPI and WebGPU. The server sends what the page needs and nothing else:
@@ -17,8 +17,17 @@ JSPI and WebGPU. The server sends what the page needs and nothing else:
 - POST /log, /exit and /file/<name>: the page's console, exit status and
   files it hands back (the harness's captures), into --out.
 
-The same server serves an interactive session (`kiln play`) and the browser
-lane's headless run (tools/web/browser_lane.py).
+- /: the page itself, redirected to carry the engine's arguments when they
+  were given here.
+
+--firefox-profile makes DIR a fresh Firefox profile with WebGPU and
+JavaScript promise integration (JSPI) on, before the server listens: the
+browser-page run provider starts the browser only once it does.
+
+It ends when the page reports the engine's exit, with that status. `kiln play`
+runs it and the browser as the `browser-page` run provider's two peers, in the
+display session the launch selects (the user's, or kiln's private headless
+compositor); the browser lane (tools/web/browser_lane.py) is that launch.
 """
 
 import argparse
@@ -26,7 +35,7 @@ import http.server
 import json
 import os
 import re
-import subprocess
+import shutil
 import sys
 import tempfile
 import urllib.parse
@@ -69,8 +78,9 @@ def manifest(content):
 class Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, build, content, out):
+    def __init__(self, address, build, content, out, engine_args=None):
         super().__init__(address, Handler)
+        self.engine_args = engine_args or []
         self.build = Path(build)
         self.content = Path(content)
         self.out = Path(out) if out else None
@@ -121,6 +131,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.do_GET(body=False)
 
     def do_GET(self, body=True):
+        if self.path == "/" and self.server.engine_args:
+            # The page reads its arguments from the query; the harness flag
+            # makes it post its console, captures and exit status here.
+            self.send_response(302)
+            # SOURCE_WEB_PAGE_INPUT: the page's scripted input (site/engine.js
+            # `input`), for the harnesses' input checks.
+            script = os.environ.get("SOURCE_WEB_PAGE_INPUT", "")
+            self.send_header("Location", "/?harness=1&args=" +
+                             urllib.parse.quote(" ".join(self.server.engine_args)) +
+                             ("&input=" + urllib.parse.quote(script) if script else ""))
+            self.headers_common(0, "text/plain")
+            return
         if self.path.split("?", 1)[0] == "/content/manifest.json":
             data = self.server.manifest
             self.send_response(200)
@@ -133,6 +155,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.fail(404)
         size = path.stat().st_size
         kind = TYPES.get(path.suffix, "application/octet-stream")
+        # pad=1: one zero byte before the body, so the page's synchronous text
+        # read never starts with a byte-order mark (site/engine.js fetchRange).
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        pad = b"\0" if query.get("pad") == ["1"] else b""
         ranged = re.match(r"bytes=(\d+)-(\d*)$", self.headers.get("Range", ""))
         start, end = 0, size - 1
         if ranged:
@@ -144,9 +170,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Range", "bytes %d-%d/%d" % (start, end, size))
         else:
             self.send_response(200)
-        self.headers_common(end - start + 1, kind)
+        self.headers_common(end - start + 1 + len(pad), kind)
         if not body:
             return
+        self.wfile.write(pad)
         with open(path, "rb") as f:
             f.seek(start)
             left = end - start + 1
@@ -160,9 +187,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         out = self.server.out
-        if out and self.path == "/log":
-            with open(out / "page.log", "ab") as f:
-                f.write(data)
+        if self.path == "/log":
+            sys.stderr.buffer.write(data)  # the engine's console, in kiln's log
+            sys.stderr.flush()
+            if out:
+                with open(out / "page.log", "ab") as f:
+                    f.write(data)
         elif out and self.path.startswith("/file/"):
             (out / Path(self.path[len("/file/"):]).name).write_bytes(data)
         elif self.path == "/exit":
@@ -172,11 +202,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.headers_common(0, "text/plain")
 
 
-def start(build, content, out=None, port=0):
+def start(build, content, out=None, port=0, engine_args=None):
     """A running server (in a daemon thread) and its base URL."""
-    server = Server(("127.0.0.1", port), build, content, out)
+    server = Server(("127.0.0.1", port), build, content, out, engine_args)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, "http://127.0.0.1:%d/" % server.server_address[1]
+
+
+FIREFOX_PREFS = {
+    "dom.webgpu.enabled": True,
+    "gfx.webgpu.ignore-blocklist": True,
+    "javascript.options.wasm_js_promise_integration": True,
+    "browser.shell.checkDefaultBrowser": False,
+    "browser.aboutwelcome.enabled": False,
+    "datareporting.policy.dataSubmissionEnabled": False,
+    "toolkit.telemetry.reportingpolicy.firstRun": False,
+    # The page's console (WebGPU validation messages among it) in the
+    # browser's output, which kiln logs.
+    "devtools.console.stdout.content": True,
+}
+
+
+def fresh_firefox_profile(directory):
+    """A new, empty Firefox profile holding only the page's preferences."""
+    directory = Path(directory)
+    shutil.rmtree(directory, ignore_errors=True)
+    directory.mkdir(parents=True)
+    with open(directory / "user.js", "w") as f:
+        for name, value in FIREFOX_PREFS.items():
+            f.write("user_pref(%s, %s);\n" % (json.dumps(name), json.dumps(value)))
 
 
 def main(argv=None):
@@ -185,34 +239,24 @@ def main(argv=None):
     parser.add_argument("--content", required=True, help="the game tree the page mounts")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--out", help="where the page's log, exit status and files go")
-    parser.add_argument("--open", action="store_true",
-                        help="open the page in a browser with WebGPU on (kiln play)")
-    parser.add_argument("--browser", default="google-chrome")
+    parser.add_argument("--firefox-profile", help="make this a fresh Firefox profile first")
     parser.add_argument("engine_args", nargs="*", help="the engine's arguments (after --)")
     args = parser.parse_args(argv)
-    server, url = start(args.build, args.content, args.out, args.port)
-    if args.engine_args:
-        url += "?args=" + urllib.parse.quote(" ".join(args.engine_args))
-    print("serve: %s (content %s, %d files)" % (url, args.content,
-          len(json.loads(server.manifest)["files"])), file=sys.stderr)
-    browser = None
-    if args.open:
-        # Its own profile, so WebGPU's flags apply whatever else is running.
-        profile = Path(tempfile.gettempdir()) / "source-engine-web-profile"
-        browser = subprocess.Popen([args.browser, "--enable-unsafe-webgpu",
-                                    "--enable-features=Vulkan", "--ignore-gpu-blocklist",
-                                    "--no-first-run", "--no-default-browser-check",
-                                    "--user-data-dir=" + str(profile), "--new-window", url])
-        print("serve: opened %s; close the browser to stop" % url, file=sys.stderr)
+    if args.firefox_profile:
+        fresh_firefox_profile(args.firefox_profile)
+    out = args.out or tempfile.mkdtemp(prefix="source-web-")
+    server, url = start(args.build, args.content, out, args.port, args.engine_args)
+    print("serve: %s (content %s, %d files; page output in %s)" % (url, args.content,
+          len(json.loads(server.manifest)["files"]), out), file=sys.stderr)
     try:
-        if browser:
-            while browser.poll() is None and not server.done.is_set():
-                server.done.wait(1.0)
-        else:
-            server.done.wait()
+        server.done.wait()
     except KeyboardInterrupt:
-        pass
-    return 0
+        return 130
+    server.shutdown()
+    try:
+        return int(server.status)
+    except (TypeError, ValueError):
+        return 2
 
 
 if __name__ == "__main__":

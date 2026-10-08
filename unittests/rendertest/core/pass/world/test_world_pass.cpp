@@ -1380,6 +1380,9 @@ int main()
 		WorldData world = TestWorld();
 		world.materials[0].variables.push_back( { "$outline", "0" } );
 		world.materials[0].defaults = { { "$outline", "0" } };
+		// UnlitGeneric reads $outline only with $distancealpha, so a set value
+		// there changes no pixel; LightmappedGeneric's $outline is a gap.
+		world.materials[1] = world.materials[0];
 		world.materials[1].variables.push_back( { "$outline", "1" } );
 		world.materials[1].defaults = { { "$outline", "0" } };
 		world.materials[2] = world.materials[0];

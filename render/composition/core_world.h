@@ -237,8 +237,15 @@ public:
 	}
 
 private:
+	// Private forwarded world tags: the backend just preserves their stream order.
+	// Serial zero is reserved by WorldPass. Capture the requested control on the
+	// render sequence before any view, even with multiple frames queued.
+	static constexpr std::uint32_t kCostBegin = pass::world::kWorldTag;
+
 	void RecordWorldBatch( std::span<const std::uint32_t> tags, device::CommandEncoder &encoder,
 	    const legacy::CorePassTarget &target );
+	bool PrepareWorldTarget( std::uint32_t tag, device::CommandEncoder &encoder,
+	    const legacy::CorePassTarget &target, pass::world::WorldTarget &world );
 	bool m_TemporalAvailable = false;
 	bool m_TemporalEnabled = false; // main-sequence selection; queued views retain their choice
 	std::string m_TemporalAssets;
@@ -500,6 +507,14 @@ private:
 		std::vector<Chunk> chunks;
 		std::uint64_t generation = 0;
 	};
+	// A view's six clip half-spaces, and whether a chunk's box is inside them all
+	// (core_world_shadows.cpp).
+	using ClipPlanes = std::array<math::float4, 6>;
+	static ClipPlanes PlanesOf( const math::float4x4 &clip );
+	static bool ChunkInside( const ClipPlanes &planes, const Casters::Chunk &chunk );
+	bool CollectMovingCasters( const ShadowWork &work, const std::vector<ClipPlanes> &viewPlanes,
+	    std::vector<std::vector<pass::shadows::ShadowCaster>> &moverCasters,
+	    std::vector<std::uint64_t> &moverSignature, bool &anyMover );
 	std::shared_ptr<const Casters> m_WorldCasters;
 	// What a world stage view's lights are made from, taken when the main
 	// thread queues it (the frame's lights change there), so the render

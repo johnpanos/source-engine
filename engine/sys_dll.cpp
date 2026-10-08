@@ -926,9 +926,10 @@ SpewRetval_t Sys_SpewFunc( SpewType_t spewType, const char *pMsg )
 			Plat_DebugString( pMsg );
 		}
 
-#if defined( PLATFORM_3DS )
+#if defined( PLATFORM_3DS ) || defined( PLATFORM_WASM )
 		// The 3DS has no debugger console: every message goes to stderr, the
 		// SD card's console.log, which tools/n3ds/azahar_harness.py streams.
+		// In the browser stderr is the page's console (tools/web).
 		fputs( pMsg, stderr );
 #endif
 		if ( g_bTextMode )

@@ -202,3 +202,46 @@ Manifest: `render.device.v2.webgpu.browser` (GPU) and
 - The browser is not pinned; a pinned Chromium build would make the browser
   lane reproducible.
 - `kClusterBuildCompute` still has no WGSL artifact.
+
+## W0, W2 and W5 first slice: Portal in the browser through kiln (2026-10-08)
+
+`./kiln play portal-wasm32-webgpu` builds the Emscripten product, serves it
+(`tools/web/serve.py`) and opens Firefox on Wayland with hardware WebGPU;
+`testchmb_a_01` renders at 1280x720 on the Radeon 8060S at about 37 fps,
+the same image as the native Dawn lane (`portal-webgpu-core`). Commits
+`91887397a`, `6eabeb23a`, `55882d3a7`, `288801e3c`.
+
+- **Launch.** The `browser-page` run provider (kiln) starts the page server
+  outside the display session, then the browser in it once the server
+  listens; the run's status is the engine's exit status, which the page
+  posts. `tools/web/browser_lane.py` is the same launch through `kiln.api`
+  in kiln's private compositor (`--display private`), and copies the page
+  console and captures out.
+- **Browser.** Firefox, because Chrome on Linux exposes its Vulkan WebGPU
+  adapter only with `--enable-features=Vulkan`, which it refuses with
+  Wayland ozone ("not compatible with Vulkan"; hardware acceleration then
+  off). On Wayland Chrome offers only SwiftShader or the GL ES
+  compatibility adapter; on X11 ozone (Xwayland) it works.
+- **WGSL portability.** The adapter writes specialization values into the
+  WGSL as consts, and boolean `|`/`&` in module-scope bool declarations as
+  `||`/`&&`: Firefox's naga refused the surface programs' derived overrides.
+  `SOURCE_WEBGPU_DUMP_WGSL=<dir>` dumps every module; all 196 game modules
+  validate on naga 26, 29 and 30; `render.device.v2.webgpu` 798/0 on Dawn.
+- **Fixes on the way.** Range reads padded against byte-order-mark sniffing
+  (UTF-16 close-caption tables halved the page's synchronous reads and spun
+  the reader); the wasm profile on the core shader API (it still composed
+  the null one); canvas sized by the presenter; `prc_GetNextN_t` returning
+  void (a wasm indirect-call trap); kiln cancels runs on SIGINT/SIGTERM and
+  the POSIX spawner's Terminate stops the whole process group.
+
+- **Input (W5).** The page takes scripted DOM input from the harness
+  (`SOURCE_WEB_PAGE_INPUT="<at s>:<key code>:<for s>,..."`, through
+  `serve.py`); the engine's console reaches the page (spew to stderr in the
+  browser, as on the 3DS). Holding S from 35 s moves the player from
+  `setpos 608 32 64` to `622.9 16.0` (`getpos` polled by an alias loop),
+  and Escape opens the pause menu over the live scene. The player spawns
+  about 26 s after the page opens; keys sent before that do nothing.
+
+Open: mouse look and pointer lock are not scripted yet; audio in a page without a user gesture;
+load time (map in 14 s, about 2,400 lazily read files) and frame time; the
+Node lane and W1/W4/W6.

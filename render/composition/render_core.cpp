@@ -443,6 +443,8 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->binding.luminance = core->luminance.get();
 	core->binding.visibility = core->visibility.get();
 	core->binding.deviceName = core->deviceName.c_str();
+	core->binding.coreDrawsEverything =
+	    config->legacyBackend && config->legacyBackend->drawsOnlyThroughCore;
 	if ( result )
 	{
 		std::snprintf( result->substitutions, sizeof( result->substitutions ), "%s",
