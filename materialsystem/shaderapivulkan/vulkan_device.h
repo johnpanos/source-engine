@@ -1607,7 +1607,6 @@ private:
 	void DestroySceneCapture();
 	void NoteSceneChanged() { m_sceneCaptureCurrent = false; }
 	// Records the copy into the capture images; returns whether depth was copied.
-	bool RecordSceneCapture( VkCommandBuffer cmd, int target );
 	// Copies `target`'s depth (width x height from the origin) into the capture's
 	// depth image; false when there is no single-sampled depth to copy.
 	bool RecordSceneDepthCopy( VkCommandBuffer cmd, int target, uint32_t width, uint32_t height );

@@ -5340,22 +5340,6 @@ void CVulkanContext::RecordFrameScene( VkCommandBuffer cmd )
 				}
 				continue;
 			}
-			if ( d.kind == kRecordSceneCapture )
-			{
-				// Like a copy, outside any pass, of the target the glass after it
-				// draws into (the open one, or the record's own if none is open).
-				endActiveQuery( false );
-				if ( passOpen )
-					vkCmdEndRenderPass( cmd );
-				passOpen = false;
-				if ( d.target != openTarget )
-					openTarget = d.target;
-				if ( openTarget == -1 && m_activeSamples > 1 )
-					ResolveBackBuffer( cmd, m_acquiredImage );
-				RecordSceneCapture( cmd, openTarget );
-				lastCopy = nullptr;
-				continue;
-			}
 			if ( d.kind == kRecordDraw || d.kind == kRecordClear )
 				lastCopy = nullptr;
 			const bool wantSrgb = viewFor( recordIndex );
