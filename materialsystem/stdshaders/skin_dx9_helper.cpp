@@ -8,7 +8,6 @@
 #include "BaseVSShader.h"
 #include "skin_dx9_helper.h"
 #include "convar.h"
-#include "commandbuilder.h"
 
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -209,7 +208,6 @@ void InitSkin_DX9( CBaseVSShader *pShader, IMaterialVar** params, VertexLitGener
 class CSkin_DX9_Context : public CBasePerMaterialContextData
 {
 public:
-	CCommandBufferBuilder< CFixedCommandStorageBuffer< 800 > > m_SemiStaticCmdsOut;
 	bool m_bFastPath;
 
 };

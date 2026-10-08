@@ -8,7 +8,6 @@
 
 #include "lightmappedgeneric_dx9_helper.h"
 #include "BaseVSShader.h"
-#include "commandbuilder.h"
 #include "convar.h"
 
 #include "tier0/memdbgon.h"
@@ -22,33 +21,11 @@ extern ConVar r_flashlight_version2;
 class CLightmappedGeneric_DX9_Context : public CBasePerMaterialContextData
 {
 public:
-	uint8 *m_pStaticCmds;
-	CCommandBufferBuilder< CFixedCommandStorageBuffer< 1000 > > m_SemiStaticCmdsOut;
-
 	bool m_bVertexShaderFastPath;
 	bool m_bPixelShaderFastPath;
 	bool m_bPixelShaderForceFastPathBecauseOutline;
 	bool m_bFullyOpaque;
 	bool m_bFullyOpaqueWithoutAlphaTest;
-
-	void ResetStaticCmds( void )
-	{
-		if ( m_pStaticCmds )
-		{
-			delete[] m_pStaticCmds;
-			m_pStaticCmds = NULL;
-		}
-	}
-
-	CLightmappedGeneric_DX9_Context( void )
-	{
-		m_pStaticCmds = NULL;
-	}
-
-	~CLightmappedGeneric_DX9_Context( void )
-	{
-		ResetStaticCmds();
-	}
 
 };
 
