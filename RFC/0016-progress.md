@@ -13372,3 +13372,25 @@ Open, and failures found on the way:
   clears, queries and core-pass sections, texture management, presentation,
   compute; stdshaders still run each material's shadow state and bindings
   that the hand-off reads.
+
+### Follow-up the same day: stdshaders' unused sources and the D3D9-era shader tools
+
+- `bf5f0d575`: stdshaders' HLSL and assembly sources (242 `.fxc`, 170
+  `.psh`, 69 `.vsh`), shader lists and build scripts, and 128 combo headers
+  no source includes; the tools of the deleted paths
+  (`legacy_shader_conformance.py`, `legacy_shader_oracle.py`, the
+  `material_pixel_*` harness and its C++ host, `family_port_pixels.py`,
+  `tools/quality/shader_artifacts.py` with its workload and compiler profile);
+  `d3d9_shader_vm.py` stays for `source_vcs.py --disasm`.
+- `d7289bda9`: 93 `.cpp` shader sources the wscript never builds (DX6-DX8
+  fallbacks, debug, example and test shaders) and 92 headers only they
+  included; `shader-table --check` passes, `builtin_shader_conformance`
+  316/0. The VMT corpus record was rewritten after review: materials of the
+  families added this session leave `legacy` (Portal 738 → 176, Portal 2
+  482 → 99), per-game totals unchanged.
+- `b0ce68359`: `render.family.lightmapped` asserts the claimed `$additive`
+  (2dd13d0d8) instead of its refusal. `render.family.pbr`'s
+  `claim.refuses-an-environment-map-by-name` fails since `6049332f6` (P2:CE
+  PBR compat mapping), not this work.
+- Ratchets: stdshaders 1,561 → 751 files, 167,303 → 105,648 lines.
+- Census after each: 19 views, 0 legacy draws, nothing dropped.
