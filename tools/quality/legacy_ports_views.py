@@ -31,6 +31,9 @@ import sys
 import numpy
 from PIL import Image
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 QUALITY = Path(__file__).resolve().parent
 PORTAL_BOOT = QUALITY / "portal_boot.py"
 SCHEMA = "legacy-ports-views/v1"
@@ -78,8 +81,8 @@ def capture_frames():
 
 
 def boot(args, name, extra, out):
-    command = [sys.executable, str(PORTAL_BOOT), "--runtime", str(args.runtime),
-               "--build", str(args.build), "--out", str(out), "--headless", "--map", MAP,
+    command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
+               "--out", str(out), "--headless", "--map", MAP,
                "--renderer", "native-vulkan", "--physics", "vphysics_box3d", "--require-vulkan",
                "--width", str(WIDTH), "--height", str(HEIGHT),
                "--capture-wait", str(capture_frames()), "--timeout", str(args.timeout),
@@ -124,8 +127,7 @@ def write_difference(a, b, path):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument("--build", type=Path, required=True)
+    sepipe_loader.add_arguments(parser, "portal")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=600)
     args = parser.parse_args(argv)
