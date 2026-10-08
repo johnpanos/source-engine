@@ -6846,8 +6846,8 @@ void CVulkanContext::WriteFrameStats( uint64_t endUs )
 		    static_cast<unsigned long long>(
 		        m_prevFrameEndUs ? m_frameBeginUs - m_prevFrameEndUs : 0 ),
 		    static_cast<unsigned long long>( endUs - m_frameBeginUs ), m_dynDrawRecords.size(),
-		    m_statsLegacyStreamDraws, m_statsLegacyProgramDraws,
-		    size_t( 0 ), size_t( 0 ), // the stream holds no draws (R91)
+		    m_statsLegacyStreamDraws, m_statsLegacyProgramDraws, size_t( 0 ),
+		    size_t( 0 ), // the stream holds no draws (R91)
 		    static_cast<unsigned long long>( m_frameCost.uploadBytes ), m_swapExtent.width,
 		    m_swapExtent.height );
 		std::fprintf( m_frameStatsFile, ",\"opaque_batch\":[%llu,%llu,%llu]",

@@ -8188,12 +8188,8 @@ void CShaderAPIVulkan::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t te
 	{
 		g_boundEnvmapHandle = native;
 	}
-	if ( stage == SHADER_SAMPLER1 )
-	if ( stage == SHADER_SAMPLER10 )
 	if ( stage == SHADER_SAMPLER3 )
-	{
 		g_boundRefractNormalHandle = native;
-	}
 	if ( stage == SHADER_SAMPLER4 )
 	{
 		g_boundRefractCubeHandle = native;
