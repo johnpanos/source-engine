@@ -757,14 +757,20 @@ def run_game(command, cwd, environment, out, timeout, console):
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
+    return collect(command, cwd, out, console, process.returncode, timed_out,
+                   time.monotonic() - started)
+
+
+def collect(command, cwd, out, console, returncode, timed_out, seconds):
+    """A finished run's audio, logs and record (ours and retail alike)."""
     audio = Path(cwd) / "sdlaudio.raw"
     if audio.is_file():
         shutil.move(str(audio), str(out / "audio.raw"))
     for log in (console, Path(cwd) / "engine.log"):
         if log.is_file():
             shutil.copyfile(log, out / log.name)
-    record = {"command": command, "returncode": process.returncode, "timed_out": timed_out,
-              "seconds": round(time.monotonic() - started, 1)}
+    record = {"command": command, "returncode": returncode, "timed_out": timed_out,
+              "seconds": round(seconds, 1)}
     (out / "run.json").write_text(json.dumps(record, indent=2) + "\n")
     return record
 
@@ -779,29 +785,32 @@ def write_fake_zenity(directory):
 
 
 def capture_ours(args, workload, out):
-    import portal_boot
-    import stage_portal2_runtime
+    import portal2_scenarios
     runtime = Path(args.runtime).resolve()
-    stage_portal2_runtime.stage_content(args.steam_root, runtime)
-    portal_boot.install_build(args.build, runtime, game="portal2")
+    portal2_scenarios.package_runtime((args.profile, args.flavor), runtime)
     install_probe(args.workload, workload, runtime / "portal2", args.steam_root, args.seed,
                   args.console)
     write_fake_zenity(out / "tools")
     environment = dict(os.environ)
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
     environment.update({
-        "SteamAppId": "620", "SteamGameId": "620", "LD_LIBRARY_PATH": str(runtime / "bin"),
-        "SDL_VIDEODRIVER": "offscreen", "SDL_VIDEO_DRIVER": "offscreen",
         "SDL_AUDIO_DRIVER": "disk", "SDL_AUDIODRIVER": "disk",
         "PATH": str(out / "tools") + os.pathsep + environment.get("PATH", ""),
     })
-    command = [str(runtime / "hl2_launcher"), "-game", "portal2", "-multirun", "-novid",
-               "-insecure", "-windowed", "-w", "1024", "-h", "768", "-condebug",
-               "+snd_mute_losefocus", "0", "+snd_surround_speakers", "2", *args.extra_arg,
-               "+map", workload["map"]]
-    return run_game(command, runtime, environment, out, workload["timeout_seconds"],
-                    runtime / "portal2" / "console.log")
+    arguments = ["-game", "portal2", "-multirun", "-novid", "-insecure", "-windowed",
+                 "-w", "1024", "-h", "768", "-condebug", "+snd_mute_losefocus", "0",
+                 "+snd_surround_speakers", "2", *args.extra_arg, "+map", workload["map"]]
+    console = runtime / "portal2" / "console.log"
+    out.mkdir(parents=True, exist_ok=True)
+    for stale in (runtime / "sdlaudio.raw", console):
+        stale.unlink(missing_ok=True)
+    returncode, timed_out, seconds, error = portal2_scenarios.sepipe_loader.run_test(
+        args.profile, args.flavor, runtime, arguments, out / "stdout.txt",
+        workload["timeout_seconds"], environment=environment)
+    record = collect({"profile": args.profile, "flavor": args.flavor, "arguments": arguments},
+                     runtime, out, console, returncode, timed_out, seconds)
+    if error:
+        record["kiln_error"] = error
+    return record
 
 
 # --- Captures: retail ----------------------------------------------------------
@@ -946,9 +955,8 @@ def main(argv=None):
     parser.add_argument("--steam-root", type=Path, default=Path(
         os.environ.get("SOURCE_PORTAL2_STEAM_ROOT")
         or os.environ.get("P2_STEAM_ROOT") or DEFAULT_STEAM_ROOT))
-    parser.add_argument("--build", type=Path, default=Path(os.environ.get(
-        "SOURCE_PORTAL2_BUILD", ROOT / "build-p2")),
-        help="Waf output configured with --build-games=portal2")
+    parser.add_argument("--profile", default="portal2", help="kiln profile for our capture")
+    parser.add_argument("--flavor", default="dev", help="the profile's build flavor")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-audio",
                         help="private staged runtime for this build")
     parser.add_argument("--retail-mirror", type=Path, default=ROOT / "run/retail-p2-audio",
