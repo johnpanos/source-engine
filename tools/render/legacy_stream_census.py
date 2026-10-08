@@ -60,6 +60,10 @@ VIEWS = {
                                              "ent_fire monitor1-relay_deploy_straight trigger",
                                              "wait 360", "cmd setpos 1880.62 386 -320.9",
                                              "cmd setang 0 0 0", "wait 120"]),
+    # The observation window's glass (static props; the matched game/lab
+    # frame of RFC/0016-progress.md's glass cohort).
+    "glass-intro4": ("sp_a1_intro4", ["cmd noclip", "cmd setpos -60 260 134",
+                                       "cmd setang 0 90 0", "wait 60"]),
     "intro4-portals": ("sp_a1_intro4", ["give weapon_portalgun", "upgrade_portalgun",
                                          "wait 20", "+attack", "wait 5", "-attack", "wait 20",
                                          "cmd setang 0 90 0", "wait 5", "+attack2", "wait 5",
