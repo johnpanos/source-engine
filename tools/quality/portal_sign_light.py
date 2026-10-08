@@ -61,7 +61,6 @@ import argparse
 import datetime
 import json
 import math
-import os
 from pathlib import Path
 import re
 import struct
@@ -77,11 +76,13 @@ import conformance_result  # noqa: E402
 from legacy_bsp import LegacyBsp  # noqa: E402
 from source_content import ContentResolver  # noqa: E402
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
+
 ROOT = QUALITY.parents[1]
 PORTAL_BOOT = QUALITY / "portal_boot.py"
 WORKLOAD = ROOT / "quality/workloads/portal-sign-light-v1.json"
 SCHEMA = "portal-sign-light-evidence/v1"
-DEFAULT_STEAM_P2 = Path.home() / ".local/share/Steam/steamapps/common/Portal 2"
 MARK = "SIGNLIGHT"
 SHOTS = ("off", "on", "off2", "on2", "albedo")
 STATES = SHOTS[:4]
@@ -318,9 +319,8 @@ def boot(args, workload, scenario, facts, path, control_name, out):
     control = workload["controls"].get(control_name) if control_name else None
     line, shots = console_line(scenario, facts, workload, path, control)
     game = scenario["game"]
-    runtime, build = game_runtime(args, game), (args.p2_build if game == "portal2" else args.build)
-    command = [sys.executable, str(PORTAL_BOOT), "--game", game, "--runtime", str(runtime),
-               "--build", str(build), "--out", str(out), "--headless",
+    command = [sys.executable, str(PORTAL_BOOT), "--profile", game_profile(args, game),
+               "--flavor", args.flavor, "--out", str(out), "--headless",
                "--map", scenario["map"], "--renderer", "native-vulkan", "--require-vulkan",
                "--physics", "vphysics_box3d",
                "--width", str(workload["width"]), "--height", str(workload["height"]),
@@ -342,16 +342,14 @@ def boot(args, workload, scenario, facts, path, control_name, out):
                       for name in (c.split()[0] for c in workload["paths"][path]["console"])}}
 
 
+def game_profile(args, game):
+    """The kiln profile this run uses for a game."""
+    return args.portal2_profile if game == "portal2" else args.portal_profile
+
+
 def game_runtime(args, game):
-    """Portal's runtime, or a Portal 2 content runtime staged once from the Steam install."""
-    if game == "portal":
-        return args.runtime
-    if args.p2_runtime is None:
-        args.p2_runtime = args.out.resolve() / "p2content"
-        if not args.p2_runtime.exists():
-            import stage_portal2_runtime  # noqa: E402 (needs the Steam install only here)
-            stage_portal2_runtime.stage_content(args.steam_root, args.p2_runtime)
-    return args.p2_runtime
+    """The game's packaged kiln runtime (content source; kiln stages it)."""
+    return sepipe_loader.packaged_runtime(game_profile(args, game), args.flavor)
 
 
 def diagnostics(text):
@@ -573,19 +571,9 @@ def load(path):
 # Commands.
 
 def add_content_arguments(parser):
-    parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime",
-                        help="staged Portal runtime (immutable assets are shared)")
-    parser.add_argument("--build", type=Path,
-                        default=Path(os.environ.get("SOURCE_SIGN_LIGHT_BUILD", ROOT / "build")),
-                        help="Portal client Waf tree (native Vulkan, SDL3)")
-    parser.add_argument("--p2-build", type=Path,
-                        default=Path(os.environ.get("SOURCE_PORTAL2_BUILD", ROOT / "build-p2")),
-                        help="Portal 2 client Waf tree (native Vulkan, SDL3)")
-    parser.add_argument("--steam-root", type=Path,
-                        default=Path(os.environ.get("SOURCE_PORTAL2_STEAM_ROOT", DEFAULT_STEAM_P2)),
-                        help="licensed Portal 2 install the content runtime is staged from")
-    parser.add_argument("--p2-runtime", type=Path,
-                        help="an already staged Portal 2 content runtime (else staged under --out)")
+    parser.add_argument("--portal-profile", default="portal", help="kiln profile for Portal")
+    parser.add_argument("--portal2-profile", default="portal2", help="kiln profile for Portal 2")
+    parser.add_argument("--flavor", default="dev", help="the profiles' build flavor")
 
 
 def scenario_runtime(args, scenario):
@@ -653,8 +641,8 @@ def cmd_suite(args):
     checks = conformance_result.Checks()
     evidence = {"schema": SCHEMA, "path": args.path, "workload": str(WORKLOAD.relative_to(ROOT)),
                 "started_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                "build": str(args.build.resolve()), "p2_build": str(args.p2_build.resolve()),
-                "runtime": str(args.runtime.resolve()), "scenarios": []}
+                "profiles": {"portal": args.portal_profile, "portal2": args.portal2_profile},
+                "flavor": args.flavor, "scenarios": []}
     for index, scenario in enumerate(workload["scenarios"]):
         if args.scenario and scenario["name"] not in args.scenario:
             continue
