@@ -1206,14 +1206,19 @@ public:
 		region.height = rect ? rect->height : texture->height;
 		region.x = rect ? rect->x : 0;
 		region.y = rect ? rect->y : 0;
-		// Not yet: the frame copy's depth alpha (D3D9's destination-alpha depth,
-		// render::legacy::DepthAlphaPass through RecordDepthAlpha) blurs the whole
-		// frame on this path (testchmb_a_01, Vulkan and WebGPU): something here
-		// reads the copies' alpha that D3D9 and shaderapivulkan ignore. Until it
-		// is found, copies keep their source's alpha.
-		if ( pica::CopyTargetRegion( texture->gpu, region, nullptr,
-				 g_CorePassRecorder ) ==
-			 pica::CopyResult::kCopied )
+		// D3D9 PC keeps the opaque scene's depth in destination alpha, so a
+		// frame copy carries it (soft particles read _rt_FullFrameDepth); an
+		// orthographic capture (the UI) keeps its own alpha.
+		const float *projection = Top( kStackProjection );
+		pica::CopyDepthAlpha depthAlpha;
+		depthAlpha.projection[0] = projection[2 * 4 + 2];
+		depthAlpha.projection[1] = projection[3 * 4 + 2];
+		depthAlpha.projection[2] = projection[2 * 4 + 3];
+		depthAlpha.projection[3] = projection[3 * 4 + 3];
+		depthAlpha.range = kCoreDestAlphaDepthRange;
+		const bool perspective = projection[2 * 4 + 3] != 0.0f;
+		if ( pica::CopyTargetRegion( texture->gpu, region, perspective ? &depthAlpha : nullptr,
+		         g_CorePassRecorder ) == pica::CopyResult::kCopied )
 			++g_Counters.targetCopies;
 		else
 			++g_Counters.copiesSkipped;

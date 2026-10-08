@@ -34,6 +34,10 @@ struct DepthAlphaCopy
 	// copies read is released behind it).
 	device::IRenderDevice2 *device = nullptr;
 	device::CompletionToken submitted;
+	// The frontend's recording this copy goes into, not yet submitted: what
+	// copies recorded into it read stays held until a later recording's copy
+	// (or Collect) releases it behind a submission that contains it.
+	std::uint64_t recording = 0;
 	// The copy: an RGBA colour texture in kCopyDestination after the colour
 	// copy; it is left there. Its rectangle (texels from the top left) matches
 	// the depth's, as the colour copy kept its texels' place.
@@ -70,8 +74,10 @@ public:
 	// Records the copy's alpha outside rendering; false (nothing recorded) for
 	// an invalid request or a device failure.
 	bool Record( device::CommandEncoder &encoder, const DepthAlphaCopy &copy );
-	// What submissions up to `token` read can be released behind it.
-	void Collect( device::CompletionToken token );
+	// What copies recorded before `recording` read was submitted by `token`
+	// and is released behind it; what `recording`'s own copies read is kept
+	// (that recording is still open, its encoder unsubmitted).
+	void Collect( device::CompletionToken token, std::uint64_t recording );
 
 private:
 	explicit DepthAlphaPass( device::IRenderDevice2 &device ) : m_Device( device ) {}
@@ -87,7 +93,12 @@ private:
 		device::PipelineId pipeline;
 	};
 	std::vector<Pipeline> m_Pipelines;
-	std::vector<device::BindGroupId> m_Pending;
+	struct PendingGroup
+	{
+		device::BindGroupId group;
+		std::uint64_t recording = 0;
+	};
+	std::vector<PendingGroup> m_Pending;
 	device::CompletionToken m_LastToken;
 };
 

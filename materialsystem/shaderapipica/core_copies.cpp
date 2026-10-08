@@ -68,6 +68,7 @@ CopyResult CopyTargetRegion( Texture &destination, const CopyRect &region,
 			request.device = target.device;
 			request.submitted = render::device::CompletionToken{
 			    render::device::QueueKind::kGraphics, target.submittedEpoch, target.submittedValue };
+			request.recording = target.serial;
 			request.target = copyTo;
 			request.targetFormat = render::device::Format::kRGBA8Unorm;
 			request.targetWidth = std::uint32_t( destination.Width() );
