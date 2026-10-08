@@ -817,7 +817,7 @@ def capture_ours(args, workload, out):
 
 def retail_mirror(steam_root, mirror):
     """Symlink mirror of the install with private cfg and scripts/vscripts."""
-    import stage_portal2_runtime
+    import portal2_retail
     steam_root, mirror = Path(steam_root).resolve(), Path(mirror)
     game = mirror / "portal2"
     scripts = game / "scripts"
@@ -831,8 +831,8 @@ def retail_mirror(steam_root, mirror):
                 continue
             destination.symlink_to(child)
 
-    link_children(steam_root, mirror, {"portal2", stage_portal2_runtime.RETAIL_WRITE_DIR})
-    stage_portal2_runtime.private_retail_write_dir(steam_root, mirror)
+    link_children(steam_root, mirror, {"portal2", portal2_retail.RETAIL_WRITE_DIR})
+    portal2_retail.private_retail_write_dir(steam_root, mirror)
     link_children(steam_root / "portal2", game, {"cfg", "scripts"})
     if not (game / "cfg").exists():
         shutil.copytree(steam_root / "portal2" / "cfg", game / "cfg", symlinks=True)

@@ -68,7 +68,7 @@ import conformance  # noqa: E402
 import conformance_result  # noqa: E402
 import portal2_scenarios  # noqa: E402
 import private_session  # noqa: E402
-import stage_portal2_runtime  # noqa: E402
+import portal2_retail  # noqa: E402
 
 
 CAPTURE_SCHEMA = "portal2-material-capture/v1"
@@ -366,11 +366,11 @@ def make_retail_mirror(steam_root, mirror):
     mirror.mkdir(parents=True, exist_ok=True)
     for entry in steam_root.iterdir():
         target = mirror / entry.name
-        if entry.name in ("portal2", "portal2_linux", stage_portal2_runtime.RETAIL_WRITE_DIR):
+        if entry.name in ("portal2", "portal2_linux", portal2_retail.RETAIL_WRITE_DIR):
             continue
         if not target.exists() and not target.is_symlink():
             target.symlink_to(entry)
-    stage_portal2_runtime.private_retail_write_dir(steam_root, mirror)
+    portal2_retail.private_retail_write_dir(steam_root, mirror)
     if not (mirror / "portal2_linux").is_file():
         shutil.copy2(steam_root / "portal2_linux", mirror / "portal2_linux")
     (mirror / "steam_appid.txt").write_text("620\n")
@@ -502,7 +502,7 @@ def retail_session(args):
             directory.mkdir(parents=True, exist_ok=True)
             command = ["./portal2_linux", "-game", "portal2", "-novid", "-windowed",
                        "-w", str(WIDTH), "-h", str(HEIGHT), "-condebug", "+volume", "0",
-                       *stage_portal2_runtime.RETAIL_ENGINE_ARGS, *CAPTURE_ENGINE_ARGS, *args.engine_arg, "+map",
+                       *portal2_retail.RETAIL_ENGINE_ARGS, *CAPTURE_ENGINE_ARGS, *args.engine_arg, "+map",
                        portal2_scenarios.retail_map(scenario)]
             started = time.time()
             timed_out = False

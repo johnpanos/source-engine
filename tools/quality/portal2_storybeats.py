@@ -82,7 +82,7 @@ import legacy_bsp  # noqa: E402
 import portal2_material_shots as shots  # noqa: E402
 import portal2_scenarios  # noqa: E402
 import private_session  # noqa: E402
-import stage_portal2_runtime  # noqa: E402
+import portal2_retail  # noqa: E402
 
 
 ROOT = Path(conformance.repo_root())
@@ -108,7 +108,7 @@ HEIGHT_TOLERANCE = 160.0
 # set the pitch every frame.
 WALKER_ENGINE_ARGS = ["+cl_mouselook", "0", "+joystick", "0"]
 # Retail runs its user config (the mirror's own cfg/config.cfg; see
-# stage_portal2_runtime.RETAIL_ENGINE_ARGS) at every map start, after the
+# portal2_retail.RETAIL_ENGINE_ARGS) at every map start, after the
 # command line: the walker's settings go into that file too.
 RETAIL_WALKER_CONFIG = {"cl_mouselook": "0", "cl_mouselook2": "0", "joystick": "0"}
 

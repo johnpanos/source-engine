@@ -54,7 +54,7 @@ import conformance
 import conformance_result
 import portal2_scenarios
 import private_session
-import stage_portal2_runtime
+import portal2_retail
 
 
 ROOT = Path(conformance.repo_root())
@@ -161,12 +161,12 @@ def make_retail_mirror(steam_root, mirror):
         raise PhysicsError("%s has no portal2_linux" % steam_root)
     (mirror / "portal2").mkdir(parents=True, exist_ok=True)
     for entry in steam_root.iterdir():
-        if entry.name in ("portal2", "portal2_linux", stage_portal2_runtime.RETAIL_WRITE_DIR):
+        if entry.name in ("portal2", "portal2_linux", portal2_retail.RETAIL_WRITE_DIR):
             continue
         link = mirror / entry.name
         if not link.is_symlink():
             link.symlink_to(entry)
-    stage_portal2_runtime.private_retail_write_dir(steam_root, mirror)
+    portal2_retail.private_retail_write_dir(steam_root, mirror)
     if not (mirror / "portal2_linux").is_file():
         shutil.copy2(steam_root / "portal2_linux", mirror / "portal2_linux")
     for entry in (steam_root / "portal2").iterdir():
