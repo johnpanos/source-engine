@@ -96,8 +96,8 @@ def verify_fizzler(boot):
                 return {"entity": "fizzler_brush", "disabled": True,
                         "settle_frames": FIZZLER_SETTLE_FRAMES, "log": str(path)}
     raise ValueError("first fizzler did not confirm disabled before capture")
-sys.path.insert(0, str(ROOT / "tools/quality"))
-import private_session
+sys.path.insert(0, str(ROOT / "tools/kiln"))
+import sepipe_loader
 
 
 def parse_pose(value):
@@ -596,28 +596,20 @@ def main(argv=None):
         if not args.rerun_b and out.exists() and any(out.iterdir()):
             parser.error("output directory is not empty: " + str(out))
         out.mkdir(parents=True, exist_ok=True)
-        environment = dict(os.environ)
-        environment["SDL_VIDEODRIVER"] = "wayland"
-        environment["SDL_VIDEO_DRIVER"] = "wayland"
-        for name in ("DISPLAY", "WAYLAND_DISPLAY"):
-            environment.pop(name, None)
-        command = private_session.dbus_run_session(out / "dbus") + [
-            "mutter", "--headless", "--wayland", "--virtual-monitor",
-            "%dx%d@60" % (args.width, args.height),
-            "--wayland-display", "map-swipe-%d" % os.getpid(), "--",
-            sys.executable, str(Path(__file__).resolve()), *(argv if argv is not None else sys.argv[1:]),
-            "--in-compositor"]
-        with (out / "compositor.log").open("a" if args.rerun_b else "w") as log:
-            result = subprocess.run(command, env=environment, stdout=log,
-                                    stderr=subprocess.STDOUT, timeout=args.timeout * 2 + 120)
-        if result.returncode:
+        # kiln's private display session: a private bus and headless mutter.
+        command = [sys.executable, str(Path(__file__).resolve()),
+                   *(argv if argv is not None else sys.argv[1:]), "--in-compositor"]
+        returncode = sepipe_loader.run_under_display(
+            "private", out / "display", (args.width, args.height, 60), command, os.environ,
+            out / "compositor.log", args.timeout * 2 + 120, append=args.rerun_b)
+        if returncode:
             print("map_swipe_compare: compositor run failed; see " + str(out / "compositor.log"),
                   file=sys.stderr)
         else:
             print(out / ("index.html" if args.all_captures else "compare.html"))
-        return result.returncode
+        return returncode
     if not args.rerun_b and out.exists() and any(out.iterdir()):
-        allowed = {"dbus", "compositor.log"}
+        allowed = {"display", "compositor.log"}
         if any(item.name not in allowed for item in out.iterdir()):
             parser.error("output directory is not empty: " + str(out))
     out.mkdir(parents=True, exist_ok=True)

@@ -90,6 +90,10 @@ foundation::Expected<product::ProviderCatalog, Error> ComposeDefaultCatalog(
 	         catalog, product::CreatePrivateDisplaySession(
 	                      { "/usr/share/dbus-1/session.conf", "/etc/dbus-1/session.conf" } ) ) )
 		return foundation::MakeUnexpected( *error );
+	if ( auto error = AddTo(
+	         catalog, product::CreatePrivateX11DisplaySession(
+	                      { "/usr/share/dbus-1/session.conf", "/etc/dbus-1/session.conf" } ) ) )
+		return foundation::MakeUnexpected( *error );
 	for ( auto *create : { &product::CreateSingleRunProvider,
 	          &product::CreateExternalInstallRunProvider, &product::CreateCoopPairRunProvider } )
 	{

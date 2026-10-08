@@ -4,7 +4,7 @@
   "demo": "../../fixtures/demos/sp_a1_intro4_relit.dem",
   "demo_sha256": "d88908c20baa8fb84f3594a9437643e6686e96e088444505f2786be34cfca978",
   "map": "sp_a1_intro4_relit",
-  "build": "build-p2-fsr",
+  "profile": "portal2-fsr",
   "fsr": true,
   "width": 1920,
   "height": 1080,

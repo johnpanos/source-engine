@@ -146,11 +146,12 @@ def environment_overrides(environment, base=None):
 
 
 def run_test(profile, flavor, runtime, arguments, log, timeout, environment=None, wrapper=(),
-             display="none", stop_when=None, watch=None, poll_seconds=0.1):
+             display="none", stop_when=None, watch=None, poll_seconds=0.1, display_mode=None):
     """A harness's test command through kiln.api: the profile's program from
     the private `runtime`, `arguments` in place of its launch template, the
     harness's `environment` (a full environment; its changes are applied),
-    a diagnostic `wrapper` and a display session. Polls until the run ends,
+    a diagnostic `wrapper` and a display session (an isolated one's virtual
+    monitor is `display_mode`, (width, height, hz)). Polls until the run ends,
     `timeout` seconds pass (the run is cancelled), or `stop_when()` holds
     (the run gets two more seconds). `watch(pid)` is called while it runs for
     each started process. Returns (returncode, timed_out, seconds, error)."""
@@ -159,7 +160,8 @@ def run_test(profile, flavor, runtime, arguments, log, timeout, environment=None
     run = Run(load(), session(), "run", profile, flavor=flavor, runtime=str(runtime),
               exact_arguments=list(arguments), wrapper=list(wrapper), display=display,
               environment=environment_overrides(environment) if environment is not None else {},
-              log=str(log), started=lambda name, pid: pids.append(pid))
+              log=str(log), started=lambda name, pid: pids.append(pid),
+              display_mode=tuple(display_mode) if display_mode else None)
     started = time.monotonic()
     deadline = started + timeout
     timed_out = False
@@ -175,6 +177,64 @@ def run_test(profile, flavor, runtime, arguments, log, timeout, environment=None
             break
         time.sleep(poll_seconds)
     return run.returncode, timed_out, time.monotonic() - started, run.error
+
+
+class Display:
+    """A kiln display session (kiln.api OpenDisplay) for a harness that runs
+    its own programs under it, such as a whole retail session or an editor:
+
+        with sepipe_loader.Display("private", scratch, (1920, 1080, 60)) as display:
+            command, environment = display.wrap(command, os.environ)
+
+    The session's variables win over the caller's (run-suite clause N7), and
+    an isolated session's compositor runs the command as its child."""
+
+    def __init__(self, name, scratch, mode=None):
+        self.name = name
+        self._opened = session().open_display(name, str(Path(scratch).resolve()),
+                                              tuple(mode) if mode else None)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def close(self):
+        if self._opened is not None:
+            session().close_display(self.name)
+            self._opened = None
+
+    @property
+    def isolated(self):
+        return self._opened["isolated"]
+
+    def prefix(self):
+        return list(self._opened["command_prefix"])
+
+    def environment(self, base):
+        environment = dict(base)
+        for key, value in self._opened["environment"].items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
+        return environment
+
+    def wrap(self, command, base):
+        return self.prefix() + list(command), self.environment(base)
+
+
+def run_under_display(name, scratch, mode, command, base, log, timeout, append=False):
+    """Runs `command` (a whole harness session, often the harness itself
+    again) under the named kiln display session with output in `log`;
+    returns its exit status."""
+    import subprocess
+    with Display(name, scratch, mode) as display:
+        wrapped, environment = display.wrap(command, base)
+        with open(log, "a" if append else "w") as stream:
+            return subprocess.run(wrapped, env=environment, stdout=stream,
+                                  stderr=subprocess.STDOUT, timeout=timeout).returncode
 
 
 def game_of(profile):

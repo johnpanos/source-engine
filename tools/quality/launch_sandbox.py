@@ -16,7 +16,7 @@ What it does:
   GTK/fontconfig settings, Steam API client state (steam_api finds the client
   through ~/.steam) and anything else a library saves under $HOME land there.
   XDG_RUNTIME_DIR is kept: it holds sockets (Wayland, PipeWire, D-Bus), not
-  saved state; private_session.py owns the private D-Bus session.
+  saved state; kiln's private display session owns the private D-Bus session.
 - XDG_CACHE_HOME points at a shared harness cache
   (<real cache>/source-engine-harness), not the player's: driver shader caches
   (Mesa, RADV) are content-addressed and change timing only, and frame-time

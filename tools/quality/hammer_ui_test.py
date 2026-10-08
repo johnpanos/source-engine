@@ -92,7 +92,6 @@ sys.path.insert(0, str(HERE))
 
 from conformance_result import Checks  # noqa: E402
 import launch_sandbox  # noqa: E402
-import private_session  # noqa: E402
 
 sys.path.insert(0, str(HERE.parent / "kiln"))
 import sepipe_loader  # noqa: E402
@@ -1532,7 +1531,6 @@ def run_case(case, args, out):
         if created.returncode:
             return {"driver": "hammer_cli failed: " + created.stderr.strip()}, {}
     started = time.monotonic()
-    display = "hammer-ui-%d-%s" % (os.getpid(), case)
     screen = SCREEN if args.scale < 1.5 else (SCREEN[0] * 2, SCREEN[1] * 2)
     # The compositor, the driver and the editor run with a throwaway HOME and
     # XDG directories (RFC 0005, launch sandbox). The session's settings live
@@ -1544,17 +1542,16 @@ def run_case(case, args, out):
     keyfile.parent.mkdir(parents=True, exist_ok=True)
     keyfile.write_text("[org/gnome/mutter]\nexperimental-features=['scale-monitor-framebuffer']\n")
     env["GSETTINGS_BACKEND"] = "keyfile"
-    session = subprocess.run(
-        private_session.dbus_run_session(case_dir / "dbus") +
-        ["mutter", "--headless", "--virtual-monitor",
-         "%dx%d" % screen, "--wayland-display", display, "--",
-         sys.executable, str(Path(__file__).resolve()), "--inner", "--case", case,
-         "--case-dir", str(case_dir), "--vmf-name", vmf_name, "--gtk", str(args.gtk.resolve()),
-         "--backend", args.backend, "--scale", str(args.scale)],
-        capture_output=True, text=True, timeout=args.timeout, env=env)
-    (case_dir / "session.log").write_text(session.stdout + session.stderr)
+    # kiln's private display session: a private bus and headless mutter.
+    inner_command = [sys.executable, str(Path(__file__).resolve()), "--inner", "--case", case,
+                     "--case-dir", str(case_dir), "--vmf-name", vmf_name,
+                     "--gtk", str(args.gtk.resolve()), "--backend", args.backend,
+                     "--scale", str(args.scale)]
+    status = sepipe_loader.run_under_display("private", case_dir / "display", (*screen, 60),
+                                             inner_command, env, case_dir / "session.log",
+                                             args.timeout)
     driver = json.loads((case_dir / "driver.json").read_text()) if (case_dir / "driver.json").is_file() \
-        else {"status": "no driver record (session exit %d)" % session.returncode}
+        else {"status": "no driver record (session exit %d)" % status}
     driver["sandbox"] = sandbox.finish()
     stem = vmf_name[:-4]
     if case == "viewport":

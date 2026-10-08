@@ -145,6 +145,25 @@ foundation::Expected<std::vector<product::Switch>, Error> Session::Switches(
 	return profile.Value().switches;
 }
 
+foundation::Expected<product::DisplayEnvironment, Error> Session::OpenDisplay(
+    const std::string &name, const product::DisplayRequest &request ) const
+{
+	auto session = m_Catalog.DisplaySession( name );
+	if ( !session )
+		return foundation::MakeUnexpected( Fail( "display", session.Error().Describe() ) );
+	auto opened = session.Value()->Open( request );
+	if ( !opened )
+		return foundation::MakeUnexpected(
+		    Fail( "display", name + ": " + opened.Error().code + ": " + opened.Error().detail ) );
+	return opened.Value();
+}
+
+void Session::CloseDisplay( const std::string &name ) const
+{
+	if ( auto session = m_Catalog.DisplaySession( name ) )
+		session.Value()->Close();
+}
+
 foundation::Expected<LaunchPlan, Error> Session::PlanLaunch( const PlayRequest &request ) const
 {
 	auto resolved = ResolveForLaunch( request.profile );

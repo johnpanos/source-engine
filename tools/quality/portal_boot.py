@@ -830,8 +830,8 @@ def main(argv=None):
                              "quit (a longer cfg sequence, e.g. several screenshots, needs more)")
     parser.add_argument("--allow-user-display", action="store_true",
                         help="permit a window on the login session's own display; without it a "
-                             "windowed run must be inside a private compositor (private_session."
-                             "dbus_run_session plus mutter --headless)")
+                             "windowed run must be inside a private compositor (kiln's private "
+                             "display session, sepipe_loader.Display)")
     parser.add_argument("--headless", action="store_true",
                         help="render offscreen on the GPU (SDL offscreen driver) with the "
                              "volume muted")
@@ -1051,7 +1051,7 @@ def main(argv=None):
         if shared and not args.allow_user_display:
             raise ValueError("this run would open a window on the user's live desktop (%s); use "
                              "--headless, or run inside a private compositor "
-                             "(private_session.dbus_run_session plus mutter --headless), or pass "
+                             "(kiln's private display session, sepipe_loader.Display), or pass "
                              "--allow-user-display" % ", ".join(shared))
         evidence["command"] = command
         evidence["requirements"] = requirements

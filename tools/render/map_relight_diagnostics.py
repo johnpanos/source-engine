@@ -457,25 +457,16 @@ def main(argv=None):
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
     if not args.in_compositor:
-        environment = dict(os.environ)
-        environment["SDL_VIDEODRIVER"] = environment["SDL_VIDEO_DRIVER"] = "wayland"
-        for name in ("DISPLAY", "WAYLAND_DISPLAY"):
-            environment.pop(name, None)
-        command = swipe.private_session.dbus_run_session(out / "dbus") + [
-            "mutter", "--headless", "--wayland", "--virtual-monitor",
-            "%dx%d@60" % (args.width, args.height),
-            "--wayland-display", "map-relight-%d" % os.getpid(), "--",
-            sys.executable, str(Path(__file__).resolve()),
-            *(argv if argv is not None else sys.argv[1:]), "--in-compositor"]
-        with (out / "compositor.log").open("w") as log:
-            result = subprocess.run(command, env=environment, stdout=log,
-                                    stderr=subprocess.STDOUT,
-                                    timeout=args.timeout * len(args.modes) + 120)
-        if result.returncode:
+        command = [sys.executable, str(Path(__file__).resolve()),
+                   *(argv if argv is not None else sys.argv[1:]), "--in-compositor"]
+        returncode = swipe.sepipe_loader.run_under_display(
+            "private", out / "display", (args.width, args.height, 60), command, os.environ,
+            out / "compositor.log", args.timeout * len(args.modes) + 120)
+        if returncode:
             print("map_relight_diagnostics: see " + str(out / "compositor.log"), file=sys.stderr)
         elif (out / "index.html").is_file():
             print(out / "index.html")
-        return result.returncode
+        return returncode
     try:
         run(args, out)
         print(out / "index.html")

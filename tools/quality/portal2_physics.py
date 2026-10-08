@@ -45,15 +45,13 @@ import os
 from pathlib import Path
 import re
 import shutil
-import signal
-import subprocess
 import sys
 import time
 
 import conformance
 import conformance_result
 import portal2_scenarios
-import private_session
+sepipe_loader = portal2_scenarios.sepipe_loader
 import portal2_retail
 
 
@@ -205,54 +203,39 @@ def run_retail_scenario(scenario, mirror, output, tool_directory, extra_args=())
     console.unlink(missing_ok=True)
     output.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
     xdg = output / "xdg"
     xdg.mkdir(exist_ok=True)
     environment.update({
         "SteamAppId": "620", "SteamGameId": "620",
         "SDL_AUDIO_DRIVER": "dummy",
-        # Xwayland, as the earlier retail comparisons ran it.
-        "SDL_VIDEODRIVER": "x11",
         "XDG_CONFIG_HOME": str(xdg),
 
         "LD_LIBRARY_PATH": os.pathsep.join([str(mirror / "bin/linux32")] +
                                            retail_libraries(mirror)),
         "PATH": str(tool_directory) + os.pathsep + environment.get("PATH", ""),
     })
-    display = "wl-p2phys-%d" % os.getpid()
-    game = ["./portal2_linux", "-game", "portal2", "-novid", "-multirun", "-condebug",
+    arguments = ["-game", "portal2", "-novid", "-multirun", "-condebug",
             "-windowed", "-w", "1024", "-h", "768", "+snd_mute_losefocus", "0", "+volume", "0",
             *extra_args, "+map", scenario["map"]]
-    command = private_session.dbus_run_session(output / "dbus") + [
-        "mutter", "--headless", "--wayland", "--virtual-monitor", "1024x768@60",
-        "--wayland-display", display, "--", *game]
     started = time.monotonic()
-    timed_out = False
-    with (output / "stdout.log").open("wb") as stream:
-        process = subprocess.Popen(command, cwd=mirror, env=environment, stdout=stream,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
-        deadline = started + scenario["timeout_seconds"] + 60
-        done_at = None
-        while process.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.5)
-            if not console.is_file():
-                continue
+    done_at = []
+
+    def finished():
+        # The driver quits the game; mutter lingers a moment after it.
+        if not done_at and console.is_file():
             text = console.read_text(errors="replace")
-            if done_at is None and ("QA_DONE " in text or COMPILE_FAILURE in text or
-                                    portal2_scenarios.DRIVER_LOAD_FAILURE in text):
-                done_at = time.monotonic()
-            # The driver quits the game; mutter lingers a moment after it.
-            if done_at is not None and time.monotonic() > done_at + 20:
-                break
-        if process.poll() is None:
-            timed_out = done_at is None
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+            if ("QA_DONE " in text or COMPILE_FAILURE in text or
+                    portal2_scenarios.DRIVER_LOAD_FAILURE in text):
+                done_at.append(time.monotonic())
+        return bool(done_at) and time.monotonic() > done_at[0] + 18
+
+    # kiln's retail-mirror profile on its private-x11 session (Xwayland, as
+    # the earlier retail comparisons ran it).
+    _, timed_out, _, _ = sepipe_loader.run_test(
+        "portal2-retail-mirror", None, mirror, arguments, output / "stdout.log",
+        scenario["timeout_seconds"] + 60, environment=environment, display="private-x11",
+        stop_when=finished, poll_seconds=0.5, display_mode=(1024, 768, 60))
+    timed_out = timed_out and not done_at
     log = console.read_text(errors="replace") if console.is_file() else ""
     (output / "console.log").write_text(log)
     # Exit status belongs to the compositor session, not the game.

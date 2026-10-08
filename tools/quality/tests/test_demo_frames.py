@@ -150,8 +150,9 @@ class CommandTest(unittest.TestCase):
             args = self.arguments(Path(directory), renderdoc_frames=[900, 930])
             command = demo_frames.game_command(args, workload(), Path(directory) / "frames.jsonl",
                                                Path(directory))
-        self.assertIn("--opt-hook-children", command)
-        self.assertIn("SDL_VIDEODRIVER=x11", command)
+            wrapper = demo_frames.renderdoc_prefix(args)
+        self.assertIn("--opt-hook-children", wrapper)
+        self.assertIn("SDL_VIDEODRIVER=x11", wrapper)
         self.assertEqual("900,930", command[command.index("-vkrenderdocframes") + 1])
 
     def test_missing_or_unmatched_captures_fail(self):

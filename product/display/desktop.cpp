@@ -8,6 +8,8 @@
 
 #include <cstdio>
 #include <fstream>
+#include <functional>
+#include <string>
 
 namespace product
 {
@@ -72,11 +74,25 @@ private:
 	bool m_Open = false;
 };
 
+// The Wayland socket's name, in the shared runtime directory: one per scratch
+// directory, so concurrent sessions never collide (two harnesses may both use
+// a directory named "display").
+std::string SocketName( const fs::path &scratch )
+{
+	char name[32];
+	std::snprintf(
+	    name, sizeof( name ), "kiln-%016zx", std::hash<std::string>{}( scratch.string() ) );
+	return name;
+}
+
 class PrivateSession final : public IDisplaySession
 {
 public:
-	explicit PrivateSession( std::vector<fs::path> configs ) : m_Configs( std::move( configs ) ) {}
-	std::string_view Name() const noexcept override { return "private"; }
+	PrivateSession( std::vector<fs::path> configs, bool x11 )
+	    : m_Configs( std::move( configs ) ), m_X11( x11 )
+	{
+	}
+	std::string_view Name() const noexcept override { return m_X11 ? "private-x11" : "private"; }
 	bool ClaimsIsolation() const noexcept override { return true; }
 	foundation::Expected<DisplayEnvironment, ProviderError> Open(
 	    const DisplayRequest &request ) override
@@ -123,11 +139,14 @@ public:
 		    request.refreshHz );
 		DisplayEnvironment environment;
 		environment.commandPrefix = { "dbus-run-session", "--config-file=" + config.string(), "--",
-		    "mutter", "--headless", "--virtual-monitor", monitor, "--wayland-display",
-		    "kiln-" + scratch.filename().string(), "--" };
+		    "mutter", "--headless", "--wayland", "--virtual-monitor", monitor, "--wayland-display",
+		    SocketName( scratch ), "--" };
+		// mutter hands its child its own WAYLAND_DISPLAY (and DISPLAY, for
+		// its Xwayland); the user's are removed before it starts.
+		const std::string driver = m_X11 ? "x11" : "wayland";
 		environment.environment = { { "DISPLAY", std::nullopt },
-		    { "WAYLAND_DISPLAY", std::nullopt }, { "SDL_VIDEODRIVER", std::string( "wayland" ) },
-		    { "SDL_VIDEO_DRIVER", std::string( "wayland" ) } };
+		    { "WAYLAND_DISPLAY", std::nullopt }, { "SDL_VIDEODRIVER", driver },
+		    { "SDL_VIDEO_DRIVER", driver } };
 		environment.isolated = true;
 		m_Open = true;
 		return environment;
@@ -137,6 +156,7 @@ public:
 
 private:
 	std::vector<fs::path> m_Configs;
+	bool m_X11;
 	bool m_Open = false;
 };
 
@@ -154,7 +174,13 @@ std::unique_ptr<IDisplaySession> CreateHeadlessDisplaySession()
 
 std::unique_ptr<IDisplaySession> CreatePrivateDisplaySession( std::vector<fs::path> sessionConfigs )
 {
-	return std::make_unique<PrivateSession>( std::move( sessionConfigs ) );
+	return std::make_unique<PrivateSession>( std::move( sessionConfigs ), false );
+}
+
+std::unique_ptr<IDisplaySession> CreatePrivateX11DisplaySession(
+    std::vector<fs::path> sessionConfigs )
+{
+	return std::make_unique<PrivateSession>( std::move( sessionConfigs ), true );
 }
 
 } // namespace product

@@ -67,7 +67,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import conformance  # noqa: E402
 import conformance_result  # noqa: E402
 import portal2_scenarios  # noqa: E402
-import private_session  # noqa: E402
+sepipe_loader = portal2_scenarios.sepipe_loader
 import portal2_retail  # noqa: E402
 
 
@@ -436,24 +436,30 @@ def capture_retail(args, workload_path, workload, scenarios):
              "--mirror", str(mirror), "--workload", str(workload_path)]
     for scenario in scenarios:
         inner += ["--scenario", scenario["name"]]
-    config = out / "compositor-config"
-    config.mkdir(parents=True, exist_ok=True)
-    environment = dict(os.environ, XDG_CONFIG_HOME=str(config))
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
-    command = private_session.dbus_run_session(out / "dbus") + [
-        "mutter", "--headless", "--wayland", "--virtual-monitor", "1920x1080@60",
-        "--wayland-display", "p2-material-shots-%d" % os.getpid(), "--"] + inner
-    # The session starts (and afterwards shuts down) a Steam client only when
-    # none is running; a user's own Steam is never restarted or stopped.
-    with (out / "compositor.log").open("wb") as log:
-        process = subprocess.run(command, env=environment, stdout=log,
-                                 stderr=subprocess.STDOUT, timeout=args.session_timeout)
+    returncode = run_retail_session(inner, out, args.session_timeout)
     capture_path = out / "capture.json"
     if not capture_path.is_file():
         raise ShotError("the retail session wrote no capture (exit %d); see %s"
-                        % (process.returncode, out / "compositor.log"))
+                        % (returncode, out / "compositor.log"))
     return json.loads(capture_path.read_text())
+
+
+def run_retail_session(inner, out, timeout):
+    """Runs `inner` (a _retail-session) under kiln's private-x11 display: a
+    private bus and headless mutter, SDL on its Xwayland. The session starts
+    (and afterwards shuts down) a Steam client only when none is running; a
+    user's own Steam is never restarted or stopped. Returns its exit status."""
+    config = out / "compositor-config"
+    config.mkdir(parents=True, exist_ok=True)
+    try:
+        with sepipe_loader.Display("private-x11", out / "display", (1920, 1080, 60)) as display:
+            command, environment = display.wrap(
+                inner, dict(os.environ, XDG_CONFIG_HOME=str(config)))
+            with (out / "compositor.log").open("wb") as log:
+                return subprocess.run(command, env=environment, stdout=log,
+                                      stderr=subprocess.STDOUT, timeout=timeout).returncode
+    except sepipe_loader.LoadError as error:
+        raise ShotError("retail session: %s" % error) from error
 
 
 def steam_helpers():

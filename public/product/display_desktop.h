@@ -31,6 +31,10 @@ std::unique_ptr<IDisplaySession> CreateHeadlessDisplaySession();
 // /etc/dbus-1/session.conf); given by the root, never looked up here.
 std::unique_ptr<IDisplaySession> CreatePrivateDisplaySession(
     std::vector<std::filesystem::path> sessionConfigs );
+// The same isolated session for programs that need X11 (`private-x11`: SDL
+// on mutter's Xwayland, as the 32-bit retail Portal 2 does).
+std::unique_ptr<IDisplaySession> CreatePrivateX11DisplaySession(
+    std::vector<std::filesystem::path> sessionConfigs );
 
 } // namespace product
 

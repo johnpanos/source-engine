@@ -226,6 +226,13 @@ public:
 	// The profile's launch switches (`kiln switches`).
 	[[nodiscard]] foundation::Expected<std::vector<product::Switch>, Error> Switches(
 	    const std::string &nameOrAlias ) const;
+	// A display session opened by name for a caller that runs its own
+	// programs under it (a harness that wraps a whole session rather than one
+	// launch): the environment and command prefix to apply. CloseDisplay
+	// ends it; the caller closes what it opens.
+	[[nodiscard]] foundation::Expected<product::DisplayEnvironment, Error> OpenDisplay(
+	    const std::string &name, const product::DisplayRequest &request ) const;
+	void CloseDisplay( const std::string &name ) const;
 
 	const SessionConfig &Config() const { return m_Config; }
 

@@ -4,9 +4,9 @@
 
 A workload (quality/workloads/portal2-*-demo-v*/workload.json) names a demo
 fixture, its map, the build tree and the settings it was recorded with. This
-tool stages a private runtime, copies the demo into it, and plays it back in
-real time through ./play_p2 in a private headless mutter (no window on the
-desktop), with the native Vulkan backend writing one line per presented frame
+tool packages the workload's kiln profile into a private runtime, copies the
+demo into it, and plays it back in real time through a kiln run request on
+the private display session (headless mutter, no window on the desktop), with the native Vulkan backend writing one line per presented frame
 (-vkframestats). The game quits when playback ends.
 
 The demo carries no frame marks, so the playback window is found in the
@@ -48,7 +48,7 @@ import frame_floor
 import frame_pacing
 import launch_sandbox
 import portal2_scenarios
-import private_session
+sepipe_loader = portal2_scenarios.sepipe_loader
 import render_profile
 
 ROOT = Path(conformance.repo_root())
@@ -184,17 +184,14 @@ def analyze(out, workload, extent=None):
 
 def stage(args, workload):
     runtime = args.runtime.resolve()
-    if runtime in ((ROOT / "run/runtime-p2").resolve(), (ROOT / "run/runtime-p2-fsr").resolve()):
-        raise DemoError("refusing a ./play_p2 runtime; use a private --runtime")
+    player = Path(sepipe_loader.session().plan(args.kiln_profile, flavor=args.flavor)["runtime"])
+    if runtime == player.resolve():
+        raise DemoError("refusing the profile's own runtime; use a private --runtime")
     if not args.no_stage:
-        log = args.out / "stage.log"
-        with log.open("wb") as stream:
-            code = subprocess.run([sys.executable, str(ROOT / "tools/quality/stage_portal2_runtime.py"),
-                                   "--steam-root", str(args.steam_root), "--runtime", str(runtime),
-                                   "--build", str(args.build.resolve()), "--mount-published"],
-                                  stdout=stream, stderr=subprocess.STDOUT).returncode
-        if code != 0:
-            raise DemoError("staging failed (%s)" % log)
+        try:
+            sepipe_loader.package_into(args.kiln_profile, runtime, args.flavor)
+        except sepipe_loader.LoadError as error:
+            raise DemoError("staging failed: %s" % error) from error
     if not (runtime / "hl2_launcher").is_file():
         raise DemoError("%s has no staged launcher" % runtime)
     game = runtime / "portal2"
@@ -206,8 +203,8 @@ def stage(args, workload):
                 if argument.startswith("+") and argument[1:] not in ("exec", "map") and
                 argument[1:].replace("_", "").isalnum()]
     timers = ["cl_render_debug_gpu_timers 1", "cl_render_debug_stats 1"] if args.profile else []
-    # Startup cvars live here, not on the command line: ./play_p2 adds its own
-    # switches, and the engine refuses command lines over 512 characters.
+    # Startup cvars live here, not on the command line: the profile adds its
+    # own switches, and the engine refuses command lines over 512 characters.
     startup = ["volume 0", "mat_vsync 0", "engine_no_focus_sleep 0", "demo_quitafterplayback 1"]
     (game / "cfg" / QUERY_CFG).write_text("\n".join(startup + timers + queries) + "\n")
     console = game / "console.log"
@@ -217,7 +214,7 @@ def stage(args, workload):
 
 
 def renderdoc_prefix(args):
-    """renderdoccmd around ./play_p2. It follows children (the launcher
+    """renderdoccmd around the game (the run's wrapper). It follows children (the launcher
     re-execs itself) and runs the game on mutter's Xwayland, because RenderDoc
     hides VK_KHR_wayland_surface."""
     if not args.renderdoc_frames:
@@ -233,8 +230,7 @@ def renderdoc_prefix(args):
 def game_command(args, workload, stats_path, runtime):
     frames = (["-vkrenderdocframes", ",".join(str(frame) for frame in args.renderdoc_frames)]
               if args.renderdoc_frames else [])
-    return [*renderdoc_prefix(args), str(ROOT / "play_p2"),
-            "-multirun", "-novid", "-condebug", "-windowed", "-noborder",
+    return ["-multirun", "-novid", "-condebug", "-windowed", "-noborder",
             "-w", str(args.width), "-h", str(args.height),
             # The game starts in the runtime; a relative path keeps long output
             # directories under the engine's 512-character command line.
@@ -246,47 +242,43 @@ def game_command(args, workload, stats_path, runtime):
             "+playdemo", Path(workload["demo_name"]).stem]
 
 
-def launch(args, workload, runtime, command):
-    """./play_p2 in a private headless mutter, in the launch sandbox."""
+def launch(args, workload, runtime, arguments):
+    """The profile's game from the private runtime, through kiln.api on the
+    private display session, in the launch sandbox."""
     sandbox = launch_sandbox.Sandbox(args.out / "sandbox", write_paths=[runtime])
     environment = sandbox.environment(os.environ)
-    environment.update({"P2_RUNTIME": str(runtime), "P2_NO_BUILD": "1",
-                        "P2_BUILD_DIR": str(args.build.resolve()),
-                        "P2_FSR": "1" if workload.get("fsr") else "0",
-                        "SDL_VIDEODRIVER": "wayland"})
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
     tools = args.out / "tools"
     portal2_scenarios.write_fake_zenity(tools)
     environment["PATH"] = str(tools) + os.pathsep + environment.get("PATH", "")
-    command = private_session.dbus_run_session(args.out / "dbus") + [
-        "mutter", "--headless", "--virtual-monitor",
-        "%dx%d@%g" % (args.width, args.height, workload.get("refresh_hz", 60)),
-        "--wayland-display", "demo-%d" % os.getpid(), "--"] + command
-    stream = (args.out / "stdout.log").open("wb")
-    process = subprocess.Popen(command, cwd=ROOT, env=environment, stdout=stream,
-                               stderr=subprocess.STDOUT, start_new_session=True)
-    return process, stream, sandbox
+    run = sepipe_loader.Run(
+        sepipe_loader.load(), sepipe_loader.session(), "run", args.kiln_profile,
+        flavor=args.flavor, runtime=str(runtime), arguments=list(arguments),
+        display="private", wrapper=renderdoc_prefix(args), log=str(args.out / "stdout.log"),
+        environment=sepipe_loader.environment_overrides(environment),
+        display_mode=(args.width, args.height, float(workload.get("refresh_hz", 60))))
+    return run, sandbox
 
 
 def run(args, workload):
     args.out.mkdir(parents=True, exist_ok=True)
     runtime = stage(args, workload)
     stats = args.out / "frames.jsonl"
-    command = game_command(args, workload, stats, runtime)
-    if len(" ".join(command[command.index(str(ROOT / "play_p2")) + 1:])) >= 512:
+    arguments = game_command(args, workload, stats, runtime)
+    command = sepipe_loader.session().plan(args.kiln_profile, flavor=args.flavor,
+                                           runtime=str(runtime), arguments=arguments)["argv"]
+    if len(" ".join(command[1:])) >= 512:
         raise DemoError("command line exceeds the engine's 512 characters")
     context = {"host": frame_floor.host_context(), "graphics": frame_floor.graphics_context()}
     started = time.monotonic()
-    process, stream, sandbox = launch(args, workload, runtime, command)
+    process, sandbox = launch(args, workload, runtime, arguments)
     timed_out = False
-    try:
-        process.wait(timeout=workload["timeout_seconds"])
-    except subprocess.TimeoutExpired:
-        timed_out = True
-    finally:
-        frame_floor.stop(process)
-        stream.close()
+    deadline = started + workload["timeout_seconds"]
+    while process.poll() is None:
+        if time.monotonic() > deadline:
+            timed_out = True
+            process.stop()
+            break
+        time.sleep(0.5)
     seconds = round(time.monotonic() - started, 1)
     console = runtime / "portal2/console.log"
     if console.is_file():
@@ -297,7 +289,8 @@ def run(args, workload):
                                            capture_output=True, text=True).stdout.strip(),
                 "dirty": bool(subprocess.run(["git", "status", "--porcelain", "-uno"], cwd=ROOT,
                                              capture_output=True, text=True).stdout.strip()),
-                "build": str(args.build), "runtime": str(runtime), "command": command,
+                "profile_name": args.kiln_profile, "flavor": args.flavor, "runtime": str(runtime),
+                "command": command,
                 "profile": args.profile, "extent": [args.width, args.height],
                 "started": datetime.datetime.now().isoformat(timespec="seconds"),
                 "wall_seconds": seconds, "exit_status": process.returncode,
@@ -386,8 +379,8 @@ def main(argv=None):
     play = commands.add_parser("run", help="stage, play the demo and analyze it")
     play.add_argument("--runtime", type=Path, required=True, help="private runtime to stage")
     play.add_argument("--out", type=Path, required=True, help="new evidence directory")
-    play.add_argument("--build", type=Path, help="Waf tree (default: the workload's)")
-    play.add_argument("--steam-root", type=Path, default=frame_floor.DEFAULT_STEAM_ROOT)
+    play.add_argument("--kiln-profile", help="kiln profile (default: the workload's)")
+    play.add_argument("--flavor", default="dev", help="the profile's build flavor")
     play.add_argument("--no-stage", action="store_true", help="reuse the staged runtime as is")
     play.add_argument("--profile", action="store_true",
                       help="backend GPU pass timers and the core's per-pass reports (adds overhead)")
@@ -412,7 +405,7 @@ def main(argv=None):
         else:
             if args.out.exists() and any(args.out.iterdir()):
                 raise DemoError("%s is not empty; use a new evidence directory" % args.out)
-            args.build = args.build or ROOT / workload["build"]
+            args.kiln_profile = args.kiln_profile or workload["profile"]
             args.width = args.width or workload["width"]
             args.height = args.height or workload["height"]
             evidence = run(args, workload)

@@ -81,7 +81,6 @@ import conformance_result  # noqa: E402
 import legacy_bsp  # noqa: E402
 import portal2_material_shots as shots  # noqa: E402
 import portal2_scenarios  # noqa: E402
-import private_session  # noqa: E402
 import portal2_retail  # noqa: E402
 
 
@@ -344,22 +343,12 @@ def capture_retail(args, workload, scenarios):
     for scenario in scenarios:
         inner += ["--scenario", scenario["name"]]
     inner += ["--engine-arg=" + arg for arg in WALKER_ENGINE_ARGS]
-    config = out / "compositor-config"
-    config.mkdir(parents=True, exist_ok=True)
-    environment = dict(os.environ, XDG_CONFIG_HOME=str(config))
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
-    command = private_session.dbus_run_session(out / "dbus") + [
-        "mutter", "--headless", "--wayland", "--virtual-monitor", "1920x1080@60",
-        "--wayland-display", "p2-storybeats-%d" % os.getpid(), "--"] + inner
     print("== retail %s" % ", ".join(s["name"] for s in scenarios), flush=True)
-    with (out / "compositor.log").open("wb") as log:
-        process = subprocess.run(command, env=environment, stdout=log,
-                                 stderr=subprocess.STDOUT, timeout=args.session_timeout)
+    returncode = shots.run_retail_session(inner, out, args.session_timeout)
     path = out / "capture.json"
     if not path.is_file():
         raise BeatError("the retail session wrote no capture (exit %d); see %s"
-                        % (process.returncode, out / "compositor.log"))
+                        % (returncode, out / "compositor.log"))
     capture = json.loads(path.read_text())
     capture["player_clips"] = count
     shots.write_capture(out, capture)

@@ -47,7 +47,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import conformance_result  # noqa: E402
-import private_session  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "kiln"))
+import sepipe_loader  # noqa: E402
 
 SCHEMA = "portal2-audio/v1"
 METRICS_SCHEMA = "portal2-audio-metrics/v1"
@@ -850,9 +851,6 @@ def capture_retail(args, workload, out):
     install_probe(args.workload, workload, mirror / "portal2", args.steam_root, args.seed,
                   args.console)
     write_fake_zenity(out / "tools")
-    for tool in ("mutter", "dbus-run-session"):
-        if not shutil.which(tool):
-            raise AudioError("retail capture needs %s" % tool)
     libraries = [str(mirror / "bin" / "linux32")]
     if args.retail_libs:
         libraries.append(str(Path(args.retail_libs).resolve()))
@@ -864,15 +862,18 @@ def capture_retail(args, workload, out):
         "PATH": str(out / "tools") + os.pathsep + environment.get("PATH", ""),
         "XDG_CONFIG_HOME": str(out / "xdg"),
     })
-    display = "p2audio-%d" % os.getpid()
-    command = private_session.dbus_run_session(out / "dbus") + [
-               "mutter", "--headless", "--wayland", "--virtual-monitor", "1024x768@60",
-               "--wayland-display", display, "--",
-               "./portal2_linux", "-game", "portal2", "-nobreakpad", "-novid", "-multirun",
+    game = ["./portal2_linux", "-game", "portal2", "-nobreakpad", "-novid", "-multirun",
                "-condebug", "-windowed", "-w", "1024", "-h", "768", "+snd_mute_losefocus", "0",
                "+snd_surround_speakers", "2", *args.extra_arg, "+map", workload["map"]]
-    record = run_game(command, mirror, environment, out, workload["timeout_seconds"] + 60,
-                      mirror / "portal2" / "console.log")
+    # kiln's private-x11 session: a private bus and headless mutter, SDL on
+    # its Xwayland (the 32-bit retail binary crashes on SDL's Wayland backend).
+    try:
+        with sepipe_loader.Display("private-x11", out / "display", (1024, 768, 60)) as display:
+            command, environment = display.wrap(game, environment)
+            record = run_game(command, mirror, environment, out,
+                              workload["timeout_seconds"] + 60, mirror / "portal2" / "console.log")
+    except sepipe_loader.LoadError as error:
+        raise AudioError("retail capture: %s" % error) from error
     version = Path(args.steam_root) / "portal2" / "steam.inf"
     if version.is_file():
         record["retail_version"] = version.read_text(errors="replace").strip().splitlines()

@@ -222,6 +222,34 @@ public:
 	// `play` builds through the package stage first (Session::BuildForPlay);
 	// `run` launches what is already packaged. Both wait for the program
 	// under its display session and run provider and return its status.
+	// The display session's environment ({name: value | None}) and command
+	// prefix, for a harness that runs its own programs under it.
+	nb::dict OpenDisplay( const std::string &name, const std::string &scratch,
+	    std::optional<std::tuple<int, int, double>> mode )
+	{
+		product::DisplayRequest request;
+		request.scratch = std::filesystem::absolute( scratch );
+		if ( mode )
+		{
+			request.width = std::get<0>( *mode );
+			request.height = std::get<1>( *mode );
+			request.refreshHz = std::get<2>( *mode );
+		}
+		const product::DisplayEnvironment opened = Take( m_Session.OpenDisplay( name, request ) );
+		nb::dict environment;
+		for ( const auto &entry : opened.environment )
+			environment[entry.name.c_str()] =
+			    entry.value ? nb::object( nb::str( entry.value->c_str() ) ) : nb::none();
+		nb::dict result;
+		result["environment"] = environment;
+		result["command_prefix"] = nb::cast( opened.commandPrefix );
+		result["isolated"] = opened.isolated;
+		result["headless"] = opened.headless;
+		return result;
+	}
+
+	void CloseDisplay( const std::string &name ) { m_Session.CloseDisplay( name ); }
+
 	int Launch( kiln::PlayRequest request, bool build )
 	{
 		nb::gil_scoped_release release;
@@ -257,7 +285,12 @@ NB_MODULE( sepipe, m )
 	    .def( "doctor", &Session::Doctor, nb::arg( "profile" ) )
 	    .def( "build", &Session::Build, nb::arg( "profile" ), nb::arg( "flavor" ) = nb::none(),
 	        nb::arg( "up_to" ) = "engine", nb::arg( "mounts" ) = std::vector<std::string>{},
-	        nb::arg( "runtime" ) = nb::none() );
+	        nb::arg( "runtime" ) = nb::none() )
+	    .def( "open_display", &Session::OpenDisplay, nb::arg( "name" ), nb::arg( "scratch" ),
+	        nb::arg( "mode" ) = nb::none(),
+	        "Open a display session by name (user, none, private, private-x11) for programs the "
+	        "caller runs itself: {environment, command_prefix, isolated, headless}." )
+	    .def( "close_display", &Session::CloseDisplay, nb::arg( "name" ) );
 
 	// plan, play and run take the same play request (MakePlay's options).
 	nb::class_<product::CancellationFlag>( m, "Cancellation",

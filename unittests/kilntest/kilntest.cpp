@@ -609,6 +609,23 @@ void DisplayChecks()
 		auto privateSession =
 		    product::CreatePrivateDisplaySession( { "/nonexistent/session.conf", config } );
 		CheckVerdict( suites::DisplaySuite( *privateSession ), "display private" );
+		auto x11Session =
+		    product::CreatePrivateX11DisplaySession( { "/nonexistent/session.conf", config } );
+		CheckVerdict( suites::DisplaySuite( *x11Session ), "display private-x11" );
+		{
+			product::DisplayRequest x11Request;
+			x11Request.scratch = fs::temp_directory_path() / "kilntest-private-x11";
+			auto x11 = x11Session->Open( x11Request );
+			bool driver = false;
+			if ( x11 )
+			{
+				for ( const auto &entry : x11.Value().environment )
+					driver |= entry.name == "SDL_VIDEODRIVER" && entry.value == "x11";
+			}
+			Check( x11 && x11.Value().isolated && driver && x11Session->Name() == "private-x11",
+			    "display private-x11: isolated, SDL on X11" );
+			x11Session->Close();
+		}
 		product::DisplayRequest request;
 		request.scratch = fs::temp_directory_path() / "kilntest-private";
 		auto opened = privateSession->Open( request );

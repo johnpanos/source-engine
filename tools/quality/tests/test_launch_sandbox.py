@@ -224,7 +224,6 @@ ALLOWED = {
     # Pending migration (RFC/0005-progress.md, launch sandbox record).
     "portal2_audio.py": "pending: retail cohort (links the retail binary; busy file)",
     "portal2_material_shots.py": "pending: retail cohort (busy file)",
-    "portal2_physics.py": "pending: retail cohort (busy file)",
 }
 
 
