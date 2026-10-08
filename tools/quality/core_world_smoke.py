@@ -59,9 +59,10 @@ import time
 import conformance
 import conformance_result
 import launch_sandbox
-import portal_boot
 import source_content
-import stage_portal2_runtime
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_WORKLOAD = ROOT / "quality/workloads/core-world-smoke-v1.json"
@@ -469,16 +470,21 @@ def expectations(results, known, game, checks, ran_all, intermittent=()):
 
 
 def staged_runtime(game, args, root):
-    """Stage an isolated runtime with the build's products under root."""
-    if game == "portal":
-        info = {"staging": portal_boot.stage_runtime(args.runtime, root, game="portal")}
-    else:
-        stage_portal2_runtime.stage_content(args.steam_root, root)
-        info = {"staging": "stage_portal2_runtime.stage_content"}
-    info["build_overrides"] = sorted(portal_boot.install_build(args.build, root, game=game))
+    """Package the kiln profile into an isolated runtime under root."""
+    built = sepipe_loader.session().build(args.profile, flavor=args.flavor, up_to="package",
+                                          runtime=str(root))
     if not (root / "hl2_launcher").is_file():
-        raise ValueError("staged runtime lacks hl2_launcher")
-    return info
+        raise ValueError("packaged runtime lacks hl2_launcher")
+    return {"staging": {stage["name"]: stage["summary"] for stage in built["stages"]},
+            "client": [args.profile, args.flavor]}
+
+
+def content_root(game, args):
+    """Where the retail maps are listed from: Portal's from the profile's kiln
+    package, Portal 2's from its Steam install (the retail layout)."""
+    if game == "portal":
+        return sepipe_loader.packaged_runtime(args.profile or "portal", args.flavor)
+    return Path(args.steam_root)
 
 
 def write_fake_zenity(directory):
@@ -502,7 +508,7 @@ def describe_exit(code):
 
 
 def run_process(game, stage, maps, workload, core_world, out_dir, tools, extra_startup,
-                width, height):
+                width, height, client):
     """Run one engine process over maps [(index, name)]; return its parse and exit."""
     cfg_dir = stage / game / "cfg"
     startup = ["sv_cheats 1", "r_core_world %d" % (1 if core_world else 0)]
@@ -516,56 +522,41 @@ def run_process(game, stage, maps, workload, core_world, out_dir, tools, extra_s
     (stage / game / "console.log").unlink(missing_ok=True)
     sandbox = launch_sandbox.Sandbox(out_dir / "sandbox", write_paths=[stage])
     environment = sandbox.environment(os.environ)
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
-    environment.update({
-        "SteamAppId": STEAM_APP_IDS[game], "SteamGameId": STEAM_APP_IDS[game],
-        "LD_LIBRARY_PATH": str(stage / "bin"),
-        # SDL3's offscreen driver: real GPU rendering, no window or display.
-        "SDL_VIDEODRIVER": "offscreen", "SDL_VIDEO_DRIVER": "offscreen",
-        "PATH": str(tools) + os.pathsep + environment.get("PATH", ""),
-    })
-    shared = portal_boot.user_display_in_use(environment, portal_boot.login_session_displays())
-    if shared:
-        raise ValueError("refusing a run on the user's display: " + ", ".join(shared))
-    command = ["./hl2_launcher", "-game", game, "-windowed", "-w", str(width), "-h", str(height),
-               "-multirun", "-novid", "-insecure", "-nomessagebox", *workload["engine_args"],
-               "+exec", SCRIPT_PREFIX + "start", "+map", maps[0][1], "+exec", first]
+    environment["PATH"] = str(tools) + os.pathsep + environment.get("PATH", "")
+    arguments = ["-game", game, "-windowed", "-w", str(width), "-h", str(height),
+                 "-multirun", "-novid", "-insecure", "-nomessagebox", *workload["engine_args"],
+                 "+exec", SCRIPT_PREFIX + "start", "+map", maps[0][1], "+exec", first]
+    command = {"profile": client[0], "flavor": client[1], "arguments": arguments}
     out_dir.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
-    markers = 0
-    timed_out = False
-    last_progress = started
-    offset, partial = 0, ""
-    with (out_dir / "stdout.log").open("wb") as stream:
-        process = subprocess.Popen(command, cwd=stage, env=environment, stdout=stream,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
-        while process.poll() is None:
-            time.sleep(0.25)
-            now = time.monotonic()
-            if log.is_file():
-                with log.open("rb") as handle:
-                    handle.seek(offset)
-                    chunk = handle.read()
-                offset += len(chunk)
-                lines = (partial + chunk.decode("utf-8", "replace")).split("\n")
-                partial = lines.pop()
-                for line in lines:
-                    if MARKER.search(LOG_STAMP.sub("", line)):
-                        markers += 1
-                        last_progress = now
-            limit = workload["startup_timeout_seconds"] if not markers else \
-                workload["map_timeout_seconds"]
-            if now - last_progress > limit:
-                timed_out = True
-                os.killpg(process.pid, signal.SIGTERM)
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait()
-                break
-        code = process.wait()
+    watch = {"markers": 0, "last_progress": started, "offset": 0, "partial": "",
+             "stalled": False}
+
+    def stalled():
+        """Reads new engine.log lines; true once no map marker came in time."""
+        now = time.monotonic()
+        if log.is_file():
+            with log.open("rb") as handle:
+                handle.seek(watch["offset"])
+                chunk = handle.read()
+            watch["offset"] += len(chunk)
+            lines = (watch["partial"] + chunk.decode("utf-8", "replace")).split("\n")
+            watch["partial"] = lines.pop()
+            for line in lines:
+                if MARKER.search(LOG_STAMP.sub("", line)):
+                    watch["markers"] += 1
+                    watch["last_progress"] = now
+        limit = workload["startup_timeout_seconds"] if not watch["markers"] else \
+            workload["map_timeout_seconds"]
+        watch["stalled"] = watch["stalled"] or now - watch["last_progress"] > limit
+        return watch["stalled"]
+    code, _, _, error = sepipe_loader.run_test(
+        client[0], client[1], stage, arguments, out_dir / "stdout.log", 7 * 24 * 3600,
+        environment=environment, stop_when=stalled, poll_seconds=0.25)
+    timed_out = watch["stalled"]
+    if error:
+        with (out_dir / "stdout.log").open("a") as stream:
+            stream.write("\nkiln: %s\n" % error)
     seconds = time.monotonic() - started
     log_text = log.read_text(errors="replace") if log.is_file() else ""
     (out_dir / "engine.log").write_text(log_text)
@@ -584,7 +575,7 @@ def run_process(game, stage, maps, workload, core_world, out_dir, tools, extra_s
 
 
 def sweep(game, stage, maps, workload, core_world, out_root, tools, extra_startup, width,
-          height, label):
+          height, label, client):
     """Run maps [(index, name)] with restarts; return (records by index, processes)."""
     records, processes = {}, []
     pending = list(maps)
@@ -594,7 +585,7 @@ def sweep(game, stage, maps, workload, core_world, out_root, tools, extra_startu
         number += 1
         result = run_process(game, stage, pending, workload, core_world,
                              out_root / ("%s-%03d" % (label, number)), tools, extra_startup,
-                             width, height)
+                             width, height, client)
         parsed = result.pop("parsed")
         processes.append(result)
         counters = None
@@ -740,7 +731,7 @@ def command_run(args):
     if (output / "evidence.json").exists():
         print("core_world_smoke: evidence already exists in %s" % output, file=sys.stderr)
         return 2
-    content = Path(args.runtime if game == "portal" else args.steam_root)
+    content = content_root(game, args)
     maps, skipped = enumerate_maps(game, content)
     exclusions = {item["map"].lower(): item for item in workload["exclusions"]
                   if item["game"] == game}
@@ -762,7 +753,7 @@ def command_run(args):
         "source": conformance.source_identity(str(ROOT)),
         "workload": {"path": str(args.workload), "version": workload.get("version"),
                      "settle_frames": workload["settle_frames"]},
-        "content_root": str(content.resolve()), "build": str(args.build.resolve()),
+        "content_root": str(content.resolve()), "client": [args.profile, args.flavor],
         "content_maps": len(maps), "skipped_content": skipped, "excluded": excluded,
         "selected": len(selected), "seed_failure": args.seed_failure,
     }
@@ -791,7 +782,8 @@ def command_run(args):
             shutil.rmtree(stage)
         info = staged_runtime(game, args, stage)
         records, processes = sweep(game, stage, shard, workload, core_world, output, tools,
-                                   extra, args.width, args.height, "%s%d" % (label, number))
+                                   extra, args.width, args.height, "%s%d" % (label, number),
+                                   (args.profile, args.flavor))
         for record in records.values():
             record["shard"] = number
         if not args.keep_runtime:
@@ -858,7 +850,7 @@ def command_run(args):
 
 
 def command_list(args):
-    content = Path(args.runtime if args.game == "portal" else args.steam_root)
+    content = content_root(args.game, args)
     maps, skipped = enumerate_maps(args.game, content)
     workload = load_workload(args.workload)
     excluded = {item["map"].lower(): item["reason"] for item in workload["exclusions"]
@@ -1050,13 +1042,11 @@ def main(argv=None):
         sub = commands.add_parser(name)
         sub.add_argument("--game", choices=sorted(GAME_LAYERS), required=True)
         sub.add_argument("--workload", type=Path, default=DEFAULT_WORKLOAD)
-        sub.add_argument("--runtime", type=Path, default=ROOT / "run/runtime",
-                         help="Portal runtime holding the retail content (portal/)")
+        sub.add_argument("--profile", help="kiln profile (default: the game's own)")
+        sub.add_argument("--flavor", default="dev", help="the profile's build flavor")
         sub.add_argument("--steam-root", type=Path, default=steam,
                          help="Portal 2 installation (SOURCE_PORTAL2_STEAM_ROOT)")
         if name == "run":
-            sub.add_argument("--build", type=Path,
-                             help="Waf output tree (default build for portal, build-p2 for portal2)")
             sub.add_argument("--out", type=Path, required=True)
             sub.add_argument("--map", action="append", default=[],
                              help="run only this map (repeatable)")
@@ -1079,8 +1069,7 @@ def main(argv=None):
         return command_self_test(args)
     if args.command == "list":
         return command_list(args)
-    if args.build is None:
-        args.build = ROOT / ("build" if args.game == "portal" else "build-p2")
+    args.profile = args.profile or args.game
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     if args.seed_failure and not re.fullmatch(r"[A-Za-z0-9_/.\-]+", args.seed_failure):
