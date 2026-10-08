@@ -1141,7 +1141,7 @@ def configure(conf):
 		if conf.env.PICA:
 			projects['game'] += ['materialsystem/shaderapipica']
 		if conf.env.NATIVE_VULKAN:
-			projects['game'] += ['materialsystem/shaderapivulkan']
+			projects['game'] += ['materialsystem/shaderapivulkan', 'render/bridge/sdl3-vulkan']
 			if not conf.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/shaderapivulkantest']
 			# Its KTX2 suites are gated inside; the VTF 7.6 suite needs no KTX.
@@ -1290,7 +1290,7 @@ def build(bld):
 		if bld.env.PICA:
 			projects['game'] += ['materialsystem/shaderapipica']
 		if bld.env.NATIVE_VULKAN:
-			projects['game'] += ['materialsystem/shaderapivulkan']
+			projects['game'] += ['materialsystem/shaderapivulkan', 'render/bridge/sdl3-vulkan']
 			if not bld.env.ANDROID_SDL3:
 				projects['game'] += ['unittests/shaderapivulkantest']
 			# Its KTX2 suites are gated inside; the VTF 7.6 suite needs no KTX.

@@ -19902,6 +19902,26 @@
       "expect": "pass"
     },
     {
+      "id": "render.bridge.legacy-presentation",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "kind": "positive",
+      "profile": "linux-native-vulkan-gpu",
+      "description": "RFC 0016 legacy device facade F3: render_vulkan::ILegacyPresentation, the SDL3-Vulkan bridge's presentation state for the legacy backend's window that the composition root owns: the video mode request (back buffer, vsync, samples) and the gamma ramp with their revisions, the gamma ramp set from another thread while presents read it, the mode-change callbacks registered once and dispatched once per change, a window the bridge refuses with a named reason, and Close with nothing open.",
+      "sources": [
+        "unittests/shaderapivulkantest/test_legacy_presentation.cpp",
+        "render/bridge/sdl3-vulkan/legacy_presentation.cpp",
+        "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
+        "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp"
+      ],
+      "extra_flags": [
+        "-pthread"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 19,
+      "expect": "pass"
+    },
+    {
       "id": "render.record-replay",
       "domain": "Q-ARCH",
       "rfc": "0016",

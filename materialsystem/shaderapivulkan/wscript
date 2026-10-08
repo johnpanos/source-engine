@@ -55,9 +55,6 @@ def build(bld):
 		'vulkan_world_lightmap.cpp',
 		'vulkan_world_reflection_probes.cpp',
 		'vulkan_world_mesh_upload.cpp',
-		# The SDL3-Vulkan pair bridge: the only source here that includes SDL.
-		'../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp',
-		'../../render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]
 
@@ -72,26 +69,9 @@ def build(bld):
 
 	defines = []
 
-	libs = ['tier0','tier1','vstdlib','mathlib','bitmap','VULKAN','SDL3','vulkan_texture_image',
+	libs = ['tier0','tier1','vstdlib','mathlib','bitmap','VULKAN','vulkan_texture_image',
 		'vulkan_debug',
 		'mapcontainer', 'render_spv', 'render_device']
-	# The pair's dynamic range on Apple: the Metal layer's range and the
-	# screen's headroom (UIKit), and tvOS's HDR mode (AVKit, CoreMedia).
-	if bld.env.DEST_OS == 'ios':
-		source += ['../../render/bridge/sdl3-vulkan/sdl3_dynamic_range_apple.mm']
-		libs += ['FOUNDATION', 'UIKIT', 'QUARTZCORE']
-		if bld.env.APPLE_PLATFORM == 'tvos':
-			libs += ['AVFOUNDATION', 'AVKIT', 'COREMEDIA']
-	# The pair's dynamic range on Android: the display read over JNI.
-	if bld.env.DEST_OS == 'android':
-		source += ['../../render/bridge/sdl3-vulkan/sdl3_dynamic_range_android.cpp']
-	# The pair's output image description on Wayland (color-management-v1),
-	# which lets a compositor scan HDR10 frames out without color mapping.
-	if bld.env.DEST_OS == 'linux' and bld.env.LIB_WAYLAND_CLIENT:
-		source += ['../../render/bridge/sdl3-vulkan/sdl3_dynamic_range_wayland.cpp',
-			'../../render/bridge/sdl3-vulkan/wayland/color-management-v1-protocol.c']
-		libs += ['WAYLAND_CLIENT']
-		defines += ['SDL3_WAYLAND_COLOR']
 	if bld.env.KTX_READ_ENABLED:
 		libs += ['texturecontainer', 'KTXREAD']
 		defines += ['RFC0008_KTX_READER']

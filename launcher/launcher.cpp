@@ -98,6 +98,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 #include "render/device/vulkan/host_binding.h"
 #include "render/render_backend.h"
+#include "../render/bridge/sdl3-vulkan/legacy_presentation.h"
 #include "render/legacy/core_passes.h"
 #include "render/legacy/frame_source.h"
 #endif
@@ -637,6 +638,9 @@ private:
 	// backend's device; the backend borrows it, and the material system has
 	// it created before SetMode and released after Shutdown.
 	render::device::vulkan::IHostDeviceOwner *m_pDeviceOwner = nullptr;
+	// F3: the SDL3-Vulkan bridge's presentation for the engine's window; the
+	// backend borrows it.
+	render_vulkan::ILegacyPresentation *m_pPresentation = nullptr;
 #endif
 };
 
@@ -955,6 +959,9 @@ bool CSourceAppSystemGroup::Create()
 		m_pDeviceOwner =
 		    render::device::vulkan::CreateHostDeviceOwner( CommandLine()->FindParm( "-fsr" ) != 0 );
 	NativeVulkanShaderBackend_BindDeviceOwner( m_pDeviceOwner );
+	if ( !m_pPresentation )
+		m_pPresentation = render_vulkan::CreateSdl3LegacyPresentation();
+	NativeVulkanShaderBackend_BindPresentation( m_pPresentation );
 	// RFC 0016 K3: its frames run in the render core's frame graph.
 	NativeVulkanShaderBackend_BindFrameExecutor( &render::legacy::LegacyFrameExecutor() );
 #endif
@@ -1223,6 +1230,9 @@ void CSourceAppSystemGroup::Destroy()
 	NativeVulkanShaderBackend_BindDeviceOwner( nullptr );
 	render::device::vulkan::DestroyHostDeviceOwner( m_pDeviceOwner );
 	m_pDeviceOwner = nullptr;
+	NativeVulkanShaderBackend_BindPresentation( nullptr );
+	render_vulkan::DestroySdl3LegacyPresentation( m_pPresentation );
+	m_pPresentation = nullptr;
 #endif
 
 #ifdef WIN32

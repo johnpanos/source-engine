@@ -73,7 +73,8 @@ def build(bld):
 			'tier0', 'tier1', 'tier2', 'vstdlib', 'SDL3']
 		pixel_defines = list(test_env.DEFINES)
 		if bld.env.NATIVE_VULKAN:
-			pixel_use += ['shaderapivulkan', 'render_device_vulkan', 'render_device']
+			pixel_use += ['shaderapivulkan', 'render_bridge_sdl3_vulkan', 'render_device_vulkan',
+				'render_device']
 			pixel_defines += ['LINKED_NATIVE_VULKAN_BACKEND']
 		bld.program(
 			features='cxx', env=test_env.derive(),

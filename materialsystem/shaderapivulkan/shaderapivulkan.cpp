@@ -39,7 +39,7 @@
 #include "render/light_set.h"
 #include "render/direct_light_selection.h"
 #include "render/sprite_card.h"
-#include "../../render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.h"
+#include "../../render/bridge/sdl3-vulkan/legacy_presentation.h"
 #include "vtf/vtf.h"
 #include "pixelwriter.h"
 #include "shaderapi/commandbuffer.h"
@@ -76,17 +76,69 @@
 // the material path is still the empty stub (roadmap R32), this proves the
 // backend genuinely brings up native Vulkan in-process and presents a frame.
 //-----------------------------------------------------------------------------
-// The window side of the context, supplied by the SDL3-Vulkan bridge. Declared
-// first so it is destroyed after the context, which borrows it until Shutdown.
-static std::unique_ptr<render_vulkan::IVulkanSurfaceHost> g_VulkanSurfaceHost;
+// The window side of the context: the SDL3-Vulkan bridge's presentation the
+// composition root owns and binds (RFC 0016 legacy device facade F3). It owns
+// the window's surface host, the video mode's request (back buffer, vsync,
+// samples), the gamma ramp and the mode-change callbacks; the context follows
+// it. NativeVulkanShaderBackend_BindPresentation.
+static render_vulkan::ILegacyPresentation *g_Presentation = nullptr;
 static render_vulkan::CVulkanContext g_VulkanContext;
 
-// A video mode applied by ChangeVideoMode whose mode-change callbacks (the
-// engine's window and UI adjustment) have not run yet. As on D3D9
-// (CShaderDeviceDx8::ResizeWindow), they run at the next Present on the main
-// thread; a resize applied on the render worker commits its UI itself.
-static bool g_bPendingModeChangeCallbacks = false;
-static void InvokePendingModeChangeCallbacks();
+// A video mode applied by ChangeVideoMode marks a change in the presentation;
+// its callbacks (the engine's window and UI adjustment) run, as on D3D9
+// (CShaderDeviceDx8::ResizeWindow), at the next Present on the main thread; a
+// resize applied on the render worker commits its UI itself.
+static void InvokePendingModeChangeCallbacks()
+{
+	if ( g_Presentation && ThreadInMainThread() )
+		g_Presentation->DispatchModeChange();
+}
+
+// The context follows the presentation's mode and gamma ramp: each revision
+// is applied once.
+static uint64_t g_FollowedModeRevision = 0;
+static uint64_t g_FollowedGammaRevision = 0;
+static void FollowPresentation()
+{
+	if ( !g_Presentation )
+		return;
+	const uint64_t modeRevision = g_Presentation->ModeRevision();
+	if ( modeRevision != g_FollowedModeRevision )
+	{
+		g_FollowedModeRevision = modeRevision;
+		const render_vulkan::ILegacyPresentation::Mode mode = g_Presentation->GetMode();
+		std::string error;
+		if ( !g_VulkanContext.SetBackBufferSize( mode.width, mode.height, &error ) )
+			Warning( "[NativeVulkan] back buffer resize failed: %s\n", error.c_str() );
+		g_VulkanContext.RequestVSync( mode.vsync );
+		g_VulkanContext.RequestSampleCount( mode.samples );
+	}
+	render::GammaRamp16 ramp;
+	uint64_t gammaRevision = 0;
+	if ( g_Presentation->GetGammaRamp( &ramp, &gammaRevision ) &&
+	     gammaRevision != g_FollowedGammaRevision )
+	{
+		g_FollowedGammaRevision = gammaRevision;
+		g_VulkanContext.PublishGammaRamp( ramp );
+	}
+}
+
+// A video mode's presentation request: the bridge owns it, the context
+// follows. The back buffer is the mode's size, as D3D9's
+// BackBufferWidth/Height (0 x 0 follows the window); Present scales it to
+// the window's drawable.
+static void RequestVideoMode( const ShaderDeviceInfo_t &info )
+{
+	if ( !g_Presentation )
+		return;
+	render_vulkan::ILegacyPresentation::Mode mode;
+	mode.width = info.m_DisplayMode.m_nWidth;
+	mode.height = info.m_DisplayMode.m_nHeight;
+	mode.vsync = info.m_bWaitForVSync;
+	mode.samples = info.m_nAASamples;
+	g_Presentation->RequestMode( mode );
+	FollowPresentation();
+}
 
 // The DirectX support level this backend's caps claim: 95, shader model 3.0
 // class hardware, like the D3D9 device on the same GPUs. Vertex textures stay
@@ -333,41 +385,52 @@ static render_vulkan::VulkanContextConfig MakeContextConfig( bool vsync )
 }
 
 // The owner's requester: what this backend needs of the device for the
-// engine's window (its surface through the pair-specific bridge, its
-// extensions and features). The surface host it makes is the one Init uses.
+// engine's window (its surface through the presentation's surface host, its
+// extensions and features).
 static bool RequestDeviceForWindow( void *, void *legacyWindowRef,
     render::device::vulkan::HostDeviceRequest *request, char *error, std::size_t errorSize )
 {
-	std::string reason;
-	std::unique_ptr<render_vulkan::IVulkanSurfaceHost> host =
-	    render_vulkan::MakeSdl3LegacySurfaceHost( legacyWindowRef, &reason );
-	if ( host && g_VulkanContext.PrepareDeviceRequest(
-	                 *host, MakeContextConfig( false ), request, &reason ) )
+	if ( !g_Presentation )
 	{
-		g_VulkanSurfaceHost = std::move( host );
-		return true;
+		Q_strncpy( error, "no presentation is bound (NativeVulkanShaderBackend_BindPresentation)",
+		    static_cast<int>( errorSize ) );
+		return false;
 	}
+	render_vulkan::IVulkanSurfaceHost *host =
+	    g_Presentation->Open( legacyWindowRef, error, errorSize );
+	if ( !host )
+		return false;
+	std::string reason;
+	if ( g_VulkanContext.PrepareDeviceRequest(
+	         *host, MakeContextConfig( false ), request, &reason ) )
+		return true;
 	Q_strncpy( error, reason.c_str(), static_cast<int>( errorSize ) );
 	return false;
 }
 
 // Brings the context up against the engine's window. The window reference is
-// handed to the pair-specific bridge untouched; nothing here interprets it.
-// The surface host the owner's requester made for the window is reused.
+// handed to the bridge's presentation untouched; nothing here interprets it.
 static bool InitVulkanContext( void *legacyWindowRef, bool vsync, std::string *outError )
 {
-	std::unique_ptr<render_vulkan::IVulkanSurfaceHost> host = std::move( g_VulkanSurfaceHost );
-	if ( !host )
-		host = render_vulkan::MakeSdl3LegacySurfaceHost( legacyWindowRef, outError );
-	if ( !host )
+	if ( !g_Presentation )
+	{
+		*outError = "no presentation is bound (NativeVulkanShaderBackend_BindPresentation)";
 		return false;
+	}
+	char error[512] = {};
+	render_vulkan::IVulkanSurfaceHost *host =
+	    g_Presentation->Open( legacyWindowRef, error, sizeof( error ) );
+	if ( !host )
+	{
+		*outError = error;
+		return false;
+	}
 	const render_vulkan::VulkanContextConfig withTools = MakeContextConfig( vsync );
 	g_VulkanContext.RequestExtendedOutput( mat_hdr_output.GetBool() );
 	if ( !g_VulkanContext.Init( *host, withTools, outError ) )
 		return false;
 	if ( mat_pix_events.GetInt() < 0 )
 		mat_pix_events.SetValue( g_VulkanContext.DebugUtils().Active() ? 1 : 0 );
-	g_VulkanSurfaceHost = std::move( host );
 	// Frame-pacing telemetry (tools/quality/frame_pacing.py): one line per
 	// presented frame. Optional, so a sink that cannot be created only warns.
 	const char *statsPath = CommandLine()->ParmValue( "-vkframestats", (const char *)NULL );
@@ -415,6 +478,37 @@ static bool InitVulkanContext( void *legacyWindowRef, bool vsync, std::string *o
 	if ( Q_stricmp( storeDir, "none" ) != 0 &&
 	     !g_VulkanContext.OpenPipelineStore( storeDir, &storeError ) )
 		Warning( "[NativeVulkan] pipeline store unavailable: %s\n", storeError.c_str() );
+	return true;
+}
+
+// A video mode for the engine's window (both SetMode entries): the
+// presentation takes the request, and the first one brings the context up
+// against the device the root created, with the material-facing dynamic-mesh
+// pipelines. A presentable device that cannot come up fails loudly.
+static void PrewarmVulkanPipelines();
+static bool BringUpVulkanContext( void *hwnd, const ShaderDeviceInfo_t &info )
+{
+	RequestVideoMode( info );
+	if ( g_VulkanContext.IsValid() )
+		return true;
+	std::string error;
+	if ( !InitVulkanContext( hwnd, info.m_bWaitForVSync, &error ) )
+	{
+		Warning( "[NativeVulkan] device bring-up failed: %s\n", error.c_str() );
+		return false;
+	}
+	int w = 0, h = 0, presentW = 0, presentH = 0;
+	g_VulkanContext.GetSwapchainExtent( w, h );
+	g_VulkanContext.GetPresentExtent( presentW, presentH );
+	Msg( "[NativeVulkan] IShaderAPI::SetMode: device '%s' up (back buffer %dx%d, window %dx%d, "
+	     "%.0f MiB, validation %s)\n",
+	    g_VulkanContext.DeviceName(), w, h, presentW, presentH,
+	    double( g_VulkanContext.DeviceLocalMemoryBytes() ) / ( 1024.0 * 1024.0 ),
+	    g_VulkanContext.ValidationEnabled() ? "on" : "off" );
+	if ( !g_VulkanContext.InitDynamicMesh( &error ) )
+		Warning( "[NativeVulkan] dynamic mesh pipelines unavailable: %s\n", error.c_str() );
+	else
+		PrewarmVulkanPipelines();
 	return true;
 }
 
@@ -1850,6 +1944,7 @@ public:
 		if ( !g_VulkanContext.IsValid() )
 			return;
 		InvokePendingModeChangeCallbacks();
+		FollowPresentation();
 		g_VulkanContext.SetIndirectLightView(
 		    mat_indirect_view.GetInt(), mat_indirect_view_scale.GetFloat() );
 		g_VulkanContext.SetReflectionProbeMode( mat_reflection_probes.GetInt() );
@@ -1921,7 +2016,8 @@ public:
 		params.tvEnabled = bTVEnabled;
 		render::GammaRamp16 ramp;
 		render::BuildGammaRamp16( params, ramp );
-		g_VulkanContext.PublishGammaRamp( ramp );
+		if ( g_Presentation )
+			g_Presentation->SetGammaRamp( ramp );
 	}
 	virtual void EnableNonInteractiveMode(
 	    MaterialNonInteractiveMode_t mode, ShaderNonInteractiveInfo_t *pInfo )
@@ -1989,10 +2085,6 @@ public:
 	virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode );
 	virtual void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func );
 	virtual void RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func );
-	void InvokeModeChangeCallbacks();
-
-private:
-	CUtlVector<ShaderModeChangeCallbackFunc_t> m_ModeChangeCallbacks;
 };
 
 static CShaderDeviceMgrVulkan s_ShaderDeviceMgrEmpty;
@@ -2099,54 +2191,20 @@ public:
 	void ClearSnapshots();
 
 	// Sets the mode...
+	// The entry point the material system calls (CMaterialSystem::SetMode).
 	bool SetMode( void *hwnd, int nAdapter, const ShaderDeviceInfo_t &info )
 	{
-		// This is the entry point the material system actually calls
-		// (CMaterialSystem::SetMode -> g_pShaderAPI->SetMode). Bring up the native
-		// Vulkan device/surface/swapchain against the engine's window and the
-		// material-facing dynamic-mesh pipelines here.
-		// The back buffer is the video mode's size, as D3D9's BackBufferWidth/Height;
-		// Present scales it to the window's drawable.
-		std::string error;
-		if ( !g_VulkanContext.SetBackBufferSize(
-		         info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight, &error ) )
-			Warning( "[NativeVulkan] back buffer resize failed: %s\n", error.c_str() );
-		g_VulkanContext.RequestVSync( info.m_bWaitForVSync );
-		g_VulkanContext.RequestSampleCount( info.m_nAASamples );
-		if ( g_VulkanContext.IsValid() )
-			return true;
-
-		if ( !InitVulkanContext( hwnd, info.m_bWaitForVSync, &error ) )
-		{
-			Warning( "[NativeVulkan] IShaderAPI::SetMode bring-up failed: %s\n", error.c_str() );
-			return false;
-		}
-		int w = 0, h = 0, presentW = 0, presentH = 0;
-		g_VulkanContext.GetSwapchainExtent( w, h );
-		g_VulkanContext.GetPresentExtent( presentW, presentH );
-		Msg( "[NativeVulkan] IShaderAPI::SetMode: device '%s' up (back buffer %dx%d, window "
-		     "%dx%d)\n",
-		    g_VulkanContext.DeviceName(), w, h, presentW, presentH );
-		if ( !g_VulkanContext.InitDynamicMesh( &error ) )
-			Warning( "[NativeVulkan] dynamic mesh pipelines unavailable: %s\n", error.c_str() );
-		else
-			PrewarmVulkanPipelines();
-		return true;
+		return BringUpVulkanContext( hwnd, info );
 	}
 
 	// A new video mode (a window resize, mat_setvideomode) sizes the back buffer,
 	// as CShaderAPIDx8::ChangeVideoMode does; the window keeps its drawable.
 	void ChangeVideoMode( const ShaderDeviceInfo_t &info )
 	{
-		std::string error;
-		if ( !g_VulkanContext.SetBackBufferSize(
-		         info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight, &error ) )
-			Warning( "[NativeVulkan] ChangeVideoMode: %s\n", error.c_str() );
-		g_VulkanContext.RequestVSync( info.m_bWaitForVSync );
-		g_VulkanContext.RequestSampleCount( info.m_nAASamples );
-		if ( !info.m_bResizing )
+		RequestVideoMode( info );
+		if ( !info.m_bResizing && g_Presentation )
 		{
-			g_bPendingModeChangeCallbacks = true;
+			g_Presentation->ModeChanged();
 			// Publish the view extent with the backbuffer change, before the
 			// next game view is gathered. Waiting until Present leaves that
 			// view (and its temporal reconstruction request) at the old size.
@@ -3484,9 +3542,12 @@ static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *servi
 			return static_cast<render::device::vulkan::IHostDeviceOwner *>( owner )->CreateFor(
 			           window, error, size ) != nullptr;
 		};
+		// The device, then the window's surface host it presented to.
 		services->coreDevice.release = []( void *owner )
 		{
 			static_cast<render::device::vulkan::IHostDeviceOwner *>( owner )->Release();
+			if ( g_Presentation )
+				g_Presentation->Close();
 		};
 	}
 	return true;
@@ -3496,6 +3557,14 @@ extern "C" DLL_EXPORT bool NativeVulkanShaderBackend_Create(
     render::LegacyShaderServices *services )
 {
 	return CreateNativeVulkanShaderBackend( services );
+}
+
+extern "C" DLL_EXPORT void NativeVulkanShaderBackend_BindPresentation(
+    render_vulkan::ILegacyPresentation *presentation )
+{
+	g_Presentation = presentation;
+	g_FollowedModeRevision = 0;
+	g_FollowedGammaRevision = 0;
 }
 
 extern "C" DLL_EXPORT void NativeVulkanShaderBackend_BindDeviceOwner(
@@ -3660,7 +3729,6 @@ void CShaderDeviceMgrVulkan::Shutdown()
 	if ( g_VulkanContext.IsValid() )
 		ReportDeviceThreads();
 	g_VulkanContext.Shutdown();
-	g_VulkanSurfaceHost.reset();
 }
 
 // Sets the adapter
@@ -3673,72 +3741,21 @@ bool CShaderDeviceMgrVulkan::SetAdapter( int nAdapter, int nFlags )
 CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
     void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode )
 {
-	Msg( "[NativeVulkan] Setting mode for adapter %d\n", nAdapter );
-
-	// hWnd is the engine window; the SDL3-Vulkan bridge interprets it. Bring up
-	// the real native Vulkan device/surface/swapchain against it, with a back
-	// buffer of the mode's size (0 x 0 follows the window).
-	std::string sizeError;
-	if ( !g_VulkanContext.SetBackBufferSize(
-	         mode.m_DisplayMode.m_nWidth, mode.m_DisplayMode.m_nHeight, &sizeError ) )
-		Warning( "[NativeVulkan] back buffer resize failed: %s\n", sizeError.c_str() );
-	g_VulkanContext.RequestVSync( mode.m_bWaitForVSync );
-	g_VulkanContext.RequestSampleCount( mode.m_nAASamples );
-	if ( !g_VulkanContext.IsValid() )
-	{
-		std::string error;
-		if ( InitVulkanContext( hWnd, mode.m_bWaitForVSync, &error ) )
-		{
-			int w = 0, h = 0;
-			g_VulkanContext.GetSwapchainExtent( w, h );
-			Msg( "[NativeVulkan] device '%s' up: %dx%d, %.0f MiB, validation %s\n",
-			    g_VulkanContext.DeviceName(), w, h,
-			    double( g_VulkanContext.DeviceLocalMemoryBytes() ) / ( 1024.0 * 1024.0 ),
-			    g_VulkanContext.ValidationEnabled() ? "on" : "off" );
-
-			// Bring up the dynamic-mesh pipeline so material-system mesh draws
-			// (IMesh::Draw) can rasterize through the backend.
-			std::string meshError;
-			if ( !g_VulkanContext.InitDynamicMesh( &meshError ) )
-				Warning(
-				    "[NativeVulkan] dynamic mesh pipeline unavailable: %s\n", meshError.c_str() );
-			else
-				PrewarmVulkanPipelines();
-		}
-		else
-		{
-			// Required behavior (a presentable native device) is unavailable:
-			// fail loudly rather than silently pretending to be a GPU backend.
-			Warning( "[NativeVulkan] device bring-up failed: %s\n", error.c_str() );
-		}
-	}
-
+	BringUpVulkanContext( hWnd, mode );
 	return ShaderInterfaceFactory;
 }
 
+// The presentation keeps the callbacks.
 void CShaderDeviceMgrVulkan::AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func )
 {
-	Assert( func && m_ModeChangeCallbacks.Find( func ) < 0 );
-	m_ModeChangeCallbacks.AddToTail( func );
+	if ( g_Presentation )
+		g_Presentation->AddModeChangeCallback( func );
 }
 
 void CShaderDeviceMgrVulkan::RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func )
 {
-	m_ModeChangeCallbacks.FindAndRemove( func );
-}
-
-void CShaderDeviceMgrVulkan::InvokeModeChangeCallbacks()
-{
-	for ( int i = 0; i < m_ModeChangeCallbacks.Count(); ++i )
-		m_ModeChangeCallbacks[i]();
-}
-
-static void InvokePendingModeChangeCallbacks()
-{
-	if ( !g_bPendingModeChangeCallbacks || !ThreadInMainThread() )
-		return;
-	g_bPendingModeChangeCallbacks = false;
-	s_ShaderDeviceMgrEmpty.InvokeModeChangeCallbacks();
+	if ( g_Presentation )
+		g_Presentation->RemoveModeChangeCallback( func );
 }
 
 //-----------------------------------------------------------------------------

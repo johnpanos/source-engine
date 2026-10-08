@@ -1502,7 +1502,7 @@ copy deleted in the change that replaces it:
 | --- | --- | --- |
 | F1 | One `IShaderDeviceMgr` (`materialsystem/shader_device_facade.*`, `CShaderDeviceFacade`) answers adapter enumeration and identity, the recommended configuration (dxsupport policy) and video modes; identity comes from the core's adapter (`render::device::vulkan::DescribeHostAdapter`, the adapter the host-device factory selects or created the device on) through `LegacyShaderServices::coreAdapter`, set by the root through the legacy frontend (`RenderCore_SetLegacyAdapterSource`); the backends' adapter/mode/config code is deleted | done 2026-10-07 |
 | F2 | The root creates the device through the core's adapter before the material system sets a mode, and the backend borrows it; the backend's own pre-device adapter probe (`ProbeVulkanAdapter`, a second selection rule) is deleted | done 2026-10-07: `render::device::vulkan::IHostDeviceOwner` (the root's, `CreateHostDeviceOwner`) creates, holds and destroys the device; the backend registers a requester (its surface, extensions and features) and borrows the device (`NativeVulkanShaderBackend_BindDeviceOwner` replaces `_BindDeviceFactory`); `CMaterialSystem::SetMode` has the facade create it (`LegacyShaderServices::coreDevice.prepare`) before `IShaderAPI::SetMode`, and the facade releases it after the backend's `Shutdown`; a context that had to create its own device (GPU suites) releases it at its `Shutdown`. Pre-device answers (MSAA modes, texture memory) come from the owner's description; `ProbeVulkanAdapter` and `ScorePhysicalDeviceType` are deleted |
-| F3 | Back buffer size, vsync, sample count, gamma ramp and mode-change callbacks through the SDL3 presentation bridge (`render.presentation.v1`); `SetMode`/`Present` on `IShaderDevice` become calls on the bridge | open |
+| F3 | Back buffer size, vsync, sample count, gamma ramp and mode-change callbacks through the SDL3 presentation bridge (`render.presentation.v1`); `SetMode`/`Present` on `IShaderDevice` become calls on the bridge | done 2026-10-07: the bridge is a static library the root links (`render_bridge_sdl3_vulkan`, `render/bridge/sdl3-vulkan/wscript`); its `render_vulkan::ILegacyPresentation` (the root's, `CreateSdl3LegacyPresentation`) owns the window's surface host, the video mode's request (back buffer, vsync, samples) and the gamma ramp with revisions, and the mode-change callbacks. The backend borrows it (`NativeVulkanShaderBackend_BindPresentation`): both `SetMode` entries hand it the mode through one bring-up helper, and its context follows each revision at `SetMode` and `Present`; the backend's own surface-host global, callback list and pending flag are deleted, and the bridge sources leave the backend module. The device's release closes the surface host. Swapchain mechanics stay in the backend's context until R91 |
 | F4 | `IShaderDevice`'s remaining device answers (back-buffer format, stencil bits, window size, views) from the core device and bridge; the backends implement neither interface | open |
 
 F1 evidence (2026-10-07, Linux, Radeon 8060S): `legacy_render_provider_conformance`
@@ -1532,6 +1532,13 @@ pass; the ten source-built native Vulkan GPU suites pass with an owner
 `material_equivalence_vulkan_conformance` and
 `material_facing_vulkan_conformance`, which are outside the manifest and
 crash before F2 (an unconnected ConVar in their host).
+
+F3 evidence (2026-10-07): `render.bridge.legacy-presentation` 19/0 (mode
+and gamma revisions, the ramp set from another thread, callbacks once per
+change, a refused window); `render.legacy-provider`,
+`render.world-pbr.native-pixels` and `render.model-pbr.native-pixels` pass;
+`native_vulkan_bringup_conformance` 157/0 linking the bridge library;
+`testchmb_a_00`, `null` and `--resize-stress` boots pass.
 
 ### The surface model: legacy definitions in the modern core (plan, 2026-09-28; amended 2026-10-03)
 

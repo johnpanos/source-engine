@@ -1,0 +1,51 @@
+#! /usr/bin/env python
+# encoding: utf-8
+
+top = '.'
+
+def options(opt):
+	return
+
+def configure(conf):
+	return
+
+def build(bld):
+	# The SDL3-Vulkan pair bridge (render.bridge.sdl3-vulkan): the only code
+	# that includes SDL for Vulkan presentation. The composition root links it
+	# and owns its presentation (RFC 0016 legacy device facade F3); the
+	# backend reaches it through render_vulkan::ILegacyPresentation only.
+	bridge_source = [
+		'sdl3_vulkan_surface_host.cpp',
+		'sdl3_dynamic_range.cpp',
+		'legacy_presentation.cpp',
+	]
+	bridge_libs = ['VULKAN', 'SDL3']
+	bridge_defines = []
+	# The pair's dynamic range on Apple: the Metal layer's range and the
+	# screen's headroom (UIKit), and tvOS's HDR mode (AVKit, CoreMedia).
+	if bld.env.DEST_OS == 'ios':
+		bridge_source += ['sdl3_dynamic_range_apple.mm']
+		bridge_libs += ['FOUNDATION', 'UIKIT', 'QUARTZCORE']
+		if bld.env.APPLE_PLATFORM == 'tvos':
+			bridge_libs += ['AVFOUNDATION', 'AVKIT', 'COREMEDIA']
+	# The pair's dynamic range on Android: the display read over JNI.
+	if bld.env.DEST_OS == 'android':
+		bridge_source += ['sdl3_dynamic_range_android.cpp']
+	# The pair's output image description on Wayland (color-management-v1),
+	# which lets a compositor scan HDR10 frames out without color mapping.
+	if bld.env.DEST_OS == 'linux' and bld.env.LIB_WAYLAND_CLIENT:
+		bridge_source += ['sdl3_dynamic_range_wayland.cpp',
+			'wayland/color-management-v1-protocol.c']
+		bridge_libs += ['WAYLAND_CLIENT']
+		bridge_defines += ['SDL3_WAYLAND_COLOR']
+	bld.stlib(
+		features = 'c cxx',
+		source = bridge_source,
+		target = 'render_bridge_sdl3_vulkan',
+		name = 'render_bridge_sdl3_vulkan',
+		arch_module = 'render.bridge.sdl3-vulkan',
+		includes = [ '.', '../../../public', '../../../materialsystem/shaderapivulkan' ] + bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
+		defines = bridge_defines,
+		use = bridge_libs,
+		install_path = None)
+

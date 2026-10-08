@@ -105,6 +105,7 @@
 #include "render/legacy_shader_provider.h"
 #if defined( LINKED_NATIVE_VULKAN_BACKEND )
 #include "render/device/vulkan/host_binding.h"
+#include "../../render/bridge/sdl3-vulkan/legacy_presentation.h"
 #endif
 #include "tier0/icommandline.h"
 #include "tier1/tier1.h"
@@ -300,6 +301,7 @@ bool CMaterialPixelApp::Create()
 	// As the product's root does (RFC 0016 K1): the native backend borrows its
 	// device from the Vulkan adapter.
 	NativeVulkanShaderBackend_BindDeviceOwner( render::device::vulkan::CreateHostDeviceOwner() );
+	NativeVulkanShaderBackend_BindPresentation( render_vulkan::CreateSdl3LegacyPresentation() );
 #endif
 	const char *requested = CommandLine()->ParmValue( "-renderer", "" );
 	const render::LegacyShaderProvider *selected = NULL;

@@ -45,6 +45,7 @@
 #include "shaderapi/ishadershadow.h"
 #include "vulkan_device.h"
 #include "render/device/vulkan/host_binding.h"
+#include "../../render/bridge/sdl3-vulkan/legacy_presentation.h"
 
 #include <SDL3/SDL.h>
 
@@ -118,6 +119,7 @@ int main()
 	render::LegacyShaderServices services;
 	// The root's job in a product (RFC 0016 K1): lend the Vulkan adapter.
 	NativeVulkanShaderBackend_BindDeviceOwner( render::device::vulkan::CreateHostDeviceOwner() );
+	NativeVulkanShaderBackend_BindPresentation( render_vulkan::CreateSdl3LegacyPresentation() );
 	if ( !NativeVulkanShaderBackend_Create( &services ) || !services.IsComplete() )
 	{
 		std::fprintf(
