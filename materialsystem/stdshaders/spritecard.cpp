@@ -67,11 +67,7 @@ int GetDefaultDepthFeatheringValue( void ) //Allow the command-line to go agains
 }
 
 
-#ifdef STDSHADER_DX9_DLL_EXPORT
 BEGIN_VS_SHADER_FLAGS( Spritecard, "Help for Spritecard", SHADER_NOT_EDITABLE )
-#else
-BEGIN_VS_SHADER_FLAGS( Spritecard_DX8, "Help for Spritecard_DX8", SHADER_NOT_EDITABLE )
-#endif
 
 BEGIN_SHADER_PARAMS
 SHADER_PARAM( DEPTHBLEND, SHADER_PARAM_TYPE_INTEGER, "0", "fade at intersection boundaries" )
@@ -155,10 +151,8 @@ SHADER_INIT_PARAMS()
 
 SHADER_FALLBACK
 {
-#ifdef STDSHADER_DX9_DLL_EXPORT
 	if ( g_pHardwareConfig->GetDXSupportLevel() < 90 )
 		return "SpriteCard_DX8";
-#endif
 #ifdef STDSHADER_DX8_DLL_EXPORT
 	// STDSHADER_DX8_DLL_EXPORT
 	if ( g_pHardwareConfig->GetDXSupportLevel() < 80 )
@@ -169,9 +163,7 @@ SHADER_FALLBACK
 
 SHADER_INIT
 {
-#ifdef STDSHADER_DX9_DLL_EXPORT
 	const bool bDX8 = false;
-#endif
 #ifdef STDSHADER_DX8_DLL_EXPORT
 	const bool bDX8 = true;
 #endif
@@ -196,9 +188,7 @@ SHADER_INIT
 
 SHADER_DRAW
 {
-#ifdef STDSHADER_DX9_DLL_EXPORT
 	const bool bDX8 = false;
-#endif
 #ifdef STDSHADER_DX8_DLL_EXPORT
 	const bool bDX8 = true;
 #endif

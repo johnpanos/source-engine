@@ -5,7 +5,6 @@
 // $NoKeywords: $
 // This is what all vs/ps (dx8+) shaders inherit from.
 //===========================================================================//
-#if !defined(_STATIC_LINKED) || defined(STDSHADER_DX8_DLL_EXPORT) || defined(STDSHADER_DX9_DLL_EXPORT)
 
 #include "BaseVSShader.h"
 #include "mathlib/vmatrix.h"
@@ -24,13 +23,9 @@
 #include "flashlight_ps11.inc"
 #endif
 
-#ifdef STDSHADER_DX9_DLL_EXPORT
 #include "lightmappedgeneric_flashlight_vs20.inc"
-#endif
-#ifdef STDSHADER_DX9_DLL_EXPORT
 #include "flashlight_ps20.inc"
 #include "flashlight_ps20b.inc"
-#endif
 #include "unlitgeneric_vs11.inc"
 #include "VertexLitGeneric_EnvmappedBumpmap_NoLighting_ps14.inc"
 #include "VertexLitGeneric_EnvmappedBumpmap_NoLighting.inc"
@@ -1804,7 +1799,6 @@ void CBaseVSShader::DrawFlashlight_dx80( IMaterialVar** params, IShaderDynamicAP
 }
 #endif // support_dx8
 
-#ifdef STDSHADER_DX9_DLL_EXPORT
 void CBaseVSShader::DrawFlashlight_dx90( IMaterialVar** params, IShaderDynamicAPI *pShaderAPI, 
 										IShaderShadow* pShaderShadow, DrawFlashlight_dx90_Vars_t &vars )
 {
@@ -2092,7 +2086,6 @@ void CBaseVSShader::DrawFlashlight_dx90( IMaterialVar** params, IShaderDynamicAP
 	Draw();
 }
 
-#endif
 
 void CBaseVSShader::InitParamsUnlitGeneric_DX8(
 		int baseTextureVar,
@@ -2195,7 +2188,6 @@ void CBaseVSShader::InitUnlitGeneric_DX8(
 }
 #endif // GAME_SHADER_DLL
 
-#endif // !_STATIC_LINKED || STDSHADER_DX8_DLL_EXPORT
 
 
 // Take 0..1 seed and map to (u, v) coordinate to be used in shadow filter jittering...
@@ -2215,7 +2207,6 @@ void CBaseVSShader::HashShadow2DJitter( const float fJitterSeed, float *fU, floa
 
 void CBaseVSShader::DrawEqualDepthToDestAlpha( void )
 {
-#ifdef STDSHADER_DX9_DLL_EXPORT
 	if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
 	{
 		bool bMakeActualDrawCall = false;
@@ -2241,7 +2232,4 @@ void CBaseVSShader::DrawEqualDepthToDestAlpha( void )
 		}
 		Draw( bMakeActualDrawCall );
 	}
-#else
-	Assert( 0 ); //probably just needs a shader update to the latest
-#endif
 }

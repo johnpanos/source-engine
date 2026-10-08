@@ -13,7 +13,6 @@
 #include "eyes_flashlight_vs11.inc"
 #include "eyes_flashlight_ps11.inc"
 
-#ifdef STDSHADER_DX9_DLL_EXPORT
 
 #include "eyes_vs20.inc"
 #include "eyes_ps20.inc"
@@ -27,7 +26,6 @@
 #include "eyes_flashlight_vs30.inc"
 #include "eyes_flashlight_ps30.inc"
 
-#endif
 
 ConVar r_flashlight_version2( "r_flashlight_version2", "0", FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY );
 
@@ -124,7 +122,6 @@ static void DrawFlashlight( bool bDX9, CBaseVSShader *pShader, IMaterialVar** pa
 		// Be sure not to write to dest alpha
 		pShaderShadow->EnableAlphaWrites( false );
 
-#ifdef STDSHADER_DX9_DLL_EXPORT
 		if ( bDX9 )
 		{
 			int nShadowFilterMode = g_pHardwareConfig->GetShadowFilterMode();	// Based upon vendor and device dependent formats
@@ -172,7 +169,6 @@ static void DrawFlashlight( bool bDX9, CBaseVSShader *pShader, IMaterialVar** pa
 			}
 		}
 		else
-#endif
 		{
 			// DX8 uses old asm shaders
 			eyes_flashlight_vs11_Static_Index	vshIndex;
@@ -203,7 +199,6 @@ static void DrawFlashlight( bool bDX9, CBaseVSShader *pShader, IMaterialVar** pa
 		pShaderAPI->BindStandardTexture( SHADER_SAMPLER2, TEXTURE_NORMALIZATION_CUBEMAP );
 		pShader->BindTexture( SHADER_SAMPLER3, info.m_nIris, info.m_nIrisFrame );
 
-#ifdef STDSHADER_DX9_DLL_EXPORT
 		if ( bDX9 )
 		{
 
@@ -277,7 +272,6 @@ static void DrawFlashlight( bool bDX9, CBaseVSShader *pShader, IMaterialVar** pa
 			}
 		}
 		else // older asm shaders for DX8
-#endif
 		{
 			eyes_flashlight_vs11_Dynamic_Index vshIndex;
 			vshIndex.SetDOWATERFOG( pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
@@ -317,7 +311,6 @@ static void DrawUsingVertexShader( bool bDX9, CBaseVSShader *pShader, IMaterialV
 
 		pShaderShadow->EnableAlphaWrites( true ); //we end up hijacking destination alpha for opaques most of the time.
 		
-#ifdef STDSHADER_DX9_DLL_EXPORT
 		if ( bDX9 )
 		{
 			if ( !g_pHardwareConfig->HasFastVertexTextures() )
@@ -360,7 +353,6 @@ static void DrawUsingVertexShader( bool bDX9, CBaseVSShader *pShader, IMaterialV
 			pShaderShadow->EnableSRGBWrite( true );
 		}
 		else
-#endif
 		{
 			eyes_Static_Index vshIndex;
 			vshIndex.SetHALF_LAMBERT( IS_FLAG_SET( MATERIAL_VAR_HALFLAMBERT ) );
@@ -384,7 +376,6 @@ static void DrawUsingVertexShader( bool bDX9, CBaseVSShader *pShader, IMaterialV
 		pShader->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_4, info.m_nGlintU );
 		pShader->SetVertexShaderConstant( VERTEX_SHADER_SHADER_SPECIFIC_CONST_5, info.m_nGlintV );
 
-#ifdef STDSHADER_DX9_DLL_EXPORT
 		if( bDX9 )
 		{
 			LightState_t lightState;
@@ -473,7 +464,6 @@ static void DrawUsingVertexShader( bool bDX9, CBaseVSShader *pShader, IMaterialV
 			}
 		}
 		else
-#endif
 		{
 			eyes_Dynamic_Index vshIndex;
 			vshIndex.SetDOWATERFOG( pShaderAPI->GetSceneFogMode() == MATERIAL_FOG_LINEAR_BELOW_FOG_Z );
