@@ -18,6 +18,7 @@
 #include "render/legacy_shader_provider.h"
 #include "legacy_render_backend_provider.h"
 #include "shader_device_facade.h"
+#include "render/legacy/stream_device.h"
 #include "materialsystem/imaterialsystemhardwareconfig.h"
 #include "tier1/KeyValues.h"
 #include "conformance/render_backend_conformance.h"
@@ -366,37 +367,50 @@ void CheckQuirkTable()
 // The device facade (RFC 0016 legacy device facade, F1)
 // ---------------------------------------------------------------------------
 
-// A backend manager: counts what the facade forwards, answers nothing else.
-class CForwardingMgr : public IShaderDeviceMgr
+// A backend's lifecycle and presentation callbacks: counts what the facades
+// forward. No backend implements IShaderDeviceMgr (F4).
+struct CForwardingMgr
 {
-public:
-	bool Connect( CreateInterfaceFn ) override { return ++m_nConnects > 0; }
-	void Disconnect() override { ++m_nDisconnects; }
-	void *QueryInterface( const char *pName ) override
-	{
-		return !strcmp( pName, "Backend001" ) ? this : NULL;
-	}
-	InitReturnVal_t Init() override { return INIT_OK; }
-	void Shutdown() override { ++m_nShutdowns; }
-	int GetAdapterCount() const override { return 7; } // must never be reported
-	void GetAdapterInfo( int, MaterialAdapterInfo_t &info ) const override
-	{
-		memset( &info, 0, sizeof( info ) );
-		strcpy( info.m_pDriverName, "backend manager" );
-	}
-	bool GetRecommendedConfigurationInfo( int, int, KeyValues * ) override { return false; }
-	int GetModeCount( int ) const override { return 99; }
-	void GetModeInfo( ShaderDisplayMode_t *, int, int ) const override {}
-	void GetCurrentModeInfo( ShaderDisplayMode_t *, int ) const override {}
-	bool SetAdapter( int nAdapter, int ) override { return nAdapter == 0; }
-	CreateInterfaceFn SetMode( void *, int, const ShaderDeviceInfo_t & ) override
-	{
-		++m_nSetModes;
-		return ForwardedFactory;
-	}
-	void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t ) override { ++m_nCallbacks; }
-	void RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t ) override { --m_nCallbacks; }
 	static void *ForwardedFactory( const char *, int * ) { return NULL; }
+
+	void Fill( render::LegacyShaderServices *services )
+	{
+		services->lifecycle.context = this;
+		services->lifecycle.connect = []( void *self, CreateInterfaceFn )
+		{
+			return ++static_cast<CForwardingMgr *>( self )->m_nConnects > 0;
+		};
+		services->lifecycle.disconnect = []( void *self )
+		{
+			++static_cast<CForwardingMgr *>( self )->m_nDisconnects;
+		};
+		services->lifecycle.init = []( void * )
+		{
+			return true;
+		};
+		services->lifecycle.shutdown = []( void *self )
+		{
+			++static_cast<CForwardingMgr *>( self )->m_nShutdowns;
+		};
+		services->lifecycle.setAdapter = []( void *, int adapter, int )
+		{
+			return adapter == 0;
+		};
+		services->lifecycle.setMode = []( void *self, void *, int, const ShaderDeviceInfo_t & )
+		{
+			++static_cast<CForwardingMgr *>( self )->m_nSetModes;
+			return static_cast<CreateInterfaceFn>( ForwardedFactory );
+		};
+		services->presentation.context = this;
+		services->presentation.addModeChangeCallback = []( void *self, void ( * )() )
+		{
+			++static_cast<CForwardingMgr *>( self )->m_nCallbacks;
+		};
+		services->presentation.removeModeChangeCallback = []( void *self, void ( * )() )
+		{
+			--static_cast<CForwardingMgr *>( self )->m_nCallbacks;
+		};
+	}
 
 	int m_nConnects = 0, m_nDisconnects = 0, m_nShutdowns = 0, m_nSetModes = 0, m_nCallbacks = 0;
 	int m_nPrepares = 0, m_nPreparedAtSetMode = -1, m_nReleases = 0, m_nReleasedAfterShutdowns = -1;
@@ -452,7 +466,7 @@ void CheckDeviceFacade()
 	render::LegacyShaderServices services;
 	CHECK( NullShaderBackend_Describe()->create( &services ) );
 	CForwardingMgr backend;
-	services.manager = &backend;
+	backend.Fill( &services );
 	services.describeAdapter = DescribeBackend;
 	g_bBackendSoftware = false;
 	g_bBackendDescribes = true;
@@ -605,7 +619,9 @@ void CheckDeviceFacade()
 	facade.RemoveModeChangeCallback( NULL );
 	CHECK( backend.m_nCallbacks == 0 );
 	CHECK( facade.QueryInterface( SHADER_DEVICE_MGR_INTERFACE_VERSION ) == &facade );
-	CHECK( facade.QueryInterface( "Backend001" ) == &backend );
+	CHECK( facade.QueryInterface( MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION ) ==
+	       services.hardware );
+	CHECK( facade.QueryInterface( "Backend001" ) == NULL );
 	facade.Shutdown();
 	facade.Disconnect();
 	CHECK( backend.m_nShutdowns == 1 && backend.m_nDisconnects == 1 );
@@ -613,6 +629,151 @@ void CheckDeviceFacade()
 	// Unbinding forgets the backend.
 	facade.Unbind();
 	CHECK( !facade.IsBound() && facade.GetAdapterCount() == 0 );
+}
+
+// The device facade (F4): presentation answers, the stream forwarded.
+class CFakeStream final : public render::legacy::ILegacyStreamDevice
+{
+public:
+	void Present() override { ++m_nPresents; }
+	void ReleaseResources() override { ++m_nReleases; }
+	void ReacquireResources() override { --m_nReleases; }
+	bool AddView( void * ) override { return true; }
+	void RemoveView( void * ) override {}
+	void SetView( void *hWnd ) override { m_pView = hWnd; }
+	IMesh *CreateStaticMesh( VertexFormat_t, const char *, IMaterial * ) override
+	{
+		++m_nMeshes;
+		return NULL;
+	}
+	void DestroyStaticMesh( IMesh * ) override { --m_nMeshes; }
+	IVertexBuffer *CreateVertexBuffer(
+	    ShaderBufferType_t, VertexFormat_t, int, const char * ) override
+	{
+		return NULL;
+	}
+	void DestroyVertexBuffer( IVertexBuffer * ) override {}
+	IIndexBuffer *CreateIndexBuffer(
+	    ShaderBufferType_t, MaterialIndexFormat_t, int, const char * ) override
+	{
+		return NULL;
+	}
+	void DestroyIndexBuffer( IIndexBuffer * ) override {}
+	IVertexBuffer *GetDynamicVertexBuffer( int, VertexFormat_t, bool ) override { return NULL; }
+	IIndexBuffer *GetDynamicIndexBuffer( MaterialIndexFormat_t, bool ) override { return NULL; }
+	IShaderBuffer *CompileShader( const char *, size_t, const char * ) override { return NULL; }
+	VertexShaderHandle_t CreateVertexShader( IShaderBuffer * ) override
+	{
+		return VERTEX_SHADER_HANDLE_INVALID;
+	}
+	void DestroyVertexShader( VertexShaderHandle_t ) override {}
+	GeometryShaderHandle_t CreateGeometryShader( IShaderBuffer * ) override
+	{
+		return GEOMETRY_SHADER_HANDLE_INVALID;
+	}
+	void DestroyGeometryShader( GeometryShaderHandle_t ) override {}
+	PixelShaderHandle_t CreatePixelShader( IShaderBuffer * ) override
+	{
+		return PIXEL_SHADER_HANDLE_INVALID;
+	}
+	void DestroyPixelShader( PixelShaderHandle_t ) override {}
+	void EnableNonInteractiveMode(
+	    MaterialNonInteractiveMode_t, ShaderNonInteractiveInfo_t * ) override
+	{
+	}
+	void RefreshFrontBufferNonInteractive() override {}
+	void HandleThreadEvent( uint32 ) override { ++m_nThreadEvents; }
+
+	int m_nPresents = 0, m_nReleases = 0, m_nMeshes = 0, m_nThreadEvents = 0;
+	void *m_pView = NULL;
+};
+
+render::LegacyPresentationFacts g_Facts;
+float g_GammaSet = 0.0f;
+bool g_FixedDisplay = false;
+
+void CheckDeviceFacadeDevice()
+{
+	render::LegacyShaderServices services;
+	CHECK( NullShaderBackend_Describe()->create( &services ) );
+	CFakeStream stream;
+	services.stream = &stream;
+
+	// Without a presentation source: nothing presents (the null backend's
+	// answers: a 1024 x 768 back buffer, no window, no stencil, no AA).
+	CShaderDeviceFacadeDevice device;
+	device.Bind( services );
+	CHECK( !device.IsUsingGraphics() );
+	int w = 0, h = 0;
+	device.GetBackBufferDimensions( w, h );
+	CHECK( w == 1024 && h == 768 );
+	device.GetWindowSize( w, h );
+	CHECK( w == 0 && h == 0 );
+	CHECK( device.StencilBufferBits() == 0 && !device.IsAAEnabled() );
+	CHECK( device.GetBackBufferFormat() == IMAGE_FORMAT_RGB888 && device.GetCurrentAdapter() == 0 );
+	device.SetHardwareGammaRamp( 2.2f, 16.0f, 235.0f, 2.5f, false ); // no source: ignored
+
+	// With one: the presented frame's facts, and the ramp forwarded.
+	services.presentation.facts = []( void *, render::LegacyPresentationFacts *out )
+	{
+		*out = g_Facts;
+	};
+	services.presentation.setGammaRamp = []( void *, float gamma, float, float, float, bool )
+	{
+		g_GammaSet = gamma;
+	};
+	g_Facts = render::LegacyPresentationFacts();
+	g_Facts.presenting = true;
+	g_Facts.backBufferWidth = 1920;
+	g_Facts.backBufferHeight = 1080;
+	g_Facts.windowWidth = 2560;
+	g_Facts.windowHeight = 1440;
+	g_Facts.samples = 4;
+	g_Facts.stencilBits = 8;
+	device.Bind( services );
+	CHECK( device.IsUsingGraphics() );
+	device.GetBackBufferDimensions( w, h );
+	CHECK( w == 1920 && h == 1080 );
+	device.GetWindowSize( w, h );
+	CHECK( w == 2560 && h == 1440 );
+	CHECK( device.StencilBufferBits() == 8 && device.IsAAEnabled() );
+	g_Facts.samples = 1;
+	CHECK( !device.IsAAEnabled() ); // asked each time, never cached
+	device.SetHardwareGammaRamp( 2.2f, 16.0f, 235.0f, 2.5f, false );
+	CHECK( g_GammaSet == 2.2f );
+
+	// The stream: forwarded.
+	device.Present();
+	device.Present();
+	device.ReleaseResources();
+	CHECK( device.CreateStaticMesh( 0, "test" ) == NULL );
+	device.SetView( &stream );
+	device.HandleThreadEvent( 1 );
+	CHECK( stream.m_nPresents == 2 && stream.m_nReleases == 1 && stream.m_nMeshes == 1 );
+	CHECK( stream.m_pView == &stream && stream.m_nThreadEvents == 1 );
+	device.ReacquireResources();
+	device.DestroyStaticMesh( NULL );
+	CHECK( stream.m_nReleases == 0 && stream.m_nMeshes == 0 );
+
+	// A fixed display (a handheld's screen) has exactly its own mode.
+	CShaderDeviceFacade manager;
+	services.presentation.fixedDisplay = []( void *, int *width, int *height, int *refreshHz )
+	{
+		*width = 400;
+		*height = 240;
+		*refreshHz = 60;
+		return g_FixedDisplay;
+	};
+	g_FixedDisplay = true;
+	manager.Bind( services );
+	CHECK( manager.GetModeCount( 0 ) == 1 );
+	ShaderDisplayMode_t mode;
+	manager.GetModeInfo( &mode, 0, 0 );
+	CHECK( mode.m_nWidth == 400 && mode.m_nHeight == 240 && mode.m_nRefreshRateNumerator == 60 );
+	manager.GetCurrentModeInfo( &mode, 0 );
+	CHECK( mode.m_nWidth == 400 && mode.m_nHeight == 240 );
+	g_FixedDisplay = false; // the display not ready: no modes
+	CHECK( manager.GetModeCount( 0 ) == 0 );
 }
 
 } // namespace
@@ -628,6 +789,7 @@ int main()
 	CheckBadProviders();
 	CheckQuirkTable();
 	CheckDeviceFacade();
+	CheckDeviceFacadeDevice();
 	std::printf( "CONFORMANCE %d %d\n", g_Checks, g_Failures );
 	return g_Checks > 0 && g_Failures == 0 ? 0 : 1;
 }

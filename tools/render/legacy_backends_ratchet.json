@@ -2,15 +2,15 @@
   "backends": {
     "materialsystem/shaderapiempty": {
       "files": 3,
-      "lines": 3054
+      "lines": 2979
     },
     "materialsystem/shaderapipica": {
       "files": 7,
-      "lines": 6462
+      "lines": 6355
     },
     "materialsystem/shaderapivulkan": {
       "files": 233,
-      "lines": 48720
+      "lines": 48640
     },
     "materialsystem/stdshaders": {
       "files": 1561,

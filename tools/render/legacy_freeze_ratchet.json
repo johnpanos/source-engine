@@ -193,11 +193,8 @@
       ]
     },
     "interfaces": [
-      "MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION",
       "SHADERAPI_INTERFACE_VERSION",
-      "SHADERSHADOW_INTERFACE_VERSION",
-      "SHADER_DEVICE_INTERFACE_VERSION",
-      "SHADER_DEVICE_MGR_INTERFACE_VERSION"
+      "SHADERSHADOW_INTERFACE_VERSION"
     ],
     "shader_sources": {
       "materialsystem/shaderapivulkan/shaders/compute_fill.comp": 27,

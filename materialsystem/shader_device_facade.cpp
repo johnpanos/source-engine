@@ -1,7 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: The material system's one IShaderDeviceMgr; see
-//			shader_device_facade.h and RFC 0016's legacy device facade.
+// Purpose: The material system's one IShaderDeviceMgr and IShaderDevice;
+//			see shader_device_facade.h and RFC 0016's legacy device facade.
 //
 //=============================================================================//
 
@@ -48,7 +48,7 @@ void CShaderDeviceFacade::Bind( const render::LegacyShaderServices &services )
 {
 	Unbind();
 	m_Services = services;
-	m_pBackend = services.manager;
+	m_bBound = true;
 }
 
 void CShaderDeviceFacade::Unbind()
@@ -58,13 +58,13 @@ void CShaderDeviceFacade::Unbind()
 	m_pDXSupport = NULL;
 	m_bDXSupportRead = false;
 	m_Modes.clear();
-	m_pBackend = NULL;
+	m_bBound = false;
 	m_Services = render::LegacyShaderServices();
 }
 
 bool CShaderDeviceFacade::Connect( CreateInterfaceFn factory )
 {
-	if ( !m_pBackend )
+	if ( !m_bBound || !m_Services.lifecycle.connect )
 		return false;
 #if defined( USE_SDL )
 	// Optional: application roots without a launcher (tools, tests) get no modes.
@@ -72,13 +72,13 @@ bool CShaderDeviceFacade::Connect( CreateInterfaceFn factory )
 #endif
 	// Optional: without a file system there is no dxsupport.cfg to recommend from.
 	m_pFileSystem = (IFileSystem *)factory( FILESYSTEM_INTERFACE_VERSION, NULL );
-	return m_pBackend->Connect( factory );
+	return m_Services.lifecycle.connect( m_Services.lifecycle.context, factory );
 }
 
 void CShaderDeviceFacade::Disconnect()
 {
-	if ( m_pBackend )
-		m_pBackend->Disconnect();
+	if ( m_Services.lifecycle.disconnect )
+		m_Services.lifecycle.disconnect( m_Services.lifecycle.context );
 	if ( m_pDXSupport )
 		m_pDXSupport->deleteThis();
 	m_pDXSupport = NULL;
@@ -92,18 +92,22 @@ void *CShaderDeviceFacade::QueryInterface( const char *pInterfaceName )
 {
 	if ( !Q_stricmp( pInterfaceName, SHADER_DEVICE_MGR_INTERFACE_VERSION ) )
 		return static_cast<IShaderDeviceMgr *>( this );
-	return m_pBackend ? m_pBackend->QueryInterface( pInterfaceName ) : NULL;
+	if ( !Q_stricmp( pInterfaceName, MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION ) )
+		return m_Services.hardware;
+	return NULL;
 }
 
 InitReturnVal_t CShaderDeviceFacade::Init()
 {
-	return m_pBackend ? m_pBackend->Init() : INIT_FAILED;
+	return m_Services.lifecycle.init && m_Services.lifecycle.init( m_Services.lifecycle.context )
+	           ? INIT_OK
+	           : INIT_FAILED;
 }
 
 void CShaderDeviceFacade::Shutdown()
 {
-	if ( m_pBackend )
-		m_pBackend->Shutdown();
+	if ( m_Services.lifecycle.shutdown )
+		m_Services.lifecycle.shutdown( m_Services.lifecycle.context );
 	// The core's owner destroys the device once the backend shut down.
 	const render::LegacyShaderServices::CoreDeviceSource &device = m_Services.coreDevice;
 	if ( device.release )
@@ -117,7 +121,7 @@ void CShaderDeviceFacade::Shutdown()
 bool CShaderDeviceFacade::Describe( int nAdapter, render::RenderAdapterInfo *pInfo ) const
 {
 	*pInfo = render::RenderAdapterInfo();
-	if ( !m_pBackend || nAdapter < 0 || nAdapter >= kMaxFacadeAdapters ||
+	if ( !m_bBound || nAdapter < 0 || nAdapter >= kMaxFacadeAdapters ||
 	     !m_Services.describeAdapter || !m_Services.describeAdapter( nAdapter, pInfo ) )
 		return false;
 	const render::LegacyShaderServices::CoreAdapterSource &core = m_Services.coreAdapter;
@@ -236,6 +240,18 @@ void CShaderDeviceFacade::ClampToCapabilities( KeyValues *pConfiguration ) const
 bool CShaderDeviceFacade::QueryDesktopDisplay( render::DisplayModeFacts *pDesktop ) const
 {
 	*pDesktop = render::DisplayModeFacts();
+	// A fixed display (a handheld's screen) is its own desktop.
+	const render::LegacyShaderServices::PresentationSource &presentation = m_Services.presentation;
+	if ( presentation.fixedDisplay )
+	{
+		int width = 0, height = 0, refreshHz = 0;
+		if ( !presentation.fixedDisplay( presentation.context, &width, &height, &refreshHz ) )
+			return false;
+		pDesktop->width = width;
+		pDesktop->height = height;
+		pDesktop->refreshNumerator = refreshHz;
+		return true;
+	}
 	// A software adapter presents nothing, so it has no display modes.
 	render::RenderAdapterInfo adapter;
 	if ( Describe( 0, &adapter ) && adapter.isSoftware )
@@ -269,9 +285,12 @@ bool CShaderDeviceFacade::QueryDesktopDisplay( render::DisplayModeFacts *pDeskto
 void CShaderDeviceFacade::RefreshModeList() const
 {
 	render::DisplayModeFacts desktop;
-	std::vector<render::DisplayModeFacts> modes = QueryDesktopDisplay( &desktop )
-	                                                  ? render::BuildBackBufferModeList( desktop )
-	                                                  : std::vector<render::DisplayModeFacts>();
+	const bool display = QueryDesktopDisplay( &desktop );
+	// A fixed display (a handheld's screen) has exactly its own mode.
+	std::vector<render::DisplayModeFacts> modes =
+	    !display                               ? std::vector<render::DisplayModeFacts>()
+	    : m_Services.presentation.fixedDisplay ? std::vector<render::DisplayModeFacts>{ desktop }
+	                                           : render::BuildBackBufferModeList( desktop );
 	if ( !modes.empty() &&
 	     ( modes.size() != m_Modes.size() || modes.back().width != m_Modes.back().width ||
 	         modes.back().height != m_Modes.back().height ) )
@@ -319,7 +338,8 @@ void CShaderDeviceFacade::GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nA
 
 bool CShaderDeviceFacade::SetAdapter( int nAdapter, int nFlags )
 {
-	return m_pBackend && m_pBackend->SetAdapter( nAdapter, nFlags );
+	return m_Services.lifecycle.setAdapter &&
+	       m_Services.lifecycle.setAdapter( m_Services.lifecycle.context, nAdapter, nFlags );
 }
 
 // The core creates the device for the window before the backend sets the
@@ -327,9 +347,9 @@ bool CShaderDeviceFacade::SetAdapter( int nAdapter, int nFlags )
 CreateInterfaceFn CShaderDeviceFacade::SetMode(
     void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode )
 {
-	if ( !m_pBackend || !PrepareDevice( hWnd ) )
+	if ( !m_Services.lifecycle.setMode || !PrepareDevice( hWnd ) )
 		return NULL;
-	return m_pBackend->SetMode( hWnd, nAdapter, mode );
+	return m_Services.lifecycle.setMode( m_Services.lifecycle.context, hWnd, nAdapter, mode );
 }
 
 bool CShaderDeviceFacade::PrepareDevice( void *hWnd )
@@ -346,12 +366,93 @@ bool CShaderDeviceFacade::PrepareDevice( void *hWnd )
 
 void CShaderDeviceFacade::AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func )
 {
-	if ( m_pBackend )
-		m_pBackend->AddModeChangeCallback( func );
+	const render::LegacyShaderServices::PresentationSource &presentation = m_Services.presentation;
+	if ( presentation.addModeChangeCallback )
+		presentation.addModeChangeCallback( presentation.context, func );
 }
 
 void CShaderDeviceFacade::RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func )
 {
-	if ( m_pBackend )
-		m_pBackend->RemoveModeChangeCallback( func );
+	const render::LegacyShaderServices::PresentationSource &presentation = m_Services.presentation;
+	if ( presentation.removeModeChangeCallback )
+		presentation.removeModeChangeCallback( presentation.context, func );
+}
+
+//-----------------------------------------------------------------------------
+// The material system's IShaderDevice (F4): device and presentation answers
+// from the core's sources, the draw stream forwarded to the backend's
+// render::legacy::ILegacyStreamDevice.
+//-----------------------------------------------------------------------------
+void CShaderDeviceFacadeDevice::Bind( const render::LegacyShaderServices &services )
+{
+	m_Services = services;
+}
+
+void CShaderDeviceFacadeDevice::Unbind()
+{
+	m_Services = render::LegacyShaderServices();
+}
+
+render::LegacyPresentationFacts CShaderDeviceFacadeDevice::Facts() const
+{
+	render::LegacyPresentationFacts facts;
+	const render::LegacyShaderServices::PresentationSource &presentation = m_Services.presentation;
+	if ( presentation.facts )
+		presentation.facts( presentation.context, &facts );
+	return facts;
+}
+
+bool CShaderDeviceFacadeDevice::IsUsingGraphics() const
+{
+	return Facts().presenting;
+}
+
+void CShaderDeviceFacadeDevice::SpewDriverInfo() const
+{
+	render::RenderAdapterInfo adapter;
+	if ( m_Services.describeAdapter && m_Services.describeAdapter( 0, &adapter ) )
+	{
+		const render::LegacyShaderServices::CoreAdapterSource &core = m_Services.coreAdapter;
+		render::RenderAdapterInfo identity;
+		if ( core.describe && core.describe( core.context, 0, &identity ) )
+			V_strncpy( adapter.name, identity.name, sizeof( adapter.name ) );
+		Msg( "Render adapter: %s (%s, vendor 0x%04x, device 0x%04x)\n",
+		    adapter.name[0] ? adapter.name : "unnamed", adapter.driverApi, adapter.vendorId,
+		    adapter.deviceId );
+		return;
+	}
+	Warning( "No render adapter\n" );
+}
+
+void CShaderDeviceFacadeDevice::GetBackBufferDimensions( int &width, int &height ) const
+{
+	const render::LegacyPresentationFacts facts = Facts();
+	width = facts.backBufferWidth;
+	height = facts.backBufferHeight;
+}
+
+void CShaderDeviceFacadeDevice::GetWindowSize( int &width, int &height ) const
+{
+	const render::LegacyPresentationFacts facts = Facts();
+	width = facts.windowWidth;
+	height = facts.windowHeight;
+}
+
+int CShaderDeviceFacadeDevice::StencilBufferBits() const
+{
+	return Facts().stencilBits;
+}
+
+bool CShaderDeviceFacadeDevice::IsAAEnabled() const
+{
+	return Facts().samples > 1;
+}
+
+void CShaderDeviceFacadeDevice::SetHardwareGammaRamp( float fGamma, float fGammaTVRangeMin,
+    float fGammaTVRangeMax, float fGammaTVExponent, bool bTVEnabled )
+{
+	const render::LegacyShaderServices::PresentationSource &presentation = m_Services.presentation;
+	if ( presentation.setGammaRamp )
+		presentation.setGammaRamp( presentation.context, fGamma, fGammaTVRangeMin, fGammaTVRangeMax,
+		    fGammaTVExponent, bTVEnabled );
 }

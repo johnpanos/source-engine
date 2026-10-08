@@ -102,13 +102,13 @@ bool CountingFactory( render::LegacyShaderServices *services )
 	switch ( g_MissingService )
 	{
 	case 0:
-		services->manager = NULL;
+		services->lifecycle.connect = NULL;
 		break;
 	case 1:
 		services->api = NULL;
 		break;
 	case 2:
-		services->device = NULL;
+		services->stream = NULL;
 		break;
 	case 3:
 		services->shadow = NULL;
@@ -133,9 +133,16 @@ bool FailingFactory( render::LegacyShaderServices *services )
 
 void CheckViews( IMaterialSystem &material, const render::LegacyShaderServices &services )
 {
-	CHECK( material.QueryInterface( SHADER_DEVICE_MGR_INTERFACE_VERSION ) == services.manager );
+	// The device manager and device are the material system's own facades
+	// (RFC 0016 legacy device facade): present exactly while bound, never the
+	// backend's.
+	const bool bound = services.api != NULL;
+	void *manager = material.QueryInterface( SHADER_DEVICE_MGR_INTERFACE_VERSION );
+	void *device = material.QueryInterface( SHADER_DEVICE_INTERFACE_VERSION );
+	CHECK( bound ? manager != NULL : manager == NULL );
+	CHECK( bound ? device != NULL : device == NULL );
+	CHECK( manager == NULL || manager != device );
 	CHECK( material.QueryInterface( SHADERAPI_INTERFACE_VERSION ) == services.api );
-	CHECK( material.QueryInterface( SHADER_DEVICE_INTERFACE_VERSION ) == services.device );
 	CHECK( material.QueryInterface( SHADERSHADOW_INTERFACE_VERSION ) == services.shadow );
 	CHECK( material.QueryInterface( MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION ) ==
 	       services.hardware );

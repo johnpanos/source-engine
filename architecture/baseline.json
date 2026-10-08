@@ -167,14 +167,14 @@
       "fingerprint": "4eb391c7f2266b4b1ee6",
       "rule": "ARCH105",
       "path": "datacache/datacache.cpp",
-      "line": 984,
+      "line": 989,
       "excerpt": "bool CDataCache::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "967f4087793b3ed60fb7",
       "rule": "ARCH105",
       "path": "datacache/datacache.cpp",
-      "line": 1024,
+      "line": 1029,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactoryThis(); // This silly construction is necessary"
     },
     {
@@ -664,35 +664,35 @@
       "fingerprint": "accee7e28ea4dce3f902",
       "rule": "ARCH105",
       "path": "engine/sys_dll.cpp",
-      "line": 1007,
+      "line": 1023,
       "excerpt": "CreateInterfaceFn g_GameSystemFactory = GameFactory;"
     },
     {
       "fingerprint": "27846638ede18ffc0134",
       "rule": "ARCH105",
       "path": "engine/sys_dll.cpp",
-      "line": 1018,
+      "line": 1034,
       "excerpt": "int Sys_InitGame( CreateInterfaceFn appSystemFactory, const char* pBaseDir, void *pwnd, int bIsDedicated )"
     },
     {
       "fingerprint": "736b0503e3f6386f13a4",
       "rule": "ARCH105",
       "path": "engine/sys_dll.cpp",
-      "line": 1134,
+      "line": 1150,
       "excerpt": "CreateInterfaceFn g_ServerFactory;"
     },
     {
       "fingerprint": "f2b1ff275a3b9b7bc66c",
       "rule": "ARCH103",
       "path": "engine/sys_dll.cpp",
-      "line": 1156,
+      "line": 1172,
       "excerpt": "if ( ( pDLL = Sys_LoadModuleFromFileSystem("
     },
     {
       "fingerprint": "3e233648c30be0d2bf4d",
       "rule": "ARCH102",
       "path": "engine/sys_dll.cpp",
-      "line": 1169,
+      "line": 1185,
       "excerpt": "g_ServerFactory = Sys_GetFactory( pDLL );"
     },
     {
@@ -1490,28 +1490,28 @@
       "fingerprint": "ef825cc8d5e3ae0e7e6a",
       "rule": "ARCH105",
       "path": "game/server/gameinterface.cpp",
-      "line": 598,
+      "line": 599,
       "excerpt": "bool CServerGameDLL::DLLInit( CreateInterfaceFn appSystemFactory,"
     },
     {
       "fingerprint": "7c8c2e95b350c7b4f5b9",
       "rule": "ARCH105",
       "path": "game/server/gameinterface.cpp",
-      "line": 599,
+      "line": 600,
       "excerpt": "CreateInterfaceFn physicsFactory, CreateInterfaceFn fileSystemFactory,"
     },
     {
       "fingerprint": "ba0cd881c54cbd8cb845",
       "rule": "ARCH105",
       "path": "game/server/gameinterface.cpp",
-      "line": 599,
+      "line": 600,
       "excerpt": "CreateInterfaceFn physicsFactory, CreateInterfaceFn fileSystemFactory,"
     },
     {
       "fingerprint": "ce2c8bd5a8160ebb0d1b",
       "rule": "ARCH105",
       "path": "game/server/gameinterface.cpp",
-      "line": 884,
+      "line": 886,
       "excerpt": "bool CServerGameDLL::ReplayInit( CreateInterfaceFn fnReplayFactory )"
     },
     {
@@ -1840,7 +1840,7 @@
       "fingerprint": "c532087de78ebf6eb55c",
       "rule": "ARCH105",
       "path": "launcher/launcher.cpp",
-      "line": 1093,
+      "line": 1121,
       "excerpt": "CreateInterfaceFn factory = GetFactory();"
     },
     {
@@ -1854,63 +1854,63 @@
       "fingerprint": "59f032ff69f21a08e848",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 758,
+      "line": 760,
       "excerpt": "CreateInterfaceFn CMaterialSystem::CreateShaderAPI( const char *name )"
     },
     {
       "fingerprint": "5a985b811d6b10f9e56e",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 809,
+      "line": 812,
       "excerpt": "bool CMaterialSystem::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "1610cb6fbb26c28faea8",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 944,
+      "line": 947,
       "excerpt": "CreateInterfaceFn factory = Sys_GetFactoryThis(); // This silly construction is necessary"
     },
     {
       "fingerprint": "1a391626f2ae3de23de2",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 1197,
+      "line": 1200,
       "excerpt": "static CreateInterfaceFn s_TempCVarFactory;"
     },
     {
       "fingerprint": "1d98a574afb1329c6f6b",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 1198,
+      "line": 1201,
       "excerpt": "static CreateInterfaceFn s_TempFileSystemFactory;"
     },
     {
       "fingerprint": "52e03787f7be4f80971f",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 1222,
+      "line": 1225,
       "excerpt": "CreateInterfaceFn CMaterialSystem::Init( char const* pShaderAPIDLL,"
     },
     {
       "fingerprint": "88dfd8e68615cad36bbd",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 1224,
+      "line": 1227,
       "excerpt": "CreateInterfaceFn fileSystemFactory,"
     },
     {
       "fingerprint": "3fcb92c0113b1109bb8a",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 1225,
+      "line": 1228,
       "excerpt": "CreateInterfaceFn cvarFactory )"
     },
     {
       "fingerprint": "bcbf41dd6ae5f77e7573",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.cpp",
-      "line": 1794,
+      "line": 1801,
       "excerpt": "void CMaterialSystem::RestoreShaderObjects( CreateInterfaceFn shaderFactory, int nChangeFlags )"
     },
     {
@@ -1959,7 +1959,7 @@
       "fingerprint": "aa0bde02f0b7d9f149d9",
       "rule": "ARCH105",
       "path": "materialsystem/cmaterialsystem.h",
-      "line": 675,
+      "line": 677,
       "excerpt": "CreateInterfaceFn m_ShaderAPIFactory;"
     },
     {
@@ -2029,85 +2029,78 @@
       "fingerprint": "07bba3fd22c186bca867",
       "rule": "ARCH105",
       "path": "materialsystem/shader_device_facade.cpp",
-      "line": 66,
+      "line": 65,
       "excerpt": "bool CShaderDeviceFacade::Connect( CreateInterfaceFn factory )"
     },
     {
       "fingerprint": "68f675335b674dedd631",
       "rule": "ARCH105",
       "path": "materialsystem/shader_device_facade.cpp",
-      "line": 318,
+      "line": 347,
       "excerpt": "CreateInterfaceFn CShaderDeviceFacade::SetMode("
     },
     {
       "fingerprint": "ff7a7a179a4a1770c100",
       "rule": "ARCH105",
       "path": "materialsystem/shader_device_facade.h",
-      "line": 43,
+      "line": 44,
       "excerpt": "bool Connect( CreateInterfaceFn factory ) override;"
     },
     {
       "fingerprint": "3bba77b33d67043a9e51",
       "rule": "ARCH105",
       "path": "materialsystem/shader_device_facade.h",
-      "line": 60,
+      "line": 66,
       "excerpt": "CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode ) override;"
     },
     {
-      "fingerprint": "dc04b804159388a59ddb",
+      "fingerprint": "24d28767614a6c757086",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapiempty/shaderapiempty.cpp",
-      "line": 338,
-      "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
+      "line": 1291,
+      "excerpt": "static bool ConnectBackend( void *, CreateInterfaceFn factory )"
     },
     {
-      "fingerprint": "9bc62a1453e9b0393f9d",
+      "fingerprint": "7eeb6674ceb2eaa0ec34",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapiempty/shaderapiempty.cpp",
-      "line": 356,
-      "excerpt": "virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode );"
+      "line": 1317,
+      "excerpt": "static CreateInterfaceFn SetBackendMode( void *, void *, int, const ShaderDeviceInfo_t & )"
     },
     {
-      "fingerprint": "df17dc9f10ca8274d936",
+      "fingerprint": "b5e26e865318a9bc446b",
       "rule": "ARCH105",
-      "path": "materialsystem/shaderapiempty/shaderapiempty.cpp",
-      "line": 1339,
-      "excerpt": "bool CShaderDeviceMgrEmpty::Connect( CreateInterfaceFn factory )"
+      "path": "materialsystem/shaderapipica/shaderapipica.cpp",
+      "line": 2019,
+      "excerpt": "services->lifecycle.connect = []( void *, CreateInterfaceFn factory )"
     },
     {
-      "fingerprint": "b42f4ad54fbd79687f96",
+      "fingerprint": "36c61d72c22e31f9a628",
       "rule": "ARCH105",
-      "path": "materialsystem/shaderapiempty/shaderapiempty.cpp",
-      "line": 1378,
-      "excerpt": "CreateInterfaceFn CShaderDeviceMgrEmpty::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode )"
+      "path": "materialsystem/shaderapipica/shaderapipica.cpp",
+      "line": 2041,
+      "excerpt": "? static_cast<CreateInterfaceFn>( ShaderInterfaceFactory )"
     },
     {
-      "fingerprint": "52e6ca4aac3aa40d62bc",
+      "fingerprint": "2d4c825cf1abd46c5fed",
       "rule": "ARCH105",
-      "path": "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-      "line": 1938,
-      "excerpt": "virtual bool Connect( CreateInterfaceFn factory );"
+      "path": "materialsystem/shaderapipica/shaderapipica.cpp",
+      "line": 2042,
+      "excerpt": ": static_cast<CreateInterfaceFn>( NULL );"
     },
     {
-      "fingerprint": "889e4de569b089b75ee5",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-      "line": 1963,
-      "excerpt": "virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode );"
-    },
-    {
-      "fingerprint": "b02a10919dfb5b4b3f22",
+      "fingerprint": "278e1198388c3195a8d6",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-      "line": 3578,
-      "excerpt": "bool CShaderDeviceMgrVulkan::Connect( CreateInterfaceFn factory )"
+      "line": 3620,
+      "excerpt": "static bool ConnectBackend( void *, CreateInterfaceFn factory )"
     },
     {
-      "fingerprint": "8dfcf98868c9c56d994b",
+      "fingerprint": "44edca0a0167700adada",
       "rule": "ARCH105",
       "path": "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-      "line": 3633,
-      "excerpt": "CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode("
+      "line": 3666,
+      "excerpt": "return static_cast<CreateInterfaceFn>( ShaderInterfaceFactory );"
     },
     {
       "fingerprint": "cda253b9ed1044df605e",
@@ -2507,6 +2500,27 @@
       "path": "public/python/valvePython/valvePython.h",
       "line": 37,
       "excerpt": "bool ValvePythonInit( CreateInterfaceFn pInFactory = NULL );"
+    },
+    {
+      "fingerprint": "b0c350eeaf2dfed06ec2",
+      "rule": "ARCH105",
+      "path": "public/render/legacy_shader_provider.h",
+      "line": 41,
+      "excerpt": "typedef void *( *CreateInterfaceFn )( const char *pName, int *pReturnCode );"
+    },
+    {
+      "fingerprint": "8205985312b03220965b",
+      "rule": "ARCH105",
+      "path": "public/render/legacy_shader_provider.h",
+      "line": 126,
+      "excerpt": "bool ( *connect )( void *context, CreateInterfaceFn factory ) = nullptr;"
+    },
+    {
+      "fingerprint": "32c21113f0e7a8863aed",
+      "rule": "ARCH105",
+      "path": "public/render/legacy_shader_provider.h",
+      "line": 131,
+      "excerpt": "CreateInterfaceFn ( *setMode )("
     },
     {
       "fingerprint": "ec7f4cd640d2644bc127",
@@ -3370,18 +3384,18 @@
       "excerpt": "virtual bool Connect( CreateInterfaceFn factory )"
     },
     {
-      "fingerprint": "34cf48e3f54c5fc12ea4",
+      "fingerprint": "2ac4cad9757166a120d2",
       "rule": "ARCH105",
       "path": "unittests/shaderextensiontest/test_legacy_render_provider.cpp",
-      "line": 369,
-      "excerpt": "bool Connect( CreateInterfaceFn ) override { return ++m_nConnects > 0; }"
+      "line": 379,
+      "excerpt": "services->lifecycle.connect = []( void *self, CreateInterfaceFn )"
     },
     {
-      "fingerprint": "21c594c7bbadff35f249",
+      "fingerprint": "d2b284379f35d3803d22",
       "rule": "ARCH105",
       "path": "unittests/shaderextensiontest/test_legacy_render_provider.cpp",
-      "line": 388,
-      "excerpt": "CreateInterfaceFn SetMode( void *, int, const ShaderDeviceInfo_t & ) override"
+      "line": 402,
+      "excerpt": "return static_cast<CreateInterfaceFn>( ForwardedFactory );"
     },
     {
       "fingerprint": "e7ae2333a324e2fb9006",

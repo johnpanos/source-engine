@@ -36,6 +36,7 @@
 #include "tier0/dbg.h"
 #include "materialsystem/idebugtextureinfo.h"
 #include "materialsystem/deformations.h"
+#include "render/legacy/stream_device.h"
 #include "render/legacy_shader_provider.h"
 #include "imaterialinternal.h"
 #include "shaderapi/commandbuffer.h"
@@ -692,19 +693,15 @@ public:
 //-----------------------------------------------------------------------------
 // The DX8 implementation of the shader device
 //-----------------------------------------------------------------------------
-class CShaderDeviceEmpty : public IShaderDevice
+class CShaderDeviceEmpty : public render::legacy::ILegacyStreamDevice
 {
 public:
 	CShaderDeviceEmpty() : m_DynamicMesh( true ), m_Mesh( false ) {}
 
-	// Methods of IShaderDevice
-	virtual int GetCurrentAdapter() const { return 0; }
-	virtual bool IsUsingGraphics() const { return true; }
-	virtual void SpewDriverInfo() const;
-	virtual ImageFormat GetBackBufferFormat() const { return IMAGE_FORMAT_RGB888; }
-	virtual void GetBackBufferDimensions( int& width, int& height ) const;
-	virtual int  StencilBufferBits() const { return 0; }
-	virtual bool IsAAEnabled() const { return false; }
+	// The legacy draw stream (render::legacy::ILegacyStreamDevice); the
+	// material system's IShaderDevice facade answers everything else (RFC
+	// 0016 legacy device facade F4).
+	void GetBackBufferDimensions( int &width, int &height ) const;
 	virtual void Present( )
 	{
 		if ( !pica::Initialized() )
@@ -749,7 +746,6 @@ public:
 				g_TextureCounters.uploads, g_TextureCounters.uploadFailed, g_TextureCounters.corrupted );
 		g_Counters = DrawPathCounters();
 	}
-	virtual void GetWindowSize( int &width, int &height ) const;
 	virtual bool AddView( void* hwnd );
 	virtual void RemoveView( void* hwnd );
 	virtual void SetView( void* hwnd );
@@ -770,16 +766,9 @@ public:
 	virtual void DestroyIndexBuffer( IIndexBuffer *pIndexBuffer );
 	virtual IVertexBuffer *GetDynamicVertexBuffer( int streamID, VertexFormat_t vertexFormat, bool bBuffered );
 	virtual IIndexBuffer *GetDynamicIndexBuffer( MaterialIndexFormat_t fmt, bool bBuffered );
-	virtual void SetHardwareGammaRamp( float fGamma, float fGammaTVRangeMin, float fGammaTVRangeMax, float fGammaTVExponent, bool bTVEnabled ) {}
 	virtual void EnableNonInteractiveMode( MaterialNonInteractiveMode_t mode, ShaderNonInteractiveInfo_t *pInfo ) {}
 	virtual void RefreshFrontBufferNonInteractive( ) {}
 	virtual void HandleThreadEvent( uint32 threadEvent ) {}
-
-#ifdef DX_TO_GL_ABSTRACTION
-	virtual void DoStartupShaderPreloading( void ) {}
-#endif
-
-	virtual char *GetDisplayDeviceName() OVERRIDE { return ""; }
 
 private:
 	CEmptyMesh m_Mesh;
@@ -788,44 +777,8 @@ private:
 
 static CShaderDeviceEmpty s_ShaderDeviceEmpty;
 
-// FIXME: Remove; it's for backward compat with the materialsystem only for now
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderDeviceEmpty, IShaderDevice, 
-								  SHADER_DEVICE_INTERFACE_VERSION, s_ShaderDeviceEmpty )
-
-
 //-----------------------------------------------------------------------------
 // The DX8 implementation of the shader device
-//-----------------------------------------------------------------------------
-class CShaderDeviceMgrEmpty : public IShaderDeviceMgr
-{
-public:
-	// Methods of IAppSystem
-	virtual bool Connect( CreateInterfaceFn factory );
-	virtual void Disconnect();
-	virtual void *QueryInterface( const char *pInterfaceName );
-	virtual InitReturnVal_t Init();
-	virtual void Shutdown();
-
-public:
-	// Methods of IShaderDeviceMgr
-	virtual int	 GetAdapterCount() const;
-	virtual void GetAdapterInfo( int adapter, MaterialAdapterInfo_t& info ) const;
-	virtual bool GetRecommendedConfigurationInfo( int nAdapter, int nDXLevel, KeyValues *pKeyValues );
-	virtual int	 GetModeCount( int adapter ) const;
-	virtual void GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int mode ) const;
-	virtual void GetCurrentModeInfo( ShaderDisplayMode_t* pInfo, int nAdapter ) const;
-	virtual bool SetAdapter( int nAdapter, int nFlags );
-	virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode );
-	virtual void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func ) {}
-	virtual void RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func ) {}
-};
-
-static CShaderDeviceMgrEmpty s_ShaderDeviceMgrEmpty;
-
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderDeviceMgrEmpty, IShaderDeviceMgr, 
-								  SHADER_DEVICE_MGR_INTERFACE_VERSION, s_ShaderDeviceMgrEmpty )
-
-
 //-----------------------------------------------------------------------------
 // The DX8 implementation of the shader API
 //-----------------------------------------------------------------------------
@@ -1865,6 +1818,7 @@ static bool DescribePicaAdapter( int adapter, render::RenderAdapterInfo *info )
 	if ( adapter != 0 || !info )
 		return false;
 	*info = render::RenderAdapterInfo();
+	Q_strncpy( info->name, "PICA200 (Nintendo 3DS, fullbright)", sizeof( info->name ) );
 	Q_strncpy( info->driverApi, "pica200", sizeof( info->driverApi ) );
 	return true;
 }
@@ -1978,13 +1932,15 @@ public:
 };
 CPicaCorePassSlots g_PicaCorePassSlots;
 
+static void FillLifecycle( render::LegacyShaderServices *services );
+
 static bool CreatePicaShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
 		return false;
-	services->manager = &s_ShaderDeviceMgrEmpty;
+	FillLifecycle( services );
 	services->api = &g_ShaderAPIEmpty;
-	services->device = &s_ShaderDeviceEmpty;
+	services->stream = &s_ShaderDeviceEmpty;
 	services->shadow = &g_ShaderShadow;
 	services->hardware = &g_ShaderAPIEmpty;
 	services->debugTextures = &g_ShaderAPIEmpty;
@@ -2040,8 +1996,6 @@ static void* ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCod
 	{
 		*pReturnCode = IFACE_OK;
 	}
-	if ( !Q_stricmp( pInterfaceName, SHADER_DEVICE_INTERFACE_VERSION ) )
-		return static_cast< IShaderDevice* >( &s_ShaderDeviceEmpty );
 	if ( !Q_stricmp( pInterfaceName, SHADERAPI_INTERFACE_VERSION ) )
 		return static_cast< IShaderAPI* >( &g_ShaderAPIEmpty );
 	if ( !Q_stricmp( pInterfaceName, SHADERSHADOW_INTERFACE_VERSION ) )
@@ -2056,120 +2010,59 @@ static void* ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCod
 
 
 //-----------------------------------------------------------------------------
-//
-// CShaderDeviceMgrEmpty
-//
+// The backend's app-system lifecycle and its presentation (the 3DS top
+// screen), which the material system's IShaderDeviceMgr and IShaderDevice
+// facades forward and answer from (RFC 0016 legacy device facade F4).
 //-----------------------------------------------------------------------------
-bool CShaderDeviceMgrEmpty::Connect( CreateInterfaceFn factory )
+static void FillLifecycle( render::LegacyShaderServices *services )
 {
-	// So others can access it
-	g_pShaderUtil = (IShaderUtil*)factory( SHADER_UTIL_INTERFACE_VERSION, NULL );
-
-	return true;
-}
-
-void CShaderDeviceMgrEmpty::Disconnect()
-{
-	g_pShaderUtil = NULL;
-}
-
-void *CShaderDeviceMgrEmpty::QueryInterface( const char *pInterfaceName )
-{
-	if ( !Q_stricmp( pInterfaceName, SHADER_DEVICE_MGR_INTERFACE_VERSION ) )
-		return static_cast< IShaderDeviceMgr* >( this );
-	if ( !Q_stricmp( pInterfaceName, MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION ) )
-		return static_cast< IMaterialSystemHardwareConfig* >( &g_ShaderAPIEmpty );
-	return NULL;
-}
-
-InitReturnVal_t CShaderDeviceMgrEmpty::Init()
-{
-	return INIT_OK;
-}
-
-void CShaderDeviceMgrEmpty::Shutdown()
-{
-
-}
-
-// Sets the adapter
-bool CShaderDeviceMgrEmpty::SetAdapter( int nAdapter, int nFlags )
-{
-	return true;
-}
-
-// FIXME: Is this a public interface? Might only need to be private to shaderapi
-CreateInterfaceFn CShaderDeviceMgrEmpty::SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t& mode ) 
-{
-	if ( !g_ShaderAPIEmpty.SetMode( hWnd, nAdapter, ShaderDeviceInfo_t() ) )
-		return NULL;
-	return ShaderInterfaceFactory;
-}
-
-// Gets the number of adapters...
-// The null backend advertises one software adapter so the render.contracts
-// provider around this manager can describe it and select a profile for it.
-int	 CShaderDeviceMgrEmpty::GetAdapterCount() const
-{
-	return 1;
-}
-
-bool CShaderDeviceMgrEmpty::GetRecommendedConfigurationInfo( int nAdapter, int nDXLevel, KeyValues *pKeyValues ) 
-{
-	return true;
-}
-
-// Returns info about each adapter
-void CShaderDeviceMgrEmpty::GetAdapterInfo( int adapter, MaterialAdapterInfo_t& info ) const
-{
-	memset( &info, 0, sizeof( info ) );
-	Q_strncpy( info.m_pDriverName, "PICA200 (Nintendo 3DS, fullbright)", sizeof( info.m_pDriverName ) );
-	info.m_nDXSupportLevel = 90;
-}
-
-// Returns the number of modes
-int	 CShaderDeviceMgrEmpty::GetModeCount( int nAdapter ) const
-{
-	return 1;
-}
-
-// Returns mode information..
-void CShaderDeviceMgrEmpty::GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int nMode ) const
-{
-	pInfo->m_nWidth = pica::kScreenWidth;
-	pInfo->m_nHeight = pica::kScreenHeight;
-	pInfo->m_Format = IMAGE_FORMAT_RGBA8888;
-	pInfo->m_nRefreshRateNumerator = 60;
-	pInfo->m_nRefreshRateDenominator = 1;
-}
-
-void CShaderDeviceMgrEmpty::GetCurrentModeInfo( ShaderDisplayMode_t* pInfo, int nAdapter ) const
-{
-	GetModeInfo( pInfo, nAdapter, 0 );
-}
-
-
-//-----------------------------------------------------------------------------
-//
-// Shader device empty
-//
-//-----------------------------------------------------------------------------
-void CShaderDeviceEmpty::GetWindowSize( int &width, int &height ) const
-{
-	width = pica::kScreenWidth;
-	height = pica::kScreenHeight;
+	services->lifecycle.connect = []( void *, CreateInterfaceFn factory )
+	{
+		// So others can access it
+		g_pShaderUtil = (IShaderUtil *)factory( SHADER_UTIL_INTERFACE_VERSION, NULL );
+		return true;
+	};
+	services->lifecycle.disconnect = []( void * )
+	{
+		g_pShaderUtil = NULL;
+	};
+	services->lifecycle.init = []( void * )
+	{
+		return true;
+	};
+	services->lifecycle.shutdown = []( void * ) {};
+	services->lifecycle.setAdapter = []( void *, int, int )
+	{
+		return true;
+	};
+	services->lifecycle.setMode = []( void *, void *hWnd, int nAdapter, const ShaderDeviceInfo_t & )
+	{
+		return g_ShaderAPIEmpty.SetMode( hWnd, nAdapter, ShaderDeviceInfo_t() )
+		           ? static_cast<CreateInterfaceFn>( ShaderInterfaceFactory )
+		           : static_cast<CreateInterfaceFn>( NULL );
+	};
+	// The top screen: 400 x 240 at 60 Hz, presented without antialiasing or
+	// stencil, its one mode.
+	services->presentation.facts = []( void *, render::LegacyPresentationFacts *out )
+	{
+		*out = render::LegacyPresentationFacts();
+		out->presenting = true;
+		out->backBufferWidth = out->windowWidth = pica::kScreenWidth;
+		out->backBufferHeight = out->windowHeight = pica::kScreenHeight;
+	};
+	services->presentation.fixedDisplay = []( void *, int *width, int *height, int *refreshHz )
+	{
+		*width = pica::kScreenWidth;
+		*height = pica::kScreenHeight;
+		*refreshHz = 60;
+		return true;
+	};
 }
 
 void CShaderDeviceEmpty::GetBackBufferDimensions( int& width, int& height ) const
 {
 	width = pica::kScreenWidth;
 	height = pica::kScreenHeight;
-}
-
-// Use this to spew information about the 3D layer 
-void CShaderDeviceEmpty::SpewDriverInfo() const
-{
-	Warning("Empty shader\n");
 }
 
 // Creates/ destroys a child window

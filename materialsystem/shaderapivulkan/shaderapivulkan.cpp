@@ -40,6 +40,7 @@
 #include "render/direct_light_selection.h"
 #include "render/sprite_card.h"
 #include "../../render/bridge/sdl3-vulkan/legacy_presentation.h"
+#include "render/legacy/stream_device.h"
 #include "vtf/vtf.h"
 #include "pixelwriter.h"
 #include "shaderapi/commandbuffer.h"
@@ -1916,22 +1917,14 @@ public:
 //-----------------------------------------------------------------------------
 // The DX8 implementation of the shader device
 //-----------------------------------------------------------------------------
-class CShaderDeviceVulkan : public IShaderDevice
+// The legacy draw stream's resources and frame (render::legacy::
+// ILegacyStreamDevice); the material system's IShaderDevice facade answers
+// the device and presentation questions (RFC 0016 legacy device facade F4).
+class CShaderDeviceVulkan : public render::legacy::ILegacyStreamDevice
 {
 public:
 	CShaderDeviceVulkan() : m_DynamicMesh( true ), m_Mesh( false ) {}
 
-	// Methods of IShaderDevice
-	virtual int GetCurrentAdapter() const { return 0; }
-	// True once the native Vulkan device is up: this is a real rendering backend,
-	// so the material system must drive its actual draw path (mesh Draw, shader
-	// binding, present) rather than treating it as a headless/null device.
-	virtual bool IsUsingGraphics() const { return g_VulkanContext.IsValid(); }
-	virtual void SpewDriverInfo() const;
-	virtual ImageFormat GetBackBufferFormat() const { return IMAGE_FORMAT_RGB888; }
-	virtual void GetBackBufferDimensions( int &width, int &height ) const;
-	virtual int StencilBufferBits() const { return g_VulkanContext.StencilBits(); }
-	virtual bool IsAAEnabled() const { return g_VulkanContext.ActiveSampleCount() > 1; }
 	virtual void Present()
 	{
 		NoteDeviceUse( "Present" );
@@ -1964,7 +1957,6 @@ public:
 		(void)RunVulkanFrame( &error );
 		g_VulkanContext.EndStreamFrame();
 	}
-	virtual void GetWindowSize( int &width, int &height ) const;
 	virtual bool AddView( void *hwnd );
 	virtual void RemoveView( void *hwnd );
 	virtual void SetView( void *hwnd );
@@ -2002,23 +1994,6 @@ public:
 	virtual IVertexBuffer *GetDynamicVertexBuffer(
 	    int streamID, VertexFormat_t vertexFormat, bool bBuffered );
 	virtual IIndexBuffer *GetDynamicIndexBuffer( MaterialIndexFormat_t fmt, bool bBuffered );
-	// mat_monitorgamma: SDL3 has no window gamma ramp, so the ramp D3D9 hands to
-	// the hardware (render.gamma-ramp.v1) is applied when presenting. Any thread
-	// may call this; the next presented frame picks the ramp up.
-	virtual void SetHardwareGammaRamp( float fGamma, float fGammaTVRangeMin, float fGammaTVRangeMax,
-	    float fGammaTVExponent, bool bTVEnabled )
-	{
-		render::GammaRampParams params;
-		params.gamma = fGamma;
-		params.tvRangeMin = fGammaTVRangeMin;
-		params.tvRangeMax = fGammaTVRangeMax;
-		params.tvExponent = fGammaTVExponent;
-		params.tvEnabled = bTVEnabled;
-		render::GammaRamp16 ramp;
-		render::BuildGammaRamp16( params, ramp );
-		if ( g_Presentation )
-			g_Presentation->SetGammaRamp( ramp );
-	}
 	virtual void EnableNonInteractiveMode(
 	    MaterialNonInteractiveMode_t mode, ShaderNonInteractiveInfo_t *pInfo )
 	{
@@ -2026,9 +2001,6 @@ public:
 	}
 	virtual void RefreshFrontBufferNonInteractive() {}
 	virtual void HandleThreadEvent( uint32 threadEvent ) {}
-
-
-	virtual char *GetDisplayDeviceName() OVERRIDE { return ""; }
 
 	void ReleaseDynamicStorage()
 	{
@@ -2045,52 +2017,14 @@ private:
 
 static CShaderDeviceVulkan s_ShaderDeviceEmpty;
 
-// FIXME: Remove; it's for backward compat with the materialsystem only for now
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR(
-    CShaderDeviceVulkan, IShaderDevice, SHADER_DEVICE_INTERFACE_VERSION, s_ShaderDeviceEmpty )
-
-//-----------------------------------------------------------------------------
-// The DX8 implementation of the shader device
-//-----------------------------------------------------------------------------
-class CShaderDeviceMgrVulkan : public IShaderDeviceMgr
+// The presented back buffer (1024 x 768 before the device exists).
+static void BackBufferDimensions( int &width, int &height )
 {
-public:
-	// Methods of IAppSystem
-	virtual bool Connect( CreateInterfaceFn factory );
-	virtual void Disconnect();
-	virtual void *QueryInterface( const char *pInterfaceName );
-	virtual InitReturnVal_t Init();
-	virtual void Shutdown();
-
-public:
-	// Methods of IShaderDeviceMgr. The material system reaches this manager
-	// only through its CShaderDeviceFacade (RFC 0016 legacy device facade,
-	// F1), which answers adapters, the recommended configuration and video
-	// modes itself; these report nothing so no second answer exists.
-	virtual int GetAdapterCount() const { return 0; }
-	virtual void GetAdapterInfo( int adapter, MaterialAdapterInfo_t &info ) const
-	{
-		memset( &info, 0, sizeof( info ) );
-	}
-	virtual bool GetRecommendedConfigurationInfo(
-	    int nAdapter, int nDXLevel, KeyValues *pKeyValues )
-	{
-		return false;
-	}
-	virtual int GetModeCount( int adapter ) const { return 0; }
-	virtual void GetModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter, int mode ) const {}
-	virtual void GetCurrentModeInfo( ShaderDisplayMode_t *pInfo, int nAdapter ) const {}
-	// The device bring-up this backend still owns until F2-F3.
-	virtual bool SetAdapter( int nAdapter, int nFlags );
-	virtual CreateInterfaceFn SetMode( void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode );
-	virtual void AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func );
-	virtual void RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func );
-};
-
-static CShaderDeviceMgrVulkan s_ShaderDeviceMgrEmpty;
-
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderDeviceMgrVulkan, IShaderDeviceMgr,
-    SHADER_DEVICE_MGR_INTERFACE_VERSION, s_ShaderDeviceMgrEmpty )
+	width = 1024;
+	height = 768;
+	if ( g_VulkanContext.IsValid() )
+		g_VulkanContext.GetSwapchainExtent( width, height );
+}
 
 //-----------------------------------------------------------------------------
 // The DX8 implementation of the shader API
@@ -2138,7 +2072,7 @@ public:
 	// Methods of IShaderDynamicAPI
 	virtual void GetBackBufferDimensions( int &width, int &height ) const
 	{
-		s_ShaderDeviceEmpty.GetBackBufferDimensions( width, height );
+		BackBufferDimensions( width, height );
 	}
 	// The material system's color correction (its lookups, bound as
 	// TEXTURE_COLOR_CORRECTION_VOLUME_*), as CShaderAPIBase reports it. Without
@@ -3515,13 +3449,17 @@ private:
 };
 static CVulkanCorePassSlots g_CorePassSlots;
 
+static void FillLifecycle( render::LegacyShaderServices *services );
+static void FillPresentationSource( render::LegacyShaderServices *services );
+
 static bool CreateNativeVulkanShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
 		return false;
-	services->manager = &s_ShaderDeviceMgrEmpty;
+	FillLifecycle( services );
+	FillPresentationSource( services );
 	services->api = &g_ShaderAPIEmpty;
-	services->device = &s_ShaderDeviceEmpty;
+	services->stream = &s_ShaderDeviceEmpty;
 	services->shadow = &g_ShaderShadow;
 	services->hardware = &g_ShaderAPIEmpty;
 	services->debugTextures = &g_ShaderAPIEmpty;
@@ -3650,8 +3588,6 @@ static void *ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCod
 	{
 		*pReturnCode = IFACE_OK;
 	}
-	if ( !Q_stricmp( pInterfaceName, SHADER_DEVICE_INTERFACE_VERSION ) )
-		return static_cast<IShaderDevice *>( &s_ShaderDeviceEmpty );
 	if ( !Q_stricmp( pInterfaceName, SHADERAPI_INTERFACE_VERSION ) )
 		return static_cast<IShaderAPI *>( &g_ShaderAPIEmpty );
 	if ( !Q_stricmp( pInterfaceName, SHADERSHADOW_INTERFACE_VERSION ) )
@@ -3664,11 +3600,6 @@ static void *ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCod
 	return NULL;
 }
 
-//-----------------------------------------------------------------------------
-//
-// CShaderDeviceMgrVulkan
-//
-//-----------------------------------------------------------------------------
 // Links this module's cvars into the engine's list, applying any command-line
 // value, as CShaderAPIConVarAccessor does for the D3D9 backend.
 class CShaderAPIVulkanConVarAccessor : public IConCommandBaseAccessor
@@ -3684,7 +3615,9 @@ public:
 	}
 };
 
-bool CShaderDeviceMgrVulkan::Connect( CreateInterfaceFn factory )
+// The backend's app-system lifecycle, which the material system's
+// IShaderDeviceMgr facade forwards (RFC 0016 legacy device facade F4).
+static bool ConnectBackend( void *, CreateInterfaceFn factory )
 {
 	ConnectTier1Libraries( &factory, 1 );
 	if ( g_pCVar )
@@ -3692,70 +3625,92 @@ bool CShaderDeviceMgrVulkan::Connect( CreateInterfaceFn factory )
 		static CShaderAPIVulkanConVarAccessor s_ConVarAccessor;
 		ConVar_Register( FCVAR_MATERIAL_SYSTEM_THREAD, &s_ConVarAccessor );
 	}
-
 	// So others can access it
 	g_pShaderUtil = (IShaderUtil *)factory( SHADER_UTIL_INTERFACE_VERSION, NULL );
 	return true;
 }
 
-void CShaderDeviceMgrVulkan::Disconnect()
+static void DisconnectBackend( void * )
 {
 	g_pShaderUtil = NULL;
 	ConVar_Unregister();
 	DisconnectTier1Libraries();
 }
 
-void *CShaderDeviceMgrVulkan::QueryInterface( const char *pInterfaceName )
+// Tear the backend's context down during the engine's ordered shutdown,
+// while the window is alive (the swapchain references its surface); the
+// facade then has the root release the device and close the surface host.
+static void ShutdownBackend( void * )
 {
-	if ( !Q_stricmp( pInterfaceName, SHADER_DEVICE_MGR_INTERFACE_VERSION ) )
-		return static_cast<IShaderDeviceMgr *>( this );
-	if ( !Q_stricmp( pInterfaceName, MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION ) )
-		return static_cast<IMaterialSystemHardwareConfig *>( &g_ShaderAPIEmpty );
-	return NULL;
-}
-
-InitReturnVal_t CShaderDeviceMgrVulkan::Init()
-{
-	return INIT_OK;
-}
-
-void CShaderDeviceMgrVulkan::Shutdown()
-{
-	// Tear the native Vulkan device down here, during the engine's ordered
-	// shutdown while the SDL window / Wayland connection is still alive. The
-	// swapchain references the Wayland surface, so destroying it at process exit
-	// (after SDL_Quit) crashes in the Wayland client -- do it now instead. The
-	// global context destructor is then a no-op (Shutdown is idempotent).
 	if ( g_VulkanContext.IsValid() )
 		ReportDeviceThreads();
 	g_VulkanContext.Shutdown();
 }
 
-// Sets the adapter
-bool CShaderDeviceMgrVulkan::SetAdapter( int nAdapter, int nFlags )
+static void FillLifecycle( render::LegacyShaderServices *services )
 {
-	return true;
+	services->lifecycle.connect = ConnectBackend;
+	services->lifecycle.disconnect = DisconnectBackend;
+	services->lifecycle.init = []( void * )
+	{
+		return true;
+	};
+	services->lifecycle.shutdown = ShutdownBackend;
+	services->lifecycle.setAdapter = []( void *, int, int )
+	{
+		return true;
+	};
+	services->lifecycle.setMode = []( void *, void *hWnd, int, const ShaderDeviceInfo_t &mode )
+	{
+		BringUpVulkanContext( hWnd, mode );
+		return static_cast<CreateInterfaceFn>( ShaderInterfaceFactory );
+	};
 }
 
-// FIXME: Is this a public interface? Might only need to be private to shaderapi
-CreateInterfaceFn CShaderDeviceMgrVulkan::SetMode(
-    void *hWnd, int nAdapter, const ShaderDeviceInfo_t &mode )
+// The presented frame (the swapchain, which stays in the context until R91)
+// and the presentation's gamma ramp and mode-change callbacks, which the
+// material system's IShaderDevice facade answers from (F4).
+static void FillPresentationSource( render::LegacyShaderServices *services )
 {
-	BringUpVulkanContext( hWnd, mode );
-	return ShaderInterfaceFactory;
-}
-
-// The presentation keeps the callbacks.
-void CShaderDeviceMgrVulkan::AddModeChangeCallback( ShaderModeChangeCallbackFunc_t func )
-{
-	if ( g_Presentation )
-		g_Presentation->AddModeChangeCallback( func );
-}
-
-void CShaderDeviceMgrVulkan::RemoveModeChangeCallback( ShaderModeChangeCallbackFunc_t func )
-{
-	if ( g_Presentation )
-		g_Presentation->RemoveModeChangeCallback( func );
+	services->presentation.facts = []( void *, render::LegacyPresentationFacts *out )
+	{
+		*out = render::LegacyPresentationFacts();
+		out->presenting = g_VulkanContext.IsValid();
+		if ( !out->presenting )
+			return;
+		g_VulkanContext.GetSwapchainExtent( out->backBufferWidth, out->backBufferHeight );
+		out->windowWidth = out->backBufferWidth;
+		out->windowHeight = out->backBufferHeight;
+		out->samples = g_VulkanContext.ActiveSampleCount();
+		out->stencilBits = g_VulkanContext.StencilBits();
+	};
+	// mat_monitorgamma: SDL3 has no window gamma ramp, so the ramp D3D9 hands
+	// to the hardware (render.gamma-ramp.v1) is applied when presenting; any
+	// thread may set it.
+	services->presentation.setGammaRamp = []( void *, float gamma, float tvRangeMin,
+	                                          float tvRangeMax, float tvExponent, bool tvEnabled )
+	{
+		render::GammaRampParams params;
+		params.gamma = gamma;
+		params.tvRangeMin = tvRangeMin;
+		params.tvRangeMax = tvRangeMax;
+		params.tvExponent = tvExponent;
+		params.tvEnabled = tvEnabled;
+		render::GammaRamp16 ramp;
+		render::BuildGammaRamp16( params, ramp );
+		if ( g_Presentation )
+			g_Presentation->SetGammaRamp( ramp );
+	};
+	services->presentation.addModeChangeCallback = []( void *, void ( *callback )() )
+	{
+		if ( g_Presentation )
+			g_Presentation->AddModeChangeCallback( callback );
+	};
+	services->presentation.removeModeChangeCallback = []( void *, void ( *callback )() )
+	{
+		if ( g_Presentation )
+			g_Presentation->RemoveModeChangeCallback( callback );
+	};
 }
 
 //-----------------------------------------------------------------------------
@@ -3763,41 +3718,6 @@ void CShaderDeviceMgrVulkan::RemoveModeChangeCallback( ShaderModeChangeCallbackF
 // Shader device empty
 //
 //-----------------------------------------------------------------------------
-void CShaderDeviceVulkan::GetWindowSize( int &width, int &height ) const
-{
-	if ( g_VulkanContext.IsValid() )
-	{
-		g_VulkanContext.GetSwapchainExtent( width, height );
-		return;
-	}
-	width = 0;
-	height = 0;
-}
-
-void CShaderDeviceVulkan::GetBackBufferDimensions( int &width, int &height ) const
-{
-	if ( g_VulkanContext.IsValid() )
-	{
-		g_VulkanContext.GetSwapchainExtent( width, height );
-		return;
-	}
-	width = 1024;
-	height = 768;
-}
-
-// Use this to spew information about the 3D layer
-void CShaderDeviceVulkan::SpewDriverInfo() const
-{
-	if ( g_VulkanContext.IsValid() )
-	{
-		Msg( "Native Vulkan device: %s (vendor 0x%04x, device 0x%04x, %s)\n",
-		    g_VulkanContext.DeviceName(), g_VulkanContext.VendorId(), g_VulkanContext.DeviceId(),
-		    g_VulkanContext.IsDiscrete() ? "discrete" : "integrated/other" );
-		return;
-	}
-	Warning( "Native Vulkan device not initialized\n" );
-}
-
 // Creates/ destroys a child window
 bool CShaderDeviceVulkan::AddView( void *hwnd )
 {

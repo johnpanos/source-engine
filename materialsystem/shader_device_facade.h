@@ -17,6 +17,7 @@
 #ifndef SHADER_DEVICE_FACADE_H
 #define SHADER_DEVICE_FACADE_H
 
+#include "render/legacy/stream_device.h"
 #include "render/legacy_shader_provider.h"
 #include "render/render_display_modes.h"
 #include "shaderapi/IShaderDevice.h"
@@ -36,7 +37,7 @@ public:
 	// backend's own manager. Rebinding releases the previous binding.
 	void Bind( const render::LegacyShaderServices &services );
 	void Unbind();
-	bool IsBound() const { return m_pBackend != NULL; }
+	bool IsBound() const { return m_bBound; }
 
 	// Methods of IAppSystem: the backend's lifecycle, plus this facade's
 	// optional services (the launcher's display, the file system).
@@ -81,7 +82,7 @@ private:
 	void RefreshModeList() const;
 	void ClampToCapabilities( KeyValues *pConfiguration ) const;
 
-	IShaderDeviceMgr *m_pBackend = NULL;
+	bool m_bBound = false;
 	render::LegacyShaderServices m_Services;
 	ILauncherMgr *m_pLauncherMgr = NULL;
 	DesktopSourceFn m_pDesktopSource = NULL;
@@ -92,6 +93,124 @@ private:
 	// Rebuilt by GetModeCount, which the engine calls before GetModeInfo.
 	mutable std::vector<render::DisplayModeFacts> m_Modes;
 	mutable bool m_bWarnedNoDisplay = false;
+};
+
+// The material system's one IShaderDevice (RFC 0016 legacy device facade,
+// F4): whether a device presents, the back buffer, the window, samples,
+// stencil and the gamma ramp from the backend's presentation source; the
+// adapter from the core's adapter source; the legacy draw stream's resources
+// and frame forwarded to the backend's ILegacyStreamDevice. No backend
+// implements IShaderDevice.
+class CShaderDeviceFacadeDevice final : public IShaderDevice
+{
+public:
+	void Bind( const render::LegacyShaderServices &services );
+	void Unbind();
+
+	// Answered here.
+	int GetCurrentAdapter() const override { return 0; }
+	bool IsUsingGraphics() const override;
+	void SpewDriverInfo() const override;
+	// Every backend's back buffer is 8-bit RGB.
+	ImageFormat GetBackBufferFormat() const override { return IMAGE_FORMAT_RGB888; }
+	void GetBackBufferDimensions( int &width, int &height ) const override;
+	int StencilBufferBits() const override;
+	bool IsAAEnabled() const override;
+	void GetWindowSize( int &width, int &height ) const override;
+	void SetHardwareGammaRamp( float fGamma, float fGammaTVRangeMin, float fGammaTVRangeMax,
+	    float fGammaTVExponent, bool bTVEnabled ) override;
+	char *GetDisplayDeviceName() override { return const_cast<char *>( "" ); }
+
+	// The legacy draw stream: the backend's.
+	void Present() override { Stream().Present(); }
+	void ReleaseResources() override { Stream().ReleaseResources(); }
+	void ReacquireResources() override { Stream().ReacquireResources(); }
+	bool AddView( void *hWnd ) override { return Stream().AddView( hWnd ); }
+	void RemoveView( void *hWnd ) override { Stream().RemoveView( hWnd ); }
+	void SetView( void *hWnd ) override { Stream().SetView( hWnd ); }
+	IShaderBuffer *CompileShader(
+	    const char *pProgram, size_t nBufLen, const char *pVersion ) override
+	{
+		return Stream().CompileShader( pProgram, nBufLen, pVersion );
+	}
+	VertexShaderHandle_t CreateVertexShader( IShaderBuffer *pBuffer ) override
+	{
+		return Stream().CreateVertexShader( pBuffer );
+	}
+	void DestroyVertexShader( VertexShaderHandle_t hShader ) override
+	{
+		Stream().DestroyVertexShader( hShader );
+	}
+	GeometryShaderHandle_t CreateGeometryShader( IShaderBuffer *pBuffer ) override
+	{
+		return Stream().CreateGeometryShader( pBuffer );
+	}
+	void DestroyGeometryShader( GeometryShaderHandle_t hShader ) override
+	{
+		Stream().DestroyGeometryShader( hShader );
+	}
+	PixelShaderHandle_t CreatePixelShader( IShaderBuffer *pBuffer ) override
+	{
+		return Stream().CreatePixelShader( pBuffer );
+	}
+	void DestroyPixelShader( PixelShaderHandle_t hShader ) override
+	{
+		Stream().DestroyPixelShader( hShader );
+	}
+	IMesh *CreateStaticMesh(
+	    VertexFormat_t format, const char *pBudgetGroup, IMaterial *pMaterial = NULL ) override
+	{
+		return Stream().CreateStaticMesh( format, pBudgetGroup, pMaterial );
+	}
+	void DestroyStaticMesh( IMesh *pMesh ) override { Stream().DestroyStaticMesh( pMesh ); }
+	IVertexBuffer *CreateVertexBuffer( ShaderBufferType_t type, VertexFormat_t format,
+	    int nVertexCount, const char *pBudgetGroup ) override
+	{
+		return Stream().CreateVertexBuffer( type, format, nVertexCount, pBudgetGroup );
+	}
+	void DestroyVertexBuffer( IVertexBuffer *pBuffer ) override
+	{
+		Stream().DestroyVertexBuffer( pBuffer );
+	}
+	IIndexBuffer *CreateIndexBuffer( ShaderBufferType_t type, MaterialIndexFormat_t format,
+	    int nIndexCount, const char *pBudgetGroup ) override
+	{
+		return Stream().CreateIndexBuffer( type, format, nIndexCount, pBudgetGroup );
+	}
+	void DestroyIndexBuffer( IIndexBuffer *pBuffer ) override
+	{
+		Stream().DestroyIndexBuffer( pBuffer );
+	}
+	IVertexBuffer *GetDynamicVertexBuffer(
+	    int nStreamID, VertexFormat_t format, bool bBuffered = true ) override
+	{
+		return Stream().GetDynamicVertexBuffer( nStreamID, format, bBuffered );
+	}
+	IIndexBuffer *GetDynamicIndexBuffer(
+	    MaterialIndexFormat_t format, bool bBuffered = true ) override
+	{
+		return Stream().GetDynamicIndexBuffer( format, bBuffered );
+	}
+	void EnableNonInteractiveMode(
+	    MaterialNonInteractiveMode_t mode, ShaderNonInteractiveInfo_t *pInfo = NULL ) override
+	{
+		Stream().EnableNonInteractiveMode( mode, pInfo );
+	}
+	void RefreshFrontBufferNonInteractive() override
+	{
+		Stream().RefreshFrontBufferNonInteractive();
+	}
+	void HandleThreadEvent( uint32 threadEvent ) override
+	{
+		Stream().HandleThreadEvent( threadEvent );
+	}
+
+private:
+	render::LegacyPresentationFacts Facts() const;
+	// Bound before any use (CMaterialSystem binds it with the provider).
+	render::legacy::ILegacyStreamDevice &Stream() const { return *m_Services.stream; }
+
+	render::LegacyShaderServices m_Services;
 };
 
 #endif // SHADER_DEVICE_FACADE_H

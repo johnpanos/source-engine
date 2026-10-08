@@ -35,16 +35,39 @@ class IGpuCompute;
 namespace render::legacy
 {
 class ICorePassSlots;
+class ILegacyStreamDevice;
 }
+struct ShaderDeviceInfo_t;
+typedef void *( *CreateInterfaceFn )( const char *pName, int *pReturnCode );
 
 namespace render
 {
 
+// The presented frame as the presentation reports it (RFC 0016 legacy device
+// facade, F4): what the material system's IShaderDevice answers.
+struct LegacyPresentationFacts
+{
+	bool presenting = false; // a device presents to the window
+	int backBufferWidth = 1024;
+	int backBufferHeight = 768;
+	int windowWidth = 0;
+	int windowHeight = 0;
+	int samples = 1;
+	int stencilBits = 0;
+};
+
 struct LegacyShaderServices
 {
+	// The material system's IShaderDeviceMgr and IShaderDevice facades
+	// (CShaderDeviceFacade, RFC 0016 legacy device facade): the material
+	// system sets them when it binds the provider; a backend never does, and
+	// implements neither interface (F4).
 	IShaderDeviceMgr *manager = nullptr;
-	IShaderAPI *api = nullptr;
 	IShaderDevice *device = nullptr;
+
+	IShaderAPI *api = nullptr;
+	// The legacy draw stream's resources and frame (render/legacy/stream_device.h).
+	render::legacy::ILegacyStreamDevice *stream = nullptr;
 	IShaderShadow *shadow = nullptr;
 	IMaterialSystemHardwareConfig *hardware = nullptr;
 	IDebugTextureInfo *debugTextures = nullptr;
@@ -95,9 +118,43 @@ struct LegacyShaderServices
 		void ( *release )( void *context ) = nullptr;
 	} coreDevice;
 
+	// The backend's app-system lifecycle and video-mode bring-up, which the
+	// material system's IShaderDeviceMgr facade forwards (F4).
+	struct Lifecycle
+	{
+		void *context = nullptr;
+		bool ( *connect )( void *context, CreateInterfaceFn factory ) = nullptr;
+		void ( *disconnect )( void *context ) = nullptr;
+		bool ( *init )( void *context ) = nullptr; // INIT_OK
+		void ( *shutdown )( void *context ) = nullptr;
+		bool ( *setAdapter )( void *context, int adapter, int flags ) = nullptr;
+		CreateInterfaceFn ( *setMode )(
+		    void *context, void *window, int adapter, const ShaderDeviceInfo_t &mode ) = nullptr;
+	} lifecycle;
+
+	// Optional (F4): the presentation the backend's frames reach the window
+	// through, which the material system's IShaderDevice facade answers from.
+	// Without it the device presents nothing (the null backend).
+	struct PresentationSource
+	{
+		void *context = nullptr;
+		void ( *facts )( void *context, LegacyPresentationFacts *out ) = nullptr;
+		// mat_monitorgamma's ramp, applied by presents; any thread.
+		void ( *setGammaRamp )( void *context, float gamma, float tvRangeMin, float tvRangeMax,
+		    float tvExponent, bool tvEnabled ) = nullptr;
+		// The material system's mode-change callbacks.
+		void ( *addModeChangeCallback )( void *context, void ( *callback )() ) = nullptr;
+		void ( *removeModeChangeCallback )( void *context, void ( *callback )() ) = nullptr;
+		// A display that has exactly one mode (a handheld's screen): its
+		// width, height and refresh rate. Without it the launcher's desktop
+		// display is enumerated.
+		bool ( *fixedDisplay )( void *context, int *width, int *height, int *refreshHz ) = nullptr;
+	} presentation;
+
 	bool IsComplete() const
 	{
-		return manager && api && device && shadow && hardware;
+		return lifecycle.connect && lifecycle.init && lifecycle.shutdown && lifecycle.setMode &&
+		       api && stream && shadow && hardware;
 	}
 };
 

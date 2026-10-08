@@ -664,6 +664,8 @@ private:
 	// The one IShaderDeviceMgr the material system and its clients see
 	// (RFC 0016 legacy device facade); m_ShaderServices.manager points at it.
 	CShaderDeviceFacade m_DeviceFacade;
+	// The one IShaderDevice (F4); m_ShaderServices.device points at it.
+	CShaderDeviceFacadeDevice m_DeviceFacadeDevice;
 	// The composition root's feature request (kept across Disconnect like the
 	// provider) and the profile Init selected from it; valid until Shutdown.
 	render::RenderProfileRequest m_RenderProfileRequest;

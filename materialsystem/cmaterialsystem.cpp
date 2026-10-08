@@ -665,7 +665,9 @@ bool CMaterialSystem::BindShaderProvider( const render::LegacyShaderProvider &pr
 	m_pShaderDLL = description;
 	m_ShaderServices = services;
 	m_DeviceFacade.Bind( services );
+	m_DeviceFacadeDevice.Bind( services );
 	m_ShaderServices.manager = &m_DeviceFacade;
+	m_ShaderServices.device = &m_DeviceFacadeDevice;
 	m_SelectedShaderProvider = provider;
 	m_bShaderProviderSelected = true;
 	m_ShaderAPIFactory = LegacyShaderInterface;
@@ -784,6 +786,7 @@ void CMaterialSystem::DestroyShaderAPI()
 	g_pShaderShadow = NULL;
 	m_ShaderServices = render::LegacyShaderServices();
 	m_DeviceFacade.Unbind();
+	m_DeviceFacadeDevice.Unbind();
 	m_ShaderAPIFactory = NULL;
 }
 
@@ -1800,7 +1803,9 @@ void CMaterialSystem::RestoreShaderObjects( CreateInterfaceFn shaderFactory, int
 	if ( shaderFactory )
 	{
 		g_pShaderAPI = (IShaderAPI*)shaderFactory( SHADERAPI_INTERFACE_VERSION, NULL );
-		g_pShaderDevice = (IShaderDevice*)shaderFactory( SHADER_DEVICE_INTERFACE_VERSION, NULL );
+		// The device is the material system's own facade (RFC 0016 legacy
+		// device facade F4); no backend provides one.
+		g_pShaderDevice = m_ShaderServices.device;
 		g_pShaderShadow = (IShaderShadow*)shaderFactory( SHADERSHADOW_INTERFACE_VERSION, NULL );
 	}
 
