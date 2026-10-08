@@ -360,6 +360,45 @@ std::optional<std::string> RunChecks( bool validate, std::span<const std::uint32
 		    judged > 4, "portal-refract.stage2.fixture-draws-flame", std::to_string( judged ) );
 	}
 
+	// Portal (portal_ps2x) without the alternate view: $basetexture (the gray
+	// sRGB ramp) at the pixel, with $staticamount 0.5 of the static texture
+	// (the uniform noise, read linear), opaque; a $renderfixz material is
+	// refused by name.
+	{
+		WorldMaterial surface;
+		surface.name = "models/portals/lab_portal_surface";
+		surface.shader = "Portal";
+		surface.variables = { { "$basetexture", "lab/portal-ramp" }, { "$staticamount", "0.5" },
+		    { "$staticblendtexture", "lab/portal-noise" } };
+		surface.textures = { { "$basetexture", kRampHandle }, { "$staticblendtexture", kNoiseHandle } };
+		WorldView view = View();
+		view.dynamicDraws.push_back( Quad( surface, 0.4f ) );
+		CanvasImage image;
+		if ( auto why = render( std::move( view ), kGray, image ) )
+			return "portal-refract.portal-surface: " + *why;
+		bool close = true;
+		std::string detail;
+		for ( std::uint32_t x : { 8u, 24u, 40u, 56u } )
+		{
+			const double expected = Ramp( ( x + 0.5 ) / kSize ) * 0.5 + kNoiseByte / 255.0 * 0.5;
+			const float got = image.At( x, 32 )[1];
+			if ( std::abs( got - expected ) > .006 && close )
+			{
+				close = false;
+				detail = std::to_string( x ) + ": " + std::to_string( got ) + "/" +
+				         std::to_string( expected );
+			}
+		}
+		results.That( close, "portal-refract.portal-surface-mixes-the-frame-and-static", detail );
+		WorldMaterial fixz = surface;
+		fixz.variables.push_back( { "$renderfixz", "1" } );
+		WorldView refused = View();
+		refused.dynamicDraws.push_back( Quad( fixz, 0.4f ) );
+		const auto tag = pass.QueueView( std::move( refused ) );
+		results.That( !tag && pass.Stats().lastRefusal.find( "$renderfixz" ) != std::string::npos,
+		    "portal-refract.refuse-portal-renderfixz", pass.Stats().lastRefusal );
+	}
+
 	// PortalStaticOverlay's ghost: the static texture times the vertex alpha
 	// and $staticamount, premultiplied over the clear; the portal faces away
 	// from the viewer, so no distance fade applies.

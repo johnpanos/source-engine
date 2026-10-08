@@ -314,6 +314,10 @@ bool ViewRenderTarget( const MaterialDesc &material, const MaterialValue &value 
 	if ( material.family == "blob-shadow" && value.parameter == "basetexture" &&
 	     SameKey( value.text, "_rt_Shadows" ) )
 		return true;
+	// Portal's depth doubler: the frame the client kept in _rt_DepthDoubler.
+	if ( material.family == "portal-view" && value.parameter == "basetexture" &&
+	     SameKey( value.text, "_rt_DepthDoubler" ) )
+		return true;
 	// A monitor's screen: the point_camera view the client drew into
 	// _rt_Camera earlier in the frame (CViewRender::DrawMonitors).
 	if ( material.family == "unlit" && value.parameter == "basetexture" &&
@@ -472,7 +476,10 @@ namespace
 {
 std::optional<std::string> DepthClaim( const ParameterBlock &block, bool portal )
 {
-	constexpr std::string_view depthKeys[] = { "model", "nocull", "nofog" };
+	// $translucent and $additive only order the draw (the translucent pass);
+	// WriteZ_DX9 sets its own state and draws depth alone (Portal's rims).
+	constexpr std::string_view depthKeys[] = { "model", "nocull", "nofog", "translucent",
+	    "additive" };
 	// PortalRefract marks all stages translucent for material-system ordering.
 	// Stage 1 only writes the aperture's depth/stencil; it never blends color.
 	constexpr std::string_view portalKeys[] = { "model", "nocull", "nofog", "translucent", "stage",
@@ -567,7 +574,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 	     material.family == "decal-modulate" || material.family == "energy" ||
 	     material.family == "modulate" || material.family == "blob-shadow" ||
 	     material.family == "shadow-build" || material.family == "portal-overlay" ||
-	     material.family == "eye-refract" )
+	     material.family == "eye-refract" || material.family == "portal-view" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
@@ -577,6 +584,7 @@ foundation::Expected<device::BlendMode, std::string> ClaimForDrawing( const Mate
 		    : material.family == "shadow-build"   ? ClaimShadowBuild( *block )
 		    : material.family == "portal-overlay" ? ClaimPortalOverlay( *block )
 		    : material.family == "eye-refract"    ? ClaimEyeRefract( *block )
+		    : material.family == "portal-view"    ? ClaimPortalView( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -715,6 +723,13 @@ foundation::Expected<device::BlendMode, std::string> ClaimForMesh(
 			return foundation::MakeUnexpected( teeth.reason );
 		return ClaimForMesh( AsVertexLit( material ), nativeReflectionProbes,
 		    sceneColorAvailable );
+	}
+	if ( material.family == "portal-view" )
+	{
+		const UnlitClaim claim = ClaimPortalView( *block );
+		if ( !claim.claimed )
+			return foundation::MakeUnexpected( claim.reason );
+		return claim.blend;
 	}
 	if ( material.family == "eye-refract" )
 	{
@@ -865,7 +880,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 	     material.family == "decal-modulate" || material.family == "energy" ||
 	     material.family == "modulate" || material.family == "blob-shadow" ||
 	     material.family == "shadow-build" || material.family == "portal-overlay" ||
-	     material.family == "eye-refract" )
+	     material.family == "eye-refract" || material.family == "portal-view" )
 	{
 		const UnlitClaim claim =
 		    material.family == "cable"            ? ClaimCable( *block )
@@ -875,6 +890,7 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 		    : material.family == "shadow-build"   ? ClaimShadowBuild( *block )
 		    : material.family == "portal-overlay" ? ClaimPortalOverlay( *block )
 		    : material.family == "eye-refract"    ? ClaimEyeRefract( *block )
+		    : material.family == "portal-view"    ? ClaimPortalView( *block )
 		    : material.family == "decal-modulate" ? ClaimDecalModulate( *block )
 		    : IsSprite( material )                ? ClaimSprite( *block )
 		    : IsSpriteCard( material )            ? ClaimSpriteCard( *block )
@@ -913,6 +929,12 @@ foundation::Expected<ResolvedProgram, std::string> ProgramResolver::Resolve(
 			textures.emission = TextureOf( material, "texture2" );
 		if ( material.family == "portal-overlay" )
 			textures.emission = TextureOf( material, "staticblendtexture" );
+		if ( material.family == "portal-view" )
+		{
+			textures.emission = TextureOf( material, "basetexture" );
+			textures.detail = TextureOf( material, "alphamasktexture" );
+			textures.bump = TextureOf( material, "staticblendtexture" );
+		}
 		if ( material.family == "eye-refract" )
 		{
 			textures.emission = TextureOf( material, "iris" );

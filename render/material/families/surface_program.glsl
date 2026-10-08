@@ -2614,6 +2614,33 @@ void main()
 	// Points without image specular leave the SSR targets empty (weight 0:
 	// render.pass.ssr leaves their pixels unchanged).
 	WriteSsrTargets( vec3( 0.0, 0.0, 1.0 ), 1.0, vec3( 0.0 ), vec3( 0.0 ), false );
+	if ( kDecalModulate && material.baseDecode.y > 7.5 )
+	{
+		// Portal (portal_vs20, portal_ps2x): the frame at the pixel's projection
+		// through the alternate view (clamped to the screen) or at the pixel.
+		vec2 uv = ( gl_FragCoord.xy - frame.viewport.xy ) * frame.viewport.zw;
+		if ( material.tint.w > 0.5 )
+		{
+			const vec4 world = vec4( worldPosition, 1.0 );
+			const vec4 clip = vec4( dot( material.eyes[0], world ), dot( material.eyes[1], world ),
+			    dot( material.eyes[2], world ), dot( material.eyes[3], world ) );
+			uv = clamp( vec2( clip.x, -clip.y ) / clip.w * 0.5 + 0.5, 0.0, 1.0 );
+		}
+		vec3 portal = texture( sampler2D( emissionTexture, emissionSampler ), uv ).rgb;
+		const float staticAmount = material.tint.x;
+		if ( staticAmount > 0.0 )
+		{
+			portal *= 1.0 - staticAmount;
+			portal += ( material.tint.z > 0.5
+			                ? texture( sampler2D( bumpTexture, bumpSampler ), baseUv ).rgb
+			                : vec3( 0.25 ) ) *
+			          staticAmount;
+		}
+		const float alpha =
+		    material.tint.y > 0.5 ? texture( sampler2D( detailTexture, detailSampler ), baseUv ).a : 1.0;
+		outColor = Output( portal, alpha );
+		return;
+	}
 	if ( kDecalModulate && material.baseDecode.y > 6.5 )
 	{
 		EyeRefractSurface();

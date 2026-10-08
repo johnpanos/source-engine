@@ -78,6 +78,11 @@ constexpr VmtShaderRow kShaders[] = {
         "with a parallax iris, cornea bump, reflection cube and Source's model lighting; the "
         "decal-modulate point (unlit_family.h ClaimEyeRefract)" },
     { "eyerefract_dx9", "eye-refract", "EyeRefract's DirectX 9 implementation" },
+    { "portal", "portal-view",
+        "Portal (portal.cpp, portal_ps2x): Portal's portal surface, the frame (the depth "
+        "doubler's previous frame) projected through $alternateviewmatrix, static and an alpha "
+        "mask; the decal-modulate point (unlit_family.h ClaimPortalView)" },
+    { "portal_dx90", "portal-view", "Portal's DirectX 9 implementation" },
     { "portalstaticoverlay", "portal-overlay",
         "PortalStaticOverlay (portalstaticoverlay.cpp, portalstaticoverlay_ps2x): Portal 2's "
         "ghost, the portal seen through walls (reverse depth test), on the decal-modulate "
@@ -130,7 +135,7 @@ constexpr std::string_view kLegacyReason =
 // kLegacyDerivedFamilies a copy.
 constexpr std::string_view kLegacyDerivedFamilies[] = { "lightmapped", "vertexlit", "unlit",
     "depth", "portal-mask", "cable", "decal-modulate", "energy", "modulate", "teeth", "eyes",
-    "blob-shadow", "shadow-build", "portal-overlay", "eye-refract" };
+    "blob-shadow", "shadow-build", "portal-overlay", "eye-refract", "portal-view" };
 
 constexpr VmtKeyRow kCommonKeys[] = {
     { {}, "$one", "one", ValueKind::kFloat, "1" },
@@ -176,6 +181,20 @@ constexpr VmtKeyRow kLegacyDerivedKeys[] = {
     // ShadowBuild's caster material: the frontend binds its $basetexture,
     // $frame and $basetexturetransform in this material's place.
     { "shadow-build", "$translucent_material", "translucent_material", ValueKind::kMaterial, "" },
+    // Portal (portal.cpp's parameters). $portalviewproj0..3 are the frontend's:
+    // the rows of the projection times $alternateviewmatrix (world to clip).
+    { "portal-view", "$staticamount", "staticamount", ValueKind::kFloat, "0" },
+    { "portal-view", "$staticblendtexture", "staticblendtexture", ValueKind::kTexture, "" },
+    { "portal-view", "$staticblendtextureframe", "staticblendtextureframe", ValueKind::kInt, "0" },
+    { "portal-view", "$alphamasktexture", "alphamasktexture", ValueKind::kTexture, "" },
+    { "portal-view", "$alphamasktextureframe", "alphamasktextureframe", ValueKind::kInt, "0" },
+    { "portal-view", "$renderfixz", "renderfixz", ValueKind::kInt, "0" },
+    { "portal-view", "$usealternateviewmatrix", "usealternateviewmatrix", ValueKind::kInt, "0" },
+    { "portal-view", "$alternateviewmatrix", "alternateviewmatrix", ValueKind::kMaterial, "" },
+    { "portal-view", "$portalviewproj0", "portalviewproj0", ValueKind::kFloat4, "[1 0 0 0]" },
+    { "portal-view", "$portalviewproj1", "portalviewproj1", ValueKind::kFloat4, "[0 1 0 0]" },
+    { "portal-view", "$portalviewproj2", "portalviewproj2", ValueKind::kFloat4, "[0 0 1 0]" },
+    { "portal-view", "$portalviewproj3", "portalviewproj3", ValueKind::kFloat4, "[0 0 0 1]" },
     // EyeRefract (eye_refract.cpp's parameters; eye_refract_helper.h's
     // InitParams defaults where the shader replaces an undefined value).
     { "eye-refract", "$iris", "iris", ValueKind::kTexture, "" },

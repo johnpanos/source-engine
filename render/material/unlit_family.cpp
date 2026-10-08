@@ -620,6 +620,57 @@ UnlitClaim ClaimEyeRefract( const ParameterBlock &block )
 	return claim;
 }
 
+UnlitClaim ClaimPortalView( const ParameterBlock &block )
+{
+	UnlitClaim claim;
+	if ( block.Family().desc.name != "portal-view" )
+	{
+		claim.reason = "the block is of family " + block.Family().desc.name;
+		return claim;
+	}
+	constexpr std::string_view keys[] = { "basetexture", "frame", "staticamount",
+	    "staticblendtexture", "staticblendtextureframe", "alphamasktexture",
+	    "alphamasktextureframe", "renderfixz", "usealternateviewmatrix", "alternateviewmatrix",
+	    "portalviewproj0", "portalviewproj1", "portalviewproj2", "portalviewproj3", "color",
+	    "alpha", "model", "nocull", "nofog", "translucent", "additive" };
+	if ( const auto unread = detail::UnclaimedParameter( block, keys ) )
+	{
+		claim.reason = "the portal view point does not draw " + *unread;
+		return claim;
+	}
+	// $translucent and $additive order the draw; portal.cpp sets its own
+	// blend (alpha with the mask, else none).
+	if ( ReadParameter( block, "renderfixz" ) != 0.0f )
+	{
+		claim.reason = "the portal view point does not draw $renderfixz";
+		return claim;
+	}
+	if ( !detail::TextureBound( block, "basetexture" ) )
+	{
+		claim.reason = "Portal without $basetexture reads the frame buffer";
+		return claim;
+	}
+	const bool mask = detail::TextureBound( block, "alphamasktexture" );
+	claim.blend = mask ? device::BlendMode::kAlpha : device::BlendMode::kOpaque;
+	claim.alphaWrite = !mask;
+	claim.decalModulate = true;
+	SurfaceConstants &constants = claim.constants;
+	constants.baseDecode[1] = 8.0f; // the portal view
+	constants.tint[0] = ReadParameter( block, "staticamount" );
+	constants.tint[1] = mask ? 1.0f : 0.0f;
+	constants.tint[2] = detail::TextureBound( block, "staticblendtexture" ) ? 1.0f : 0.0f;
+	constants.tint[3] = ReadParameter( block, "usealternateviewmatrix" ) != 0.0f ? 1.0f : 0.0f;
+	for ( int row = 0; row < 4; ++row )
+	{
+		const std::string key = "portalviewproj" + std::to_string( row );
+		for ( int c = 0; c < 4; ++c )
+			constants.eyes[row][c] = ReadParameter( block, key, c );
+	}
+	constants.surfaceControls[0] = ReadFlag( block, "nofog" ) ? 1.0f : 0.0f;
+	claim.claimed = true;
+	return claim;
+}
+
 UnlitClaim ClaimModulate( const ParameterBlock &block )
 {
 	UnlitClaim claim;

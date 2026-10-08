@@ -147,6 +147,15 @@ UnlitClaim ClaimPortalOverlay( const ParameterBlock &block );
 // reflection). The light warp, the cloak and emissive passes and $intro are
 // refused by name.
 UnlitClaim ClaimEyeRefract( const ParameterBlock &block );
+// Portal (portal.cpp, portal_vs20 and portal_ps2x): $basetexture (sRGB, at
+// the emission binding) read at the pixel's projection through the
+// frontend's $portalviewproj rows (with $usealternateviewmatrix; clamped to
+// the screen) or at the pixel; with $staticamount above 0, scaled by 1 -
+// static plus the static texture (at the bump binding; 0.25 grey without
+// one) times static; alpha from $alphamasktexture (at the detail binding),
+// alpha blended, else opaque. $renderfixz and a missing $basetexture (the
+// frame buffer) are refused by name.
+UnlitClaim ClaimPortalView( const ParameterBlock &block );
 // Modulate (modulate_dx9.cpp, modulate_ps2x): the decal-modulate point with
 // saturate( base x $color/$alpha x vertex color ), its color lerped from the
 // neutral 0.5 by its alpha, fog to the neutral grey. $mod2x blends

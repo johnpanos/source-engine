@@ -13259,3 +13259,28 @@ portal's far view reads dark against legacy: to be compared next.
     renderer has no built cubemap there (`cubemapdefault` missing) and
     reflects nothing. A fixture difference (no built cubemaps), not a core
     defect.
+- **Native Portal's portals on the core.**
+  - Portal's rims (WriteZ `portal_1_anims`/`portal_2_anims`): `$translucent`
+    and `$additive` only order the draw and are now inert on the depth point.
+  - The depth doubler (`Portal_DX90`): a new `portal-view` family. The frame
+    (`_rt_DepthDoubler`, an allowed view render target) is read at the
+    pixel's projection through `$alternateviewmatrix`. The frozen backend
+    passes projection × alternate view as `$portalviewproj0..3`. Static and
+    the alpha mask follow `portal_ps2x`; `$renderfixz` and a missing base
+    are refused by name. One known deviation: the screen clamp is applied
+    per pixel, not per vertex.
+  - `render.lab.portal-refract` 16/0: the Portal surface mixes the frame and
+    the static.
+  - Census: `p1-frame-pacing` and `p1-testchmb-a-01` drop nothing.
+  - A matched `testchmb_a_02` portal frame agrees in shape and static with
+    the legacy renderer; the saturated orange is lighter on the core
+    (highlight tone mapping).
+- **Open: intermittent white captures on the core** (`sp_a3_jump_intro`).
+  - Rate: about 4 failing runs in 22. The legacy renderer passed 11 of 11.
+  - Ruled out: the core's luminance counts equal the legacy occlusion counts
+    range for range, and the exposure trajectory of a white run matches a
+    passing one.
+  - The white run's capture holds a different camera pose and many more
+    stream records.
+  - The cause is not found. An earlier all-hatch `testchmb_a_00` capture may
+    be the same defect. Parity blocker to keep chasing.

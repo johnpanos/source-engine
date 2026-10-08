@@ -30,6 +30,7 @@
 #include "tier1/KeyValues.h"
 #include "vulkan_device.h"
 #include "render/legacy/frame_source.h"
+#include "render/legacy/core_mesh_kind.h"
 #include "render/legacy/material_flag_keys.h"
 #include "render/material/vmt_matrix.h"
 #include "vulkan_emit_convert.h"
@@ -1214,6 +1215,7 @@ namespace
 void CommitModelViewProj();
 void CommitViewProj();
 void CaptureCoreMatrices( render::legacy::CoreMeshDraw &draw );
+const float *DrawProjection();
 // Loads identity into the fixed-function texture matrices (MATERIAL_TEXTURE0..).
 void ResetTextureMatrices( int count );
 // The MODEL matrix of the matrix stack (stored transposed, for row vectors).
@@ -4630,85 +4632,9 @@ static void ExpandCardVertex( const SpriteCardFrame &f, const float *position,
 	out[11] = f.addSelf >= 0.0f ? 1.0f + f.addSelf : 0.0f;
 }
 
-static render::legacy::CoreMeshKind CoreMeshKindFor( IMaterial *material )
-{
-	using render::legacy::CoreMeshKind;
-	if ( material )
-	{
-		const char *shader = material->GetShaderName();
-		// Frozen-path: hand the already-expanded rope ribbon to its core material point.
-		if ( !V_stricmp( shader, "Cable" ) || !V_stricmp( shader, "Cable_DX9" ) ||
-		     !V_stricmp( shader, "SplineRope" ) )
-			return CoreMeshKind::kCable;
-		// Frozen-path: capture moving brush surfaces after their material proxies run.
-		// Frozen-path: core progress (RFC 0016 K8) - WorldVertexTransition's
-		// blended displacements take the same lightmapped surface point.
-		if ( !V_stricmp( shader, "LightmappedGeneric" ) ||
-		     !V_stricmp( shader, "LightmappedGeneric_DX9" ) ||
-		     !V_stricmp( shader, "WorldVertexTransition" ) ||
-		     !V_stricmp( shader, "WorldVertexTransition_DX9" ) )
-			return CoreMeshKind::kLightmappedSurface;
-		if ( material->GetMaterialVarFlag( MATERIAL_VAR_DECAL ) ||
-		     !V_stricmp( shader, "DecalModulate" ) || !V_stricmp( shader, "DecalModulate_dx9" ) )
-			return CoreMeshKind::kDecal;
-		// Frozen-path: the 2D sky box's faces (R_DrawSkyBox) to the core's unlit
-		// point, which decodes the Sky shader's HDR encodings (RFC 0016 K8).
-		if ( !V_stricmp( shader, "UnlitGeneric" ) || !V_stricmp( shader, "UnlitTwoTexture" ) ||
-		     !V_stricmp( shader, "UnlitTwoTexture_dx9" ) || !V_stricmp( shader, "Sprite" ) ||
-		     !V_stricmp( shader, "Sprite_DX9" ) || !V_stricmp( shader, "Sky" ) ||
-		     !V_stricmp( shader, "Sky_HDR_DX9" ) || !V_stricmp( shader, "Sky_DX9" ) )
-			return CoreMeshKind::kUnlit;
-		// Frozen-path: the engine's bloom chain to render.pass.post, which claims
-		// it by name and draws it once in the output stage (RFC 0016 K8).
-		if ( !V_stricmp( shader, "Downsample_nohdr" ) || !V_stricmp( shader, "BlurFilterX" ) ||
-		     !V_stricmp( shader, "BlurFilterY" ) || !V_stricmp( shader, "Engine_Post" ) ||
-		     !V_stricmp( shader, "Engine_Post_dx9" ) || !V_stricmp( shader, "MotionBlur" ) ||
-		     !V_stricmp( shader, "MotionBlur_dx9" ) ||
-		     ( !V_stricmp( material->GetName(), "dev/bloomadd" ) &&
-		         ( !V_stricmp( shader, "screenspace_general" ) ||
-		             !V_stricmp( shader, "screenspace_general_dx9" ) ) ) )
-			return CoreMeshKind::kScreenEffect;
-		// Frozen-path: core progress (RFC 0016 K8) - the render-to-texture blob
-		// shadows: casters into the page, decals from it.
-		if ( !V_stricmp( shader, "Shadow" ) || !V_stricmp( shader, "Shadow_DX9" ) ||
-		     !V_stricmp( shader, "ShadowBuild" ) || !V_stricmp( shader, "ShadowBuild_DX9" ) )
-			return CoreMeshKind::kBlobShadow;
-		// Frozen-path: core progress (RFC 0016 K8) - SolidEnergy to the core's
-		// energy point.
-		if ( !V_stricmp( shader, "SolidEnergy" ) || !V_stricmp( shader, "SolidEnergy_dx9" ) )
-			return CoreMeshKind::kEnergy;
-		// Frozen-path: core progress (RFC 0016 K8 particles) - SpriteCard's
-		// card records to the core's sprite card point.
-		if ( !V_stricmp( shader, "Spritecard" ) || !V_stricmp( shader, "Spritecard_DX8" ) )
-			return CoreMeshKind::kParticle;
-		if ( !V_stricmp( shader, "Refract" ) || !V_stricmp( shader, "Refract_DX90" ) )
-			return CoreMeshKind::kTransmission;
-		// Frozen-path: core progress (RFC 0016 surface model) - P2:CE's PBR
-		// model surfaces (a Workshop view model, props) to the core's pbr point.
-		if ( !V_stricmp( shader, "VertexLitGeneric" ) ||
-		     !V_stricmp( shader, "VertexLitGeneric_DX9" ) || !V_stricmp( shader, "PBR" ) ||
-		     !V_stricmp( shader, "EyeRefract" ) || !V_stricmp( shader, "EyeRefract_dx9" ) )
-			return CoreMeshKind::kModelSurface;
-		if ( !V_stricmp( shader, "PortalRefract" ) || !V_stricmp( shader, "PortalRefract_dx9" ) )
-		{
-			bool found = false;
-			IMaterialVar *stage = material->FindVar( "$stage", &found, false );
-			if ( found && stage->GetIntValue() == 1 )
-				return CoreMeshKind::kDepthMask;
-			// Frozen-path: core progress (RFC 0016 K8) - the refraction and
-			// flame stages to the core's portal point.
-			return CoreMeshKind::kPortal;
-		}
-		if ( !V_stricmp( shader, "PortalStaticOverlay" ) )
-			return CoreMeshKind::kPortal;
-		if ( !V_stricmp( shader, "WriteZ" ) || !V_stricmp( shader, "WriteZ_DX9" ) )
-			return CoreMeshKind::kDepthMask;
-		if ( !V_stricmp( shader, "BufferClearObeyStencil" ) ||
-		     !V_stricmp( shader, "BufferClearObeyStencil_DX9" ) )
-			return CoreMeshKind::kStencilClear;
-	}
-	return CoreMeshKind::kSurface;
-}
+// The bound material's core point: render/legacy/core_mesh_kind.h, shared
+// with the 3DS frontend (one classifier).
+using render::legacy::CoreMeshKindFor;
 
 // Frozen-path: core progress (RFC 0016) - a bound material's captured
 // variables, formatted once and reused while each variable's raw value is
@@ -5005,7 +4931,9 @@ bool CEmptyMesh::EmitToCoreQueue()
 	// Values the capture made for this draw alone (the bloom tint); the
 	// material's own come from its captured variables, which outlive QueueMesh.
 	std::vector<std::string> values;
-	values.reserve( 4 ); // the variables below keep pointers into these strings
+	// The variables below keep pointers into these strings: at most four are
+	// made for one draw (Portal's view-projection rows), so no reallocation.
+	values.reserve( 4 );
 	const CapturedMaterial &captured = CaptureMaterialVariables( g_pBoundMaterial );
 	variables.reserve( captured.variables.size() + 8 );
 	for ( const CapturedVariable &v : captured.variables )
@@ -5090,6 +5018,36 @@ bool CEmptyMesh::EmitToCoreQueue()
 				values.emplace_back( std::move( text ) );
 				variables.push_back(
 				    { "$basetexturetransform", values.back().c_str(), nullptr, 0 } );
+			}
+		}
+	}
+	// Frozen-path: core progress (RFC 0016 K8) - Portal's depth doubler projects
+	// the frame through $alternateviewmatrix and the current projection
+	// (portal.cpp's g_CustomViewProj); the core takes that world-to-clip
+	// transform as $portalviewproj0..3, in its row-major convention.
+	if ( !V_stricmp( g_pBoundMaterial->GetShaderName(), "Portal" ) ||
+	     !V_stricmp( g_pBoundMaterial->GetShaderName(), "Portal_DX90" ) )
+	{
+		bool found = false;
+		IMaterialVar *alternate = g_pBoundMaterial->FindVar( "$alternateviewmatrix", &found, false );
+		if ( found && alternate->GetType() == MATERIAL_VAR_TYPE_MATRIX )
+		{
+			const VMatrix &view = alternate->GetMatrixValue();
+			const float *projection = DrawProjection(); // row-vector convention
+			static const char *const kRows[] = { "$portalviewproj0", "$portalviewproj1",
+				"$portalviewproj2", "$portalviewproj3" };
+			for ( int row = 0; row < 4; ++row )
+			{
+				std::string text = "[";
+				for ( int col = 0; col < 4; ++col )
+				{
+					float sum = 0.0f;
+					for ( int k = 0; k < 4; ++k )
+						sum += projection[k * 4 + row] * view[k][col];
+					text += std::to_string( sum ) + ( col == 3 ? "]" : " " );
+				}
+				values.emplace_back( std::move( text ) );
+				variables.push_back( { kRows[row], values.back().c_str(), nullptr, 0 } );
 			}
 		}
 	}
