@@ -2981,7 +2981,10 @@ CParticleSystemMgr::~CParticleSystemMgr()
 //-----------------------------------------------------------------------------
 bool CParticleSystemMgr::Init( IParticleSystemQuery *pQuery )
 {
-	if ( !g_pMaterialSystem->QueryInterface( MATERIAL_SYSTEM_INTERFACE_VERSION ) )
+	// RFC 0001 R12: the material system is optional. The dedicated product
+	// composes none; the manager then holds definitions and makes no materials.
+	if ( g_pMaterialSystem &&
+	     !g_pMaterialSystem->QueryInterface( MATERIAL_SYSTEM_INTERFACE_VERSION ) )
 	{
 		Msg( "CParticleSystemMgr compiled using an old IMaterialSystem\n" );
 		return false;
@@ -3000,7 +3003,7 @@ bool CParticleSystemMgr::Init( IParticleSystemQuery *pQuery )
 		AddParticleOperator( FUNCTION_CHILDREN, &s_ChildOperatorDefinition );
 
 		m_pShadowDepthMaterial = NULL;
-		if( g_pMaterialSystemHardwareConfig->GetDXSupportLevel() >= 90 )
+		if ( g_pMaterialSystem && g_pMaterialSystemHardwareConfig->GetDXSupportLevel() >= 90 )
 		{
 			KeyValues *pVMTKeyValues = new KeyValues( "DepthWrite" );
 			pVMTKeyValues->SetInt( "$no_fullbright", 1 );
@@ -3338,7 +3341,9 @@ bool CParticleSystemMgr::ReadParticleConfigFile( const char *pFileName, bool bPr
 	
 
 	char pFallbackBuf[MAX_PATH];
-	if ( IsPC() )
+	// Without a hardware config (the dedicated product, RFC 0001 R12) no
+	// fallback applies, as on the DX 90 device the empty shader API reported.
+	if ( IsPC() && g_pMaterialSystemHardwareConfig )
 	{
 		// Look for fallback particle systems
 		char pTemp[MAX_PATH];

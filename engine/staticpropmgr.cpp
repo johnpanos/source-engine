@@ -50,6 +50,8 @@
 #include "render_core_world.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#include "device_facts.h"
+
 #include "tier0/memdbgon.h"
 
 //-----------------------------------------------------------------------------
@@ -577,7 +579,7 @@ bool CStaticProp::Init( int index, StaticPropLump_t &lump, model_t *pModel )
 	m_Flags = ( lump.m_Flags & ( STATIC_PROP_SCREEN_SPACE_FADE | STATIC_PROP_FLAG_FADES |
 	                               STATIC_PROP_NO_PER_VERTEX_LIGHTING | STATIC_PROP_NO_SHADOW ) );
 
-	int nCurrentDXLevel = g_pMaterialSystemHardwareConfig->GetDXSupportLevel();
+	int nCurrentDXLevel = Engine_DXSupportLevel();
 	bool bNoDraw = ( lump.m_nMinDXLevel && lump.m_nMinDXLevel >	nCurrentDXLevel );
 	bNoDraw = bNoDraw || ( lump.m_nMaxDXLevel && lump.m_nMaxDXLevel < nCurrentDXLevel );
 	if ( bNoDraw )

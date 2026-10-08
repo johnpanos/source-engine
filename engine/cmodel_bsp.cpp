@@ -24,6 +24,10 @@ extern IMaterialSystem *materials;
 #include "vphysics_interface.h"
 #include "sys_dll.h"
 #include "tier2/tier2.h"
+#include "device_facts.h"
+#ifdef SWDS
+#include "server_material.h"
+#endif
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -351,7 +355,13 @@ void CollisionBSPData_LoadTextures( CCollisionBSPData *pBSPData )
 		out->surfaceProps = 0;
 		out->flags = 0;
 
+#ifdef SWDS
+		// RFC 0001 R12: the dedicated product composes no material system; the
+		// material's definition (server_material.h) answers instead.
+		material = ServerMaterial_Find( pBSPData->map_surfaces[i].name );
+#else
 		material = materials->FindMaterial( pBSPData->map_surfaces[i].name, TEXTURE_GROUP_WORLD, true );
+#endif
 		if ( !IsErrorMaterial( material ) )
 		{
 			IMaterialVar *var;
@@ -1122,8 +1132,8 @@ void CollisionBSPData_LoadDispInfo( CCollisionBSPData *pBSPData )
     // get face data
     //
 	int face_lump_to_load = LUMP_FACES;
-	if ( g_pMaterialSystemHardwareConfig->GetHDREnabled() && /*g_pMaterialSystemHardwareConfig->GetHDRType() != HDR_TYPE_NONE &&*/
-		CMapLoadHelper::LumpSize( LUMP_FACES_HDR ) > 0 )
+	/*g_pMaterialSystemHardwareConfig->GetHDRType() != HDR_TYPE_NONE &&*/
+	if ( Engine_HDREnabled() && CMapLoadHelper::LumpSize( LUMP_FACES_HDR ) > 0 )
 	{
 		face_lump_to_load = LUMP_FACES_HDR;
 	}
@@ -1269,7 +1279,12 @@ void CollisionBSPData_LoadDispInfo( CCollisionBSPData *pBSPData )
 		texinfo_t *pTex = &pTexinfoList[pFaces->texinfo];
 		if ( pTex->texdata >= 0 )
 		{
+#ifdef SWDS
+			IMaterial *pMaterial =
+			    ServerMaterial_Find( pBSPData->map_surfaces[pTex->texdata].name );
+#else
 			IMaterial *pMaterial = materials->FindMaterial( pBSPData->map_surfaces[pTex->texdata].name, TEXTURE_GROUP_WORLD, true );
+#endif
 			if ( !IsErrorMaterial( pMaterial ) )
 			{
 				IMaterialVar *pVar;

@@ -1,0 +1,12 @@
+{
+  "schema": "dedicated-material-facts-deviations/v1",
+  "description": "RFC 0001 R12: where the dedicated server's material facts are allowed to differ from a listen server's, each by name. The server reads material definitions without shaders, so a fact that a shader's parameter schema decides on a listen server cannot be reproduced.",
+  "deviations": [
+    {
+      "map": "escape_02",
+      "model": "particle/smokestack.vmt",
+      "fact": "sprite size",
+      "reason": "The ParticleSphere shader does not treat $basetexture (particle/SmokeStackFallback, 32x32) as a texture, so the listen server's representative texture is $bumpmap (particle/BillowNormalMap, 64x64). The server sizes sprites only for env_sprite bounds (CSprite::ComputeWorldSpaceSurroundingBox); this material is env_smokestack's particle, not an env_sprite."
+    }
+  ]
+}

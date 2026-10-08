@@ -816,7 +816,11 @@ void UpdateMaterialSystemConfig( void )
 	{
 		mat_fullbright.SetValue( 1 );
 	}
-	
+
+#ifdef SWDS
+	// RFC 0001 R12: the dedicated product composes no material system.
+	return;
+#endif
 	// apply the settings in the material system
 	bool bLightmapsNeedReloading = materials->UpdateConfig( false );
 	if ( bLightmapsNeedReloading )

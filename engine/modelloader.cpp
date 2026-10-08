@@ -72,6 +72,11 @@
 #include "tier1/callqueue.h"
 #include <cstdlib>
 
+#include "device_facts.h"
+#ifdef SWDS
+#include "server_material.h"
+#endif
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -966,12 +971,14 @@ int	CMapLoadHelper::LumpVersion() const
 
 void EnableHDR( bool bEnable )
 {
-	if ( g_pMaterialSystemHardwareConfig->GetHDREnabled() == bEnable )
+	if ( Engine_HDREnabled() == bEnable )
 		return;
 
-	g_pMaterialSystemHardwareConfig->SetHDREnabled( bEnable );
-
-	
+	Engine_SetHDREnabled( bEnable );
+#ifdef SWDS
+	// RFC 0001 R12: no material system, no render targets to rebuild.
+	return;
+#endif
 
 	ShutdownWellKnownRenderTargets();
 	InitWellKnownRenderTargets();
@@ -1061,11 +1068,9 @@ bool Map_CheckForHDR( model_t *pModel, const char *pLoadName )
 		// This lump only exists in version 20 and greater, so don't bother checking for it on earlier versions.
 		bHasHDR = false;
 	}
-	
-	bool bEnableHDR = ( false && bHasHDR ) ||
-		( bHasHDR &&
-		( g_pMaterialSystemHardwareConfig->GetDXSupportLevel() >= 90 ) );
-	
+
+	bool bEnableHDR = ( false && bHasHDR ) || ( bHasHDR && ( Engine_DXSupportLevel() >= 90 ) );
+
 	EnableHDR( bEnableHDR );
 
 	// this data really should have been in the header, but it isn't
@@ -1694,7 +1699,8 @@ static void CalcSurfaceExtents ( CMapLoadHelper& lh, SurfaceHandle_t surfID )
 
 		if ( !(tex->flags & SURF_NOLIGHT) && MSurf_LightmapExtents( surfID, pBrushData )[i] > MSurf_MaxLightmapSizeWithBorder( surfID ) )
 		{
-			Sys_Error ("Bad surface extents on texture %s", tex->material->GetName() );
+			Sys_Error( "Bad surface extents on texture %s",
+			    tex->material ? tex->material->GetName() : "(no material)" );
 		}
 	}
 	CheckSurfaceLighting( surfID, pBrushData );
@@ -1934,7 +1940,7 @@ void Mod_LoadFaces( void )
 	int			ti, di;
 
 	int face_lump_to_load = LUMP_FACES;
-	if ( g_pMaterialSystemHardwareConfig->GetHDREnabled() && CMapLoadHelper::LumpSize( LUMP_FACES_HDR ) > 0 )
+	if ( Engine_HDREnabled() && CMapLoadHelper::LumpSize( LUMP_FACES_HDR ) > 0 )
 	{
 		face_lump_to_load = LUMP_FACES_HDR;
 	}
@@ -2004,7 +2010,7 @@ void Mod_LoadFaces( void )
 		mtexinfo_t *pTex = lh.GetMap()->texinfo + ti;
 
 		// big hack!
-		if ( !pTex->material )
+		if ( !pTex->material && g_materialEmpty )
 		{
 			pTex->material = g_materialEmpty;
 			g_materialEmpty->IncrementReferenceCount();
@@ -2373,7 +2379,7 @@ void Mod_LoadLeafs( void )
 		Mod_LoadLeafs_Version_0( lh );
 		break;
 	case 1:
-		if( g_pMaterialSystemHardwareConfig->GetHDREnabled() && CMapLoadHelper::LumpSize( LUMP_LEAF_AMBIENT_LIGHTING_HDR ) > 0 )
+		if ( Engine_HDREnabled() && CMapLoadHelper::LumpSize( LUMP_LEAF_AMBIENT_LIGHTING_HDR ) > 0 )
 		{
 			CMapLoadHelper mlh( LUMP_LEAF_AMBIENT_LIGHTING_HDR );
 			CMapLoadHelper mlhTable( LUMP_LEAF_AMBIENT_INDEX_HDR );
@@ -2468,7 +2474,8 @@ void Mod_LoadCubemapSamples( void )
 	lh.GetMap()->m_pCubemapSamples = out;
 	lh.GetMap()->m_nCubemapSamples = count;
 
-	bool bHDR =  g_pMaterialSystemHardwareConfig->GetHDREnabled(); //g_pMaterialSystemHardwareConfig->GetHDRType() != HDR_TYPE_NONE;
+	//g_pMaterialSystemHardwareConfig->GetHDRType() != HDR_TYPE_NONE;
+	bool bHDR = Engine_HDREnabled();
 	int nCreateFlags = bHDR ? 0 : TEXTUREFLAGS_SRGB;
 
 	// We have separate HDR versions of the textures.  In order to deal with this,
@@ -2483,6 +2490,11 @@ void Mod_LoadCubemapSamples( void )
 	{
 		out->origin.Init( ( float )in->origin[0], ( float )in->origin[1], ( float )in->origin[2] );
 		out->size = in->size;
+#ifdef SWDS
+		// RFC 0001 R12: no material system; the samples keep no texture.
+		out->pTexture = NULL;
+		continue;
+#endif
 		Q_snprintf( textureName, sizeof( textureName ), "maps/%s/c%d_%d_%d%s", loadName, ( int )in->origin[0], 
 			( int )in->origin[1], ( int )in->origin[2], pHDRExtension );
 		out->pTexture = materials->FindTexture( textureName, TEXTURE_GROUP_CUBE_MAP, true, nCreateFlags );
@@ -2511,6 +2523,9 @@ void Mod_LoadCubemapSamples( void )
 		out->pTexture->IncrementReferenceCount();
 	}
 
+#ifdef SWDS
+	return;
+#endif
 	CMatRenderContextPtr pRenderContext( materials );
 
 	if ( count )
@@ -2555,8 +2570,8 @@ void Mod_LoadLeafMinDistToWater( void )
 			break;
 		}
 	}
-	
-	if( !foundOne || lh.LumpSize() == 0 || !g_pMaterialSystemHardwareConfig || !g_pMaterialSystemHardwareConfig->SupportsVertexAndPixelShaders())
+
+	if ( !foundOne || lh.LumpSize() == 0 || !Engine_SupportsVertexAndPixelShaders() )
 	{
 		// We don't bother keeping this if:
 		// 1) there is no water in the map
@@ -4087,7 +4102,9 @@ void CModelLoader::PurgeUnusedModels( void )
 	UnloadAllModels( true );
 
 	// now purge unreferenced materials
+#ifndef SWDS
 	materials->UncacheUnusedMaterials( true );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -4116,23 +4133,26 @@ static void Mod_ComputeBrushModelFlags( model_t *mod )
 		mtexinfo_t *pTex = MSurf_TexInfo( surfID, pBrushData );
 		IMaterial* pMaterial = pTex->material;
 
-		if ( pMaterial->HasProxy() )
+		// Without a material system (the dedicated product) only the BSP's
+		// texinfo flags apply.
+		if ( pMaterial && pMaterial->HasProxy() )
 		{
 			mod->flags |= MODELFLAG_MATERIALPROXY;
 		}
 
-		if ( pMaterial->NeedsPowerOfTwoFrameBufferTexture( false ) ) // The false checks if it will ever need the frame buffer, not just this frame
+		// The false checks if it will ever need the frame buffer, not just this frame
+		if ( pMaterial && pMaterial->NeedsPowerOfTwoFrameBufferTexture( false ) )
 		{
 			mod->flags |= MODELFLAG_FRAMEBUFFER_TEXTURE;
 		}
 
 		// Deactivate culling if the material is two sided
-		if ( pMaterial->IsTwoSided() )
+		if ( pMaterial && pMaterial->IsTwoSided() )
 		{
 			MSurf_Flags( surfID ) |= SURFDRAW_NOCULL;
 		}
 
-		if ( (pTex->flags & SURF_TRANS) || pMaterial->IsTranslucent() )
+		if ( ( pTex->flags & SURF_TRANS ) || ( pMaterial && pMaterial->IsTranslucent() ) )
 		{
 			mod->flags |= MODELFLAG_TRANSLUCENT;
 			MSurf_Flags( surfID ) |= SURFDRAW_TRANS;
@@ -4144,12 +4164,14 @@ static void Mod_ComputeBrushModelFlags( model_t *mod )
 		}
 
 		// Certain surfaces don't want decals at all
-		if ( (pTex->flags & SURF_NODECALS) || pMaterial->GetMaterialVarFlag( MATERIAL_VAR_SUPPRESS_DECALS ) || pMaterial->IsAlphaTested() )
+		if ( ( pTex->flags & SURF_NODECALS ) ||
+		     ( pMaterial && ( pMaterial->GetMaterialVarFlag( MATERIAL_VAR_SUPPRESS_DECALS ) ||
+		                        pMaterial->IsAlphaTested() ) ) )
 		{
 			MSurf_Flags( surfID ) |= SURFDRAW_NODECALS;
 		}
 
-		if ( pMaterial->IsAlphaTested() )
+		if ( pMaterial && pMaterial->IsAlphaTested() )
 		{
 			MSurf_Flags( surfID ) |= SURFDRAW_ALPHATEST;
 		}
@@ -4323,7 +4345,12 @@ int Mod_GetModelMaterials( model_t* pModel, int count, IMaterial** ppMaterials )
 			// Get the studiohdr into the cache
 			pStudioHdr = g_pMDLCache->GetStudioHdr( pModel->studio );
 			// Get the list of materials
+#ifdef SWDS
+			// RFC 0001 R12: no studio renderer; the same rule over definitions.
+			found = ServerMaterial_GetStudioMaterialList( pStudioHdr, count, ppMaterials );
+#else
 			found = g_pStudioRender->GetMaterialList( pStudioHdr, count, ppMaterials );
+#endif
 		}
 		break;
 
@@ -4423,7 +4450,7 @@ void MarkWaterSurfaces_r( mnode_t *node )
 static int SurfFlagsToSortGroup( SurfaceHandle_t surfID, int flags )
 {
 	// If we're on the low end, stick everything into the same sort group
-	if ( g_pMaterialSystemHardwareConfig->GetDXSupportLevel() < 80 )
+	if ( Engine_DXSupportLevel() < 80 )
 		return MAT_SORT_GROUP_STRICTLY_ABOVEWATER;
 
 	if( flags & SURFDRAW_WATERSURFACE )
@@ -4443,7 +4470,9 @@ static int SurfFlagsToSortGroup( SurfaceHandle_t surfID, int flags )
 	{
 		Vector vecCenter;
 		Surf_ComputeCentroid( surfID, &vecCenter );
-		DevWarning( "SurfFlagsToSortGroup:  unhandled flags (%X) (%s)!\n", flags, MSurf_TexInfo(surfID)->material->GetName() );	
+		IMaterial *pMaterial = MSurf_TexInfo( surfID )->material;
+		DevWarning( "SurfFlagsToSortGroup:  unhandled flags (%X) (%s)!\n", flags,
+		    pMaterial ? pMaterial->GetName() : "(no material)" );
 		DevWarning( "- This implies you have a surface (usually a displacement) embedded in solid.\n" );	
 		DevWarning( "- Look near (%.1f, %.1f, %.1f)\n", vecCenter.x, vecCenter.y, vecCenter.z );	
 	}
@@ -5330,7 +5359,7 @@ void CModelLoader::Map_LoadModel( model_t *mod )
 
 	// Until BSP version 19, this must occur after loading texinfo
 	COM_TimestampedLog( "  Mod_LoadLighting" );
-	if ( g_pMaterialSystemHardwareConfig->GetHDREnabled() && CMapLoadHelper::LumpSize( LUMP_LIGHTING_HDR ) > 0 )
+	if ( Engine_HDREnabled() && CMapLoadHelper::LumpSize( LUMP_LIGHTING_HDR ) > 0 )
 	{
 		CMapLoadHelper mlh( LUMP_LIGHTING_HDR );
 		Mod_LoadLighting( mlh );
@@ -5422,7 +5451,7 @@ void CModelLoader::Map_LoadModel( model_t *mod )
 		&m_worldBrushData.m_nAreas );
 
 	COM_TimestampedLog( "  Mod_LoadWorldlights" );
-	if ( g_pMaterialSystemHardwareConfig->GetHDREnabled() && CMapLoadHelper::LumpSize( LUMP_WORLDLIGHTS_HDR ) > 0 )
+	if ( Engine_HDREnabled() && CMapLoadHelper::LumpSize( LUMP_WORLDLIGHTS_HDR ) > 0 )
 	{
 		CMapLoadHelper mlh( LUMP_WORLDLIGHTS_HDR );
 		Mod_LoadWorldlights( mlh, true );
@@ -5486,7 +5515,8 @@ void CModelLoader::Map_UnloadCubemapSamples( model_t *mod )
 	for ( i=0 ; i < mod->brush.pShared->m_nCubemapSamples ; i++ )
 	{
 		mcubemapsample_t *pSample = &mod->brush.pShared->m_pCubemapSamples[i];
-		pSample->pTexture->DecrementReferenceCount();
+		if ( pSample->pTexture )
+			pSample->pTexture->DecrementReferenceCount();
 	}
 }
 
@@ -5594,7 +5624,10 @@ void CModelLoader::Map_UnloadModel( model_t *mod )
 		mtexinfo_t *pTexinfo = &m_worldBrushData.texinfo[texinfoID];
 		if ( pTexinfo )
 		{
-			GL_UnloadMaterial( pTexinfo->material );
+			if ( pTexinfo->material )
+			{
+				GL_UnloadMaterial( pTexinfo->material );
+			}
 		}
 	}
 
@@ -5729,7 +5762,11 @@ void CModelLoader::Sprite_UnloadModel( model_t *mod )
 	bool bIsVideo;
 	BuildSpriteLoadName( mod->strName, loadName, sizeof( loadName ), bIsVideo );
 
+#ifdef SWDS
+	IMaterial *mat = ServerMaterial_Find( loadName );
+#else
 	IMaterial *mat = materials->FindMaterial( loadName, TEXTURE_GROUP_OTHER );
+#endif
 	if ( !IsErrorMaterial( mat ) )
 	{
 		GL_UnloadMaterial( mat );
@@ -6921,6 +6958,47 @@ void Mod_LeafAmbientColorAtPos( Vector *pOut, const Vector &pos, int leafIndex )
 			pOut[i] *= (1.0f / totalFactor);
 		}
 	}
+}
+
+//-----------------------------------------------------------------------------
+// Prints each loaded model with the facts the server reads from its materials
+// (RFC 0001 R12): a sprite's size and frame count, a brush or studio model's
+// materials. The oracle that a dedicated server, which composes no material
+// system, answers as a listen server does.
+//-----------------------------------------------------------------------------
+CON_COMMAND( cm_dump_models, "Print each loaded model's sprite facts and materials" )
+{
+	int nPrinted = 0;
+	for ( int i = 0; i < modelloader->GetCount(); i++ )
+	{
+		model_t *pModel = modelloader->GetModelForIndex( i );
+		if ( !pModel || !( pModel->nLoadFlags & IModelLoader::FMODELLOADER_LOADED ) )
+			continue;
+		const char *pName = modelloader->GetName( pModel );
+		++nPrinted;
+		if ( pModel->type == mod_sprite )
+		{
+			ConMsg( "MODEL %s sprite %d %d %d\n", pName, pModel->sprite.width,
+			    pModel->sprite.height, pModel->sprite.numframes );
+			continue;
+		}
+		if ( pModel->type != mod_brush && pModel->type != mod_studio )
+		{
+			ConMsg( "MODEL %s other\n", pName );
+			continue;
+		}
+		IMaterial *pMaterials[128];
+		const int nMaterials = Mod_GetModelMaterials( pModel, ARRAYSIZE( pMaterials ), pMaterials );
+		ConMsg(
+		    "MODEL %s %s %d\n", pName, pModel->type == mod_brush ? "brush" : "studio", nMaterials );
+		for ( int m = 0; m < nMaterials; ++m )
+		{
+			ConMsg( "MODELMAT %s %d %s\n", pName, m,
+			    pMaterials[m] && !pMaterials[m]->IsErrorMaterial() ? pMaterials[m]->GetName()
+			                                                       : "(error)" );
+		}
+	}
+	ConMsg( "MODEL_END %d\n", nPrinted );
 }
 
 #if defined( WIN32 )

@@ -28,6 +28,7 @@
 
 // NOTE: This must be the last file included!
 #include "mat_stub.h"
+#include "vmt_definition.h"
 #include "tier0/memdbgon.h"
 
 //#define DEBUG_DEPTH 1
@@ -507,63 +508,17 @@ void CShaderSystem::UnloadShaderDLL( const char *pFullPath )
 
 
 //-----------------------------------------------------------------------------
-// Make sure these match the bits in imaterial.h
-//-----------------------------------------------------------------------------
-static const char* s_pShaderStateString[] =
-{
-	"$debug",
-	"$no_fullbright",
-	"$no_draw",
-	"$use_in_fillrate_mode",
-
-	"$vertexcolor",
-	"$vertexalpha",
-	"$selfillum",
-	"$additive",
-	"$alphatest",
-	"$multipass",
-	"$znearer",
-	"$model",
-	"$flat",
-	"$nocull",
-	"$nofog",
-	"$ignorez",
-	"$decal",
-	"$envmapsphere",
-	"$noalphamod",
-	"$envmapcameraspace",
-	"$basealphaenvmapmask",
-	"$translucent",
-	"$normalmapalphaenvmapmask",
-	"$softwareskin",
-	"$opaquetexture",
-	"$envmapmode",
-	"$nodecal",
-	"$halflambert",
-	"$wireframe",
-	"$allowalphatocoverage",
-
-	""			// last one must be null
-};
-
-
-//-----------------------------------------------------------------------------
-// returns strings associated with the shader state flags...
-// If you modify this, make sure and modify MaterialVarFlags_t in imaterial.h
+// returns strings associated with the shader state flags (the material flag
+// names, owned by vmt_definition.cpp)...
 //-----------------------------------------------------------------------------
 int CShaderSystem::ShaderStateCount( ) const
 {
-	return sizeof( s_pShaderStateString ) / sizeof( char* ) - 1;
+	return VmtMaterialVarFlagCount();
 }
 
-
-//-----------------------------------------------------------------------------
-// returns strings associated with the shader state flags...
-// If you modify this, make sure and modify MaterialVarFlags_t in imaterial.h
-//-----------------------------------------------------------------------------
 char const* CShaderSystem::ShaderStateString( int i ) const
 {
-	return s_pShaderStateString[i];
+	return VmtMaterialVarFlagName( i );
 }
 
 

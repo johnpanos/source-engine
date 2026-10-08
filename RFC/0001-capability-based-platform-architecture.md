@@ -123,9 +123,11 @@ in [AGENTS.md](../AGENTS.md).
   first-party module into one program and binds the game modules to the engine
   ([static composition](0001-static-composition-progress.md)).
   See the [Phase B record](0001-phase-b-progress.md#later-work-not-claimed-here).
-- **Dedicated server (rank 6).** A dedicated composition bridge is in place,
-  but the product still links material and studio render support. R12 is
-  `partial`.
+- **Dedicated server (rank 6).** Done (R12, 2026-10-08): the dedicated
+  product composes, links and loads no render or desktop-UI module and reads
+  material definitions as content; its installed startup, shutdown and
+  partial-failure checks pass on Linux and Windows PE
+  ([record](0001-dedicated-composition-progress.md#r12-closure-no-render-or-desktop-ui-in-the-dedicated-product-done-2026-10-08)).
 - **Composition and vocabulary (ranks 2–3).** `public/foundation/expected.h`
   and `public/platform/composition.h` pass their Q-FOUNDATION suites with test
   providers. The window and input contracts in `public/platform/window/` are

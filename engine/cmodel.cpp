@@ -241,6 +241,32 @@ void CM_DiscardEntityString( void )
 }
 
 //-----------------------------------------------------------------------------
+// Prints every collision surface of the loaded map with its surface property
+// (RFC 0001 R12): the oracle that a dedicated server resolves the same
+// $surfaceprop values as a listen server.
+//-----------------------------------------------------------------------------
+CON_COMMAND( cm_dump_surfaceprops, "Print each collision surface and its surface property" )
+{
+	const CCollisionBSPData *pBSPData = GetCollisionBSPData();
+	for ( int i = 0; i < pBSPData->numtextures; ++i )
+	{
+		const csurface_t &surface = pBSPData->map_surfaces[i];
+		ConMsg( "SURFPROP %s %s\n", surface.name,
+		    physprop ? physprop->GetPropName( surface.surfaceProps ) : "?" );
+	}
+	// Displacement collision keeps its own pair (WorldVertexTransition's
+	// $surfaceprop2 on the second blend).
+	for ( int i = 0; i < g_DispCollTreeCount; ++i )
+	{
+		CDispCollTree &tree = g_pDispCollTrees[i];
+		ConMsg( "DISPPROP %d %s %s\n", i,
+		    physprop ? physprop->GetPropName( tree.GetSurfaceProps( 0 ) ) : "?",
+		    physprop ? physprop->GetPropName( tree.GetSurfaceProps( 1 ) ) : "?" );
+	}
+	ConMsg( "SURFPROP_END %d\n", pBSPData->numtextures );
+}
+
+//-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 int	CM_LeafContents( int leafnum )
 {

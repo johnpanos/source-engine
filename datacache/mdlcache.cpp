@@ -114,6 +114,17 @@ DEFINE_FIXEDSIZE_ALLOCATOR_MT( studiodata_t, 128, CUtlMemoryPool::GROW_SLOW );
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+//-----------------------------------------------------------------------------
+// The DX level studio data is built for: the hardware config's, or without one
+// (the dedicated product, RFC 0001 R12) 90, the level the empty shader API
+// reported to a dedicated server, so its vertex data stays unchanged.
+//-----------------------------------------------------------------------------
+static int MDLCacheDXSupportLevel()
+{
+	return g_pMaterialSystemHardwareConfig ? g_pMaterialSystemHardwareConfig->GetDXSupportLevel()
+	                                       : 90;
+}
+
 class CTempAllocHelper
 {
 public:
@@ -586,7 +597,12 @@ bool CMDLCache::Connect( CreateInterfaceFn factory )
 	if ( !BaseClass::Connect( factory ) )
 		return false;
 
-	if ( !g_pMaterialSystemHardwareConfig || !g_pPhysicsCollision || !g_pStudioRender || !g_pMaterialSystem )
+	// RFC 0001 R12: the studio renderer, material system and hardware config
+	// are optional. Without them (the dedicated product) the cache serves
+	// models, vertex, animation and collision data, and no studio meshes.
+	if ( !g_pPhysicsCollision )
+		return false;
+	if ( g_pStudioRender && ( !g_pMaterialSystemHardwareConfig || !g_pMaterialSystem ) )
 		return false;
 
 	m_bConnected = true;
@@ -1481,6 +1497,13 @@ bool CMDLCache::LoadHardwareData( MDLHandle_t handle )
 
 	if ( pStudioData->m_nFlags & STUDIODATA_FLAGS_NO_STUDIOMESH )
 	{
+		return false;
+	}
+
+	// No studio renderer composed: no studio meshes.
+	if ( !g_pStudioRender )
+	{
+		pStudioData->m_nFlags |= STUDIODATA_FLAGS_NO_STUDIOMESH;
 		return false;
 	}
 
@@ -2498,11 +2521,11 @@ const char *CMDLCache::GetVTXExtension()
 {
 	if ( IsPC() )
 	{
-		if ( g_pMaterialSystemHardwareConfig->GetDXSupportLevel() >= 90 )
+		if ( MDLCacheDXSupportLevel() >= 90 )
 		{
 			return ".dx90.vtx";
 		}
-		else if ( g_pMaterialSystemHardwareConfig->GetDXSupportLevel() >= 80 )
+		else if ( MDLCacheDXSupportLevel() >= 80 )
 		{
 			return ".dx80.vtx";
 		}
@@ -3162,9 +3185,8 @@ vertexFileHeader_t *CMDLCache::BuildAndCacheVertexData( studiohdr_t *pStudioHdr,
 	}
 
 	CTempAllocHelper pOriginalData;
-	
 
-	bool bNeedsTangentS = false || (g_pMaterialSystemHardwareConfig->GetDXSupportLevel() >= 80);
+	bool bNeedsTangentS = false || ( MDLCacheDXSupportLevel() >= 80 );
 	int rootLOD = min( (int)pStudioHdr->rootLOD, pRawVvdHdr->numLODs - 1 );
 
 	// determine final cache footprint, possibly truncated due to lod
@@ -3470,6 +3492,7 @@ void CMDLCache::QueuedLoaderCallback_MDL( void *pContext, void *pContext2, const
 			g_MDLCache.ProcessQueuedData( pModelParts, true );
 
 			// preload all possible paths to VMTs
+			if ( materials )
 			{
 				DEBUG_SCOPE_TIMER(findvmt);
 				MaterialLock_t hMatLock = materials->Lock();
@@ -3528,7 +3551,7 @@ void CMDLCache::ProcessDynamicLoad( ModelParts_t *pModelParts )
 		return;
 	}
 
-	if ( pModelParts->bMaterialsPending )
+	if ( pModelParts->bMaterialsPending && materials )
 	{
 		DEBUG_SCOPE_TIMER(processvmt);
 		pModelParts->bMaterialsPending = false;
@@ -3659,7 +3682,7 @@ bool CMDLCache::PreloadModel( MDLHandle_t handle )
 	// determine existing presence
 	// actual necessity is not established here, allowable absent files need their i/o error to occur
 	bool bNeedsMDL = !IsDataLoaded( handle, MDLCACHE_STUDIOHDR );
-	bool bNeedsVTX = !IsDataLoaded( handle, MDLCACHE_STUDIOHWDATA );
+	bool bNeedsVTX = g_pStudioRender && !IsDataLoaded( handle, MDLCACHE_STUDIOHWDATA );
 	bool bNeedsVVD = !IsDataLoaded( handle, MDLCACHE_VERTEXES );
 	bool bNeedsPHY = !IsDataLoaded( handle, MDLCACHE_VCOLLIDE );
 	if ( !bNeedsMDL && !bNeedsVTX && !bNeedsVVD && !bNeedsPHY )

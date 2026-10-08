@@ -5,6 +5,9 @@
 //===========================================================================//
 
 #include "tier0/fasttimer.h"
+#ifdef SWDS
+#include "server_material.h"
+#endif
 
 #ifdef _WIN32
 #include "tier0/memdbgon.h" // needed because in release builds crtdbg.h is handled specially if USE_MEM_DEBUG is defined
@@ -4078,13 +4081,19 @@ void Host_Init( bool bDedicated )
 	else
 #endif
 	{
+#ifndef SWDS
 		TRACEINIT( InitMaterialSystem(), ShutdownMaterialSystem() );
+#else
+		TRACEINIT( ServerMaterial_Init(), ServerMaterial_Shutdown() );
+#endif
 
 		TRACEINIT( modelloader->Init(), modelloader->Shutdown() );
 
 		TRACEINIT( StaticPropMgr()->Init(), StaticPropMgr()->Shutdown() );
 
+#ifndef SWDS
 		TRACEINIT( InitStudioRender(), ShutdownStudioRender() );
+#endif
 
 		TRACEINIT( Decal_Init(), Decal_Shutdown() );
 
@@ -4204,9 +4213,11 @@ void Host_Init( bool bDedicated )
 	UpdateMaterialSystemConfig();
 #endif
 	EndLoadingUpdates( );
+#ifndef SWDS
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 	pRenderContext->SetNonInteractiveTempFullscreenBuffer( NULL, MATERIAL_NON_INTERACTIVE_MODE_STARTUP );
 	pRenderContext->SetNonInteractivePacifierTexture( NULL, 0, 0, 0 );
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -4824,11 +4835,18 @@ void Host_Shutdown(void)
 
 		TRACESHUTDOWN( modelloader->Shutdown() );
 
+#ifndef SWDS
 		TRACESHUTDOWN( ShutdownStudioRender() );
+#endif
 
 		TRACESHUTDOWN( StaticPropMgr()->Shutdown() );
 
+#ifndef SWDS
 		TRACESHUTDOWN( ShutdownMaterialSystem() );
+#else
+		// RFC 0001 R12: the material definitions outlive every model.
+		TRACESHUTDOWN( ServerMaterial_Shutdown() );
+#endif
 	}
 
 #if defined( REPLAY_ENABLED )

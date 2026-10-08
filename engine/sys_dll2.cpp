@@ -2440,6 +2440,7 @@ bool CDedicatedServerAPI::Connect( CreateInterfaceFn factory )
 	g_pFileSystem = g_pFullFileSystem;
 	g_pFileSystem->SetWarningFunc( Warning );
 
+#ifndef SWDS
 	if ( !Shader_Connect( false ) )
 		return false;
 
@@ -2448,6 +2449,8 @@ bool CDedicatedServerAPI::Connect( CreateInterfaceFn factory )
 		Sys_Error( "Unable to init studio render system version %s\n", STUDIO_RENDER_INTERFACE_VERSION );
 		return false;
 	}
+#endif
+	// RFC 0001 R12: the dedicated product (SWDS) composes no render capability.
 
 	g_pPhysics = (IPhysics*)factory( VPHYSICS_INTERFACE_VERSION, NULL );
 
@@ -2467,7 +2470,9 @@ void CDedicatedServerAPI::Disconnect()
 
 	g_pPhysics = NULL;
 
+#ifndef SWDS
 	Shader_Disconnect();
+#endif
 
 	g_pFileSystem = NULL;
 
@@ -2541,7 +2546,9 @@ bool CDedicatedServerAPI::ModInit( ModInfo_t &info )
 	else
 		g_pFullFileSystem->EnableWhitelistFileTracking( false, false, false );
 
+#ifndef SWDS
 	materials->ModInit();
+#endif
 
 	// Setup the material system config record, CreateGameWindow depends on it
 	// (when we're running stand-alone)
@@ -2580,7 +2587,9 @@ void CDedicatedServerAPI::ModShutdown( void )
 	// Shut down memory, etc.
 	game->Shutdown();
 
+#ifndef SWDS
 	materials->ModShutdown();
+#endif
 	TRACESHUTDOWN( COM_ShutdownFileSystem() );
 }
 

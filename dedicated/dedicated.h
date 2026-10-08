@@ -39,11 +39,8 @@ extern char g_szEXEName[ MAX_PATH ];
 //-----------------------------------------------------------------------------
 // Inner loop: initialize, shutdown main systems, load steam to 
 //-----------------------------------------------------------------------------
-#ifdef POSIX
+// RFC 0001 R12: no desktop UI on any platform (the VGUI base is retired).
 #define DEDICATED_BASECLASS CTier2SteamApp
-#else
-#define DEDICATED_BASECLASS CVguiSteamApp
-#endif
 
 class CDedicatedAppSystemGroup : public DEDICATED_BASECLASS
 {

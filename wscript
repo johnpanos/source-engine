@@ -197,6 +197,7 @@ projects={
 		'utils/bsp2tool',
 		'utils/rtrntool',
 	],
+	# RFC 0001 R12: the dedicated product builds no render module.
 	'dedicated': [
 		'jobsystem',
 		'content',
@@ -218,19 +219,14 @@ projects={
 		'ivp/havana/havok/hk_math',
 		'ivp/ivp_compact_builder',
 		'ivp/ivp_physics',
-		'materialsystem',
 		'mathlib',
 		'particles',
 		'scenefilecache',
-		'materialsystem/shaderapiempty',
-		'materialsystem/shaderlib',
 		'soundemittersystem',
-		'studiorender',
 		'tier0',
 		'tier1',
 		'tier2',
 		'tier3',
-		'vgui2/vgui_controls',
 		'vphysics',
 		'vphysics_box3d',
 		'vpklib',
@@ -902,9 +898,9 @@ def configure(conf):
 
 	if conf.env.DEST_OS == 'win32':
 		projects['game'] += ['utils/bzip2']
-		# The Windows server's GUI console composes VGUI and the input system
-		# (dedicated/sys_windows.cpp).
-		projects['dedicated'] += ['utils/bzip2', 'inputsystem', 'vgui2/src', 'vgui2/vgui_surfacelib']
+		# RFC 0001 R12: the Windows server runs its text console; no VGUI or
+		# input system is built for it.
+		projects['dedicated'] += ['utils/bzip2']
 	if conf.options.OPUS or (conf.env.DEST_OS == 'android' and not conf.env.ANDROID_SDL3):
 		projects['game'] += ['engine/voice_codecs/opus']
 	if conf.env.WEB_OR_MOBILE:
@@ -1373,16 +1369,17 @@ def configure_render_core(conf):
 
 def build(bld):
 	os.environ["CCACHE_DIR"] = os.path.abspath('.ccache/'+bld.env.COMPILER_CC+'/'+bld.env.DEST_OS+'/'+bld.env.DEST_CPU)
-	if bld.env.DEST_OS == 'win32' or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
+	# RFC 0001 R12: the dedicated product needs no SDL (no window or input).
+	if not bld.env.DEDICATED and ( bld.env.DEST_OS == 'win32' or ( bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3 ) ):
 		sdl_name = 'SDL2.dll' if bld.env.DEST_OS == 'win32' else 'libSDL2.so'
 		sdl_path = os.path.join('lib', bld.env.DEST_OS, bld.env.DEST_CPU, sdl_name)
 		bld.install_files(bld.env.LIBDIR, [sdl_path])
 
 	if bld.env.DEST_OS == 'win32':
 		projects['game'] += ['utils/bzip2']
-		# The Windows server's GUI console composes VGUI and the input system
-		# (dedicated/sys_windows.cpp).
-		projects['dedicated'] += ['utils/bzip2', 'inputsystem', 'vgui2/src', 'vgui2/vgui_surfacelib']
+		# RFC 0001 R12: the Windows server runs its text console; no VGUI or
+		# input system is built for it.
+		projects['dedicated'] += ['utils/bzip2']
 
 	if bld.env.OPUS or (bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3):
 		projects['game'] += ['engine/voice_codecs/opus']

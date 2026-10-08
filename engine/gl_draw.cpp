@@ -18,6 +18,9 @@
 #include "materialsystem/imaterial.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#ifdef SWDS
+#include "server_material.h"
+#endif
 #include "tier0/memdbgon.h"
 
 Vector g_CurrentViewOrigin(0, 0, 0), g_CurrentViewForward(1, 0, 0), g_CurrentViewRight(0, -1, 0), g_CurrentViewUp(0, 0, 1);
@@ -45,6 +48,12 @@ static IMaterial *GL_LoadMaterialNoRef( const char *pName, const char *pTextureG
 {
 	IMaterial *material = NULL;
 
+#ifdef SWDS
+	// RFC 0001 R12: the dedicated product composes no material system; its
+	// materials are their definitions (server_material.h).
+	(void)pTextureGroupName;
+	return ServerMaterial_Find( pName );
+#endif
 	if( mat_loadtextures.GetInt() )
 	{
 		material = materials->FindMaterial( pName, pTextureGroupName );

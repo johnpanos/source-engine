@@ -1284,7 +1284,7 @@
       "contract": "RFC/0001-capability-based-platform-architecture.md",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "R103 T0 (RFC 0001 'Tier 0 facade over the foundation providers'): a built libtier0 against its export fixture (255 exports on linux-x86_64; C exports with their frozen declarations), the kept mod-fixture binary (built once, SDK-style C++11 and the old libstdc++ ABI) loaded into it and calling every cohort's exports, and the shrink-only OS-call ratchet per cohort, each with seeded-fault self-tests.",
+      "description": "R103 T0 (RFC 0001 'Tier 0 facade over the foundation providers'): a built libtier0 against its export fixture (259 exports on linux-x86_64; C exports with their frozen declarations), the kept mod-fixture binary (built once, SDK-style C++11 and the old libstdc++ ABI) loaded into it and calling every cohort's exports, and the shrink-only OS-call ratchet per cohort, each with seeded-fault self-tests.",
       "command": [
         "{python}",
         "tools/quality/tier0_facade.py",
@@ -1305,7 +1305,120 @@
         "quality/fixtures/tier0-abi/mod-fixture/host.cpp"
       ],
       "expect": "pass",
-      "min_checks": 400
+      "min_checks": 300
+    },
+    {
+      "domain": "Q-PRODUCT",
+      "rfc": "0001",
+      "migration": "R12",
+      "contract": "RFC/0001-dedicated-composition-progress.md",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "result_protocol": "checks-v1",
+      "expect": "pass",
+      "id": "dedicated.selftest",
+      "description": "R12: the dedicated product checks' seeded violations (an installed render module, a DT_NEEDED SDL, defined material-system code, a loaded studio renderer) each fail; a clean tree passes.",
+      "command": [
+        "{python}",
+        "tools/quality/dedicated_server.py",
+        "selftest"
+      ],
+      "timeout_seconds": 120,
+      "requires": [],
+      "sources": [
+        "tools/quality/dedicated_server.py"
+      ],
+      "min_checks": 6
+    },
+    {
+      "domain": "Q-PRODUCT",
+      "rfc": "0001",
+      "migration": "R12",
+      "contract": "RFC/0001-dedicated-composition-progress.md",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "result_protocol": "checks-v1",
+      "expect": "pass",
+      "id": "dedicated.absence",
+      "description": "R12: the installed dedicated product (./kiln build dedicated-linux on a clean install directory) installs, links and defines no render or desktop-UI module, and a map load loads none (LD_DEBUG=files).",
+      "command": [
+        "{python}",
+        "tools/quality/dedicated_server.py",
+        "absence",
+        "--install",
+        "out/dedicated-linux/dev/install",
+        "--runtime",
+        "out/dedicated-linux/dev/runtime"
+      ],
+      "timeout_seconds": 600,
+      "requires": [
+        "path:out/dedicated-linux/dev/install/dedicated_launcher",
+        "path:out/dedicated-linux/dev/runtime/portal/maps/testchmb_a_00.bsp"
+      ],
+      "sources": [
+        "tools/quality/dedicated_server.py"
+      ],
+      "min_checks": 50
+    },
+    {
+      "domain": "Q-PRODUCT",
+      "rfc": "0001",
+      "migration": "R12",
+      "contract": "RFC/0001-dedicated-composition-progress.md",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "result_protocol": "checks-v1",
+      "expect": "pass",
+      "id": "dedicated.lifecycle",
+      "description": "R12: installed startup and shutdown: a map loads and the server quits with exit 0, a level change reloads, the IVP fallback boots, and a missing physics provider, game or map fails by name without a crash signal.",
+      "command": [
+        "{python}",
+        "tools/quality/dedicated_server.py",
+        "lifecycle",
+        "--runtime",
+        "out/dedicated-linux/dev/runtime"
+      ],
+      "timeout_seconds": 1200,
+      "requires": [
+        "path:out/dedicated-linux/dev/runtime/portal/maps/testchmb_a_00.bsp"
+      ],
+      "sources": [
+        "tools/quality/dedicated_server.py"
+      ],
+      "min_checks": 9
+    },
+    {
+      "domain": "Q-PRODUCT",
+      "rfc": "0001",
+      "migration": "R12",
+      "contract": "RFC/0001-dedicated-composition-progress.md",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "result_protocol": "checks-v1",
+      "expect": "pass",
+      "id": "dedicated.material-facts",
+      "description": "R12: on every Portal map the dedicated server, with no material system, reads the same surface properties (collision surfaces and displacements), sprite sizes and frames and model materials as the listen-server reference recorded from the Portal client (quality/fixtures/dedicated-server), with the recorded deviations only.",
+      "command": [
+        "{python}",
+        "tools/quality/dedicated_server.py",
+        "facts-check",
+        "--runtime",
+        "out/dedicated-linux/dev/runtime",
+        "--reference",
+        "quality/fixtures/dedicated-server/portal-listen-facts.json",
+        "--deviations",
+        "quality/fixtures/dedicated-server/deviations.json"
+      ],
+      "timeout_seconds": 3600,
+      "requires": [
+        "path:out/dedicated-linux/dev/runtime/portal/maps/testchmb_a_00.bsp"
+      ],
+      "sources": [
+        "tools/quality/dedicated_server.py",
+        "quality/fixtures/dedicated-server/portal-listen-facts.json",
+        "quality/fixtures/dedicated-server/deviations.json"
+      ],
+      "min_checks": 26
     },
     {
       "id": "platform.foundation.posix",

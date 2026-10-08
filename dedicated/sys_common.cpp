@@ -23,7 +23,6 @@
 #include "tier1/strtools.h"
 #include "tier0/icommandline.h"
 #include "idedicatedexports.h"
-#include "vgui/vguihelpers.h"
 
 static long		hDLLThirdParty	= 0L;
 
@@ -222,13 +221,7 @@ SpewRetval_t DedicatedSpewOutputFunc( SpewType_t spewType, char const *pMsg )
 
 	if (spewType == SPEW_ERROR)
 	{
-		// In Windows vgui mode, make a message box or they won't ever see the error.
 #ifdef _WIN32
-		extern bool g_bVGui;
-		if ( g_bVGui )
-		{
-			MessageBox( NULL, pMsg, "Error", MB_OK | MB_TASKMODAL );
-		}
 		TerminateProcess( GetCurrentProcess(), 1 );
 #elif POSIX
 		fflush(stdout);

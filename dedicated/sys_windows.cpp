@@ -22,17 +22,11 @@
 #include "tier0/dbg.h"
 #include "tier1/strtools.h"
 #include "tier0/icommandline.h"
-#include "inputsystem/iinputsystem.h"
 #include "SteamAppStartup.h"
 #include "console/textconsole.h"
-#include "vgui/vguihelpers.h"
 #include "appframework/appframework.h"
-#include "materialsystem/imaterialsystem.h"
 #include "appframework/linked_systems.h"
-#include "render/legacy_shader_provider.h"
 #include "engine/debugapi_root.h"
-#include "istudiorender.h"
-#include "vgui/ivgui.h"
 #include "console/TextConsoleWin32.h"
 #include "icvar.h"
 #include "datacache/idatacache.h"
@@ -43,7 +37,6 @@
 #include "filesystem/IQueuedLoader.h"
 
 extern CTextConsoleWin32 console;
-extern bool g_bVGui;
 
 //-----------------------------------------------------------------------------
 // Purpose: Implements OS Specific layer ( loosely )
@@ -191,11 +184,6 @@ void CSys::UpdateStatus( int force )
 //-----------------------------------------------------------------------------
 void CSys::ConsoleOutput (char *string)
 {
-	if ( g_bVGui )
-	{
-		VGUIPrintf( string );
-	}
-	else
 	{
 		console.Print(string);
 	}
@@ -272,7 +260,9 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 {
 	// Linked instances preserve the established Connect/Init order. The embedded
 	// filesystem owns the queued loader; modules outlive all borrowed services.
-	IMaterialSystem *material = MaterialSystem_Create();
+	// RFC 0001 R12: the dedicated server composes no render capability (no
+	// material system, studio renderer or shader API) and no desktop UI (no
+	// VGUI, no input system); it reads material definitions as content.
 	IDedicatedServerAPI *server = Engine_CreateDedicatedAPI();
 	const char *pPhysicsModule = CommandLine()->ParmValue( "-physics", "vphysics" );
 	char physicsDLLName[MAX_PATH];
@@ -284,35 +274,18 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 		return false;
 	}
 
-	IInputSystem *input = InputSystem_Create();
-	if ( input )
-		input->SetSkipControllerInitialization( true );
 	if ( !pAppSystemGroup->AddComposedSystem(
 	         Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddComposedSystem( input, INPUTSYSTEM_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddComposedSystem( material, MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddComposedSystem(
-	         StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem( physicsAppModule, VPHYSICS_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem( DataCache_Create(), DATACACHE_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddComposedSystem(
-	         StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddComposedSystem( VGui_Create(), VGUI_IVGUI_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem( server, VENGINE_HLDS_API_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem(
 	         Dedicated_CreateQueuedLoader(), QUEUEDLOADER_INTERFACE_VERSION ) )
 	{
 		return false;
 	}
-	if ( !MaterialSystem_BindShaderProvider( material, NullShaderBackend_Describe() ) )
-		return false;
-	// The dedicated server renders nothing and requires no render feature.
-	const render::RenderProfileRequest renderRequest = render::PreferAvailableRenderFeatures();
-	if ( !MaterialSystem_SetRenderProfileRequest( material, &renderRequest ) )
-		return false;
-	const DebugApiComposedProvider composed[] = {
-	    { "physics", pPhysicsModule }, { "render", NullShaderBackend_Describe()->id } };
+	const DebugApiComposedProvider composed[] = { { "physics", pPhysicsModule } };
 	if ( !DebugApi_BindFromCommandLine( composed, ARRAYSIZE( composed ) ) )
 		return false;
 	engine = server;

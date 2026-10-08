@@ -29,10 +29,7 @@
 #include "tier1/strtools.h"
 #include "tier0/icommandline.h"
 #include "tier0/native_module_load_telemetry.h"
-#include "materialsystem/imaterialsystem.h"
 #include "appframework/linked_systems.h"
-#include "render/legacy_shader_provider.h"
-#include "istudiorender.h"
 #include "SoundEmitterSystem/isoundemittersystembase.h"
 #include "datacache/idatacache.h"
 #include "datacache/imdlcache.h"
@@ -266,7 +263,9 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 {
 	// Linked instances preserve the established Connect/Init order. The embedded
 	// filesystem owns the queued loader; modules outlive all borrowed services.
-	IMaterialSystem *material = MaterialSystem_Create();
+	// RFC 0001 R12: the dedicated server composes no render capability (no
+	// material system, studio renderer or shader API) and no desktop UI; it
+	// reads material definitions as content (materialsystem/vmt_definition.h).
 	IDedicatedServerAPI *server = Engine_CreateDedicatedAPI();
 	// Box3D is the default provider (user decision, 2026-09-26); -physics
 	// vphysics selects IVP.
@@ -284,28 +283,16 @@ bool CSys::LoadModules( CDedicatedAppSystemGroup *pAppSystemGroup )
 	         Engine_CreateCvarQuery(), CVAR_QUERY_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem(
 	         SoundEmitterSystem_Create(), SOUNDEMITTERSYSTEM_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddComposedSystem( material, MATERIAL_SYSTEM_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddComposedSystem(
-	         StudioRender_Create(), STUDIO_RENDER_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem( physicsAppModule, VPHYSICS_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem( DataCache_Create(), DATACACHE_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem( MDLCache_Create(), MDLCACHE_INTERFACE_VERSION ) ||
-	     !pAppSystemGroup->AddComposedSystem(
-	         StudioDataCache_Create(), STUDIO_DATA_CACHE_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem(
 	         Dedicated_CreateQueuedLoader(), QUEUEDLOADER_INTERFACE_VERSION ) ||
 	     !pAppSystemGroup->AddComposedSystem( server, VENGINE_HLDS_API_VERSION ) )
 	{
 		return false;
 	}
-	if ( !MaterialSystem_BindShaderProvider( material, NullShaderBackend_Describe() ) )
-		return false;
-	// The dedicated server renders nothing and requires no render feature.
-	const render::RenderProfileRequest renderRequest = render::PreferAvailableRenderFeatures();
-	if ( !MaterialSystem_SetRenderProfileRequest( material, &renderRequest ) )
-		return false;
-	const DebugApiComposedProvider composed[] = {
-	    { "physics", pPhysicsModule }, { "render", NullShaderBackend_Describe()->id } };
+	const DebugApiComposedProvider composed[] = { { "physics", pPhysicsModule } };
 	if ( !DebugApi_BindFromCommandLine( composed, ARRAYSIZE( composed ) ) )
 		return false;
 	engine = server;

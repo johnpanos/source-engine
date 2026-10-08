@@ -13,9 +13,6 @@
     "datacache/mdlcache.cpp": {
       "path-build": 2
     },
-    "dedicated/vgui/CreateMultiplayerGameServerPage.cpp": {
-      "search-enum": 2
-    },
     "engine/buildcubemaps.cpp": {
       "path-build": 7
     },
@@ -226,14 +223,14 @@
       "path-build": 3
     },
     "materialsystem/cmaterial.cpp": {
-      "path-build": 6
+      "path-build": 3
     },
     "materialsystem/cmaterialsystem.cpp": {
-      "path-build": 4,
+      "path-build": 2,
       "search-enum": 1
     },
     "materialsystem/ctexture.cpp": {
-      "path-build": 5
+      "path-build": 4
     },
     "materialsystem/dxsupport_keyvalues.cpp": {
       "search-enum": 1
@@ -243,6 +240,9 @@
     },
     "materialsystem/texturemanager.cpp": {
       "search-enum": 1
+    },
+    "materialsystem/vmt_definition.cpp": {
+      "path-build": 5
     },
     "mdl/studio_model.cpp": {
       "path-build": 1
@@ -406,8 +406,8 @@
   "schema": "content-lookup-ratchet/v1",
   "totals": {
     "fs-search-loop": 107,
-    "path-build": 123,
-    "search-enum": 116,
+    "path-build": 122,
+    "search-enum": 114,
     "unindexed": 5,
     "vpk-direct": 24
   }

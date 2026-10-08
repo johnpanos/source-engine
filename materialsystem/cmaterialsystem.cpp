@@ -29,6 +29,7 @@
 #include "render/legacy/capabilities.h"
 
 // NOTE: This must be the last file included!!!
+#include "vmt_definition.h"
 #include "tier0/memdbgon.h"
 
 #ifdef POSIX
@@ -3252,22 +3253,12 @@ IMaterial* CMaterialSystem::FindMaterialEx( char const* pMaterialName, const cha
 		return pExistingMaterial->GetQueueFriendlyVersion();
 
 	// It hasn't been seen yet, so let's check to see if it's in the filesystem.
-	nLen = Q_strlen( "materials/" ) + Q_strlen( pTemp ) + Q_strlen( ".vmt" ) + 1;
+	nLen = Q_strlen( pTemp ) + kVmtFileNameExtra;
 	char *vmtName = (char *)stackalloc( nLen );
 
 	// Check to see if this is a UNC-specified material name
 	bool bIsUNC = pTemp[0] == '/' && pTemp[1] == '/' && pTemp[2] != '/';
-	if ( !bIsUNC )
-	{
-		Q_strncpy( vmtName, "materials/", nLen );
-		Q_strncat( vmtName, pTemp, nLen, COPY_ALL_CHARACTERS );
-		
-		V_FixDoubleSlashes( vmtName );
-	}
-	else
-	{
-		Q_strncpy( vmtName, pTemp, nLen );
-	}
+	VmtMaterialFileName( pTemp, vmtName, nLen );
 
 	//Q_strncat( vmtName, ".vmt", nLen, COPY_ALL_CHARACTERS );
 	Assert( nLen >= (int)Q_strlen( vmtName ) + 1 );

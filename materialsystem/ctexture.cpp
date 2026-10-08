@@ -58,6 +58,7 @@
 #include "tier0/vprof.h"
 
 // NOTE: This must be the last file included!!!
+#include "vmt_definition.h"
 #include "tier0/memdbgon.h"
 
 // this allows the command line to force the "all mips" flag to on for all textures
@@ -3889,15 +3890,7 @@ void CTexture::GetCacheFilename( char* pOutBuffer, int nBufferSize ) const
 			pName = m_Name.String();
 		}
 
-		bool bIsUNCName = ( pName[ 0 ] == '/' && pName[ 1 ] == '/' && pName[ 2 ] != '/' );
-		if ( !bIsUNCName )
-		{
-			Q_snprintf( pOutBuffer, nBufferSize, "materials/%s" TEXTURE_FNAME_EXTENSION, pName );
-		}
-		else
-		{
-			Q_snprintf( pOutBuffer, nBufferSize, "%s" TEXTURE_FNAME_EXTENSION, pName );
-		}
+		VmtTextureFileName( pName, pOutBuffer, nBufferSize );
 	}
 }
 
