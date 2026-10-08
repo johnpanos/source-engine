@@ -44,7 +44,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import time
@@ -53,6 +52,9 @@ import conformance
 import launch_sandbox
 import portal_view_trace
 import stage_portal2_runtime
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "kiln"))
+import sepipe_loader  # noqa: E402
 
 
 SCHEMA = "portal2-scenarios/v1"
@@ -401,76 +403,87 @@ def write_fake_zenity(directory):
     zenity.chmod(0o755)
 
 
+def package_runtime(client, runtime):
+    """Package the client profile into a private runtime (RFC 0027 kiln.api:
+    the same packager and steps as `kiln play`); returns the stage summaries."""
+    profile, flavor = client
+    launch_sandbox.check_write_paths([runtime])
+    try:
+        built = sepipe_loader.session().build(profile, flavor=flavor, up_to="package",
+                                              runtime=str(Path(runtime).resolve()))
+    except Exception as error:  # sepipe.KilnError
+        raise ScenarioError("kiln package %s --flavor %s: %s" % (profile, flavor, error)) from error
+    return {stage["name"]: stage["summary"] for stage in built["stages"]}
+
+
 def run_scenario(scenario, runtime, output, start_frames, width, height, tool_directory,
-                 gdb_script=None, extra_args=(), wrapper=(), steam_root=None):
+                 gdb_script=None, extra_args=(), wrapper=(), steam_root=None,
+                 client=("portal2", "dev")):
     runtime = Path(runtime).resolve()
     if steam_root is None:
         if scenario.get("arrival") is not None:
             raise ScenarioError("%s has an arrival map but no Steam root for the hook" %
                                 scenario["name"])
         return run_game(scenario, runtime, output, start_frames, width, height, tool_directory,
-                        gdb_script, extra_args, wrapper)
+                        gdb_script, extra_args, wrapper, client)
     install_mapspawn_hook(runtime, steam_root, scenario)
     try:
         return run_game(scenario, runtime, output, start_frames, width, height, tool_directory,
-                        gdb_script, extra_args, wrapper)
+                        gdb_script, extra_args, wrapper, client)
     finally:
         # Other workloads share the runtime: leave the game's own file.
         install_mapspawn_hook(runtime, steam_root, {})
 
 
 def run_game(scenario, runtime, output, start_frames, width, height, tool_directory,
-             gdb_script, extra_args, wrapper):
+             gdb_script, extra_args, wrapper, client=("portal2", "dev")):
+    """One scenario through kiln.api: the client profile's program, display
+    session (headless) and run provider; this harness's test command,
+    sandbox variables and diagnostic wrapper."""
     console = runtime / "portal2/console.log"
     console.unlink(missing_ok=True)
-    # A throwaway HOME/XDG; the staged runtime (never ./play_p2's) is the write path.
+    # A throwaway HOME/XDG; the private runtime (never a player's) is the write path.
     sandbox = launch_sandbox.Sandbox(Path(output).resolve() / "sandbox", write_paths=[runtime])
     environment = sandbox.environment(os.environ)
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY"):
-        environment.pop(variable, None)
-    environment.update({
-        "SteamAppId": "620", "SteamGameId": "620",
-        "LD_LIBRARY_PATH": str(runtime / "bin"),
-        "SDL_VIDEODRIVER": "offscreen", "SDL_VIDEO_DRIVER": "offscreen",
-        "PATH": str(tool_directory) + os.pathsep + environment.get("PATH", ""),
-    })
-    command = [str(runtime / "hl2_launcher"), "-game", "portal2", "-multirun", "-novid",
-               "-insecure", "-windowed", "-w", str(width), "-h", str(height), "-condebug",
-               "+volume", "0", *extra_args, "+map", scenario["map"], "+wait", str(start_frames),
-               "+exec", "qa_" + scenario["name"]]
+    environment["PATH"] = str(tool_directory) + os.pathsep + environment.get("PATH", "")
+    overrides = {key: value for key, value in environment.items() if os.environ.get(key) != value}
+    overrides.update({key: None for key in os.environ if key not in environment})
+    arguments = ["-game", "portal2", "-multirun", "-novid", "-insecure", "-windowed",
+                 "-w", str(width), "-h", str(height), "-condebug", "+volume", "0", *extra_args,
+                 "+map", scenario["map"], "+wait", str(start_frames),
+                 "+exec", "qa_" + scenario["name"]]
+    prefix = list(wrapper)
     if gdb_script:
         # Diagnosis only: gdb's own exit status replaces the game's.
-        command = ["gdb", "-q", "-batch", "-x", str(Path(gdb_script).resolve()), "-ex", "run",
-                   "-ex", "bt", "--args"] + command
-    # Diagnosis only, e.g. renderdoccmd capture: a launcher for the command.
-    command = list(wrapper) + command
+        prefix += ["gdb", "-q", "-batch", "-x", str(Path(gdb_script).resolve()), "-ex", "run",
+                   "-ex", "bt", "--args"]
     output.mkdir(parents=True, exist_ok=True)
+    profile, flavor = client
     started = time.monotonic()
     timed_out = False
-    with (output / "stdout.log").open("wb") as stream:
-        process = subprocess.Popen(command, cwd=runtime, env=environment, stdout=stream,
-                                   stderr=subprocess.STDOUT, start_new_session=True)
-        # The driver quits the game after QA_DONE. A driver that failed to
-        # load never will, so stop waiting for it as soon as the log says so.
-        deadline = started + scenario["timeout_seconds"]
-        while process.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.5)
-            if console.is_file() and DRIVER_LOAD_FAILURE in console.read_text(errors="replace"):
-                deadline = min(deadline, time.monotonic() + 2.0)
-        if process.poll() is None:
-            timed_out = True
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+    run = sepipe_loader.Run(sepipe_loader.load(), sepipe_loader.session(), "run", profile,
+                            flavor=flavor, runtime=str(runtime), exact_arguments=arguments,
+                            wrapper=prefix, environment=overrides, display="none",
+                            log=str(output / "stdout.log"))
+    # The driver quits the game after QA_DONE. A driver that failed to load
+    # never will, so stop waiting for it as soon as the log says so.
+    deadline = started + scenario["timeout_seconds"]
+    while run.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.5)
+        if console.is_file() and DRIVER_LOAD_FAILURE in console.read_text(errors="replace"):
+            deadline = min(deadline, time.monotonic() + 2.0)
+    if run.poll() is None:
+        timed_out = True
+        run.stop()
     seconds = time.monotonic() - started
     log = console.read_text(errors="replace") if console.is_file() else ""
     (output / "console.log").write_text(log)
-    result = evaluate(scenario, log, process.returncode, timed_out)
+    result = evaluate(scenario, log, run.returncode, timed_out)
+    if run.error:
+        result.setdefault("failures", []).append("kiln: " + run.error)
     result["seconds"] = round(seconds, 1)
-    result["command"] = command
+    result["command"] = {"profile": profile, "flavor": flavor, "wrapper": prefix,
+                         "arguments": arguments}
     result["sandbox"] = sandbox.finish()
     return result
 
@@ -482,10 +495,9 @@ def main(argv=None):
     parser.add_argument("--workload", type=Path, default=root / DEFAULT_WORKLOAD)
     parser.add_argument("--steam-root", type=Path, default=Path(os.environ.get(
         "P2_STEAM_ROOT", Path.home() / ".local/share/Steam/steamapps/common/Portal 2")))
-    parser.add_argument("--build", type=Path, default=root / "build-p2",
-                        help="Waf output configured with --build-games=portal2")
+    sepipe_loader.add_arguments(parser, "portal2")
     parser.add_argument("--runtime", type=Path, default=root / "run/runtime-p2-scenarios",
-                        help="private staged runtime (created on first use)")
+                        help="private runtime kiln packages the profile into")
     parser.add_argument("--out", type=Path, required=True, help="new evidence directory")
     parser.add_argument("--scenario", action="append", default=[],
                         help="run only this scenario (repeatable)")
@@ -534,11 +546,8 @@ def main(argv=None):
     }
     evidence_path = output / "evidence.json"
     try:
-        # Staging rewrites the runtime: refuse ./play_p2's before touching it.
-        launch_sandbox.check_write_paths([args.runtime])
-        stage_portal2_runtime.stage_content(args.steam_root, args.runtime)
-        evidence["installed"] = stage_portal2_runtime.portal_boot.install_build(
-            args.build, args.runtime, game="portal2")
+        # Packaging rewrites the runtime: package_runtime refuses a player's.
+        evidence["installed"] = package_runtime((args.profile, args.flavor), args.runtime)
         install_scripts(args.workload, workload, args.runtime)
         build_maps(workload, args.runtime.resolve(), output)
     except (OSError, ValueError) as error:
@@ -553,7 +562,7 @@ def main(argv=None):
         print("== %s (%s)" % (scenario["name"], scenario["map"]), flush=True)
         result = run_scenario(scenario, args.runtime, output / scenario["name"], args.start_frames,
                               args.width, args.height, tools, args.gdb_script, args.extra_arg,
-                              steam_root=args.steam_root)
+                              steam_root=args.steam_root, client=(args.profile, args.flavor))
         evidence["results"].append(result)
         evidence_path.write_text(json.dumps(evidence, indent=2) + "\n")
         for check, value in result["checks"].items():

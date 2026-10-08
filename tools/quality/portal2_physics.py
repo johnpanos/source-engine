@@ -286,12 +286,11 @@ def run_target(args, workload, target, output, physics="box3d", fault=None):
         evidence["mirror"] = str(mirror)
     else:
         runtime = args.runtime.resolve()
-        stage_portal2_runtime.stage_content(args.steam_root, runtime)
-        evidence["installed"] = stage_portal2_runtime.portal_boot.install_build(
-            args.build, runtime, game="portal2")
+        evidence["installed"] = portal2_scenarios.package_runtime((args.profile, args.flavor),
+                                                                  runtime)
         portal2_scenarios.install_scripts(args.workload, workload, runtime)
         evidence["runtime"] = str(runtime)
-        evidence["build"] = str(Path(args.build).resolve())
+        evidence["client"] = [args.profile, args.flavor]
     for scenario in scenarios:
         for run in range(args.runs):
             label = scenario["name"] + ("" if args.runs == 1 else "-%d" % run)
@@ -302,7 +301,7 @@ def run_target(args, workload, target, output, physics="box3d", fault=None):
             else:
                 result = portal2_scenarios.run_scenario(
                     scenario, runtime, output / label, args.start_frames, 1024, 768, tools,
-                    extra_args=PHYSICS_ARGS[physics] + extra)
+                    extra_args=PHYSICS_ARGS[physics] + extra, client=(args.profile, args.flavor))
             log = (output / label / "console.log").read_text(errors="replace")
             if COMPILE_FAILURE in log:
                 result["failures"].append("scenario script failed to compile")
@@ -473,8 +472,7 @@ def main(argv=None):
     parser.add_argument("--reference", type=Path,
                         help="retail reference (default: retail-reference.json beside the workload)")
     parser.add_argument("--steam-root", type=Path, default=steam_root_default())
-    parser.add_argument("--build", type=Path, default=ROOT / "build-p2",
-                        help="Waf output configured with --build-games=portal2")
+    portal2_scenarios.sepipe_loader.add_arguments(parser, "portal2")
     parser.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-physics",
                         help="private staged runtime for this build (created on first use)")
     parser.add_argument("--mirror", type=Path,

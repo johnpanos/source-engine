@@ -293,12 +293,11 @@ def capture_build(args, workload_path, workload, scenarios):
     out = Path(args.out).resolve()
     capture = {"schema": CAPTURE_SCHEMA, "side": "build", "status": "incomplete",
                "started_utc": now_iso(), "source": conformance.source_identity(str(ROOT)),
-               "build": str(args.build),
+               "client": [args.profile, args.flavor],
                "extra_args": CAPTURE_ENGINE_ARGS + PLAY_P2_ENGINE_ARGS + list(args.extra_arg),
                "selected": [s["name"] for s in scenarios], "scenarios": {}}
-    stage_portal2_runtime.stage_content(args.steam_root, args.runtime)
-    capture["installed"] = stage_portal2_runtime.portal_boot.install_build(
-        args.build, args.runtime, game="portal2")
+    capture["installed"] = portal2_scenarios.package_runtime((args.profile, args.flavor),
+                                                             args.runtime)
     portal2_scenarios.install_scripts(workload_path, workload, args.runtime)
     tools = out / "tools"
     portal2_scenarios.write_fake_zenity(tools)
@@ -309,8 +308,8 @@ def capture_build(args, workload_path, workload, scenarios):
         started = time.time()
         result = portal2_scenarios.run_scenario(
             scenario, args.runtime, out / name, args.start_frames, WIDTH, HEIGHT, tools,
-            extra_args=CAPTURE_ENGINE_ARGS + PLAY_P2_ENGINE_ARGS + list(args.extra_arg), wrapper=renderdoc_wrapper(
-                args, out / name))
+            extra_args=CAPTURE_ENGINE_ARGS + PLAY_P2_ENGINE_ARGS + list(args.extra_arg),
+            wrapper=renderdoc_wrapper(args, out / name), client=(args.profile, args.flavor))
         record = finish_scenario(out / name, name, result, screenshots, started,
                                  (out / name / "stdout.log").read_text(errors="replace"))
         capture["scenarios"][name] = record
@@ -777,10 +776,7 @@ def main(argv=None):
                        help="only this scenario (repeatable)")
 
     def build_args(p):
-        p.add_argument("--build", type=Path,
-                       default=Path(os.environ.get("SOURCE_PORTAL2_BUILD") or ROOT / "build-p2"),
-                       help="Waf output configured with --build-games=portal2 "
-                            "(default: $SOURCE_PORTAL2_BUILD or build-p2)")
+        portal2_scenarios.sepipe_loader.add_arguments(p, "portal2")
         p.add_argument("--runtime", type=Path, default=ROOT / "run/runtime-p2-material-shots",
                        help="private staged runtime (created on first use)")
         p.add_argument("--start-frames", type=int, default=300)
