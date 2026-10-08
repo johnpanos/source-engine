@@ -339,7 +339,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 			        render::device::DescribeStatus( device.Error().status ) + " in " +
 			        render::device::DescribeOperation( device.Error().operation ) );
 		core->device = std::move( device ).Value();
-		core->port = core->port;
+		core->port = core->device.get();
 	}
 	core->deviceName = std::string( descriptor->id );
 	core->frontend = render::legacy::CreateLegacyFrontend( config->legacyBackend );
