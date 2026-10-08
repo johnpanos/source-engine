@@ -133,9 +133,11 @@
       "msvc": {
         "std": "/std:c17",
         "required": [
+          "/TC",
           "/fp:precise"
         ],
         "forbidden": [
+          "/TP",
           "/fp:fast"
         ]
       },
