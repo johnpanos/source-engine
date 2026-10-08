@@ -1303,10 +1303,6 @@ public:
 	// of Draw( first, count ), or every list of Draw( CPrimList * ), as
 	// CMeshDX8::RenderPass draws each list with the pass's state.
 	void EmitDrawRanges();
-	// The geometry the next EmitToNativeQueue draws, for -vklegacycapture: a
-	// JSON fragment with the primitive type, the drawn indices (into the listed
-	// vertices) and each vertex's attributes as the mesh builder wrote them.
-	std::string LegacyCaptureGeometry() const;
 
 	// Copy verts and/or indices to a mesh builder. This only works for temp meshes!
 	virtual void CopyToMeshBuilder( int iStartVert, // Which vertices to copy.
@@ -1366,8 +1362,6 @@ public:
 	virtual void SetFlexMesh( IMesh *pMesh, int nVertexOffset );
 
 	virtual void DisableFlexMesh() { SetFlexMesh( nullptr, 0 ); }
-	// Vertex v's flex record, or null when no flex stream covers it.
-	const unsigned char *FlexRecord( int v ) const;
 	bool IsFlexStream() const { return render_vulkan::MeshFormatIsFlexStream( m_format ); }
 
 	virtual void MarkAsDrawn() {}
@@ -1518,16 +1512,6 @@ void CEmptyMesh::SetFlexMesh( IMesh *pMesh, int nVertexOffset )
 	}
 }
 
-const unsigned char *CEmptyMesh::FlexRecord( int v ) const
-{
-	if ( !m_pFlexMesh || v < 0 )
-		return nullptr;
-	const size_t at = static_cast<size_t>( m_flexMeshOffset ) +
-	                  static_cast<size_t>( v ) * render_vulkan::kMeshFlexStride;
-	if ( at + render_vulkan::kMeshFlexStride > m_pFlexMesh->m_vertexData.size() )
-		return nullptr;
-	return m_pFlexMesh->m_vertexData.data() + at;
-}
 
 bool CEmptyMesh::StaticColor( int v, float rgb[3] ) const
 {
@@ -2322,7 +2306,6 @@ public:
 	void GetDX9LightState( LightState_t *state ) const;
 	MaterialFogMode_t GetCurrentFogType( void ) const;
 
-	void RecordString( const char *pStr );
 
 	void EvictManagedResources();
 
@@ -4661,63 +4644,6 @@ void CEmptyMesh::EmitDirect( bool ranges )
 		EmitToNativeQueue();
 }
 
-std::string CEmptyMesh::LegacyCaptureGeometry() const
-{
-	const CEmptyMesh &vertices = m_pVertexSource ? *m_pVertexSource : *this;
-	const CEmptyMesh &indices = m_pIndexSource ? *m_pIndexSource : *this;
-	const int count = m_drawCount > 0 ? std::min( m_drawCount, indices.m_numIndices - m_drawFirst )
-	                                  : vertices.m_numVerts;
-	std::vector<int> drawn;
-	std::unordered_map<int, int> slot;
-	std::string json =
-	    "\"primitive\":" + std::to_string( static_cast<int>( m_primitiveType ) ) + ",\"indices\":[";
-	for ( int i = 0; i < count; ++i )
-	{
-		const int v =
-		    m_drawCount > 0
-		        ? static_cast<int>( indices.m_indexData[static_cast<size_t>( m_drawFirst + i )] )
-		        : i;
-		auto found = slot.find( v );
-		if ( found == slot.end() )
-		{
-			found = slot.emplace( v, static_cast<int>( drawn.size() ) ).first;
-			drawn.push_back( v );
-		}
-		json += ( i ? "," : "" ) + std::to_string( found->second );
-	}
-	json += "],\"vertices\":[";
-	char buffer[768];
-	for ( size_t i = 0; i < drawn.size(); ++i )
-	{
-		if ( drawn[i] < 0 || drawn[i] >= vertices.m_numVerts )
-			continue;
-		const unsigned char *base = vertices.m_vertexData.data() +
-		                            static_cast<size_t>( drawn[i] ) * vertices.RecordStride();
-		float f[26];
-		memcpy( f, base, 12 );                             // position
-		memcpy( f + 3, base + 16, 16 );                    // TEXCOORD0, TEXCOORD1
-		memcpy( f + 7, base + kMeshTexCoord2Offset, 8 );   // TEXCOORD2
-		memcpy( f + 9, base + kMeshNormalOffset, 12 );     // normal
-		memcpy( f + 12, base + kMeshUserDataOffset, 16 );  // user data (TANGENT)
-		memcpy( f + 16, base + kMeshTangentSOffset, 12 );  // tangent S
-		memcpy( f + 19, base + kMeshTangentTOffset, 12 );  // tangent T
-		memcpy( f + 22, base + kMeshBoneWeightOffset, 8 ); // bone weights
-		const unsigned char *color = base + 12;            // D3DCOLOR: B, G, R, A
-		const unsigned char *bones = base + kMeshBoneIndexOffset;
-		V_snprintf( buffer, sizeof( buffer ),
-		    "%s{\"pos\":[%.9g,%.9g,%.9g],\"color\":[%d,%d,%d,%d],"
-		    "\"uv\":[[%.9g,%.9g],[%.9g,%.9g],[%.9g,%.9g]],\"normal\":[%.9g,%.9g,%.9g],"
-		    "\"user_data\":[%.9g,%.9g,%.9g,%.9g],\"tangent_s\":[%.9g,%.9g,%.9g],"
-		    "\"tangent_t\":[%.9g,%.9g,%.9g],\"bone_weights\":[%.9g,%.9g],"
-		    "\"bone_indices\":[%d,%d,%d]}",
-		    i ? "," : "", f[0], f[1], f[2], color[2], color[1], color[0], color[3], f[3], f[4],
-		    f[5], f[6], f[7], f[8], f[9], f[10], f[11], f[12], f[13], f[14], f[15], f[16], f[17],
-		    f[18], f[19], f[20], f[21], f[22], f[23], bones[0], bones[1], bones[2] );
-		json += buffer;
-	}
-	json += "],\"num_bones\":" + std::to_string( g_NumBoneWeights );
-	return json;
-}
 
 // The engine's displacements (DispInfo_DrawPrimLists) draw index lists of a
 // static mesh this way. As CMeshDX8::DrawInternal: nothing is drawn when every
@@ -9016,9 +8942,6 @@ MaterialFogMode_t CShaderAPIVulkan::GetCurrentFogType( void ) const
 	return MATERIAL_FOG_NONE;
 }
 
-void CShaderAPIVulkan::RecordString( const char *pStr )
-{
-}
 
 bool CShaderAPIVulkan::ReadPixelsFromFrontBuffer() const
 {
