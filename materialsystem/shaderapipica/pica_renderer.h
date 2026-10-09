@@ -204,6 +204,8 @@ void SetScreenSize( int width, int height );
 // The engine's video mode changed: the screen's targets are made again at
 // the new size between frames (false while a frame is open or on failure).
 bool ResizeScreen( int width, int height );
+// The screen's size, or the size a pending ResizeScreen will give it.
+void ScreenSize( int &width, int &height );
 
 // Shows the frame's colour target (RGBA8, width x height) on the screen, after
 // the frame's work on the same queue; the composition root binds the one its

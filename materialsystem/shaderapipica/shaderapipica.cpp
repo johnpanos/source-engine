@@ -2840,8 +2840,12 @@ static void FillLifecycle( render::LegacyShaderServices *services )
 
 void CShaderDeviceEmpty::GetBackBufferDimensions( int& width, int& height ) const
 {
+#if defined( PLATFORM_3DS )
 	width = pica::kScreenWidth;
 	height = pica::kScreenHeight;
+#else
+	pica::ScreenSize( width, height );
+#endif
 }
 
 // Creates/ destroys a child window

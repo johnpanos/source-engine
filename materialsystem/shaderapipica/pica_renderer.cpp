@@ -109,6 +109,9 @@ struct State
 	BufferId reserve; // ReserveLinear
 	CompletionToken submitted; // the last SubmitRecording's
 	bool lastSubmitTaken = false;
+	// A mode change that arrived inside a frame, applied when it ends.
+	int pendingWidth = 0;
+	int pendingHeight = 0;
 #if !defined( PLATFORM_3DS )
 	Presenter presenter = nullptr;
 	void *presenterContext = nullptr;
@@ -636,6 +639,13 @@ void SetScreenSize( int width, int height )
 	}
 }
 
+void ScreenSize( int &width, int &height )
+{
+	const bool pending = g_state.pendingWidth > 0 && g_state.pendingHeight > 0;
+	width = pending ? g_state.pendingWidth : kScreenWidth;
+	height = pending ? g_state.pendingHeight : kScreenHeight;
+}
+
 bool ResizeScreen( int width, int height )
 {
 	if ( width <= 0 || height <= 0 )
@@ -645,10 +655,16 @@ bool ResizeScreen( int width, int height )
 		SetScreenSize( width, height );
 		return true;
 	}
+	if ( g_state.inFrame )
+	{
+		// Applied when the frame ends (EndFrame), not mid-frame.
+		g_state.pendingWidth = width;
+		g_state.pendingHeight = height;
+		return true;
+	}
+	g_state.pendingWidth = g_state.pendingHeight = 0;
 	if ( width == kScreenWidth && height == kScreenHeight )
 		return true;
-	if ( g_state.inFrame )
-		return false;
 	TextureDesc desc;
 	desc.format = Format::kRGBA8Unorm;
 	desc.width = std::uint32_t( width );
@@ -839,6 +855,13 @@ void EndFrame()
 		    std::uint32_t( kScreenWidth ), std::uint32_t( kScreenHeight ) );
 #endif
 	g_state.inFrame = false;
+#if !defined( PLATFORM_3DS )
+	if ( g_state.pendingWidth > 0 && g_state.pendingHeight > 0 &&
+	     !ResizeScreen( g_state.pendingWidth, g_state.pendingHeight ) )
+		std::printf( "pica: the screen's targets were not resized to %dx%d\n", g_state.pendingWidth,
+		    g_state.pendingHeight );
+	g_state.pendingWidth = g_state.pendingHeight = 0;
+#endif
 }
 
 void SetTarget( Texture *target )
