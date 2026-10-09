@@ -154,37 +154,6 @@ static HANDLE StartWin32Thread( ThreadFunc_t pfnThread, void *pParam, unsigned s
 	}
 	return (HANDLE)caller;
 }
-#elif defined( PS3 )
-union ThreadProcInfoUnion_t
-{
-	struct Val_t
-	{
-		ThreadFunc_t pfnThread;
-		void *		 pParam;
-	}
-	val;
-	uint64_t val64;
-};
-static void ThreadProcConvertUnion( uint64_t param )
-{
-	COMPILE_TIME_ASSERT( sizeof( ThreadProcInfoUnion_t ) == 8 );
-	ThreadProcInfoUnion_t info;
-	info.val64 = param;
-	AllocateThreadID();
-	unsigned nRet = (*info.val.pfnThread)(info.val.pParam);
-	FreeThreadID();
-	sys_ppu_thread_exit( nRet );
-}
-static void* ThreadProcConvert( void *pParam )
-{
-	ThreadProcInfo_t info = *((ThreadProcInfo_t *)pParam);
-	AllocateThreadID();
-	delete ((ThreadProcInfo_t *)pParam);
-	unsigned nRet = (*info.pfnThread)(info.pParam);
-	FreeThreadID();
-	return ( void * ) nRet;
-}
-
 #else
 // The provider's entry type returns nothing; the thread function's result is
 // not observable on POSIX (nothing reads the pthread exit value).
@@ -387,19 +356,6 @@ ThreadHandle_t CreateSimpleThread( ThreadFunc_t pfnThread, void *pParam, unsigne
 	HANDLE hThread = StartWin32Thread( pfnThread, pParam, stackSize, threadID );
 	AddThreadHandleToIDMap( hThread, threadID );
 	return (ThreadHandle_t)hThread;
-#elif PS3
-	//TestThreads();
-	ThreadHandle_t th;
-	ThreadProcInfoUnion_t info;
-	info.val.pfnThread = pfnThread;
-	info.val.pParam = pParam;
-	const unsigned int nDefaultStackSize = 64 * 1024; // this stack size is used in case stackSize == 0
-	if ( sys_ppu_thread_create( &th, ThreadProcConvertUnion, info.val64, 1001, stackSize ? stackSize : nDefaultStackSize, SYS_PPU_THREAD_CREATE_JOINABLE, "SimpleThread" ) != CELL_OK )
-	{
-		AssertMsg1( 0, "Failed to create thread (error 0x%x)", errno );
-		return 0;
-	}
-	return th;
 #elif POSIX
 	pthread_t tid{};
 	if ( !StartPosixThread( pfnThread, pParam, stackSize, tid ) )
@@ -682,7 +638,7 @@ PLATFORM_INTERFACE ThreadedLoadLibraryFunc_t GetThreadedLoadLibraryFunc()
 CThreadSyncObject::CThreadSyncObject()
 #ifdef _WIN32
   : m_hSyncObject( NULL ), m_bCreatedHandle(false)
-#elif defined(POSIX) && !defined(PS3)
+#elif defined(POSIX)
   : m_bInitalized( false )
 #endif
 {
@@ -700,7 +656,7 @@ CThreadSyncObject::~CThreadSyncObject()
 		  Assert( 0 );
 	  }
    }
-#elif defined(POSIX) && !defined( PS3 )
+#elif defined(POSIX)
    if ( m_bInitalized )
    {
 		pthread_cond_destroy( &m_Condition );
@@ -714,9 +670,7 @@ CThreadSyncObject::~CThreadSyncObject()
 
 bool CThreadSyncObject::operator!() const
 {
-#if PS3
-	return m_bstaticMutexInitialized;
-#elif defined( _WIN32 ) 
+#if defined( _WIN32 )
    return !m_hSyncObject;
 #elif defined(POSIX)
    return !m_bInitalized;
@@ -728,9 +682,7 @@ bool CThreadSyncObject::operator!() const
 void CThreadSyncObject::AssertUseable()
 {
 #ifdef THREADS_DEBUG
-#if PS3
-	AssertMsg( m_bstaticMutexInitialized, "Thread synchronization object is unuseable" );
-#elif defined( _WIN32 )
+#if defined( _WIN32 )
    AssertMsg( m_hSyncObject, "Thread synchronization object is unuseable" );
 #elif defined(POSIX)
    AssertMsg( m_bInitalized, "Thread synchronization object is unuseable" );
@@ -748,7 +700,7 @@ bool CThreadSyncObject::Wait( uint32 dwTimeout )
 #endif
 #ifdef _WIN32
    return ( WaitForSingleObject( m_hSyncObject, dwTimeout ) == WAIT_OBJECT_0 );
-#elif defined( POSIX ) && !defined( PS3 )
+#elif defined( POSIX )
     pthread_mutex_lock( &m_Mutex );
     bool bRet = false;
     if ( m_cSet > 0 )
@@ -2211,7 +2163,7 @@ void CThreadSpinRWLock::UnlockWrite()
 
 // The CThread implementation needs to be inlined for performance on the PS3 - It makes a difference of more than 1ms/frame
 // for other platforms, we include the .inl in the .cpp file where it existed before
-#if defined( POSIX ) && !defined( PS3 )
+#if defined( POSIX )
 // CThread::Start's thread, through Tier 0's thread provider (R103).
 struct CThreadStart_t
 {

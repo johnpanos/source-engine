@@ -149,6 +149,30 @@ enum
 
 #define SVC_LASTMSG			34	// last known server messages
 
+// Portal 2 retail (demo protocol 4) message ids that differ from this fork's; every other id
+// is the same. svc_SplitScreen (22) and svc_PaintMapData (33) have no counterpart and are
+// skipped by the net channel. See RFC/portal2-demo-protocol4.md.
+inline int RetailDemoMessageToFork( int retailId )
+{
+	switch ( retailId )
+	{
+	case 3:
+		return net_SplitScreenUser;
+	case 4:
+		return net_Tick;
+	case 5:
+		return net_StringCmd;
+	case 6:
+		return net_SetConVar;
+	case 7:
+		return net_SignonState;
+	case 16:
+		return svc_Print;
+	default:
+		return retailId;
+	}
+}
+
 //
 // client to server
 //

@@ -6,6 +6,7 @@
 //=============================================================================//
  
 #include <stdarg.h>
+#include <algorithm>
 #include "dt_send.h"
 #include "dt.h"
 #include "dt_recv.h"
@@ -312,30 +313,83 @@ void SendTable_BuildHierarchy(
 	pNode->m_nRecursiveProps = bhs->m_nProps - pNode->m_iFirstRecursiveProp;
 }
 
+unsigned int CDeltaBitsReader::ReadNextPropIndexRetail()
+{
+	if ( m_bRetailCompact )
+	{
+		if ( m_pBuf->ReadOneBit() )
+		{
+			// The next property.
+			m_iLastProp += 1;
+			return m_iLastProp;
+		}
+		if ( m_pBuf->ReadOneBit() )
+		{
+			m_iLastProp += 1 + m_pBuf->ReadUBitLong( 3 );
+			return m_iLastProp;
+		}
+	}
+
+	static const int extraBits[4] = { 0, 2, 4, 7 };
+	unsigned int value = m_pBuf->ReadUBitLong( 7 );
+	unsigned int tag = value >> 5;
+	value &= 31;
+	if ( extraBits[tag] )
+		value |= m_pBuf->ReadUBitLong( extraBits[tag] ) << 5;
+
+	if ( value == 0xfff || m_pBuf->IsOverflowed() )
+	{
+		ForceFinished();
+		return ~0u;
+	}
+
+	m_iLastProp += 1 + value;
+	return m_iLastProp;
+}
+
 void SendTable_SortByPriority(CBuildHierarchyStruct *bhs)
 {
-	int i, start = 0;
-
-	while( true )
+	// Move the properties of each priority to the front, lowest priority first. A property with
+	// SPROP_CHANGES_OFTEN counts as SENDPROP_CHANGES_OFTEN_PRIORITY. With only default priority
+	// properties this is the original "changes often first" ordering.
+	CUtlVector<unsigned char> priorities;
+	priorities.AddToTail( SENDPROP_CHANGES_OFTEN_PRIORITY );
+	for ( int i = 0; i < bhs->m_nProps; i++ )
 	{
-		for ( i = start; i < bhs->m_nProps; i++ )
+		unsigned char priority = bhs->m_pProps[i]->GetPriority();
+		if ( priorities.Find( priority ) == priorities.InvalidIndex() )
+			priorities.AddToTail( priority );
+	}
+	std::sort( priorities.Base(), priorities.Base() + priorities.Count() );
+
+	int start = 0;
+	for ( int iPriority = 0; iPriority < priorities.Count(); iPriority++ )
+	{
+		const unsigned char priority = priorities[iPriority];
+		while ( true )
 		{
-			const SendProp *p = bhs->m_pProps[i];
-			unsigned char c = bhs->m_PropProxyIndices[i];
-
-			if ( p->GetFlags() & SPROP_CHANGES_OFTEN )
+			int i;
+			for ( i = start; i < bhs->m_nProps; i++ )
 			{
-				bhs->m_pProps[i] = bhs->m_pProps[start];
-				bhs->m_PropProxyIndices[i] = bhs->m_PropProxyIndices[start];
-				bhs->m_pProps[start] = p;
-				bhs->m_PropProxyIndices[start] = c;
-				start++;
-				break;
-			}
-		}
+				const SendProp *p = bhs->m_pProps[i];
+				unsigned char c = bhs->m_PropProxyIndices[i];
 
-		if ( i == bhs->m_nProps )
-			return; 
+				if ( p->GetPriority() == priority ||
+				     ( priority == SENDPROP_CHANGES_OFTEN_PRIORITY &&
+				         ( p->GetFlags() & SPROP_CHANGES_OFTEN ) ) )
+				{
+					bhs->m_pProps[i] = bhs->m_pProps[start];
+					bhs->m_PropProxyIndices[i] = bhs->m_PropProxyIndices[start];
+					bhs->m_pProps[start] = p;
+					bhs->m_PropProxyIndices[start] = c;
+					start++;
+					break;
+				}
+			}
+
+			if ( i == bhs->m_nProps )
+				break;
+		}
 	}
 }
 

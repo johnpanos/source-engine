@@ -70,10 +70,9 @@ public:
 	void			RemoveOldestFrame( void );  // removes the oldest frame in list
 
 	CClientFrame*	AllocateFrame();
+	void FreeFrame( CClientFrame *pFrame ); // for a frame that was never added to the list
 
 private:
-	void			FreeFrame( CClientFrame* pFrame );
-
 	CClientFrame	*m_Frames;		// updates can be delta'ed from here
 	CClientFrame	*m_LastFrame;
 	int				m_nFrames;

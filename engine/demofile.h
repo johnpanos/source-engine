@@ -79,6 +79,8 @@ public:
 
 	// Returns the PROTOCOL_VERSION used when .dem was recorded
 	int		GetProtocolVersion();
+	bool IsRetailDialect() const { return m_DemoHeader.demoprotocol >= DEMO_PROTOCOL_PORTAL2; }
+
 public:
 	char			m_szFileName[MAX_PATH];	//name of current demo file
 	demoheader_t    m_DemoHeader;  //general demo info

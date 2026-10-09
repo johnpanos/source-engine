@@ -17,6 +17,9 @@
 #include "tier1/strtools.h"
 #include "tier0/icommandline.h"
 #include "dt_common_eng.h"
+#include "host.h"
+#include "demofile/demoformat.h"
+#include "demo.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -317,6 +320,36 @@ void RecvTable_FreeSendTable( SendTable *pTable )
 	delete pTable;
 }
 
+// Entity delta streams of a Portal 2 retail demo use retail's index codes.
+static bool RetailDeltaBits()
+{
+	return Demo_IsRetailPlayback();
+}
+
+// Retail Portal 2 numbers the send prop flags from bit 10 differently (and has cell coordinates).
+static unsigned int RetailPropFlagsToFork( unsigned int retail )
+{
+	unsigned int fork = retail & 0x3FF; // bits 0-9 are the same
+	if ( retail & ( 1u << 10 ) )
+		fork |= SPROP_IS_A_VECTOR_ELEM;
+	if ( retail & ( 1u << 11 ) )
+		fork |= SPROP_COLLAPSIBLE;
+	if ( retail & ( 1u << 12 ) )
+		fork |= SPROP_COORD_MP;
+	if ( retail & ( 1u << 13 ) )
+		fork |= SPROP_COORD_MP_LOWPRECISION;
+	if ( retail & ( 1u << 14 ) )
+		fork |= SPROP_COORD_MP_INTEGRAL;
+	if ( retail & ( 1u << 15 ) )
+		fork |= SPROP_CELL_COORD;
+	if ( retail & ( 1u << 16 ) )
+		fork |= SPROP_CELL_COORD_LOWPRECISION;
+	if ( retail & ( 1u << 17 ) )
+		fork |= SPROP_CELL_COORD_INTEGRAL;
+	if ( retail & ( 1u << 18 ) )
+		fork |= SPROP_CHANGES_OFTEN;
+	return fork;
+}
 
 SendTable *RecvTable_ReadInfos( bf_read *pBuf, int nDemoProtocol )
 {
@@ -344,7 +377,16 @@ SendTable *RecvTable_ReadInfos( bf_read *pBuf, int nDemoProtocol )
 			nFlagsBits = 11;
 		}
 
-		pProp->SetFlags( pBuf->ReadUBitLong( nFlagsBits ) );
+		if ( nDemoProtocol >= DEMO_PROTOCOL_PORTAL2 )
+		{
+			// Retail Portal 2: 19 flag bits in its own order, then an 8-bit priority.
+			pProp->SetFlags( RetailPropFlagsToFork( pBuf->ReadUBitLong( 19 ) ) );
+			pProp->SetPriority( (unsigned char)pBuf->ReadUBitLong( 8 ) );
+		}
+		else
+		{
+			pProp->SetFlags( pBuf->ReadUBitLong( nFlagsBits ) );
+		}
 
 		if ( pProp->m_Type == DPT_DataTable )
 		{
@@ -478,7 +520,7 @@ bool RecvTable_Decode(
 	theStack.Init();
 	int iStartBit = 0, nIndexBits = 0, iLastBit = pIn->GetNumBitsRead();
 	unsigned int iProp;
-	CDeltaBitsReader deltaBitsReader( pIn );
+	CDeltaBitsReader deltaBitsReader( pIn, RetailDeltaBits() );
 	while ( (iProp = deltaBitsReader.ReadNextPropIndex()) < MAX_DATATABLE_PROPS )
 	{
 		theStack.SeekToProp( iProp );
@@ -585,11 +627,12 @@ int RecvTable_MergeDeltas(
 	int nChanged = 0;
 	
 	// Setup to read the delta bits from each buffer.
-	CDeltaBitsReader oldStateReader( pOldState );
-	CDeltaBitsReader newStateReader( pNewState );
+	const bool bRetail = RetailDeltaBits();
+	CDeltaBitsReader oldStateReader( pOldState, bRetail );
+	CDeltaBitsReader newStateReader( pNewState, bRetail );
 
 	// Setup to write delta bits into the output.
-	CDeltaBitsWriter deltaBitsWriter( pOut );
+	CDeltaBitsWriter deltaBitsWriter( pOut, bRetail );
 
 	unsigned int iOldProp = ~0u;
 	if ( pOldState )
@@ -604,6 +647,11 @@ int RecvTable_MergeDeltas(
 		// Write any properties in the previous state that aren't in the new state.
 		while ( iOldProp < iNewProp )
 		{
+			if ( iOldProp >= (unsigned)pDecoder->GetNumProps() )
+				Host_Error( "RecvTable_MergeDeltas: old property %u out of range in '%s' (%d "
+				            "props, object %d, old state %d bits left, new property %u)\n",
+				    iOldProp, pTable->GetName(), pDecoder->GetNumProps(), objectID,
+				    pOldState ? pOldState->GetNumBitsLeft() : -1, iNewProp );
 			deltaBitsWriter.WritePropIndex( iOldProp );
 			oldStateReader.CopyPropData( deltaBitsWriter.GetBitBuf(), pDecoder->GetSendProp( iOldProp ) );
 			iOldProp = oldStateReader.ReadNextPropIndex();
@@ -613,7 +661,12 @@ int RecvTable_MergeDeltas(
 		// to its end too.
 		if ( iNewProp >= MAX_DATATABLE_PROPS )
 			break;
-		
+
+		if ( iNewProp >= (unsigned)pDecoder->GetNumProps() )
+			Host_Error(
+			    "RecvTable_MergeDeltas: property %u out of range in '%s' (%d props, object %d)\n",
+			    iNewProp, pTable->GetName(), pDecoder->GetNumProps(), objectID );
+
 		// If the old state has this property too, then just skip over its data.
 		if ( iOldProp == iNewProp )
 		{

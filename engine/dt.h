@@ -57,12 +57,15 @@ public:
 class CDeltaBitsReader
 {
 public:
-	CDeltaBitsReader( bf_read *pBuf );
+	// bRetail: the stream is a Portal 2 retail delta stream (RFC/portal2-demo-protocol4.md):
+	// it starts with a mode bit and codes property indexes differently.
+	CDeltaBitsReader( bf_read *pBuf, bool bRetail = false );
 	~CDeltaBitsReader();
 
 	// Write the next property index. Returns the number of bits used.
 	unsigned int ReadNextPropIndex();
 	unsigned int ReadNextPropIndex_Continued();
+	unsigned int ReadNextPropIndexRetail();
 	void	SkipPropData( const SendProp *pProp );
 	int		ComparePropData( CDeltaBitsReader* pOut, const SendProp *pProp );
 	void	CopyPropData( bf_write* pOut, const SendProp *pProp );
@@ -74,13 +77,16 @@ public:
 private:
 	bf_read		*m_pBuf;
 	int			m_iLastProp;
+	bool m_bRetail;
+	bool m_bRetailCompact;
 };
 
-
-FORCEINLINE CDeltaBitsReader::CDeltaBitsReader( bf_read *pBuf )
+FORCEINLINE CDeltaBitsReader::CDeltaBitsReader( bf_read *pBuf, bool bRetail )
 {
 	m_pBuf = pBuf;
 	m_iLastProp = -1;
+	m_bRetail = bRetail;
+	m_bRetailCompact = bRetail && pBuf && pBuf->ReadOneBit() != 0;
 }
 
 FORCEINLINE CDeltaBitsReader::~CDeltaBitsReader()
@@ -99,6 +105,8 @@ FORCEINLINE void CDeltaBitsReader::ForceFinished()
 FORCEINLINE unsigned int CDeltaBitsReader::ReadNextPropIndex()
 {
 	Assert( m_pBuf );
+	if ( m_bRetail )
+		return ReadNextPropIndexRetail();
 	// Expanded and optimized version of
 	// if ( m_pBuf->ReadOneBit() )
 	// { 
@@ -163,8 +171,8 @@ FORCEINLINE int CDeltaBitsReader::ComparePropData( CDeltaBitsReader *pInReader, 
 class CDeltaBitsWriter
 {
 public:
-				CDeltaBitsWriter( bf_write *pBuf );
-				~CDeltaBitsWriter();
+	CDeltaBitsWriter( bf_write *pBuf, bool bRetail = false );
+	~CDeltaBitsWriter();
 
 	// Write the next property index. Returns the number of bits used.
 	void		WritePropIndex( int iProp );
@@ -175,12 +183,27 @@ public:
 private:
 	bf_write	*m_pBuf;
 	int			m_iLastProp;
+	bool m_bRetail;
 };
 
-inline CDeltaBitsWriter::CDeltaBitsWriter( bf_write *pBuf )
+inline CDeltaBitsWriter::CDeltaBitsWriter( bf_write *pBuf, bool bRetail )
 {
 	m_pBuf = pBuf;
 	m_iLastProp = -1;
+	m_bRetail = bRetail;
+	if ( bRetail )
+		m_pBuf->WriteOneBit( 0 ); // retail mode bit: plain 7-bit index codes
+}
+
+// Retail index code: a 5 bit value and a 2 bit tag (0 to 3) in 7 bits, then 0, 2, 4 or 7 more
+// bits of the value. 0xfff ends the stream.
+inline void WriteRetailPropIndexCode( bf_write *pBuf, unsigned int value )
+{
+	static const int extraBits[4] = { 0, 2, 4, 7 };
+	unsigned int tag = value < 32 ? 0 : value < 128 ? 1 : value < 512 ? 2 : 3;
+	pBuf->WriteUBitLong( ( value & 31 ) | ( tag << 5 ), 7 );
+	if ( tag )
+		pBuf->WriteUBitLong( value >> 5, extraBits[tag] );
 }
 
 inline bf_write* CDeltaBitsWriter::GetBitBuf()
@@ -193,6 +216,11 @@ FORCEINLINE void CDeltaBitsWriter::WritePropIndex( int iProp )
 	Assert( iProp >= 0 && iProp < MAX_DATATABLE_PROPS );
 	unsigned int diff = iProp - m_iLastProp;
 	m_iLastProp = iProp;
+	if ( m_bRetail )
+	{
+		WriteRetailPropIndexCode( m_pBuf, diff - 1 );
+		return;
+	}
 	Assert( diff > 0 && diff <= MAX_DATATABLE_PROPS );
 	// Expanded inline for maximum efficiency.
 	//m_pBuf->WriteOneBit( 1 );
@@ -204,7 +232,10 @@ FORCEINLINE void CDeltaBitsWriter::WritePropIndex( int iProp )
 
 inline CDeltaBitsWriter::~CDeltaBitsWriter()
 {
-	m_pBuf->WriteOneBit( 0 );
+	if ( m_bRetail )
+		WriteRetailPropIndexCode( m_pBuf, 0xfff );
+	else
+		m_pBuf->WriteOneBit( 0 );
 }
 
 

@@ -586,6 +586,8 @@ public:
 
 	float			ReadBitCoord();
 	float			ReadBitCoordMP( bool bIntegral, bool bLowPrecision );
+	float ReadBitCellCoord(
+	    int bits, bool bIntegral, bool bLowPrecision ); // non-negative, see SPROP_CELL_COORD
 	float			ReadBitFloat();
 	float			ReadBitNormal();
 	void			ReadBitVec3Coord( Vector& fa );

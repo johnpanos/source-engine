@@ -3292,6 +3292,7 @@ bool CBaseModPanel::RenderMovie( BIKMaterial_t hBIKMaterial )
 	int vx, vy, vw, vh;
 	pRenderContext->GetViewport( vx, vy, vw, vh );
 
+	{ static int s_dbg; if ( s_dbg++ < 3 ) Msg( "XXMOVIE wide %d tall %d play %d %d upp %f %f vp %d %d %d %d L %f R %f\n", nScreenWide, nScreenTall, m_nMoviePlaybackWidth, m_nMoviePlaybackHeight, flUnitsPerPixelX, flUnitsPerPixelY, vx, vy, vw, vh, flLeftX, flRightX ); }
 	// map from screen pixel coords to -1..1
 	flRightX = FLerp( -1, 1, 0, vw, flRightX );
 	flLeftX = FLerp( -1, 1, 0, vw, flLeftX );

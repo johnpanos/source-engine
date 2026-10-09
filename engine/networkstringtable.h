@@ -76,7 +76,8 @@ public:
 	
 #ifndef SHARED_NET_STRING_TABLES
 	int				WriteUpdate( CBaseClient *client, bf_write &buf, int tick_ack );
-	void			ParseUpdate( bf_read &buf, int entries );
+	// bRetailDemo: Portal 2 retail updates start with an "encoded using dictionaries" bit
+	void ParseUpdate( bf_read &buf, int entries, bool bRetailDemo = false );
 
 	// HLTV change history & rollback
 	void			EnableRollback();

@@ -121,7 +121,8 @@
       ],
       "web_profile": [
         "{runtime}/../web-profile"
-      ]
+      ],
+      "browser_mode": []
     },
     "arguments": [],
     "peers": [
@@ -161,6 +162,7 @@
         "name": "browser",
         "executable": "firefox",
         "arguments": [
+          "{browser_mode}",
           "--no-remote",
           "--new-instance",
           "--profile",
@@ -173,7 +175,16 @@
       "port": "{port}",
       "timeout": "60"
     },
-    "switches": {},
+    "switches": {
+      "headless": {
+        "description": "Run Firefox headless (no window anywhere; with --display none): WebGPU and the desktop's audio still work",
+        "set": {
+          "browser_mode": [
+            "--headless"
+          ]
+        }
+      }
+    },
     "environment": {
       "MOZ_ENABLE_WAYLAND": "1"
     }

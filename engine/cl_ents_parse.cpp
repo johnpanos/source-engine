@@ -11,6 +11,8 @@
 #include "iprediction.h"
 #include "cl_entityreport.h"
 #include "dt_recv_eng.h"
+#include "dt_common_eng.h"
+#include "demo.h"
 #include "net_synctags.h"
 #include "ispatialpartitioninternal.h"
 #include "LocalNetworkBackdoor.h"
@@ -114,8 +116,30 @@ void SpewToFile( char const* pFmt, ... )
 // Purpose: Frees the client DLL's binding to the object.
 // Input  : iEnt - 
 //-----------------------------------------------------------------------------
+// Portal 2 retail demos: entities of server classes this client cannot create (see
+// CL_SkipStubEntityData).
+struct RetailStubEntities
+{
+	short m_iClass[MAX_EDICTS];
+	RetailStubEntities() { Reset(); }
+	void Reset()
+	{
+		for ( int i = 0; i < MAX_EDICTS; i++ )
+			m_iClass[i] = -1;
+	}
+};
+static RetailStubEntities g_RetailStubs;
+
+static inline bool CL_IsRetailPlayback()
+{
+	return Demo_IsRetailPlayback();
+}
+
 void CL_DeleteDLLEntity( int iEnt, const char *reason, bool bOnRecreatingAllEntities )
 {
+	if ( iEnt >= 0 && iEnt < MAX_EDICTS )
+		g_RetailStubs.m_iClass[iEnt] = -1;
+
 	IClientNetworkable *pNet = entitylist->GetClientNetworkable( iEnt );
 
 	if ( pNet )
@@ -250,6 +274,29 @@ static inline RecvTable* GetEntRecvTable( int entnum )
 		return NULL;
 }
 
+// ----------------------------------------------------------------------------- //
+// Portal 2 retail demos: entities of server classes this client cannot create (no client class,
+// or one without a create function) are not created. Their data is read and dropped so the stream
+// stays aligned, and the class is remembered per entity index for later updates.
+// ----------------------------------------------------------------------------- //
+
+static void CL_SkipStubEntityData( CEntityReadInfo &u, int iEntity, int iClass )
+{
+	RecvTable *pRecvTable =
+	    DataTable_FindDecodedRecvTable( cl.m_pServerClasses[iClass].m_DatatableName );
+	if ( !pRecvTable )
+		Host_Error(
+		    "CL_SkipStubEntityData: no table for class %d (entity %d).\n", iClass, iEntity );
+
+	ALIGN4 char packedData[MAX_PACKEDENTITY_DATA] ALIGN4_POST;
+	bf_write writeBuf( "CL_SkipStubEntityData", packedData, sizeof( packedData ) );
+	RecvTable_MergeDeltas( pRecvTable, NULL, u.m_pBuf, &writeBuf, iEntity, NULL, false );
+
+	g_RetailStubs.m_iClass[iEntity] = iClass;
+	u.m_pTo->last_entity = iEntity;
+	u.m_pTo->transmit_entity.Set( iEntity );
+}
+
 //-----------------------------------------------------------------------------
 // Purpose: Returns true if the entity index corresponds to a player slot 
 // Input  : index - 
@@ -285,8 +332,8 @@ void CL_FlushEntityPacket( CClientFrame *packet, char const *errorString, ... )
 	np.color[ 2 ] = 0.0;
 	Con_NXPrintf( &np, "WARNING:  CL_FlushEntityPacket, %s", str );
 
-	// Free packet memory.
-	delete packet;
+	// Free packet memory. Frames come from the client frame pool: delete would corrupt the heap.
+	cl.FreeFrame( packet );
 }
 
 
@@ -317,6 +364,12 @@ void CL_CopyNewEntity(
 
 	// Delete the entity.
 	ClientClass *pClass = cl.m_pServerClasses[iClass].m_pClientClass;
+	if ( CL_IsRetailPlayback() && ( !pClass || !pClass->m_pCreateFn ) )
+	{
+		CL_DeleteDLLEntity( u.m_nNewEntity, "retail stub" );
+		CL_SkipStubEntityData( u, u.m_nNewEntity, iClass );
+		return;
+	}
 	bool bNew = false;
 	if ( ent )
 	{
@@ -434,6 +487,8 @@ void CL_CopyNewEntity(
 void CL_PreserveExistingEntity( int nOldEntity )
 {
 	IClientNetworkable *pEnt = entitylist->GetClientNetworkable( nOldEntity );
+	if ( !pEnt && g_RetailStubs.m_iClass[nOldEntity] >= 0 )
+		return;
 	if ( !pEnt )
 	{
 		// If you hit this, this is because there's a networked client entity that got released
@@ -459,6 +514,11 @@ void CL_CopyExistingEntity( CEntityReadInfo &u )
 	int start_bit = u.m_pBuf->GetNumBitsRead();
 
 	IClientNetworkable *pEnt = entitylist->GetClientNetworkable( u.m_nNewEntity );
+	if ( !pEnt && g_RetailStubs.m_iClass[u.m_nNewEntity] >= 0 )
+	{
+		CL_SkipStubEntityData( u, u.m_nNewEntity, g_RetailStubs.m_iClass[u.m_nNewEntity] );
+		return;
+	}
 	if ( !pEnt )
 	{
 		Host_Error( "CL_CopyExistingEntity: missing client entity %d.\n", u.m_nNewEntity );
@@ -625,6 +685,7 @@ bool CL_ProcessPacketEntities ( SVC_PacketEntities *entmsg )
 		}
 
 		// Clear out the client's entity states..
+		g_RetailStubs.Reset();
 		for ( int i=0; i <= entitylist->GetHighestEntityIndex(); i++ )
 		{
 			CL_DeleteDLLEntity( i, "ProcessPacketEntities", true );

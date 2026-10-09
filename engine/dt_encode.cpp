@@ -123,6 +123,13 @@ static inline bool DecodeSpecialFloat( SendProp const *pProp, bf_read *pIn, floa
 		fVal = pIn->ReadBitCoordMP( true, false );
 		return true;
 	}
+	else if ( flags &
+	          ( SPROP_CELL_COORD | SPROP_CELL_COORD_LOWPRECISION | SPROP_CELL_COORD_INTEGRAL ) )
+	{
+		fVal = pIn->ReadBitCellCoord( pProp->m_nBits, ( flags & SPROP_CELL_COORD_INTEGRAL ) != 0,
+		    ( flags & SPROP_CELL_COORD_LOWPRECISION ) != 0 );
+		return true;
+	}
 	else if ( flags & SPROP_NOSCALE )
 	{
 		fVal = pIn->ReadBitFloat();
@@ -455,6 +462,14 @@ int	Float_CompareDeltas( const SendProp *pProp, bf_read *p1, bf_read *p2 )
 	{
 		return p1->ReadBitCoordMP( true, false ) != p2->ReadBitCoordMP( true, false );
 	}
+	else if ( pProp->GetFlags() &
+	          ( SPROP_CELL_COORD | SPROP_CELL_COORD_LOWPRECISION | SPROP_CELL_COORD_INTEGRAL ) )
+	{
+		const bool bIntegral = ( pProp->GetFlags() & SPROP_CELL_COORD_INTEGRAL ) != 0;
+		const bool bLow = ( pProp->GetFlags() & SPROP_CELL_COORD_LOWPRECISION ) != 0;
+		return p1->ReadBitCellCoord( pProp->m_nBits, bIntegral, bLow ) !=
+		       p2->ReadBitCellCoord( pProp->m_nBits, bIntegral, bLow );
+	}
 	else if ( pProp->GetFlags() & SPROP_NOSCALE )
 	{
 		return p1->ReadUBitLong( 32 ) != p2->ReadUBitLong( 32 );
@@ -530,6 +545,15 @@ void Float_SkipProp( const SendProp *pProp, bf_read *pIn )
 	else if ( pProp->GetFlags() & SPROP_COORD_MP_INTEGRAL )
 	{
 		pIn->ReadBitCoordMP( true, false );
+	}
+	else if ( pProp->GetFlags() &
+	          ( SPROP_CELL_COORD | SPROP_CELL_COORD_LOWPRECISION | SPROP_CELL_COORD_INTEGRAL ) )
+	{
+		pIn->SeekRelative(
+		    pProp->m_nBits + ( ( pProp->GetFlags() & SPROP_CELL_COORD_INTEGRAL ) ? 0
+		                         : ( pProp->GetFlags() & SPROP_CELL_COORD_LOWPRECISION )
+		                             ? COORD_FRACTIONAL_BITS_MP_LOWPRECISION
+		                             : COORD_FRACTIONAL_BITS ) );
 	}
 	else if(pProp->GetFlags() & SPROP_NOSCALE)
 	{

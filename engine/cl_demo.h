@@ -64,6 +64,7 @@ public: // IDemoPlayer interface implementation:
 	virtual netpacket_t *ReadPacket( void );
 	virtual void	ResetDemoInterpolation( void );
 	virtual int		GetProtocolVersion();
+	virtual bool IsRetailDialect();
 
 	virtual bool	ShouldLoopDemos() { return true; }
 	virtual void	OnLastDemoInLoopPlayed() {}

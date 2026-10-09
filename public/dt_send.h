@@ -244,6 +244,12 @@ public:
 	const void*			GetExtraData() const;
 	void				SetExtraData( const void *pData );
 
+	// Order of the property in the flattened table: lower comes first (SENDPROP_DEFAULT_PRIORITY).
+	// Only retail Portal 2 send tables carry one; the SPROP_CHANGES_OFTEN flag counts as
+	// SENDPROP_CHANGES_OFTEN_PRIORITY.
+	unsigned char GetPriority() const { return m_priority; }
+	void SetPriority( unsigned char priority ) { m_priority = priority; }
+
 public:
 
 	RecvProp		*m_pMatchingRecvProp;	// This is temporary and only used while precalculating
@@ -265,7 +271,8 @@ public:
 
 	const char		*m_pVarName;
 	float			m_fHighLowMul;
-	
+	unsigned char m_priority;
+
 private:
 
 	int					m_Flags;				// SPROP_ flags.
@@ -283,6 +290,8 @@ private:
 	const void			*m_pExtraData;
 };
 
+#define SENDPROP_DEFAULT_PRIORITY ( (unsigned char)128 )
+#define SENDPROP_CHANGES_OFTEN_PRIORITY ( (unsigned char)64 )
 
 inline int SendProp::GetOffset() const
 {

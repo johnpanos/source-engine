@@ -143,7 +143,7 @@ def evaluate(demos, log):
     results = []
     cursor = 0
     for demo in demos:
-        stem = Path(demo["file"]).stem
+        stem = demo.get("alias") or Path(demo["file"]).stem
         if cursor >= len(events) or events[cursor][0] != "play" or \
                 Path(events[cursor][1]).stem != stem:
             if cursor >= len(events):
@@ -190,7 +190,8 @@ class Worker:
         target = self.runtime / "portal2" / RUNTIME_DEMOS
         target.mkdir(parents=True, exist_ok=True)
         for demo in demos:
-            destination = target / demo["file"]
+            # Short names keep the +startdemos argument under the engine's 512 character limit.
+            destination = target / (demo["alias"] + ".dem")
             if not destination.exists():
                 try:
                     os.link(demo["path"], destination)
@@ -207,12 +208,20 @@ class Worker:
         sandbox = launch_sandbox.Sandbox(out / "sandbox", write_paths=[self.runtime])
         environment = sandbox.environment(os.environ)
         environment["PATH"] = str(self.tools) + os.pathsep + environment.get("PATH", "")
-        names = ["%s/%s" % (RUNTIME_DEMOS, Path(demo["file"]).stem) for demo in chain]
+        names = ["%s/%s" % (RUNTIME_DEMOS, demo["alias"]) for demo in chain]
         arguments = ["-game", "portal2", "-multirun", "-novid", "-insecure", "-windowed",
                      "-w", str(self.args.width), "-h", str(self.args.height), "-condebug",
-                     "+volume", "0", "+developer", "1", "+wait", str(self.args.start_frames),
-                     "+startdemos", *names]
+                     "+volume", "0", "+developer", "1",
+                     # Demo replay is judged on playback; render coverage has its own suites.
+                     "+r_core_world_strict", "1" if self.args.render_strict else "0",
+                     "+wait", str(self.args.start_frames), "+exec", "qa_demos_%d" % self.runs]
+        # One line: the command line holds only 512 characters and takes a single startdemos argument.
+        (self.runtime / "portal2/cfg" / ("qa_demos_%d.cfg" % self.runs)).write_text(
+            "startdemos %s\n" % " ".join(names))
         progress = {"count": 0, "at": time.monotonic()}
+        # A demo logs only when it starts and ends: allow for its recorded length.
+        longest = max(demo.get("recorded_seconds", 0) for demo in chain)
+        stall_limit = max(self.args.stall_seconds, 1.5 * longest + 60)
 
         def done():
             if not console.is_file():
@@ -225,12 +234,16 @@ class Worker:
                 return True
             if text.count(FINISHED) >= len(chain):
                 return True
-            return time.monotonic() - progress["at"] > self.args.stall_seconds
+            return time.monotonic() - progress["at"] > stall_limit
 
-        timeout = self.args.start_timeout + self.args.demo_timeout * len(chain)
+        # Diagnosis only: gdb's own exit status replaces the game's.
+        wrapper = ["gdb", "-q", "-batch", "-ex", "run", "-ex", "bt 25", "--args"] \
+            if self.args.gdb else []
+        timeout = self.args.start_timeout + sum(
+            max(self.args.demo_timeout, 2 * demo.get("recorded_seconds", 0) + 60) for demo in chain)
         returncode, timed_out, seconds, error = sepipe_loader.run_test(
             self.args.profile, self.args.flavor, self.runtime, arguments, out / "stdout.log",
-            timeout, environment=environment, stop_when=done, poll_seconds=0.5)
+            timeout, environment=environment, wrapper=wrapper, stop_when=done, poll_seconds=0.5)
         log = console.read_text(errors="replace") if console.is_file() else ""
         (out / "console.log").write_text(log)
         results = evaluate(chain, log)
@@ -289,7 +302,9 @@ def self_test():
         checks.check(len(jobs) <= workers and all(len(p) <= chunk for j in jobs for p in j),
                      "partition.bounds.%d.%d" % (workers, chunk))
     two = demos[:2]
-    play = lambda d: "%s%s/%s.\n" % (PLAYING, RUNTIME_DEMOS, Path(d["file"]).stem + ".dem")
+    for index, demo in enumerate(demos):
+        demo["alias"] = "d%d" % index
+    play = lambda d: "%s%s/%s.\n" % (PLAYING, RUNTIME_DEMOS, d["alias"] + ".dem")
     good = play(two[0]) + FINISHED + "\n" + play(two[1]) + FINISHED + "\n"
     checks.check(all(ok for _, ok, _ in evaluate(two, good)), "evaluate.good")
     cut = evaluate(two, play(two[0]) + FINISHED + "\n")
@@ -331,6 +346,10 @@ def main(argv=None):
                         help="seconds allowed per demo, loading included")
     parser.add_argument("--stall-seconds", type=float, default=90,
                         help="stop an instance whose log shows no demo event for this long")
+    parser.add_argument("--render-strict", action="store_true",
+                        help="keep r_core_world_strict on: a view the render core fails ends the run")
+    parser.add_argument("--gdb", action="store_true",
+                        help="run each instance under gdb and print a backtrace if it dies")
     parser.add_argument("--width", type=int, default=1280)
     parser.add_argument("--height", type=int, default=720)
     parser.add_argument("--list", action="store_true", help="list the selection and exit")
@@ -345,6 +364,8 @@ def main(argv=None):
         demos = select(load_manifest(args.manifest, root), split(args.map), split(args.chapter))
     except (SuiteError, OSError, ValueError) as error:
         parser.exit(2, "portal2_demo_suite: %s\n" % error)
+    for index, demo in enumerate(demos):
+        demo["alias"] = "d%d" % index
     if args.list:
         for demo in demos:
             print("%s\t%s\t%s" % (demo["map"], demo["chapter"], demo["file"]))

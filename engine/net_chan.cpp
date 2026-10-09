@@ -419,6 +419,7 @@ CNetChan::CNetChan() : m_SplitPlayers( 0, 0, SplitPlayer_t::Less )
 	m_nMaxRoutablePayloadSize = MAX_ROUTABLE_PAYLOAD;
 	m_bProcessingMessages = false;
 	m_bShouldDelete = false;
+	m_bRetailDemoDialect = false;
 	m_bClearedDuringProcessing = false;
 	m_bStreamContainsChallenge = false;
 	m_Socket = -1; // invalid
@@ -1918,6 +1919,32 @@ bool CNetChan::_ProcessMessages( bf_read &buf  )
 
 		unsigned char cmd = buf.ReadUBitLong( NETMSG_TYPE_BITS );
 
+		if ( m_bRetailDemoDialect )
+		{
+			// Retail Portal 2 numbers its messages differently (RFC/portal2-demo-protocol4.md).
+			// Two have no counterpart here: skip their bodies, both length-prefixed in bits.
+			if ( cmd == 22 || cmd == 33 ) // svc_SplitScreen, svc_PaintMapData
+			{
+				int nBits;
+				if ( cmd == 22 )
+				{
+					buf.ReadOneBit();
+					nBits = buf.ReadUBitLong( 11 );
+				}
+				else
+				{
+					nBits = buf.ReadLong();
+				}
+				if ( nBits < 0 || !buf.SeekRelative( nBits ) )
+				{
+					m_MessageHandler->ConnectionCrashed( "Bad retail demo message length" );
+					return false;
+				}
+				continue;
+			}
+			cmd = RetailDemoMessageToFork( cmd );
+		}
+
 		if ( cmd <= net_File )
 		{
 			if ( !ProcessControlMessage( cmd, buf ) )
@@ -2027,7 +2054,9 @@ void CNetChan::ProcessPlayback( void )
 		last_received = net_time;
 
 		m_MessageHandler->PacketStart( m_nInSequenceNr, m_nOutSequenceNrAck );
-		
+
+		m_bRetailDemoDialect = demoplayer->IsRetailDialect();
+
 		if ( ProcessMessages( packet->message ) )
 		{
 			m_MessageHandler->PacketEnd();

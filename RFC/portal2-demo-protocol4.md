@@ -1,117 +1,123 @@
-# Portal 2 demo protocol 4: research and implementation plan
+# Portal 2 demo protocol 4: playing retail recordings
 
-Status: research record (2026-10-09). The container format is implemented
-(`cd4f2ba88`); the network layer is not. Purpose: play the 81 leaderboard demos in
-`quality/fixtures/demos/portal2-board` through `tools/quality/portal2_demo_suite.py`.
+Status: implemented (2026-10-09). All 81 leaderboard demos in
+`quality/fixtures/demos/portal2-board` play to their end through
+`tools/quality/portal2_demo_suite.py` on the portal2 kiln profile. Scope is
+**playback only**: the engine still records protocol 3, and the fork's own wire
+format is unchanged. Retail interop for live play remains a non-goal
+([RFC/portal2-splitscreen-retail-engine.md](portal2-splitscreen-retail-engine.md)).
 
 ## Sources and how they were used
 
 | Source | Used for | Terms |
 | --- | --- | --- |
-| [NeKzor/sdp](https://github.com/NeKzor/sdp) (`src/messages.ts`, `src/types/*.ts`) | The Portal 2 message-id table, every payload layout below, data/string table and usercmd layouts | MIT. Layouts re-derived here, no code copied |
-| [P2SR wiki, Demo](https://wiki.portal2.sr/Demo) | Demo playback and tooling | wiki |
-| hl2sdk-csgo and saul/demofile `netmessages.proto` | Cross-check of the id numbering (`net_SplitScreenUser = 3`, `svc_Print = 16`) | BSD |
-| Local `~/src/cstrike15_src` (`public/demofile/demoformat.h`, `engine/cl_demo.cpp`) | Cross-check of the protocol 4 container (`dem_customdata = 8`, `dem_stringtables = 9`, per-split `Split_t`) | Leaked Valve source: facts only, nothing copied |
-| `~/Downloads/portal2-steam2-research/ghidra/portal2_retail.gpr` | Ground truth for any layout the above disagree on (retail `engine.so`) | local |
-| The 81 demos themselves | Oracle: a standalone walk parses all 84 files to `dem_stop` | n/a |
+| [NeKzor/sdp](https://github.com/NeKzor/sdp) (`src/messages.ts`, `src/types/*.ts`) | Portal 2 message-id table, most payload layouts, data and string table layouts | MIT; layouts re-derived, no code copied |
+| [P2SR wiki, Demo](https://wiki.portal2.sr/Demo) | Playback and tooling | wiki |
+| hl2sdk-csgo and saul/demofile `netmessages.proto` | Cross-check of message numbering | BSD |
+| Local `~/src/cstrike15_src` (`demoformat.h`, `cl_demo.cpp`, `dt_common.h`) | Cross-check of the protocol 4 container and property flag order | Leaked Valve source: facts only, nothing copied. Its network layer is protobuf and does not apply |
+| Retail `engine.so` in the Ghidra project `~/Downloads/portal2-steam2-research/ghidra/portal2_retail` | Ground truth where sdp and the fixtures left a question: the delta-bits reader and `RecvTable_MergeDeltas` (run `StringUsers.java` on the string in the function's error message) | local |
+| The 81 demos | Oracle. Independent Python decoders (message walker, string tables, send tables, entity delta streams) were checked against the engine's reads | n/a |
 
-CS:GO's wire is protobuf and is not a reference for payloads. Portal 2 is bit-packed.
+Where sdp and the fixtures disagreed, the fixtures won (the `ServerInfo` field order
+below).
 
-## 1. Container (done, `cd4f2ba88`)
+## Where the dialect is selected
 
-Header identical to protocol 3 (1072 bytes; `demoprotocol` 4, `networkprotocol` 2001).
-Per command: type byte, tick `int32`, **slot byte**. Types 1-7 as protocol 3, **8 =
-custom data** (`int32` id, `int32` size, bytes; skipped), **9 = string tables**.
-Signon/packet: **two** 76-byte `Split_t` view records (first is played back), then
-in/out sequence `int32` each, size `int32`, data. Console command, data tables and
-string tables are `int32` size plus bytes; usercmd is `int32` command number, size,
-bytes. 31 or 91 trailing bytes after `dem_stop` (SAR data) are ignored.
+Everything keys on one fact: the demo header's `demoprotocol` is 4.
+`CDemoFile::IsRetailDialect()` -> `IDemoPlayer::IsRetailDialect()` ->
+`INetChannel::IsRetailDemoDialect()` (set by `CNetChan::ProcessPlayback` per
+packet). The network protocol number cannot be used: retail's 2001 is not
+comparable with the fork's. Live connections never see the dialect.
 
-## 2. Message ids: retail Portal 2 vs this fork
+## 1. Container (`engine/demofile.cpp`, `public/demofile/demoformat.h`)
 
-Retail follows the Alien Swarm numbering. Ids not listed are **identical** in both
-(8-15, 17-21, 23-31).
+Header as protocol 3. Per command: type byte, tick `i32`, **slot byte**. Type 8 is
+**custom data** (`i32` id, `i32` size, bytes: skipped) and 9 is **string tables**.
+Packets carry **two** 76-byte view records (the first is played); then in and out
+sequence and the size-prefixed data. 31 or 91 bytes after `dem_stop` (SAR) are
+ignored.
 
-| Message | Retail id | Fork id |
+## 2. Message ids (`common/protocol.h`, `CNetChan::_ProcessMessages`)
+
+Retail uses the Alien Swarm numbering. Differences from this fork, applied while
+reading a retail demo only:
+
+| Message | Retail | Fork |
 | --- | --- | --- |
 | `net_SplitScreenUser` | 3 | 35 |
-| `net_Tick` | 4 | 3 |
-| `net_StringCmd` | 5 | 4 |
-| `net_SetConVar` | 6 | 5 |
-| `net_SignonState` | 7 | 6 |
+| `net_Tick` / `StringCmd` / `SetConVar` / `SignonState` | 4 / 5 / 6 / 7 | 3 / 4 / 5 / 6 |
 | `svc_Print` | 16 | 7 |
 | `svc_SplitScreen` | 22 | 34 |
-| `svc_CmdKeyValues` | 32 | 32 |
-| `svc_PaintMapData` | 33 | (`svc_SetPauseTimed` is 33) |
+| `svc_PaintMapData` | 33 | 33 is `svc_SetPauseTimed` |
 
-`RFC/portal2-splitscreen-retail-engine.md` records that the fork cannot take retail
-ids on its own wire, and that stays true. The demo reader needs a **translation
-table applied while reading a protocol 4 demo's packets** (retail id to fork id)
-and nothing else; the fork's live wire is unchanged. `net_File` (2) has no fork
-message class; retail's `NetFile` has an extra bool when the demo protocol is 4.
+`RetailDemoMessageToFork()` maps the first four rows and `svc_Print`. 22 and 33
+have no counterpart: their length-prefixed bodies are skipped. Every other id is
+the same.
 
-## 3. Payloads that differ (retail dialect = demo protocol 4)
+## 3. Payload differences (`common/netmessages.cpp`)
 
-Verified by reading sdp's readers against `common/netmessages.cpp`. The fork's
-readers are gated on `m_NetChannel->GetProtocolVersion()` /
-`GetDemoProtocolVersion()`; both return 2001 for a retail demo, so the retail
-dialect must key on the demo protocol (4), not the network protocol.
+| Message | Retail layout |
+| --- | --- |
+| `net_SignonState` | adds server player count `i32`, a network id list (`i32` count + bytes) and the map name (`i32` length + bytes); skipped |
+| `svc_ServerInfo` | `i32` field **between the client CRC and max classes** (sdp lists it later), map CRC `i32` instead of the MD5, no replay bit |
+| `svc_CreateStringTable` | data length 20 bits; two flag bits: bit 0 LZSS-compressed data, bit 1 a table of file names |
+| `svc_UserMessage` | length 12 bits (fork 11); bodies are skipped |
+| `svc_VoiceInit` | `i32` where the fork reads a sample rate |
+| `svc_Prefetch` | 13 bits (fork 14) |
+| `svc_TempEntities` | length 17 bits (fork: varint); bodies are skipped |
+| `svc_CmdKeyValues` | body skipped (retail menu traffic) |
 
-| Message | Retail layout | Fork reads |
-| --- | --- | --- |
-| `net_SignonState` | state `u8`, spawn count `i32`, **then** server player count `i32`, network-id count `i32` + bytes, map name length `i32` + string | state, spawn count only |
-| `svc_ServerInfo` | protocol `i16`, server count `i32`, hltv, dedicated, client CRC `i32`, max classes `i16`, **map CRC `i32`**, slot `u8`, max clients `u8`, **unknown `i32`**, tick interval `f32`, OS char, four strings | MD5 (16 bytes) in place of the CRC when protocol above 17; no unknown `i32` |
-| `svc_CreateStringTable` | name, max entries `i16`, entries `log2(max)+1` bits, data length **20 bits**, fixed-size flag (+12+4 bits), **flags 2 bits**, data | optional `:` prefix, **varint** length for protocol above 23, 1 compression bit |
-| `svc_UserMessage` | type `u8`, length **12 bits** | `NETMSG_LENGTH_BITS` (check value) |
-| `svc_SplitScreen` | 1 bit action, 11-bit data length, data | `splitscreenwire` (1+1+11 bits, own fields) |
-| `net_SplitScreenUser` | 1 bit | 1 bit (same) |
-| `svc_VoiceInit` | codec string, quality `u8`, `f32` when 255 | `i16` sample rate when 255 |
-| Unchanged | `Tick` (`i32`, two `u16`), `StringCmd`, `SetConVar`, `Print`, `SendTable` header, `ClassInfo`, `SetPause`, `UpdateStringTable`, `Sounds`, `SetView`, `FixAngle`, `PacketEntities`, `TempEntities`, `Prefetch`, `GameEventList` | |
+Sound blocks, user messages, entity messages, temp entities and key values are
+length-prefixed and are **read past, not processed** (their ids and layouts belong to
+the retail client). Game events are processed.
 
-`SvcSounds` entry decoding is protocol 3 only in sdp (retail sound entries are not
-decoded there); the fork's reader only skips the block, so it is unaffected.
+## 4. Tables and entities
 
-Data tables (`dem_datatables`, and `svc_SendTable` bodies): retail `SendProp` is
-type 5 bits, name, **flags 16 bits then an extra 11-bit field**, then the exclude
-name or low/high/bits. The fork's send-table reader is the CS:GO-era one, so the
-empty-name `missing SendTable ''` and `CreateDecoders failed` errors seen on the
-first retail packet most likely come from this layout plus the misrouted ids, not
-from a class mismatch. Expect a real class-set mismatch afterwards (retail server
-classes against the reconstructed client); that is game-DLL work.
+* **String table updates** start with an "encoded using dictionaries" bit
+  (`CNetworkStringTable::ParseUpdate(..., bRetailDemo)`). Dictionary-encoded
+  updates (the shared string dictionary) are refused by name; none of the 81 demos
+  used one.
+* **Send props** (`RecvTable_ReadInfos`): type 5 bits, name, **19 flag bits** in
+  retail order, then an **8-bit priority**. Retail flag bits from 10 up differ from the
+  fork and add cell coordinates; `RetailPropFlagsToFork()` maps them. The cell flags
+  (`SPROP_CELL_COORD*`, bits 20 to 22 in the fork) are decode only
+  (`bf_read::ReadBitCellCoord`; positions use them).
+* **Property order** is by priority ascending (`SendTable_SortByPriority`,
+  `SendProp::GetPriority()`); `SPROP_CHANGES_OFTEN` counts as priority 64. With only
+  default priorities this equals the previous behaviour.
+* **Entity delta streams** (`CDeltaBitsReader(..., bRetail)`) start with a mode bit.
+  In compact mode: 1 = next property, 01 + 3 bits = a small delta, 00 = the long
+  form. The long form (also the whole of mode 0) is a 7-bit code (5-bit value, 2-bit
+  tag) with 0, 2, 4 or 7 more bits; the value `0xfff` ends the stream. The
+  merge writer emits mode 0 so merged baselines read back in the same dialect.
+* **Entity headers** use the old `ReadUBitVar` (four value bits, then a two-bit tag).
+* **Classes the client cannot create** (no client class, or no create function: 15
+  on `sp_a1_intro3`): entity data is read and dropped
+  (`CL_SkipStubEntityData`), the class is remembered per entity index so later
+  updates stay aligned, and their send tables get a receive table with no
+  properties.
 
-Usercmd (`dem_usercmd` payload): bit-packed with a presence bit per field (command
-number, tick, three view angles, three moves, buttons, impulse, weapon select 11
-+ optional subtype 6, mouse dx/dy `i16`). The engine hands it to
-`DecodeUserCmdFromBuffer` in a 256-byte buffer; retail commands must fit.
+## 5. Findings fixed on the way (not retail specific)
 
-## 4. Open questions (need the retail binary or a run)
+* `CL_FlushEntityPacket` called `delete` on a frame from the client frame pool
+  (heap corruption on any flushed packet). It now calls `CClientFrameManager::FreeFrame`.
+* `RecvTable_MergeDeltas` indexed past a table's properties on malformed streams; it
+  now raises a named error.
 
-1. `NETMSG_LENGTH_BITS` in the fork against retail's 12 for user messages.
-2. Whether the fork's `SendProp` reader can take retail's extra 11-bit field
-   behind a dialect switch or needs its own reader.
-3. User message ids and layouts per game (retail Portal 2 table in sdp's
-   `UserMessages.Portal2Engine`) against the reconstructed client DLL.
-4. `svc_PaintMapData` (33): needs a handler or a skip.
-5. Whether `svc_GameEventList`/`svc_GameEvent` descriptors match the client DLL.
+## 6. Evidence
 
-## 5. Implementation order (each step has a gate)
+`corpus.portal2.demos.self-test` (25 checks) and `corpus.portal2.demos.all` (81
+checks, 4 workers) in `quality/conformance.manifest.json`. A demo passes only if it
+logs a start and an end in order, plays at least 80 percent of its recorded length
+and the log holds no `Host_Error`, `Host_EndGame`, unknown net message, datatable
+warning or script error. The suite runs with `r_core_world_strict 0` (a view the
+render core cannot draw, such as a planar reflection that did not import, would
+otherwise end the process); `--render-strict` turns it back on. The recorded game
+state is not checked: entities of classes this client lacks are dropped, and
+sound, effects, user messages and menu traffic are not replayed.
 
-1. **Dialect flag.** One owner: `CDemoPlayer` exposes `IsRetailDialect()` (demo
-   protocol 4); message readers and the id table read it. Gate: unit suite that
-   decodes captured retail packets (bit streams extracted from the fixtures) and
-   proves each reader consumes exactly its bits.
-2. **Id translation** in the demo packet path (section 2) and the payload
-   dialect rows of section 3, smallest first: `SignonState`, `ServerInfo`,
-   `CreateStringTable`, `UserMessage`, `VoiceInit`.
-3. **Data tables** retail `SendProp`; gate: the first retail demo's signon
-   completes with no `CreateDecoders` failure.
-4. **Run the suite**: `corpus.portal2.demos.smoke`, then chapters, then all 81
-   (`--workers 4`). A demo passes only if it plays at least 80 percent of its
-   recorded length with no `Host_EndGame`, unknown net message or datatable
-   error (already enforced by the suite).
-5. Triage what remains per map (section 4 items 3 and 5, class mismatches).
+## 7. Open
 
-Independent oracle: keep a Python walker (the one used for this research) that
-decodes message boundaries of every fixture packet from sdp's layouts; the engine
-and the walker must agree on message counts per packet. Never loosen the suite's
-checks to turn a demo green.
+* A retail demo that uses dictionary-encoded string tables.
+* Replaying entity state for the 15 classes without client counterparts.
+* Game events from the retail event list against the reconstructed client.

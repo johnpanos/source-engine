@@ -241,6 +241,26 @@ inline static bool CL_DetermineUpdateType( CEntityReadInfo &u )
 //			&bIsNew - 
 // Output : int
 //-----------------------------------------------------------------------------
+// Retail Portal 2 codes small unsigned numbers with the tag after the low four bits
+// (this fork's ReadUBitVar puts it first).
+static inline unsigned int ReadUBitVarRetail( bf_read *pBuf )
+{
+	unsigned int value = pBuf->ReadUBitLong( 4 );
+	switch ( pBuf->ReadUBitLong( 2 ) )
+	{
+	case 1:
+		value |= pBuf->ReadUBitLong( 4 ) << 4;
+		break;
+	case 2:
+		value |= pBuf->ReadUBitLong( 8 ) << 4;
+		break;
+	case 3:
+		value |= pBuf->ReadUBitLong( 28 ) << 4;
+		break;
+	}
+	return value;
+}
+
 static inline void CL_ParseDeltaHeader( CEntityReadInfo &u )
 {
 	u.m_UpdateFlags = FHDR_ZERO;
@@ -248,10 +268,11 @@ static inline void CL_ParseDeltaHeader( CEntityReadInfo &u )
 #ifdef DEBUG_NETWORKING
 	int startbit = u.m_pBuf->GetNumBitsRead();
 #endif
-	SyncTag_Read( u.m_pBuf, "Hdr" );	
+	SyncTag_Read( u.m_pBuf, "Hdr" );
 
-	u.m_nNewEntity = u.m_nHeaderBase + 1 + u.m_pBuf->ReadUBitVar();
-
+	u.m_nNewEntity =
+	    u.m_nHeaderBase + 1 +
+	    ( Demo_IsRetailPlayback() ? ReadUBitVarRetail( u.m_pBuf ) : u.m_pBuf->ReadUBitVar() );
 
 	u.m_nHeaderBase = u.m_nNewEntity;
 
@@ -1277,7 +1298,8 @@ bool CBaseClientState::ProcessSendTable( SVC_SendTable *msg )
 {
 	VPROF( "ProcessSendTable" );
 
-	if ( !RecvTable_RecvClassInfos( &msg->m_DataIn, msg->m_bNeedsDecoder ) )
+	if ( !RecvTable_RecvClassInfos( &msg->m_DataIn, msg->m_bNeedsDecoder,
+	         m_NetChannel && m_NetChannel->IsRetailDemoDialect() ? DEMO_PROTOCOL_PORTAL2 : 0 ) )
 	{
 		Host_EndGame(true, "ProcessSendTable: RecvTable_RecvClassInfos failed.\n" );
 		return false;
@@ -1408,7 +1430,8 @@ bool CBaseClientState::ProcessCreateStringTable( SVC_CreateStringTable *msg )
 			if ( bSuccess )
 			{
 				bf_read data( uncompressedBuffer, uncompressedSize );
-				table->ParseUpdate( data, msg->m_nNumEntries );
+				table->ParseUpdate(
+				    data, msg->m_nNumEntries, m_NetChannel && m_NetChannel->IsRetailDemoDialect() );
 			}
 
 			delete[] uncompressedBuffer;
@@ -1423,7 +1446,8 @@ bool CBaseClientState::ProcessCreateStringTable( SVC_CreateStringTable *msg )
 	}
 	else
 	{
-		table->ParseUpdate( msg->m_DataIn, msg->m_nNumEntries );
+		table->ParseUpdate( msg->m_DataIn, msg->m_nNumEntries,
+		    m_NetChannel && m_NetChannel->IsRetailDemoDialect() );
 	}
 
 #endif
@@ -1452,7 +1476,8 @@ bool CBaseClientState::ProcessUpdateStringTable( SVC_UpdateStringTable *msg )
 		CNetworkStringTable *table = (CNetworkStringTable*)
 			m_StringTableContainer->GetTable( msg->m_nTableID );
 
-		table->ParseUpdate( msg->m_DataIn, msg->m_nChangedEntries );
+		table->ParseUpdate( msg->m_DataIn, msg->m_nChangedEntries,
+		    m_NetChannel && m_NetChannel->IsRetailDemoDialect() );
 	}
 	else
 	{

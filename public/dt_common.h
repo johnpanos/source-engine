@@ -79,6 +79,12 @@
 
 #define SPROP_NUMFLAGBITS_NETWORKED		16
 
+// Decoded only: Portal 2 retail demos (demo protocol 4) encode origins as cell coordinates. The
+// flags are never sent by this fork's server, so they sit above the networked range.
+#define SPROP_CELL_COORD ( 1 << 20 ) // non-negative coordinate: m_nBits integer bits, then fraction
+#define SPROP_CELL_COORD_LOWPRECISION ( 1 << 21 ) // ... with 3 fraction bits instead of 5
+#define SPROP_CELL_COORD_INTEGRAL ( 1 << 22 )     // ... integer only
+
 // This is server side only, it's used to mark properties whose SendProxy_* functions encode against gpGlobals->tickcount (the only ones that currently do this are
 //  m_flAnimTime and m_flSimulationTime.  MODs shouldn't need to mess with this probably
 #define SPROP_ENCODED_AGAINST_TICKCOUNT	(1<<16)

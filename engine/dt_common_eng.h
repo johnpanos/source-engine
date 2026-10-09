@@ -21,6 +21,9 @@ void DataTable_CreateClientClassInfosFromServerClasses( CBaseClientState *pState
 void DataTable_ClearWriteFlags( ServerClass *pClasses );
 bool DataTable_LoadDataTablesFromBuffer( bf_read *pBuf, int nDemoProtocol );
 
+// The receive table that has a decoder for the named datatable, or NULL.
+RecvTable *DataTable_FindDecodedRecvTable( const char *pNetTableName );
+
 void DataTable_WriteSendTablesBuffer( ServerClass *pClasses, bf_write *pBuf );
 void DataTable_WriteClassInfosBuffer(ServerClass *pClasses, bf_write *pBuf );
 

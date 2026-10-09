@@ -819,8 +819,8 @@ SendProp::SendProp()
 	m_ProxyFn = NULL;
 	m_pExcludeDTName = NULL;
 	m_pParentArrayPropName = NULL;
+	m_priority = SENDPROP_DEFAULT_PRIORITY;
 
-	
 	m_Type = DPT_Int;
 	m_Flags = 0;
 	m_nBits = 0;

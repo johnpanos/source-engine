@@ -2395,6 +2395,11 @@ void CDemoPlayer::ResetDemoInterpolation( void )
 	m_bResetInterpolation = true;
 }
 
+bool CDemoPlayer::IsRetailDialect()
+{
+	return IsPlayingBack() && m_DemoFile.IsRetailDialect();
+}
+
 int CDemoPlayer::GetProtocolVersion()
 {
 	Assert( IsPlayingBack() );

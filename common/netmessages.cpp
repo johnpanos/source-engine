@@ -586,6 +586,12 @@ bool Base_CmdKeyValues::ReadFromBuffer( bf_read &buffer )
 		return false; // don't read past the end of the buffer
 	}
 
+	if ( m_NetChannel && m_NetChannel->IsRetailDemoDialect() )
+	{
+		// Retail Portal 2 menu traffic: its KeyValues are not read; the body is skipped.
+		return buffer.SeekRelative( numBytes * 8 );
+	}
+
 	void *pvBuffer = malloc( numBytes );
 	if ( !pvBuffer )
 	{
@@ -738,10 +744,16 @@ bool SVC_ServerInfo::ReadFromBuffer( bf_read &buffer )
 	m_bIsHLTV		= buffer.ReadOneBit()!=0;
 	m_bIsDedicated	= buffer.ReadOneBit()!=0;
 	buffer.ReadLong();  // Legacy client CRC.
+	if ( m_NetChannel && m_NetChannel->IsRetailDemoDialect() )
+	{
+		buffer.ReadLong(); // retail: one more 32-bit field here (observed in the fixtures)
+	}
 	m_nMaxClasses	= buffer.ReadWord();
 
+	const bool bRetailDemo = m_NetChannel && m_NetChannel->IsRetailDemoDialect();
+
 	// Prevent cheating with hacked maps
-	if ( m_nProtocol > PROTOCOL_VERSION_17 )
+	if ( m_nProtocol > PROTOCOL_VERSION_17 && !bRetailDemo )
 	{
 		buffer.ReadBytes( m_nMapMD5.bits, MD5_DIGEST_LENGTH );
 	}
@@ -765,7 +777,7 @@ bool SVC_ServerInfo::ReadFromBuffer( bf_read &buffer )
 	// INetChannel::GetProtocolVersion() will return PROTOCOL_VERSION for
 	// a regular net channel, or the network protocol version from the demo
 	// file, if we're playing back a demo.
-	if ( m_NetChannel->GetProtocolVersion() >= PROTOCOL_VERSION_REPLAY )
+	if ( m_NetChannel->GetProtocolVersion() >= PROTOCOL_VERSION_REPLAY && !bRetailDemo )
 	{
 		m_bIsReplay = buffer.ReadOneBit() != 0;
 	}
@@ -796,6 +808,18 @@ bool NET_SignonState::ReadFromBuffer( bf_read &buffer )
 	m_nSignonState = buffer.ReadByte();
 	m_nSpawnCount = buffer.ReadLong();
 
+	if ( m_NetChannel && m_NetChannel->IsRetailDemoDialect() )
+	{
+		// Retail adds the server's player count, a network id list and the map name.
+		buffer.ReadLong();
+		int nIds = buffer.ReadLong();
+		if ( nIds < 0 || nIds > 4096 || !buffer.SeekRelative( nIds * 8 ) )
+			return false;
+		int nMapNameLength = buffer.ReadLong();
+		if ( nMapNameLength < 0 || nMapNameLength > 4096 ||
+		     !buffer.SeekRelative( nMapNameLength * 8 ) )
+			return false;
+	}
 	return !buffer.IsOverflowed();
 }
 
@@ -1016,8 +1040,16 @@ bool SVC_VoiceInit::ReadFromBuffer( bf_read &buffer )
 	unsigned char nLegacyQuality = buffer.ReadByte();
 	if ( nLegacyQuality == 255 )
 	{
-		// v2 packet
-		m_nSampleRate = buffer.ReadShort();
+		// v2 packet; retail demos carry a 32-bit value here (rate chosen automatically)
+		if ( m_NetChannel && m_NetChannel->IsRetailDemoDialect() )
+		{
+			buffer.ReadLong();
+			m_nSampleRate = 0;
+		}
+		else
+		{
+			m_nSampleRate = buffer.ReadShort();
+		}
 	}
 	else
 	{
@@ -1136,7 +1168,11 @@ bool SVC_UserMessage::ReadFromBuffer( bf_read &buffer )
 {
 	VPROF( "SVC_UserMessage::ReadFromBuffer" );
 	m_nMsgType = buffer.ReadByte();
-	m_nLength = buffer.ReadUBitLong( NETMSG_LENGTH_BITS ); // max 256 * 8 bits, see MAX_USER_MSG_DATA
+	// Retail Portal 2 uses 12 bits for the length (this fork 11).
+	m_nLength =
+	    buffer.ReadUBitLong( m_NetChannel && m_NetChannel->IsRetailDemoDialect()
+	                             ? NETMSG_LENGTH_BITS + 1
+	                             : NETMSG_LENGTH_BITS ); // max 256 * 8 bits, see MAX_USER_MSG_DATA
 	m_DataIn = buffer;
 	return buffer.SeekRelative( m_nLength );
 }
@@ -1343,7 +1379,10 @@ bool SVC_CreateStringTable::ReadFromBuffer( bf_read &buffer )
 	m_nMaxEntries = buffer.ReadWord();
 	int encodeBits = Q_log2( m_nMaxEntries );
 	m_nNumEntries = buffer.ReadUBitLong( encodeBits+1 );
-	if ( m_NetChannel->GetProtocolVersion() > PROTOCOL_VERSION_23 )
+	const bool bRetailDemo = m_NetChannel && m_NetChannel->IsRetailDemoDialect();
+	if ( bRetailDemo )
+		m_nLength = buffer.ReadUBitLong( 20 );
+	else if ( m_NetChannel->GetProtocolVersion() > PROTOCOL_VERSION_23 )
 		m_nLength = buffer.ReadVarInt32();
 	else
 		m_nLength = buffer.ReadUBitLong( NET_MAX_PAYLOAD_BITS_V23 + 3 );
@@ -1360,7 +1399,15 @@ bool SVC_CreateStringTable::ReadFromBuffer( bf_read &buffer )
 		m_nUserDataSizeBits = 0;
 	}
 
-	if ( m_pMessageHandler->GetDemoProtocolVersion() > PROTOCOL_VERSION_14 )
+	if ( bRetailDemo )
+	{
+		// Retail: two flag bits. Bit 0 marks compressed data (LZSS), bit 1 a table of file
+		// names (this fork marks those with a ':' prefix on the name).
+		unsigned int nFlags = buffer.ReadUBitLong( 2 );
+		m_bDataCompressed = ( nFlags & 1 ) != 0;
+		m_bIsFilenames = ( nFlags & 2 ) != 0;
+	}
+	else if ( m_pMessageHandler->GetDemoProtocolVersion() > PROTOCOL_VERSION_14 )
 	{
 		m_bDataCompressed = buffer.ReadOneBit() != 0;
 	}
@@ -1449,7 +1496,11 @@ bool SVC_Prefetch::ReadFromBuffer( bf_read &buffer )
 	VPROF( "SVC_Prefetch::ReadFromBuffer" );
 
 	m_fType = SOUND; // buffer.ReadUBitLong( 1 );
-	if( m_pMessageHandler->GetDemoProtocolVersion() > 22 )
+	if ( m_NetChannel && m_NetChannel->IsRetailDemoDialect() )
+	{
+		m_nSoundIndex = buffer.ReadUBitLong( 13 ); // retail Portal 2
+	}
+	else if ( m_pMessageHandler->GetDemoProtocolVersion() > 22 )
 	{
 		m_nSoundIndex = buffer.ReadUBitLong( MAX_SOUND_INDEX_BITS );
 	}
@@ -1487,7 +1538,9 @@ bool SVC_TempEntities::ReadFromBuffer( bf_read &buffer )
 	VPROF( "SVC_TempEntities::ReadFromBuffer" );
 
 	m_nNumEntries = buffer.ReadUBitLong( CEventInfo::EVENT_INDEX_BITS );
-	if ( m_pMessageHandler->GetDemoProtocolVersion() > PROTOCOL_VERSION_23 )
+	if ( m_NetChannel && m_NetChannel->IsRetailDemoDialect() )
+		m_nLength = buffer.ReadUBitLong( 17 ); // retail Portal 2
+	else if ( m_pMessageHandler->GetDemoProtocolVersion() > PROTOCOL_VERSION_23 )
 		m_nLength = buffer.ReadVarInt32();
 	else
 		m_nLength = buffer.ReadUBitLong( NET_MAX_PAYLOAD_BITS_V23 );

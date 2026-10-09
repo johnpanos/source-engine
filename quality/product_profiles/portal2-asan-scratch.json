@@ -1,0 +1,23 @@
+{
+  "schema": "source-product-profile/v2",
+  "id": "portal2-asan-scratch-v2",
+  "description": "Scratch: Portal 2 with AddressSanitizer (not committed).",
+  "extends": [
+    "portal2-linux-native-vulkan.json"
+  ],
+  "aliases": [
+    "portal2-asan-scratch@linux-x86_64"
+  ],
+  "configure_options": {
+    "sanitize": "address"
+  },
+  "toolchain": {
+    "cc": "clang",
+    "cxx": "clang++",
+    "family": "clang",
+    "version": "22.1.8"
+  },
+  "build": {
+    "toolchain": "linux-clang"
+  }
+}

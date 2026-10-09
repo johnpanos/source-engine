@@ -102,8 +102,7 @@ def boot(args, name, out):
     stats = out / (name + ".jsonl")
     cmd = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
            "--profile", "portal" if portal1 else "portal2", "--out", str(out / name),
-           "--renderer", "native-vulkan",
-           "--require-vulkan",
+           "--renderer", "pica",
            "--headless", "--map", level, "--timeout", str(args.timeout),
            "--capture-wait", "60", "--no-mouse", "--physics", "vphysics_box3d",
            "--engine-arg=-vkframestats", "--engine-arg=" + str(stats)]

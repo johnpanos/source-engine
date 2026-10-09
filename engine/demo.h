@@ -75,6 +75,10 @@ public:
 
 	virtual void	ResetDemoInterpolation() = 0;
 	virtual int		GetProtocolVersion() = 0;
+	virtual bool IsRetailDialect()
+	{
+		return false;
+	} // playing a protocol 4 (Portal 2 retail) demo
 
 	virtual bool	ShouldLoopDemos() = 0;		// if we're in "startdemos" - should we loop?
 	virtual void	OnLastDemoInLoopPlayed() = 0;	// Last demo of "startdemos" just completed
@@ -83,6 +87,16 @@ public:
 };
 
 extern IDemoPlayer *demoplayer;	// reference to current demo player
+
+// True while a Portal 2 retail (protocol 4) demo is playing. Never true in a dedicated server.
+inline bool Demo_IsRetailPlayback()
+{
+#ifndef SWDS
+	return demoplayer && demoplayer->IsRetailDialect();
+#else
+	return false;
+#endif
+}
 extern IDemoRecorder *demorecorder; // reference to current demo recorder
 
 #endif // DEMO_H

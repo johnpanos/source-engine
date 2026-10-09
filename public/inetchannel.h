@@ -86,6 +86,14 @@ public:
 
 	virtual int		GetProtocolVersion() = 0;
 
+	// True while a Portal 2 retail (demo protocol 4) recording is being played back: messages
+	// then use retail's ids (translated by the channel) and its payload layouts
+	// (RFC/portal2-demo-protocol4.md). Always false for live connections.
+	virtual bool IsRetailDemoDialect()
+	{
+		return false;
+	}
+
 	// Local split-screen (engine.splitscreen-wire.v1). One connection carries every local
 	// player: the owner's channel merges each attached channel's buffers when it sends,
 	// and routes incoming messages to the active channel (selected by net_SplitScreenUser).

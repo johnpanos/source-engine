@@ -205,11 +205,7 @@ inline void ThreadSleep(unsigned nMilliseconds = 0)
 		return;
         }
 
-#if PS3
-	sys_timer_usleep( nMilliseconds * 1000 );
-#else
 	Plat_ThreadSleep( nMilliseconds );
-#endif
 }
 
 PLATFORM_INTERFACE bool ThreadJoin( ThreadHandle_t, unsigned timeout = TT_INFINITE );

@@ -591,6 +591,11 @@ bool CClientState::ProcessSounds( SVC_Sounds *msg )
 		return false;
 	}
 
+	// Retail Portal 2 demos: the sound entries have a layout this client does not decode, and
+	// playback does not need them (the length-prefixed block has already been skipped).
+	if ( m_NetChannel && m_NetChannel->IsRetailDemoDialect() )
+		return true;
+
 	CUtlVector< SoundInfo_t > sounds;
 
 	int startbit = msg->m_DataIn.GetNumBitsRead();
@@ -775,6 +780,10 @@ bool CClientState::ProcessGameEvent(SVC_GameEvent *msg)
 
 bool CClientState::ProcessUserMessage(SVC_UserMessage *msg)
 {
+	// Retail Portal 2 demos: user message ids and layouts belong to the retail client; skipped.
+	if ( m_NetChannel && m_NetChannel->IsRetailDemoDialect() )
+		return true;
+
 	// buffer for incoming user message
 	ALIGN4 byte userdata[ MAX_USER_MSG_DATA ] ALIGN4_POST = { 0 };
 	bf_read userMsg( "UserMessage(read)", userdata, sizeof( userdata ) );
@@ -794,6 +803,9 @@ bool CClientState::ProcessUserMessage(SVC_UserMessage *msg)
 
 bool CClientState::ProcessEntityMessage(SVC_EntityMessage *msg)
 {
+	if ( m_NetChannel && m_NetChannel->IsRetailDemoDialect() )
+		return true; // retail demo: entity messages target retail classes
+
 	// Look up entity
 	IClientNetworkable *entity = entitylist->GetClientNetworkable( msg->m_nEntityIndex );
 
@@ -871,6 +883,10 @@ bool CClientState::ProcessPacketEntities( SVC_PacketEntities *msg )
 
 bool CClientState::ProcessTempEntities( SVC_TempEntities *msg )
 {
+	// Retail demo: effects are encoded against retail's temp entity classes; skipped.
+	if ( m_NetChannel && m_NetChannel->IsRetailDemoDialect() )
+		return true;
+
 	bool bReliable = false;
 
 	float fire_time = cl.GetTime();

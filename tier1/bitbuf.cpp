@@ -1107,6 +1107,18 @@ float bf_read::ReadBitCoord (void)
 	return value;
 }
 
+float bf_read::ReadBitCellCoord( int bits, bool bIntegral, bool bLowPrecision )
+{
+	int intval = (int)ReadUBitLong( bits );
+	if ( bIntegral )
+		return (float)intval;
+
+	int fractval = (int)ReadUBitLong(
+	    bLowPrecision ? COORD_FRACTIONAL_BITS_MP_LOWPRECISION : COORD_FRACTIONAL_BITS );
+	return (float)intval +
+	       fractval * (float)( bLowPrecision ? COORD_RESOLUTION_LOWPRECISION : COORD_RESOLUTION );
+}
+
 float bf_read::ReadBitCoordMP( bool bIntegral, bool bLowPrecision )
 {
 #if defined( BB_PROFILING )

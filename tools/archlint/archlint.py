@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import capabilities
+import structure
 
 
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".inl", ".mm"}
@@ -531,6 +532,8 @@ def check_command(args: argparse.Namespace, root: Path, manifest: dict) -> int:
             dep_errors.append(f"CAP005 {tree}: no strict translation units found in the dependency files")
         print(f"archlint: compile-deps {tree}: {len(depfiles)} dependency files, {checked} strict units")
         strict_errors.extend(dep_errors)
+    if args.all:
+        strict_errors += structure.check_errors(root, manifest, strip_comments_and_literals)
     for error in strict_errors:
         print(error)
     for error in tool_errors:
@@ -1779,6 +1782,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--limit", type=int, default=25, help="max files for --coverage/--scaffold (0 = no limit)"
     )
     hammer.add_argument("--json", action="store_true", help="machine-readable output")
+    shape = subparsers.add_parser(
+        "structure", help="CAP012/CAP013: identifier and branch ratchets and per-area line ceilings"
+    )
+    action = shape.add_mutually_exclusive_group(required=True)
+    action.add_argument("--verify", action="store_true")
+    action.add_argument("--write", action="store_true", help="record decreases (never increases)")
+    action.add_argument("--report", action="store_true")
+    action.add_argument("--adopt", metavar="RULE", help="record a new rule's first counts")
+    action.add_argument("--raise", dest="raise_area", metavar="AREA", help="raise one area's line ceiling")
+    shape.add_argument("--reason", help="why the area grows (required with --raise)")
+    shape.add_argument("--top", type=int, default=40)
     return parser
 
 
@@ -1790,6 +1804,8 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         return check_command(args, root, manifest)
     if args.command == "targets":
         return targets_command(root, manifest, args.trees, args.partial)
+    if args.command == "structure":
+        return structure.command(root, manifest, args, strip_comments_and_literals)
     if args.command == "tools":
         return tool_migrations_command(root)
     if args.command == "hermetic":

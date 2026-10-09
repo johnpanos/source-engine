@@ -57,6 +57,17 @@ RecvTable *DataTable_FindRenamedTable( const char *pOldTableName )
 #endif
 }
 
+RecvTable *DataTable_FindDecodedRecvTable( const char *pNetTableName )
+{
+	FOR_EACH_LL( g_RecvDecoders, i )
+	{
+		CRecvDecoder *pDecoder = g_RecvDecoders[i];
+		if ( pDecoder->m_pTable && !Q_stricmp( pDecoder->m_pTable->GetName(), pNetTableName ) )
+			return pDecoder->m_pTable;
+	}
+	return NULL;
+}
+
 bool DataTable_SetupReceiveTableFromSendTable( SendTable *sendTable, bool bNeedsDecoder )
 {
 	CClientSendTable *pClientSendTable = new CClientSendTable;
@@ -78,6 +89,12 @@ bool DataTable_SetupReceiveTableFromSendTable( SendTable *sendTable, bool bNeeds
 		{
 			// Attempt to find a renamed version of the table.
 			pRecvTable = DataTable_FindRenamedTable( pTable->m_pNetTableName );
+			if ( !pRecvTable && Demo_IsRetailPlayback() )
+			{
+				// A retail server class this client has no table for: receive it as a table with
+				// no properties, so its data is skipped (RFC/portal2-demo-protocol4.md).
+				pRecvTable = new RecvTable( NULL, 0, COM_StringCopy( pTable->m_pNetTableName ) );
+			}
 			if ( !pRecvTable )
 			{
 				DataTable_Warning( "No matching RecvTable for SendTable '%s'.\n", pTable->m_pNetTableName );
@@ -110,6 +127,7 @@ bool DataTable_SetupReceiveTableFromSendTable( SendTable *sendTable, bool bNeeds
 		pProp->m_Type = (SendPropType)pSendTableProp->m_Type;
 		pProp->m_pVarName = COM_StringCopy( pSendTableProp->GetName() );
 		pProp->SetFlags( pSendTableProp->GetFlags() );
+		pProp->SetPriority( pSendTableProp->GetPriority() );
 
 		if ( CommandLine()->FindParm("-dti" ) && pSendTableProp->GetParentArrayPropName() )
 		{

@@ -200,6 +200,7 @@ public:	// INetChannel interface
 	virtual int	GetMaxRoutablePayloadSize();
 
 	virtual int		GetProtocolVersion();
+	virtual bool IsRetailDemoDialect() { return m_bRetailDemoDialect; }
 
 	// Local split-screen multiplexing
 	virtual bool	SetActiveChannel( INetChannel *pNewChannel );
@@ -286,6 +287,7 @@ public:
 	bool		m_bProcessingMessages;
 	bool		m_bClearedDuringProcessing;
 	bool		m_bShouldDelete;
+	bool m_bRetailDemoDialect; // set by ProcessPlayback for protocol 4 demos
 
 	// last send outgoing sequence number
 	int			m_nOutSequenceNr;

@@ -611,9 +611,15 @@ int CNetworkStringTable::WriteUpdate( CBaseClient *client, bf_write &buf, int ti
 //-----------------------------------------------------------------------------
 // Purpose: Parse string update
 //-----------------------------------------------------------------------------
-void CNetworkStringTable::ParseUpdate( bf_read &buf, int entries )
+void CNetworkStringTable::ParseUpdate( bf_read &buf, int entries, bool bRetailDemo )
 {
 	int lastEntry = -1;
+
+	if ( bRetailDemo && buf.ReadOneBit() )
+	{
+		// Retail's shared string dictionary is not available here.
+		Host_Error( "Retail demo string table %s uses dictionary encoding\n", GetTableName() );
+	}
 
 	CUtlVector< StringHistoryEntry > history;
 
