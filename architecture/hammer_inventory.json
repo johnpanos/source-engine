@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 682,
     "totalHammerCppFiles": 334,
     "totalHammerHeaderFiles": 350,
-    "filesClassified": 148,
+    "filesClassified": 228,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'. 2026-10-03 (R08-REPLACE-TEXTURES, HAM-REPLACETEX-001): 22 reviewed records for the files that slice read or changed, and the authored totals refreshed to the live universe that 'archlint hammer --coverage' measures (hammer/ plus the strict roots)."
   },
   "files": [
@@ -2096,6 +2096,1047 @@
       "factorization": "keep",
       "evidence": "observed",
       "note": "DiskByteStore reads byte ranges with std::ifstream and std::filesystem, the disk provider for the byte-store port."
+    },
+    {
+      "path": "hammer/adapters/platform/disk_byte_store.h",
+      "currentOwner": "hammer.adapters.platform",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "DiskByteStore implements ports::IByteStore with ifstream ranged reads (Size, ReadRange) so the VPK reader pulls only the bytes it needs."
+    },
+    {
+      "path": "hammer/adapters/platform/tool_process_map_builder.cpp",
+      "currentOwner": "hammer.adapters.platform",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Build() runs tools/quality/vmf_map_build.py through IToolProcessProvider and parses its \"vmf_map_build:\" status line into a MapBuildResult."
+    },
+    {
+      "path": "hammer/adapters/platform/tool_process_map_builder.h",
+      "currentOwner": "hammer.adapters.platform",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "ToolProcessMapBuilder implements ports::IMapBuilder over the borrowed platform tool-process provider, with the repo root, output root and disk-path mapping injected."
+    },
+    {
+      "path": "hammer/adapters/render/material_textures.cpp",
+      "currentOwner": "hammer.adapters.render",
+      "destinationModule": "hammer.adapters.render",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io",
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "BuildMipChain and PreviewTextures are pure linear-light mip math; ImportSourceMaterial reads VMTs and textures through the injected MaterialFiles callbacks."
+    },
+    {
+      "path": "hammer/adapters/render/material_textures.h",
+      "currentOwner": "hammer.adapters.render",
+      "destinationModule": "hammer.adapters.render",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "IMaterialTextures is the render-sequence source of imported VMT materials and decoded textures, with MaterialFiles callbacks supplied by the composition root."
+    },
+    {
+      "path": "hammer/adapters/render/model_source.h",
+      "currentOwner": "hammer.adapters.render",
+      "destinationModule": "hammer.adapters.render",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "IModelSource returns a parsed studio model (mdl::LoadModel, body 0) with its textures resolved, or the reader error, for a model path."
+    },
+    {
+      "path": "hammer/adapters/render/scene_geometry.cpp",
+      "currentOwner": "hammer.adapters.render",
+      "destinationModule": "hammer.adapters.render",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Builds face batches, edge lines and model batches from a viewport::RenderSnapshot with the editor shading and selection colors, with no device calls."
+    },
+    {
+      "path": "hammer/adapters/render/scene_geometry.h",
+      "currentOwner": "hammer.adapters.render",
+      "destinationModule": "hammer.adapters.render",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares the FaceVertex, FaceBatch, SceneGeometry and ModelAsset types and BuildSceneGeometry/BuildModelBatches over render.pass.lines."
+    },
+    {
+      "path": "hammer/adapters/render/viewport_renderer.cpp",
+      "currentOwner": "hammer.adapters.render",
+      "destinationModule": "hammer.adapters.render",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "ViewportRenderer stages meshes and textures and records render-graph frames on the core device, releasing frames and resources through leases."
+    },
+    {
+      "path": "hammer/adapters/render/viewport_renderer.h",
+      "currentOwner": "hammer.adapters.render",
+      "destinationModule": "hammer.adapters.render",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "ViewportRenderer draws any number of offscreen views of one document through render.scene, render.pass.opaque and render.pass.lines."
+    },
+    {
+      "path": "hammer/adapters/render/viewport_service.cpp",
+      "currentOwner": "hammer.adapters.render",
+      "destinationModule": "hammer.adapters.render",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "ViewportService owns a ViewportRenderer used only on the render sequence and replies to the host sequence through its runner, with ReturnFrame leases."
+    },
+    {
+      "path": "hammer/adapters/render/viewport_service.h",
+      "currentOwner": "hammer.adapters.render",
+      "destinationModule": "hammer.adapters.render",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "ViewportService posts ViewJob copies to the render sequence and returns pixels via the reply runner; the device and runners outlive the service."
+    },
+    {
+      "path": "hammer/adapters/source/ktx2_preview.cpp",
+      "currentOwner": "content.hammer-ktx2-preview",
+      "destinationModule": "content.hammer-ktx2-preview",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "DecodeKtx2Preview reads KTX2 bytes through texturecontainer::ReadKtx2Image and accepts only packaged RGBA8/BGRA8 2D levels."
+    },
+    {
+      "path": "hammer/adapters/source/ktx2_preview.h",
+      "currentOwner": "content.hammer-ktx2-preview",
+      "destinationModule": "content.hammer-ktx2-preview",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares DecodeKtx2Preview(bytes, error) returning hammer::formats::VtfImage for the headless material catalog."
+    },
+    {
+      "path": "hammer/anglebox.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CAngleBox (CWnd) is the MFC angle dial: mouse drag sets YAW, paints with the DC, and posts ABN_CHANGED to its parent."
+    },
+    {
+      "path": "hammer/anglebox.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the CWnd-derived CAngleBox dial and its CAngleCombo edit partner, owned by the MFC dialogs."
+    },
+    {
+      "path": "hammer/archdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CArchDlg (CDialog) edits arch wall parameters persisted via AfxGetApp profile strings and previews the arc with MakeArc."
+    },
+    {
+      "path": "hammer/archdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the CArchDlg MFC dialog with its DDX control members and the arch bounds it was constructed with."
+    },
+    {
+      "path": "hammer/autoselcombo.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CAutoSelComboBox (CComboBox) autoselects the matching list item as the user types, through MFC edit notifications."
+    },
+    {
+      "path": "hammer/autoselcombo.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the MFC CAutoSelComboBox subclass with its text-color and edit-update hooks."
+    },
+    {
+      "path": "hammer/axes2.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Axes2::SetAxes maps horizontal, vertical and third axes with inversion flags for orthographic views; it has no UI calls."
+    },
+    {
+      "path": "hammer/axes2.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Axes2 is the base set of orthographic axis services used by the 2D view and its tools, with no native types."
+    },
+    {
+      "path": "hammer/blockarray.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "A second copy of the BlockArray template that includes windows.h; blockarray.h holds the definition, so this copy has no unique logic."
+    },
+    {
+      "path": "hammer/blockarray.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "foundation",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Template BlockArray<T, block, max> is a generic block-allocated array with no document or UI types."
+    },
+    {
+      "path": "hammer/box3d.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Box3D tool: hit-tests and drags box handles, updates the status bar and renders handles through CRender2D/CRender3D over CMapView."
+    },
+    {
+      "path": "hammer/box3d.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares Box3D (Tool3D, BoundBox) with handle, translation and CMapView2D/CRender3D render members."
+    },
+    {
+      "path": "hammer/brushops.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "world.map-geometry",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Winding helpers (NewWinding, ClipWinding, CopyWinding, RemoveDuplicateWindingPoints) with epsilon-based geometry and no UI calls."
+    },
+    {
+      "path": "hammer/brushops.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "world.map-geometry",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares the winding primitives and ON_PLANE/MIN_EDGE/ROUND_VERTEX epsilons used by brush operations."
+    },
+    {
+      "path": "hammer/bsplighting.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "derived-cache",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CBSPLighting loads a BSP and its lightmaps, builds lightmap groups with IMaterial vertex formats and draws them through the legacy material system."
+    },
+    {
+      "path": "hammer/bsplighting.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "derived-cache",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CBSPLighting (IBSPLighting) with its face-material and lightmap-group state, tied to the legacy material system."
+    },
+    {
+      "path": "hammer/bsplightingthread.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "CBSPLightingThread runs in-process vrad lighting through IVRadDLL on a worker thread; the one lighting back end is map_lighting.py via light_baker.py."
+    },
+    {
+      "path": "hammer/bsplightingthread.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares CBSPLightingThread (IBSPLightingThread) for the in-process vrad bake that the lighting back end replaces."
+    },
+    {
+      "path": "hammer/buildnum.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.composition",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "build_number() derives a build number from the __DATE__ string for the legacy About box; it does no I/O."
+    },
+    {
+      "path": "hammer/buildnum.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.composition",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares int build_number(void), a build-identity helper for the product root."
+    },
+    {
+      "path": "hammer/camera.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "CCamera implements the legacy 3D view camera (movement, angles, viewport, frustum); hammer/viewport/camera.h is the headless replacement scene_geometry.h already uses."
+    },
+    {
+      "path": "hammer/camera.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares the legacy CCamera with octant and visibility constants; the headless viewport camera supersedes it."
+    },
+    {
+      "path": "hammer/childfrm.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CChildFrame (CMDIChildWnd) hosts the 2D and 3D views of one CMapDoc and manages splitter maximize/restore."
+    },
+    {
+      "path": "hammer/childfrm.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CMySplitterWnd and CChildFrame (CMDIChildWnd) of the MDI document window."
+    },
+    {
+      "path": "hammer/cli/hammer_cli.cpp",
+      "currentOwner": "hammer.composition",
+      "destinationModule": "hammer.composition",
+      "responsibility": "composition",
+      "effects": [
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "main() is the headless composition root: it builds SessionCommands over EditSession, the tool-process map builder and the MCP server, with no UI."
+    },
+    {
+      "path": "hammer/cli/vtf_decode.cpp",
+      "currentOwner": "hammer.composition",
+      "destinationModule": "hammer.composition",
+      "responsibility": "composition",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "main() decodes a VTF through hammer::formats and texturecontainer and writes a PAM file, bounded to 1 GiB of input."
+    },
+    {
+      "path": "hammer/clipcode.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "world.map-geometry",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Decal clipping: the Inside/Intersect/SHClip Sutherland-Hodgman math is pure float-vertex code, while CreateClippedPoly and R_DecalComputeBasis take legacy CMapFace and IEditorTexture."
+    },
+    {
+      "path": "hammer/clipcode.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Header declares only CreateClippedPoly(CMapFace*, IEditorTexture*, ...) and VERTEXSIZE/MAX_CLIPVERT, so it stays with the legacy face types."
+    },
+    {
+      "path": "hammer/clock.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [],
+      "state": "external-resource",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Win32 QueryPerformanceCounter wrapper (I_FloatTime, I_BeginTime, I_EndTime); a platform clock that belongs behind the platform clock contract."
+    },
+    {
+      "path": "hammer/controlbarids.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Enum of MFC control-bar resource IDs (IDCB_*) used only by the legacy MFC toolbars; retires with the MFC shell."
+    },
+    {
+      "path": "hammer/core/app/change_history.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "ChangeHistory in hammer::app: undo/redo stack with a position, a saved marker, a revision counter and a trim limit; no UI or file access."
+    },
+    {
+      "path": "hammer/core/app/clipboard.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Clipboard paste in hammer::app: renames references, remaps groups and visgroups and applies transforms to scene::MapObject copies."
+    },
+    {
+      "path": "hammer/core/app/command_script.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Command-script status names and strict number/vector parsers for the command layer; no file reads in this file."
+    },
+    {
+      "path": "hammer/core/app/document_io.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "OpenDocument and SaveDocumentAs go through ports::IMapCodec and ports::IFileStore and replace the session document with a veto-able result."
+    },
+    {
+      "path": "hammer/core/app/edit_session.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "EditSession: the one edit transaction owner (guards, busy scope, subscriptions, publish, SetMapVersion, MarkSaved) over scene::MapDocument."
+    },
+    {
+      "path": "hammer/core/app/fragment_io.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "LoadFragment reads a map fragment file through IFileStore and decodes it with IMapCodec into a MapFragment for paste."
+    },
+    {
+      "path": "hammer/core/app/instance_fixup.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Instance-name policy helpers (case-insensitive prefixes, IsGlobalInstanceName) used when fixing up instance entities; no document writes in this file."
+    },
+    {
+      "path": "hammer/core/app/instance_preview.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "presentation",
+      "effects": [
+        "file-io"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "InstancePreview caches instance-file contents read through IFileStore for the instance-preview view, with search roots and a Refresh that reports changes."
+    },
+    {
+      "path": "hammer/core/app/map_build_queue.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "composition",
+      "effects": [],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "MapBuildQueue holds the builder and runner references and a busy flag; it dispatches ports::IMapBuilder work to a task runner and replies on a sequenced runner."
+    },
+    {
+      "path": "hammer/core/app/map_check.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Map validation (MapProblem codes, severities, special targets, schema-less keys, solid and material checks) over scene::DocumentReader; it reports problems and does not repair them."
+    },
+    {
+      "path": "hammer/core/app/ops/cordon_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Cordon operations on scene::DocumentSettings: form settling, single-box checks and cordon box edits through a DocumentEdit."
+    },
+    {
+      "path": "hammer/core/app/ops/create_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Create operations build solids and entities in world coordinates (axis mapping, degree-to-radian helpers) and apply class defaults to new entities."
+    },
+    {
+      "path": "hammer/core/app/ops/csg_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "CSG operations (cap side, WithSide, ReplaceWithPieces) build replacement solids from planes and textures through a DocumentEdit."
+    },
+    {
+      "path": "hammer/core/app/ops/decal_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Overlay/decal operations: validates overlay size and corners and writes basis and corner keys onto overlay entities."
+    },
+    {
+      "path": "hammer/core/app/ops/displacement_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Displacement operations (walkable/buildable normal thresholds, sewing epsilon, force-tag bits, per-side refresh) mutate scene::Displacement data through a DocumentEdit."
+    },
+    {
+      "path": "hammer/core/app/ops/entity_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Entity operations: key/value edits on selected entities, reserved-key rules and conventional reference-key rename across the document."
+    },
+    {
+      "path": "hammer/core/app/ops/find_replace_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Find/replace over entity keys and values with a glob matcher and case folding; replacements are applied through the document edit."
+    },
+    {
+      "path": "hammer/core/app/ops/instance_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Instance operations: lists instance entities, fixes up instance parameters and applies the instance transform to the expanded entity."
+    },
+    {
+      "path": "hammer/core/app/ops/prefab_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Prefab operations: replaces names inside prefab-created entities and applies pivot-based transforms through the document edit."
+    },
+    {
+      "path": "hammer/core/app/ops/structure_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Structure operations: group ownership of solids and entities, representative selection and removal of empty containers."
+    },
+    {
+      "path": "hammer/core/app/ops/transform_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Transform operations: applies mapgeometry::Affine to solids, displacements and entities, tidies near-integer values and aligns to a bound axis."
+    },
+    {
+      "path": "hammer/core/app/ops/vertex_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Vertex operations: finds shared corner indices with an epsilon and edits face vertex lists of displacement and brush geometry."
+    },
+    {
+      "path": "hammer/core/app/ops/visgroup_ops.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Visgroup operations: next-id allocation, membership lists, orphan restoration and show/hide of visgroup membership through DocumentEdit."
+    },
+    {
+      "path": "hammer/core/app/selection.cpp",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Selection sets (sorted object and face IDs) with Contains checks and ResolvePick granularity mapping from a hit to the selected object."
+    },
+    {
+      "path": "hammer/core/formats/cordon.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Cordon format logic: bounds, plane parsing, solid-in-box and point-in-box tests over kvtext nodes; no I/O."
+    },
+    {
+      "path": "hammer/core/formats/entity_property_sheet.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Entity property sheet: case-insensitive key lookup against the schema and the sheet rows shown for an entity; no I/O."
+    },
+    {
+      "path": "hammer/core/formats/fgd.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "FGD tokenizer and Parser (classes, members, helper arguments, directives) that turns FGD text into EntityClass records; no I/O in this file."
+    },
+    {
+      "path": "hammer/core/formats/fgd_entity_catalog.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "FGD entity catalog: merges sourced classes from FGD files into ports::EntityClassInfo with key, I/O and hint data; no file reads here."
+    },
+    {
+      "path": "hammer/core/formats/groups.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Group table parsing from kvtext: editor group IDs, object IDs and top-level group resolution."
+    },
+    {
+      "path": "hammer/core/formats/instancing.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "composition",
+      "effects": [
+        "file-io",
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Instance expansion: flattens instance entities by transform and reads instance files through IFileStore, bounded at depth 16."
+    },
+    {
+      "path": "hammer/core/formats/map_export.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "PrepareForCompile expands instances through IFileStore and returns the compile-prep result for the map before export."
+    },
+    {
+      "path": "hammer/core/formats/material.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "VMT parser: Material with case-insensitive parameters, patch detection and ParseMaterial over VMT text; no I/O."
+    },
+    {
+      "path": "hammer/core/formats/material_catalog.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "MaterialCatalog indexes materials and reads VMT/VTF/KTX assets through ports::IAssetSource, with include and patch recursion and a depth limit of 10."
+    },
+    {
+      "path": "hammer/core/formats/material_info_adapter.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.adapters.source",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "MaterialInfoAdapter implements the material-info port over MaterialCatalog for existence, size and name listing."
+    },
+    {
+      "path": "hammer/core/formats/overlay.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Overlay entity decoding: parses bracketed vectors, doubles and scalars into overlay fields; no I/O."
+    },
+    {
+      "path": "hammer/core/formats/prefab.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "InstantiatePrefab copies a prefab document into world solids and entities under a placement rotation; pure transform."
     }
   ]
 }
