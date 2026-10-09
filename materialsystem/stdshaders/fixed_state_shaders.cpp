@@ -97,6 +97,7 @@ enum class When
 	NotFlag, // MATERIAL_VAR_* c is clear
 	Param,   // extra param c is nonzero
 	NotParam, // extra param c is zero
+	Texture,  // extra param c is a texture
 };
 
 struct Step
@@ -135,6 +136,7 @@ enum class InitHook
 	None,
 	ParticleSphere, // $DEPTHBLEND from the depth-feathering default; $USINGPIXELSHADER at init
 	VertexIdSkinning, // USES_VERTEXID and SUPPORTS_HW_SKINNING with fast vertex textures
+	ModelFallback, // MATERIAL_VAR_MODEL defined at init; no base texture falls back to the DX6 model or lightmapped shader
 };
 
 bool IsSixteenBitPerChannel( ITexture *texture )
@@ -147,7 +149,7 @@ bool IsSixteenBitPerChannel( ITexture *texture )
 struct Default
 {
 	int extra = -1; // -1 ends the list
-	ShaderParamType_t type = SHADER_PARAM_TYPE_FLOAT; // FLOAT, INTEGER, VEC2 or VEC4
+	ShaderParamType_t type = SHADER_PARAM_TYPE_FLOAT; // FLOAT, INTEGER, VEC2, COLOR or VEC4
 	float x = 0.0f;
 	float y = 0.0f;
 	float z = 0.0f;
@@ -404,6 +406,24 @@ const FixedStateRow kRows[] = {
 	        { Op::FogToGrey, 0, 0, When::Param, 1 }, { Op::FogToOOOverbright, 0, 0, When::NotParam, 1 },
 	        { Op::AlphaWritesFullyOpaque, 0 } },
 	    0, {}, {}, nullptr, InitHook::None, -1, nullptr, 2, true },
+	{ "MonitorScreen", "MonitorScreen_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "MonitorScreen_DX9", nullptr, 0, MATERIAL_VAR2_SUPPORTS_HW_SKINNING,
+	    { { "$CONTRAST", F, "0.0", "contrast 0 == normal 1 == color*color" },
+	        { "$SATURATION", F, "1.0", "saturation 0 == greyscale 1 == normal" },
+	        { "$TINT", SHADER_PARAM_TYPE_COLOR, "[1 1 1]", "monitor tint" },
+	        { "$TEXTURE2", T, "shadertest/lightmappedtexture", "second texture" },
+	        { "$FRAME2", I, "0", "frame number for $texture2" },
+	        { "$TEXTURE2TRANSFORM", SHADER_PARAM_TYPE_MATRIX, "center .5 .5 scale 1 1 rotate 0 translate 0 0",
+	            "$texture2 texcoord transform" } },
+	    -1, 0, { { false, BASETEXTURE, true, TEXTUREFLAGS_SRGB }, { true, 3, true, TEXTUREFLAGS_SRGB } },
+	    { { Op::Texture, SHADER_SAMPLER0 }, { Op::SrgbRead, SHADER_SAMPLER0, 1 },
+	        { Op::Texture, SHADER_SAMPLER1, 0, When::Texture, 3 },
+	        { Op::SrgbRead, SHADER_SAMPLER1, 1, When::Texture, 3 }, { Op::SrgbWrite, 1 },
+	        { Op::TwoTextureBlend, 3 },
+	        { Op::Format, VERTEX_POSITION | VERTEX_NORMAL | VERTEX_FORMAT_COMPRESSED, 1 },
+	        { Op::DefaultFog }, { Op::AlphaWritesFullyOpaque, -1 } },
+	    0, { { 0, F, 0.0f }, { 1, F, 1.0f }, { 2, SHADER_PARAM_TYPE_COLOR, 1.0f, 1.0f, 1.0f } }, {}, nullptr,
+	    InitHook::ModelFallback, -1, nullptr, -1, true },
 	{ "UnlitTwoTexture", "UnlitTwoTexture_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
 	{ "UnlitTwoTexture_DX9", nullptr, 0, MATERIAL_VAR2_SUPPORTS_HW_SKINNING,
 	    { { "$TEXTURE2", T, "shadertest/BaseTexture", "second texture" },
@@ -671,6 +691,8 @@ public:
 			return m_Row.fallback;
 		if ( m_Row.unlessFallback && params && !params[Extra( m_Row.unlessDefined )]->IsDefined() )
 			return m_Row.unlessFallback;
+		if ( m_Row.hook == InitHook::ModelFallback && params && !params[BASETEXTURE]->IsDefined() )
+			return IS_FLAG_DEFINED( MATERIAL_VAR_MODEL ) ? "VertexLitGeneric_DX6" : "LightmappedGeneric_DX6";
 		return m_Row.shaderFallback;
 	}
 	int GetNumParams() const override { return CBaseVSShader::GetNumParams() + m_nParams; }
@@ -752,6 +774,8 @@ protected:
 			SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
 			SET_FLAGS2( MATERIAL_VAR2_SUPPORTS_HW_SKINNING );
 		}
+		if ( m_Row.hook == InitHook::ModelFallback && !IS_FLAG_DEFINED( MATERIAL_VAR_MODEL ) )
+			CLEAR_FLAGS( MATERIAL_VAR_MODEL );
 		if ( m_Row.hook == InitHook::ParticleSphere )
 		{
 			IMaterialVar *depthBlend = params[Extra( 0 )];
@@ -775,6 +799,8 @@ protected:
 				continue;
 			if ( value.type == SHADER_PARAM_TYPE_VEC2 )
 				var->SetVecValue( value.x, value.y );
+			else if ( value.type == SHADER_PARAM_TYPE_COLOR )
+				var->SetVecValue( value.x, value.y, value.z );
 			else if ( value.type == SHADER_PARAM_TYPE_VEC4 )
 				var->SetVecValue( value.x, value.y, value.z, value.w );
 			else if ( value.type == SHADER_PARAM_TYPE_INTEGER )
@@ -892,6 +918,8 @@ private:
 				if ( step.when == When::Param && !params[Extra( step.c )]->GetIntValue() )
 					continue;
 				if ( step.when == When::NotParam && params[Extra( step.c )]->GetIntValue() )
+					continue;
+				if ( step.when == When::Texture && !params[Extra( step.c )]->IsTexture() )
 					continue;
 				Apply( step, params, pShaderShadow );
 			}
