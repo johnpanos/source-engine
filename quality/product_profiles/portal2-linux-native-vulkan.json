@@ -42,7 +42,7 @@
       "video": [],
       "renderer_args": [
         "-renderer",
-        "pica"
+        "core"
       ],
       "fsr_args": []
     },

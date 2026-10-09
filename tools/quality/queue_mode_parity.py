@@ -10,7 +10,7 @@ a stale binding, a race in the shader API) then reaches the user unseen.
 
 Each scenario boots headless twice through portal_boot.py, once per mode,
 with the same map, view and settle wait, and judges the two frames the
-renderer captured at the end of the same frame (-pica_capture; an engine
+renderer captured at the end of the same frame (-core_capture; an engine
 screenshot would take its frame out of queued mode): the share of pixels differing by more than 16 levels in any
 channel must stay under the scenario's limit, and the mean absolute
 difference under its own. A control compares the direct frame with a frame
@@ -55,8 +55,8 @@ def boot(profile, level, commands, mode, out):
     cmd = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"), "--profile", profile,
            "--headless", "--map", level, "--out", str(out),
            "--startup-command", "mat_queue_mode %d" % mode,
-           "--engine-arg=-pica_capture", "--engine-arg=%d" % CAPTURE_FRAME,
-           "--engine-arg=-pica_capture_path", "--engine-arg=%s.ppm" % out]
+           "--engine-arg=-core_capture", "--engine-arg=%d" % CAPTURE_FRAME,
+           "--engine-arg=-core_capture_path", "--engine-arg=%s.ppm" % out]
     for command in commands + [SETTLE]:
         cmd.append("--console-command=" + command)
     with open(str(out) + ".log", "w") as log:

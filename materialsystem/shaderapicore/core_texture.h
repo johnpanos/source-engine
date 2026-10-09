@@ -17,7 +17,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace pica
+namespace corefacade
 {
 
 // Encodes one level as kETC1Rgb (alpha false) or kETC1A4 blocks. rgba is
@@ -45,6 +45,6 @@ void Resample( const std::uint8_t *src, int srcW, int srcH, std::uint8_t *dst, i
 // The largest power of two not above n (n >= 1).
 int FloorPow2( int n );
 
-} // namespace pica
+} // namespace corefacade
 
 #endif // PICA_TEXTURE_H

@@ -3,7 +3,7 @@
 // The Nintendo 3DS's platform settings, applied after config.cfg (so a saved
 // desktop config cannot turn them back on) and directly on the variables, so
 // the console's cheat check does not refuse the cheat-flagged ones. The 3DS
-// draws through the fullbright PICA backend (materialsystem/shaderapipica):
+// draws through the fullbright PICA backend (materialsystem/shaderapicore):
 // no render targets, no shadow depth, no lighting terms, one texture stage;
 // it has ~178 MB of RAM and two to four slow cores. Every value here turns
 // off work whose result that backend cannot show, or that the device cannot

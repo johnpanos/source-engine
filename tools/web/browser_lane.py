@@ -10,7 +10,7 @@ run provider starts the page server (tools/web/serve.py) and the browser on
 the GPU, in the display session given (by default kiln's private headless Wayland
 compositor, so no window reaches the user's desktop; Firefox on Wayland, no
 Xwayland). The page
-posts the engine's console, the captures it writes (-pica_capture_path) and
+posts the engine's console, the captures it writes (-core_capture_path) and
 its exit status to the server, which writes them to the profile's web
 session directory; the lane copies them to --out, prints the console and
 exits with the engine's status (2 when the run never reported one).

@@ -272,7 +272,7 @@ async function mount(module) {
 	say('page: content mounted: ' + listing.files.length + ' files (' + eager.length + ' loaded whole)');
 }
 
-// The engine's captures (-pica_capture_path) go back to the harness.
+// The engine's captures (-core_capture_path) go back to the harness.
 function handBack(module, text) {
 	const match = /^pica: capture (\S+) ok/.exec(text);
 	if (!harness || !match)

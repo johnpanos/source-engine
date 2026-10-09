@@ -302,7 +302,7 @@ def resolve_render_backend(conf):
 		return
 	if conf.env.DEST_OS == 'emscripten':
 		# The browser client (RFC 0029): the render core draws everything
-		# through the core shader API (materialsystem/shaderapipica, as on the
+		# through the core shader API (materialsystem/shaderapicore, as on the
 		# 3DS) on the core's WebGPU device; legacy links the null shader API.
 		if conf.options.RENDER_BACKEND not in ('auto', 'legacy', 'core'):
 			conf.fatal('The WebAssembly client requires --render-backend=core or legacy')
@@ -311,7 +311,7 @@ def resolve_render_backend(conf):
 		conf.msg('Render backend', conf.options.RENDER_BACKEND)
 		return
 	# The clients render through the core shader API (materialsystem/
-	# shaderapipica) on the render core's device (R91, 2026-10-08: the native
+	# shaderapicore) on the render core's device (R91, 2026-10-08: the native
 	# Vulkan backend, shaderapivulkan, is deleted); 'native-vulkan' names the
 	# same renderer for the profiles and scripts that still say it.
 	if conf.options.RENDER_BACKEND in ('auto', 'native-vulkan'):
@@ -350,7 +350,7 @@ def define_platform(conf):
 	conf.env.CLIENT_VULKAN = conf.options.RENDER_BACKEND == 'core' and \
 		conf.env.DEST_OS in ('linux', 'android', 'darwin', 'ios')
 	conf.env.PICA = conf.options.RENDER_BACKEND == 'pica'
-	# The core shader API (materialsystem/shaderapipica): the 3DS's, and the
+	# The core shader API (materialsystem/shaderapicore): the 3DS's, and the
 	# same shader API on another render core device (core).
 	conf.env.CORE_SHADER_API = conf.options.RENDER_BACKEND in ('pica', 'core')
 	if conf.options.RENDER_BACKEND == 'core':
@@ -1229,7 +1229,7 @@ def configure(conf):
 			# only a desktop platform menu loads; neither is in the product.
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
 		if conf.env.CORE_SHADER_API:
-			projects['game'] += ['materialsystem/shaderapipica']
+			projects['game'] += ['materialsystem/shaderapicore']
 			if conf.env.RENDER_CORE_VULKAN:
 				projects['game'] += ['render/bridge/sdl3-vulkan']
 		if conf.env.CLIENT_VULKAN and not conf.env.ANDROID_SDL3:
@@ -1414,7 +1414,7 @@ def build(bld):
 			# only a desktop platform menu loads; neither is in the product.
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
 		if bld.env.CORE_SHADER_API:
-			projects['game'] += ['materialsystem/shaderapipica']
+			projects['game'] += ['materialsystem/shaderapicore']
 			if bld.env.RENDER_CORE_VULKAN:
 				projects['game'] += ['render/bridge/sdl3-vulkan']
 		if bld.env.CLIENT_VULKAN and not bld.env.ANDROID_SDL3:

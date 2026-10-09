@@ -2,7 +2,7 @@
 # ==== Copyright Valve Corporation, All rights reserved. ======================
 """Stage a Nintendo-3DS-sized Portal 2 content set for one map.
 
-The 3DS PICA backend (materialsystem/shaderapipica) samples only each
+The 3DS PICA backend (materialsystem/shaderapicore) samples only each
 material's base texture, downscales it to at most 128 px per side and encodes
 ETC1 itself. The device has roughly 124-178 MB of RAM in total, so this tool's
 job is to cut the bytes the engine reads and decodes:

@@ -430,7 +430,7 @@ EXECUTABLE="$WAF_OUT/launcher_main/hl2_launcher"
 
 # Every first-party module is linked in and isolated; no first-party dylib.
 # A game's own modules (Portal 2's vscript) come from its profile.
-required=(launcher engine client server GameUI filesystem_stdio materialsystem shaderapipica vphysics)
+required=(launcher engine client server GameUI filesystem_stdio materialsystem shaderapicore vphysics)
 mapfile -t -O "${#required[@]}" required < \
 	<(jq -r '.static_composition.additional_required_modules // [] | .[]' "$PROFILE")
 python3 "$ROOT/tools/quality/static_composition.py" check --tree "$WAF_OUT" \

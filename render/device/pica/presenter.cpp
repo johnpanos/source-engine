@@ -33,7 +33,7 @@ foundation::Unexpected<DeviceError> Fail( DeviceStatus status )
 }
 
 // The tiled RGBA8 framebuffer to the screen's scanout format, unscaled and
-// untiled (materialsystem/shaderapipica/pica_renderer.cpp, proven on the
+// untiled (materialsystem/shaderapicore/pica_renderer.cpp, proven on the
 // 3DS and in Azahar).
 u32 DisplayTransferFlags()
 {

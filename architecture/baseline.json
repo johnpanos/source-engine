@@ -2005,24 +2005,24 @@
       "excerpt": "static CreateInterfaceFn SetBackendMode( void *, void *, int, const ShaderDeviceInfo_t & )"
     },
     {
-      "fingerprint": "b5e26e865318a9bc446b",
+      "fingerprint": "d14f54fe68b1c25a18fe",
       "rule": "ARCH105",
-      "path": "materialsystem/shaderapipica/shaderapipica.cpp",
-      "line": 2789,
+      "path": "materialsystem/shaderapicore/shaderapicore.cpp",
+      "line": 2811,
       "excerpt": "services->lifecycle.connect = []( void *, CreateInterfaceFn factory )"
     },
     {
-      "fingerprint": "36c61d72c22e31f9a628",
+      "fingerprint": "cca96727d22e92d5498b",
       "rule": "ARCH105",
-      "path": "materialsystem/shaderapipica/shaderapipica.cpp",
-      "line": 2811,
+      "path": "materialsystem/shaderapicore/shaderapicore.cpp",
+      "line": 2833,
       "excerpt": "? static_cast<CreateInterfaceFn>( ShaderInterfaceFactory )"
     },
     {
-      "fingerprint": "2d4c825cf1abd46c5fed",
+      "fingerprint": "33ec78bdc89f258e4016",
       "rule": "ARCH105",
-      "path": "materialsystem/shaderapipica/shaderapipica.cpp",
-      "line": 2812,
+      "path": "materialsystem/shaderapicore/shaderapicore.cpp",
+      "line": 2834,
       "excerpt": ": static_cast<CreateInterfaceFn>( NULL );"
     },
     {

@@ -74,7 +74,7 @@ def main():
     parser.add_argument("--timedemo", default=None,
                         help="time this demo (timedemo: frames, seconds, fps and ms/frame on the guest clock)")
     parser.add_argument("--cmds", default="", help="console commands, separated by ';'")
-    parser.add_argument("--launch", default="", help="extra launch arguments (e.g. -pica_dump_draws 400)")
+    parser.add_argument("--launch", default="", help="extra launch arguments (e.g. -core_dump_draws 400)")
     parser.add_argument("--wait", type=int, default=300, help="frames to wait after the map load")
     parser.add_argument("--frames", type=int, default=2, help="counter lines to collect after the marker")
     parser.add_argument("--speed", type=float, default=None, help="emulation speed percent (0 = unlimited)")

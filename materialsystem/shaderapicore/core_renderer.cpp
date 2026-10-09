@@ -1,12 +1,12 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// The render core's shader API's renderer (see pica_renderer.h): on the 3DS
+// The render core's shader API's renderer (see core_renderer.h): on the 3DS
 // on render.device.pica, elsewhere on any render.device.v2 device (RFC 0029:
 // the browser's WebGPU adapter).
 //
 //=============================================================================//
 
-#include "pica_renderer.h"
+#include "core_renderer.h"
 
 #include "render/device/device.h"
 #include "render/device/encoder.h"
@@ -32,7 +32,7 @@
 extern "C" void N3ds_StartDebugConsole();
 #endif
 
-namespace pica
+namespace corefacade
 {
 
 namespace
@@ -1156,4 +1156,4 @@ const Stats &FrameStats()
 	return g_state.stats;
 }
 
-} // namespace pica
+} // namespace corefacade

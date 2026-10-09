@@ -7,7 +7,7 @@
 # the device's pica_device_shaders feature (render/device/pica/wscript).
 
 top = '.'
-PROJECT_NAME = 'shaderapipica'
+PROJECT_NAME = 'shaderapicore'
 
 def options(opt):
 	return
@@ -20,10 +20,10 @@ def configure(conf):
 
 def build(bld):
 	source = [
-		'shaderapipica.cpp',
-		'pica_renderer.cpp',
+		'shaderapicore.cpp',
+		'core_renderer.cpp',
 		'core_copies.cpp',
-		'pica_texture.cpp',
+		'core_texture.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]
 

@@ -1,7 +1,7 @@
 {
   "schema": "source-product-profile/v2",
   "id": "portal-wasm32-webgpu-v2",
-  "description": "Portal for the browser (RFC 0029): a statically composed WebAssembly client (Emscripten, wasm32) whose render core uses the WebGPU adapter over the browser's webgpu.h (the pinned Dawn release's emdawnwebgpu port). The engine runs in a worker on an OffscreenCanvas page (tools/web); tools/web/run_node.cjs is its Node lane. The shader API is the core shader API (materialsystem/shaderapipica), which draws every material through the render core on WebGPU and presents to the page's canvas.",
+  "description": "Portal for the browser (RFC 0029): a statically composed WebAssembly client (Emscripten, wasm32) whose render core uses the WebGPU adapter over the browser's webgpu.h (the pinned Dawn release's emdawnwebgpu port). The engine runs in a worker on an OffscreenCanvas page (tools/web); tools/web/run_node.cjs is its Node lane. The shader API is the core shader API (materialsystem/shaderapicore), which draws every material through the render core on WebGPU and presents to the page's canvas.",
   "aliases": [
     "portal@wasm32"
   ],

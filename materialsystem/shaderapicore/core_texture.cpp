@@ -1,16 +1,16 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// ETC1 encoders and decoders for render.device.pica (see pica_texture.h).
+// ETC1 encoders and decoders for render.device.pica (see core_texture.h).
 //
 //=============================================================================//
 
-#include "pica_texture.h"
+#include "core_texture.h"
 
 #include <algorithm>
 #include <climits>
 #include <cstring>
 
-namespace pica
+namespace corefacade
 {
 
 namespace
@@ -317,4 +317,4 @@ void PackRgba4Level( const std::uint8_t *rgba, int width, int height, std::vecto
 	}
 }
 
-} // namespace pica
+} // namespace corefacade

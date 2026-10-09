@@ -30,7 +30,7 @@
       "libserver.so",
       "libServerBrowser.so",
       "libshaderapiempty.so",
-      "libshaderapipica.so",
+      "libshaderapicore.so",
       "libsoundemittersystem.so",
       "libstdshader_dx9.so",
       "libsteam_api.so",

@@ -919,7 +919,7 @@ bool CSourceAppSystemGroup::Create()
 	const render::LegacyShaderProvider *catalog[] = {
 #if defined( LINKED_PICA_BACKEND )
 	    // The 3DS client's only drawing backend.
-	    PicaShaderBackend_Describe(),
+	    CoreShaderBackend_Describe(),
 #endif
 	    NullShaderBackend_Describe() };
 	const char *defaultProvider = CommandLine()->FindParm( "-noshaderapi" ) ? "null" : catalog[0]->id;
@@ -992,7 +992,7 @@ bool CSourceAppSystemGroup::Create()
 		// On Vulkan the core shader API's frames show in the engine's window:
 		// the core draws on the presenter's device. Without a window system
 		// (the offscreen driver) frames are drawn and not shown.
-		if ( !Q_stricmp( config.device, "vulkan" ) && !Q_stricmp( selected->id, "pica" ) )
+		if ( !Q_stricmp( config.device, "vulkan" ) && !Q_stricmp( selected->id, "core" ) )
 		{
 			char presenterError[512] = {};
 			auto presentation = std::make_unique<CorePresentation>();
@@ -1030,15 +1030,15 @@ bool CSourceAppSystemGroup::Create()
 #if defined( LINKED_PICA_BACKEND )
 		// RFC 0026: the 3DS has one device, the core's; the shader API
 		// borrows it.
-		PicaShaderBackend_BindDevice( binding->device );
-		PicaShaderBackend_BindCorePassRecorder( binding->corePasses );
+		CoreShaderBackend_BindDevice( binding->device );
+		CoreShaderBackend_BindCorePassRecorder( binding->corePasses );
 #endif
 #if defined( LINKED_CORE_PRESENTER )
 		if ( m_pCorePresentation )
 		{
 			m_pCorePresentation->copy =
 			    render::pass::output::EncodedCopy::Create( m_pCorePresentation->presenter->Port() );
-			PicaShaderBackend_BindPresenter(
+			CoreShaderBackend_BindPresenter(
 			    []( void *context, render::device::IRenderDevice2 &, std::uint64_t color,
 			        unsigned int width, unsigned int height )
 			    {
@@ -1101,7 +1101,7 @@ bool CSourceAppSystemGroup::Create()
 		// RFC 0029: frames on the WebGPU device show on the page's canvas.
 		if ( !Q_stricmp( config.device, "webgpu" ) )
 		{
-			PicaShaderBackend_BindPresenter(
+			CoreShaderBackend_BindPresenter(
 			    []( void *, render::device::IRenderDevice2 &device, std::uint64_t color,
 			        unsigned int width, unsigned int height )
 			    {
@@ -1267,11 +1267,11 @@ void CSourceAppSystemGroup::Destroy()
 	// Every system and module that borrowed the core is gone.
 #if defined( LINKED_PICA_BACKEND ) &&                                                              \
     ( defined( LINKED_WEBGPU_DEVICE ) || defined( LINKED_CORE_PRESENTER ) )
-	PicaShaderBackend_BindPresenter( nullptr, nullptr );
+	CoreShaderBackend_BindPresenter( nullptr, nullptr );
 #endif
 #if defined( LINKED_PICA_BACKEND )
-	PicaShaderBackend_BindCorePassRecorder( nullptr );
-	PicaShaderBackend_BindDevice( nullptr );
+	CoreShaderBackend_BindCorePassRecorder( nullptr );
+	CoreShaderBackend_BindDevice( nullptr );
 #endif
 #if defined( LINKED_CORE_PRESENTER )
 	if ( m_pCorePresentation )

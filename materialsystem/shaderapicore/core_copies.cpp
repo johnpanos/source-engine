@@ -8,7 +8,7 @@
 
 #include "core_copies.h"
 
-#include "pica_renderer.h"
+#include "core_renderer.h"
 
 #include "render/device/device.h"
 #include "render/device/encoder.h"
@@ -17,7 +17,7 @@
 
 #include <algorithm>
 
-namespace pica
+namespace corefacade
 {
 
 using render::device::CommandEncoder;
@@ -91,4 +91,4 @@ CopyResult CopyTargetRegion( Texture &destination, const CopyRect &region,
 	return CopyResult::kCopied;
 }
 
-} // namespace pica
+} // namespace corefacade

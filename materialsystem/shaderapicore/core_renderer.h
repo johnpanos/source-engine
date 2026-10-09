@@ -23,7 +23,7 @@
 #ifndef PICA_RENDERER_H
 #define PICA_RENDERER_H
 
-#include "pica_texture.h"
+#include "core_texture.h"
 #include "render/device/completion.h"
 #include "render/device/resources.h"
 
@@ -36,7 +36,7 @@ class IRenderDevice2;
 class CommandEncoder;
 }
 
-namespace pica
+namespace corefacade
 {
 
 // The vertex record the GPU reads (24 bytes).
@@ -221,7 +221,7 @@ void BindPresenter( Presenter presenter, void *context );
 void BindDevice( render::device::IRenderDevice2 *device );
 
 bool Init();
-// Test fixture (-pica_linear_reserve): holds `bytes` of linear memory in a
+// Test fixture (-core_linear_reserve): holds `bytes` of linear memory in a
 // device buffer until Shutdown, so exhaustion paths run on demand.
 bool ReserveLinear( std::size_t bytes );
 void Shutdown();
@@ -295,6 +295,6 @@ bool CaptureTopScreen( const char *path );
 
 const Stats &FrameStats();
 
-} // namespace pica
+} // namespace corefacade
 
 #endif // PICA_RENDERER_H

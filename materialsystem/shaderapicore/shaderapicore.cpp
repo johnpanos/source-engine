@@ -17,7 +17,7 @@
 // every other sampler are ignored: the image is the materials' base textures,
 // fullbright. Draws into render targets are skipped (only the back buffer is
 // drawn). Textures are uploaded as ETC1, ETC1A4 or RGBA8 at most
-// pica_texture_size texels a side. pica_renderer draws through the render
+// pica_texture_size texels a side. core_renderer draws through the render
 // core's PICA200 device (render.device.pica, RFC 0026), whose conventions
 // its own suite proves (render.device.v2.pica).
 //
@@ -43,7 +43,7 @@
 #include "bitmap/imageformat.h"
 #include "tier0/icommandline.h"
 #include "core_copies.h"
-#include "pica_renderer.h"
+#include "core_renderer.h"
 #include "renderparm.h"
 #include "pixelwriter.h"
 #include "render/legacy/core_mesh_kind.h"
@@ -59,7 +59,7 @@
 #include <vector>
 #include <malloc.h>
 
-#include "pica_texture.h"
+#include "core_texture.h"
 #if defined( PLATFORM_3DS )
 extern "C" unsigned int linearSpaceFree( void ); // libctru: GPU-visible linear heap
 extern "C" unsigned int __ctru_heap_size; // libctru: the main heap's size
@@ -191,7 +191,7 @@ private:
 	bool EnsureIndices( int count, bool exact = false );
 	// A dynamic mesh's storage is CPU memory: every draw copies it into the
 	// frame's transient ring, so it never needs GPU-visible linear memory.
-	void *AllocStorage( pica::Memory kind, size_t bytes );
+	void *AllocStorage( corefacade::Memory kind, size_t bytes );
 	void FreeStorage( void *storage );
 	int SourceVertexCount() const { return m_pVertexSource ? m_pVertexSource->m_nVertices : m_nVertices; }
 public:
@@ -220,7 +220,7 @@ private:
 	VertexFormat_t m_Format;
 	MaterialPrimitiveType_t m_Type;
 	// Vertices and indices in linear memory (the GPU reads them in place).
-	pica::Vertex *m_pVertices;
+	corefacade::Vertex *m_pVertices;
 	int m_nVertexCapacity;
 	int m_nVertices;
 	int m_nLockFirstVertex;
@@ -252,9 +252,9 @@ private:
 	void PrepareVertexWrite()
 	{
 		++m_nContentRevision;
-		pica::PrepareWrite( m_pVertices );
-		pica::PrepareWrite( m_pNormals );
-		pica::PrepareWrite( m_pBoneWeights );
+		corefacade::PrepareWrite( m_pVertices );
+		corefacade::PrepareWrite( m_pNormals );
+		corefacade::PrepareWrite( m_pBoneWeights );
 	}
 	// Texture coordinate 0 of a format with more than two components (sprite
 	// cards, particles): the builder writes every component, so they go here,
@@ -298,19 +298,19 @@ extern render::legacy::ICorePassRecorder *g_CorePassRecorder;
 namespace
 {
 
-struct PicaSnapshot
+struct FacadeSnapshot
 {
-	pica::DrawState state;
+	corefacade::DrawState state;
 	VertexFormat_t format;
 	int polyOffset = 0; // PolygonOffsetMode_t (EnablePolyOffset), the core's depth bias
 };
 
 // Same recorded state (DrawState compared field by field: its padding is not
 // initialized) and vertex format.
-bool SameSnapshot( const PicaSnapshot &a, const pica::DrawState &s, VertexFormat_t format,
+bool SameSnapshot( const FacadeSnapshot &a, const corefacade::DrawState &s, VertexFormat_t format,
 	int polyOffset )
 {
-	const pica::DrawState &t = a.state;
+	const corefacade::DrawState &t = a.state;
 	return a.format == format && a.polyOffset == polyOffset && t.depthTest == s.depthTest && t.depthWrite == s.depthWrite &&
 		t.depthFunc == s.depthFunc && t.blend == s.blend && t.src == s.src && t.dst == s.dst &&
 		t.alphaTest == s.alphaTest && t.alphaFunc == s.alphaFunc && t.alphaRef == s.alphaRef &&
@@ -319,7 +319,7 @@ bool SameSnapshot( const PicaSnapshot &a, const pica::DrawState &s, VertexFormat
 }
 
 // One texture handle: the GPU texture and what the material system uploaded.
-struct PicaTexture
+struct FacadeTexture
 {
 	bool used = false;
 	bool renderTarget = false;
@@ -337,17 +337,17 @@ struct PicaTexture
 	CUtlVector<unsigned int> levelHashes;
 	int baseWidth = 0;
 	int baseHeight = 0;
-	char name[48] = ""; // CreateTextures' debug name (-pica_dump_draws)
+	char name[48] = ""; // CreateTextures' debug name (-core_dump_draws)
 	// A cube map (off the 3DS): each face's base level, RGBA8 at cubeSize.
 	bool cube = false;
 	int cubeSize = 0;
 	CUtlVector<unsigned char> cubeFaces[6];
 	bool dirty = false;
-	pica::Texture gpu;
+	corefacade::Texture gpu;
 	// Off the 3DS: the same levels decoded from sRGB when sampled, made on
 	// the core's first sRGB import (D3D9 reads sRGB per sampler, so a texture
 	// may be read both ways); refreshed with each upload after that.
-	pica::Texture gpuSrgb;
+	corefacade::Texture gpuSrgb;
 	bool wantsSrgb = false;
 	// Its source holds linear values (a 16-bit or float format: integer-HDR
 	// lightmap pages and HDR images): never read through an sRGB twin, as
@@ -398,7 +398,7 @@ struct Matrix4
 constexpr int kMaxBones = 53;
 constexpr int kStackDepth = 32;
 
-CUtlVector<PicaSnapshot> g_Snapshots;
+CUtlVector<FacadeSnapshot> g_Snapshots;
 // The dynamic stencil state (IShaderDynamicAPI::SetStencil*), which the core's
 // mesh slots take (DecorateCoreTarget).
 struct CoreStencil
@@ -421,14 +421,14 @@ bool g_CoreMeshSlotPending = false;
 // D3D9's dest-alpha depth range without float HDR (m_DestAlphaDepthRange), as
 // shaderapivulkan holds it: the depth-alpha copy's encoding.
 constexpr float kCoreDestAlphaDepthRange = 192.0f;
-CUtlVector<PicaTexture *> g_Textures; // index = handle - 1
+CUtlVector<FacadeTexture *> g_Textures; // index = handle - 1
 #if !defined( PLATFORM_3DS )
 // Textures the core already imported whose levels changed since (font pages,
 // lightmap pages): refilled in place before the core records its next slot,
 // since the core keeps the ids it imported and does not import them again.
-CUtlVector<PicaTexture *> g_DirtyImported;
+CUtlVector<FacadeTexture *> g_DirtyImported;
 #endif
-static void MarkTextureDirty( PicaTexture *texture )
+static void MarkTextureDirty( FacadeTexture *texture )
 {
 	texture->dirty = true;
 #if !defined( PLATFORM_3DS )
@@ -459,17 +459,17 @@ IMaterialInternal *g_pBoundMaterial = NULL;
 // Model lighting as studiorender sets it (SetAmbientLightCube, SetLight): the
 // render core's model point reads it at each draw (RFC 0026 P3).
 float g_AmbientCube[6][3] = {};
-constexpr int kPicaMaxLights = 4;
-LightDesc_t g_Lights[kPicaMaxLights];
+constexpr int kFacadeMaxLights = 4;
+LightDesc_t g_Lights[kFacadeMaxLights];
 CEmptyMesh *g_pRenderMesh = NULL;
 int g_CurrentSnapshot = -1;
 // Whether draws reach a target: the back buffer, or a render target
 // DrawableTarget admits (SetRenderTargetEx).
 bool g_bDrawingToBackBuffer = true;
-// R in the low byte, A in the high one (pica::Clear's rgba).
+// R in the low byte, A in the high one (corefacade::Clear's rgba).
 unsigned int g_ClearColor = 0xFF000000;
 // The presented frame number.
-int g_PicaFrame = 0;
+int g_FacadeFrame = 0;
 ShaderViewport_t g_Viewport;
 Matrix4 g_Stacks[kStackCount][kStackDepth];
 int g_StackTop[kStackCount];
@@ -609,7 +609,7 @@ void MultLocal( const float *m )
 	Mul( m, Top(), Top() );
 }
 
-PicaTexture *TextureFor( ShaderAPITextureHandle_t handle )
+FacadeTexture *TextureFor( ShaderAPITextureHandle_t handle )
 {
 	const int index = int( handle ) - 1;
 	if ( index < 0 || index >= g_Textures.Count() || !g_Textures[index] || !g_Textures[index]->used )
@@ -621,7 +621,7 @@ PicaTexture *TextureFor( ShaderAPITextureHandle_t handle )
 // of the client's texture portals (`_rt_PortalPlane*`, which the client makes
 // only when the device has no stencil), RGBA8 with power-of-two sides. Other
 // targets keep being skipped until their own cohort is brought over.
-bool DrawableTarget( PicaTexture &texture )
+bool DrawableTarget( FacadeTexture &texture )
 {
 #if defined( PLATFORM_3DS )
 	if ( !texture.renderTarget || texture.depth || V_strnicmp( texture.name, "_rt_PortalPlane", 15 ) != 0 )
@@ -636,52 +636,52 @@ bool DrawableTarget( PicaTexture &texture )
 	return true;
 }
 
-pica::Compare DepthCompare( ShaderDepthFunc_t func )
+corefacade::Compare DepthCompare( ShaderDepthFunc_t func )
 {
 	switch ( func )
 	{
-	case SHADER_DEPTHFUNC_NEVER: return pica::Compare::kNever;
-	case SHADER_DEPTHFUNC_NEARER: return pica::Compare::kLess;
-	case SHADER_DEPTHFUNC_EQUAL: return pica::Compare::kEqual;
-	case SHADER_DEPTHFUNC_NEAREROREQUAL: return pica::Compare::kLessEqual;
-	case SHADER_DEPTHFUNC_FARTHER: return pica::Compare::kGreater;
-	case SHADER_DEPTHFUNC_NOTEQUAL: return pica::Compare::kNotEqual;
-	case SHADER_DEPTHFUNC_FARTHEROREQUAL: return pica::Compare::kGreaterEqual;
-	default: return pica::Compare::kAlways;
+	case SHADER_DEPTHFUNC_NEVER: return corefacade::Compare::kNever;
+	case SHADER_DEPTHFUNC_NEARER: return corefacade::Compare::kLess;
+	case SHADER_DEPTHFUNC_EQUAL: return corefacade::Compare::kEqual;
+	case SHADER_DEPTHFUNC_NEAREROREQUAL: return corefacade::Compare::kLessEqual;
+	case SHADER_DEPTHFUNC_FARTHER: return corefacade::Compare::kGreater;
+	case SHADER_DEPTHFUNC_NOTEQUAL: return corefacade::Compare::kNotEqual;
+	case SHADER_DEPTHFUNC_FARTHEROREQUAL: return corefacade::Compare::kGreaterEqual;
+	default: return corefacade::Compare::kAlways;
 	}
 }
 
-pica::Compare AlphaCompare( ShaderAlphaFunc_t func )
+corefacade::Compare AlphaCompare( ShaderAlphaFunc_t func )
 {
 	switch ( func )
 	{
-	case SHADER_ALPHAFUNC_NEVER: return pica::Compare::kNever;
-	case SHADER_ALPHAFUNC_LESS: return pica::Compare::kLess;
-	case SHADER_ALPHAFUNC_EQUAL: return pica::Compare::kEqual;
-	case SHADER_ALPHAFUNC_LEQUAL: return pica::Compare::kLessEqual;
-	case SHADER_ALPHAFUNC_GREATER: return pica::Compare::kGreater;
-	case SHADER_ALPHAFUNC_NOTEQUAL: return pica::Compare::kNotEqual;
-	case SHADER_ALPHAFUNC_GEQUAL: return pica::Compare::kGreaterEqual;
-	default: return pica::Compare::kAlways;
+	case SHADER_ALPHAFUNC_NEVER: return corefacade::Compare::kNever;
+	case SHADER_ALPHAFUNC_LESS: return corefacade::Compare::kLess;
+	case SHADER_ALPHAFUNC_EQUAL: return corefacade::Compare::kEqual;
+	case SHADER_ALPHAFUNC_LEQUAL: return corefacade::Compare::kLessEqual;
+	case SHADER_ALPHAFUNC_GREATER: return corefacade::Compare::kGreater;
+	case SHADER_ALPHAFUNC_NOTEQUAL: return corefacade::Compare::kNotEqual;
+	case SHADER_ALPHAFUNC_GEQUAL: return corefacade::Compare::kGreaterEqual;
+	default: return corefacade::Compare::kAlways;
 	}
 }
 
-pica::Blend BlendFactor( ShaderBlendFactor_t factor )
+corefacade::Blend BlendFactor( ShaderBlendFactor_t factor )
 {
 	switch ( factor )
 	{
-	case SHADER_BLEND_ZERO: return pica::Blend::kZero;
-	case SHADER_BLEND_ONE: return pica::Blend::kOne;
-	case SHADER_BLEND_DST_COLOR: return pica::Blend::kDstColor;
-	case SHADER_BLEND_ONE_MINUS_DST_COLOR: return pica::Blend::kOneMinusDstColor;
-	case SHADER_BLEND_SRC_ALPHA: return pica::Blend::kSrcAlpha;
-	case SHADER_BLEND_ONE_MINUS_SRC_ALPHA: return pica::Blend::kOneMinusSrcAlpha;
-	case SHADER_BLEND_DST_ALPHA: return pica::Blend::kDstAlpha;
-	case SHADER_BLEND_ONE_MINUS_DST_ALPHA: return pica::Blend::kOneMinusDstAlpha;
-	case SHADER_BLEND_SRC_ALPHA_SATURATE: return pica::Blend::kSrcAlphaSaturate;
-	case SHADER_BLEND_SRC_COLOR: return pica::Blend::kSrcColor;
-	case SHADER_BLEND_ONE_MINUS_SRC_COLOR: return pica::Blend::kOneMinusSrcColor;
-	default: return pica::Blend::kOne;
+	case SHADER_BLEND_ZERO: return corefacade::Blend::kZero;
+	case SHADER_BLEND_ONE: return corefacade::Blend::kOne;
+	case SHADER_BLEND_DST_COLOR: return corefacade::Blend::kDstColor;
+	case SHADER_BLEND_ONE_MINUS_DST_COLOR: return corefacade::Blend::kOneMinusDstColor;
+	case SHADER_BLEND_SRC_ALPHA: return corefacade::Blend::kSrcAlpha;
+	case SHADER_BLEND_ONE_MINUS_SRC_ALPHA: return corefacade::Blend::kOneMinusSrcAlpha;
+	case SHADER_BLEND_DST_ALPHA: return corefacade::Blend::kDstAlpha;
+	case SHADER_BLEND_ONE_MINUS_DST_ALPHA: return corefacade::Blend::kOneMinusDstAlpha;
+	case SHADER_BLEND_SRC_ALPHA_SATURATE: return corefacade::Blend::kSrcAlphaSaturate;
+	case SHADER_BLEND_SRC_COLOR: return corefacade::Blend::kSrcColor;
+	case SHADER_BLEND_ONE_MINUS_SRC_COLOR: return corefacade::Blend::kOneMinusSrcColor;
+	default: return corefacade::Blend::kOne;
 	}
 }
 
@@ -694,7 +694,7 @@ unsigned int LevelHash( const CUtlVector<unsigned char> &level )
 }
 
 // Encodes a texture's chosen levels and uploads them.
-void UploadTexture( PicaTexture &texture )
+void UploadTexture( FacadeTexture &texture )
 {
 	texture.dirty = false;
 #if defined( PLATFORM_3DS )
@@ -745,7 +745,7 @@ void UploadTexture( PicaTexture &texture )
 	if ( texture.wide )
 	{
 		const std::uint8_t *wideLevels[1] = { texture.levels[0].Base() };
-		if ( texture.gpu.Upload( pica::UploadFormat::kRGBA16, texture.baseWidth, texture.baseHeight, 1,
+		if ( texture.gpu.Upload( corefacade::UploadFormat::kRGBA16, texture.baseWidth, texture.baseHeight, 1,
 		         wideLevels ) )
 		{
 			++g_TextureCounters.uploads;
@@ -760,24 +760,24 @@ void UploadTexture( PicaTexture &texture )
 	for ( int i = 0; i < texture.levels.Count() && !alpha; ++i )
 	{
 		const int w = texture.baseWidth >> i, h = texture.baseHeight >> i;
-		alpha = pica::HasAlpha( texture.levels[i].Base(), w, h );
+		alpha = corefacade::HasAlpha( texture.levels[i].Base(), w, h );
 	}
 	// Block-compressed when mipmapped (world and model textures); RGBA4 for
 	// textures the material system updates in place (fonts, UI: half the
 	// linear memory of RGBA8, clause D42); RGBA8 for lightmap pages, whose
-	// 2x overbright would show 4-bit steps. -pica_texture_rgba8 uploads
+	// 2x overbright would show 4-bit steps. -core_texture_rgba8 uploads
 	// everything as RGBA8 (isolates the ETC1 encoder and the RGBA4 packing).
 #if defined( PLATFORM_3DS )
-	static const bool s_ForceRGBA8 = CommandLine()->FindParm( "-pica_texture_rgba8" ) != 0;
+	static const bool s_ForceRGBA8 = CommandLine()->FindParm( "-core_texture_rgba8" ) != 0;
 #else
 	// Other devices take the decoded levels as they are (RGBA8).
 	static const bool s_ForceRGBA8 = true;
 #endif
-	const pica::UploadFormat format =
-	    ( s_ForceRGBA8 || ( !mipped && texture.lightmap ) ) ? pica::UploadFormat::kRGBA8
-	    : !mipped                                          ? pica::UploadFormat::kRGBA4
-	    : alpha ? pica::UploadFormat::kETC1A4
-	            : pica::UploadFormat::kETC1;
+	const corefacade::UploadFormat format =
+	    ( s_ForceRGBA8 || ( !mipped && texture.lightmap ) ) ? corefacade::UploadFormat::kRGBA8
+	    : !mipped                                          ? corefacade::UploadFormat::kRGBA4
+	    : alpha ? corefacade::UploadFormat::kETC1A4
+	            : corefacade::UploadFormat::kETC1;
 	CUtlVector<std::vector<std::uint8_t>> encoded;
 	const std::uint8_t *levels[16];
 	int count = 0;
@@ -786,19 +786,19 @@ void UploadTexture( PicaTexture &texture )
 		const int w = texture.baseWidth >> i, h = texture.baseHeight >> i;
 		if ( w < 8 || h < 8 )
 			break;
-		if ( format == pica::UploadFormat::kRGBA8 )
+		if ( format == corefacade::UploadFormat::kRGBA8 )
 		{
 			levels[count++] = texture.levels[i].Base();
 			continue;
 		}
 		std::vector<std::uint8_t> &out = encoded[encoded.AddToTail()];
-		if ( format == pica::UploadFormat::kRGBA4 )
+		if ( format == corefacade::UploadFormat::kRGBA4 )
 		{
-			pica::PackRgba4Level( texture.levels[i].Base(), w, h, out );
+			corefacade::PackRgba4Level( texture.levels[i].Base(), w, h, out );
 			levels[count++] = out.data();
 			continue;
 		}
-		if ( !pica::EncodeEtc1Level( format == pica::UploadFormat::kETC1A4, texture.levels[i].Base(), w, h, out ) )
+		if ( !corefacade::EncodeEtc1Level( format == corefacade::UploadFormat::kETC1A4, texture.levels[i].Base(), w, h, out ) )
 			break;
 		levels[count++] = out.data();
 	}
@@ -811,7 +811,7 @@ void UploadTexture( PicaTexture &texture )
 		++g_TextureCounters.uploadFailed;
 #if !defined( PLATFORM_3DS )
 	if ( texture.wantsSrgb && count > 0 &&
-	     texture.gpuSrgb.Upload( pica::UploadFormat::kRGBA8Srgb, texture.baseWidth,
+	     texture.gpuSrgb.Upload( corefacade::UploadFormat::kRGBA8Srgb, texture.baseWidth,
 	         texture.baseHeight, count, levels ) )
 		texture.gpuSrgb.SetWrap( texture.wrapS, texture.wrapT );
 	// Off the 3DS the CPU copy stays: the sRGB twin may be asked for later.
@@ -832,8 +832,8 @@ void GpuSize( int w, int h, int cap, int &outW, int &outH )
 {
 #if defined( PLATFORM_3DS )
 	// The PICA200 samples only power-of-two textures.
-	outW = pica::FloorPow2( w < cap ? w : cap );
-	outH = pica::FloorPow2( h < cap ? h : cap );
+	outW = corefacade::FloorPow2( w < cap ? w : cap );
+	outH = corefacade::FloorPow2( h < cap ? h : cap );
 #else
 	// Other devices keep the texture's own size (a 1280x720 video frame
 	// resampled to 1024x512 dropped columns: stripes in the menu's movie).
@@ -997,7 +997,7 @@ public:
 	bool m_bIsDepthWriteEnabled;
 	bool m_bUsesVertexAndPixelShaders;
 	// The PICA state and vertex format the next snapshot records.
-	pica::DrawState m_State;
+	corefacade::DrawState m_State;
 	int m_PolyOffset = SHADER_POLYOFFSET_DISABLE; // EnablePolyOffset's mode
 	VertexFormat_t m_VertexFormat;
 };
@@ -1017,19 +1017,19 @@ public:
 	void GetBackBufferDimensions( int &width, int &height ) const;
 	virtual void Present( )
 	{
-		if ( !pica::Initialized() )
+		if ( !corefacade::Initialized() )
 			return;
-		if ( !pica::InFrame() )
-			pica::BeginFrame();
+		if ( !corefacade::InFrame() )
+			corefacade::BeginFrame();
 		const double presentStart = Plat_FloatTime();
-		pica::EndFrame();
+		corefacade::EndFrame();
 		// The core's readbacks (luminance and visibility counts) resolve
 		// behind the frame's submission, as shaderapivulkan's FinishFrame
 		// tells the recorder.
 		if ( g_CorePassRecorder )
 		{
 			bool submitted = false;
-			const render::device::CompletionToken token = pica::LastSubmission( &submitted );
+			const render::device::CompletionToken token = corefacade::LastSubmission( &submitted );
 			g_CorePassRecorder->FrameSubmitted( token, submitted );
 		}
 		const double presentEnd = Plat_FloatTime();
@@ -1039,7 +1039,7 @@ public:
 			static unsigned long long s_frameTick = 0;
 			const unsigned long long tick = svcGetSystemTick();
 			if ( s_frameTick && tick - s_frameTick > 268111856ull * 4 / 10 )
-				printf( "pica: slow frame %d %.0f ms ticks %08x %08x\n", g_PicaFrame + 1,
+				printf( "pica: slow frame %d %.0f ms ticks %08x %08x\n", g_FacadeFrame + 1,
 					( tick - s_frameTick ) * 1000.0 / 268111856.0, unsigned( s_frameTick ),
 					unsigned( tick ) );
 			s_frameTick = tick;
@@ -1061,7 +1061,7 @@ public:
 				{
 					const double ms = 1000.0;
 					printf( "pica: perf frame %d avg %.1f ms (%.1f fps) max %.1f ms end-frame %.1f ms\n",
-						g_PicaFrame + 1, s_sum * ms / 30, 30.0 / s_sum,
+						g_FacadeFrame + 1, s_sum * ms / 30, 30.0 / s_sum,
 						s_max * ms, s_present * ms / 30 );
 					s_sum = s_max = s_present = 0;
 					s_count = 0;
@@ -1069,22 +1069,22 @@ public:
 			}
 			s_last = presentEnd;
 		}
-		// A capture the boot harness asks for: -pica_capture <frame> <path>.
-		static int s_captureFrame = CommandLine()->ParmValue( "-pica_capture", -1 );
-		const int s_frame = ++g_PicaFrame;
+		// A capture the boot harness asks for: -core_capture <frame> <path>.
+		static int s_captureFrame = CommandLine()->ParmValue( "-core_capture", -1 );
+		const int s_frame = ++g_FacadeFrame;
 		if ( s_frame == s_captureFrame + 1 )
 		{
-			const char *path = CommandLine()->ParmValue( "-pica_capture_path", "sdmc:/source_pica.ppm" );
+			const char *path = CommandLine()->ParmValue( "-core_capture_path", "sdmc:/source_core.ppm" );
 			// stdout, as the stats below: the harnesses (the web page hands the
 			// file back on this line) read it, and engine spew stops reaching
 			// stdout once the console exists.
 			printf(
-			    "pica: capture %s %s\n", path, pica::CaptureTopScreen( path ) ? "ok" : "failed" );
+			    "pica: capture %s %s\n", path, corefacade::CaptureTopScreen( path ) ? "ok" : "failed" );
 			fflush( stdout );
 		}
 		// Straight to stdout (console.log on the 3DS), not through the engine's
 		// spew, which stops reaching stdout once the console exists.
-		const pica::Stats &stats = pica::FrameStats();
+		const corefacade::Stats &stats = corefacade::FrameStats();
 		if ( s_frame % 120 == 1 )
 		{
 			// The heap over time (out-of-memory diagnosis): arena = sbrk'd heap,
@@ -1207,19 +1207,19 @@ public:
 	{
 #if !defined( PLATFORM_3DS )
 		// The mode the engine asked for (it fits the desktop), not -w/-h.
-		pica::ResizeScreen( info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight );
+		corefacade::ResizeScreen( info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight );
 #endif
-		if ( pica::Initialized() )
+		if ( corefacade::Initialized() )
 			return true;
-		g_TextureSizeCap = CommandLine()->ParmValue( "-pica_texture_size", g_TextureSizeCap );
-		if ( !pica::Init() )
+		g_TextureSizeCap = CommandLine()->ParmValue( "-core_texture_size", g_TextureSizeCap );
+		if ( !corefacade::Init() )
 		{
 			Warning( "pica: GPU initialization failed\n" );
 			return false;
 		}
-		if ( const int reserveKB = CommandLine()->ParmValue( "-pica_linear_reserve", 0 ) )
+		if ( const int reserveKB = CommandLine()->ParmValue( "-core_linear_reserve", 0 ) )
 			printf( "pica: linear reserve %d KB %s\n", reserveKB,
-				pica::ReserveLinear( std::size_t( reserveKB ) * 1024 ) ? "held" : "refused" );
+				corefacade::ReserveLinear( std::size_t( reserveKB ) * 1024 ) ? "held" : "refused" );
 		InitStacks();
 		return true;
 	}
@@ -1227,7 +1227,7 @@ public:
 	void ChangeVideoMode( const ShaderDeviceInfo_t &info )
 	{
 #if !defined( PLATFORM_3DS )
-		if ( !pica::ResizeScreen( info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight ) )
+		if ( !corefacade::ResizeScreen( info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight ) )
 			Warning( "pica: the screen's targets were not resized to %dx%d\n",
 				info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight );
 #endif
@@ -1323,8 +1323,8 @@ public:
 	// skipped until a blit does them.
 	void CopyRenderTargetToTextureEx( ShaderAPITextureHandle_t texID, int nRenderTargetID, Rect_t *pSrcRect, Rect_t *pDstRect )
 	{
-		PicaTexture *texture = TextureFor( texID );
-		if ( nRenderTargetID != 0 || !texture || !pica::Initialized() )
+		FacadeTexture *texture = TextureFor( texID );
+		if ( nRenderTargetID != 0 || !texture || !corefacade::Initialized() )
 		{
 			++g_Counters.copiesSkipped;
 			return;
@@ -1337,7 +1337,7 @@ public:
 			++g_Counters.copiesSkipped;
 			return;
 		}
-		pica::CopyRect region;
+		corefacade::CopyRect region;
 		region.width = rect ? rect->width : texture->width;
 		region.height = rect ? rect->height : texture->height;
 		region.x = rect ? rect->x : 0;
@@ -1346,15 +1346,15 @@ public:
 		// frame copy carries it (soft particles read _rt_FullFrameDepth); an
 		// orthographic capture (the UI) keeps its own alpha.
 		const float *projection = Top( kStackProjection );
-		pica::CopyDepthAlpha depthAlpha;
+		corefacade::CopyDepthAlpha depthAlpha;
 		depthAlpha.projection[0] = projection[2 * 4 + 2];
 		depthAlpha.projection[1] = projection[3 * 4 + 2];
 		depthAlpha.projection[2] = projection[2 * 4 + 3];
 		depthAlpha.projection[3] = projection[3 * 4 + 3];
 		depthAlpha.range = kCoreDestAlphaDepthRange;
 		const bool perspective = projection[2 * 4 + 3] != 0.0f;
-		if ( pica::CopyTargetRegion( texture->gpu, region, perspective ? &depthAlpha : nullptr,
-		         g_CorePassRecorder ) == pica::CopyResult::kCopied )
+		if ( corefacade::CopyTargetRegion( texture->gpu, region, perspective ? &depthAlpha : nullptr,
+		         g_CorePassRecorder ) == corefacade::CopyResult::kCopied )
 			++g_Counters.targetCopies;
 		else
 			++g_Counters.copiesSkipped;
@@ -1518,13 +1518,13 @@ public:
 		if ( colorTextureHandle == SHADER_RENDERTARGET_BACKBUFFER )
 		{
 			g_bDrawingToBackBuffer = true;
-			pica::SetTarget( nullptr );
+			corefacade::SetTarget( nullptr );
 			return;
 		}
-		PicaTexture *texture = TextureFor( colorTextureHandle );
-		g_bDrawingToBackBuffer = texture && pica::Initialized() && DrawableTarget( *texture );
+		FacadeTexture *texture = TextureFor( colorTextureHandle );
+		g_bDrawingToBackBuffer = texture && corefacade::Initialized() && DrawableTarget( *texture );
 		if ( g_bDrawingToBackBuffer )
-			pica::SetTarget( &texture->gpu );
+			corefacade::SetTarget( &texture->gpu );
 	}
 
 	// Indicates we're going to be modifying this texture
@@ -2302,12 +2302,12 @@ static bool DescribePicaAdapter( int adapter, render::RenderAdapterInfo *info )
 // textures by their material system handles.
 render::legacy::ICorePassRecorder *g_CorePassRecorder = NULL;
 
-class CPicaCoreTextures final : public render::legacy::ICoreTextures
+class CFacadeCoreTextures final : public render::legacy::ICoreTextures
 {
 public:
 	render::device::TextureId Import( int handle, bool srgb ) override
 	{
-		PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
+		FacadeTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
 		// The PICA200 decodes no sRGB: the reduced model asks for none.
 		// Elsewhere an sRGB import reads the texture's sRGB twin.
 #if !defined( PLATFORM_3DS )
@@ -2382,7 +2382,7 @@ public:
 		desc.minFilter = render::device::Filter::kNearest;
 		desc.magFilter = render::device::Filter::kLinear;
 		desc.mipFilter = render::device::Filter::kLinear;
-		const PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
+		const FacadeTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
 		const auto mode = []( bool repeat )
 		{
 			return repeat ? render::device::AddressMode::kRepeat
@@ -2394,7 +2394,7 @@ public:
 	}
 	bool Pending( int handle ) override
 	{
-		const PicaTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
+		const FacadeTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
 #if !defined( PLATFORM_3DS )
 		if ( texture && texture->renderTarget && !texture->depth )
 			return false; // Import makes its image
@@ -2402,7 +2402,7 @@ public:
 		return texture && !texture->gpu.Valid() && texture->levels.Count() == 0;
 	}
 };
-CPicaCoreTextures g_PicaCoreTextures;
+CFacadeCoreTextures g_FacadeCoreTextures;
 
 // R91 (the desktop client's move off shaderapivulkan, parts c-e): what a
 // draw and its slot take on their way to the core.
@@ -2432,19 +2432,19 @@ static bool DecorateCoreDraw( render::legacy::CoreMeshDraw &draw )
 }
 
 #if !defined( PLATFORM_3DS )
-static render::device::CompareOp CoreCompare( pica::Compare compare )
+static render::device::CompareOp CoreCompare( corefacade::Compare compare )
 {
 	using render::device::CompareOp;
 	switch ( compare )
 	{
-	case pica::Compare::kNever: return CompareOp::kNever;
-	case pica::Compare::kLess: return CompareOp::kLess;
-	case pica::Compare::kEqual: return CompareOp::kEqual;
-	case pica::Compare::kLessEqual: return CompareOp::kLessEqual;
-	case pica::Compare::kGreater: return CompareOp::kGreater;
-	case pica::Compare::kNotEqual: return CompareOp::kNotEqual;
-	case pica::Compare::kGreaterEqual: return CompareOp::kGreaterEqual;
-	case pica::Compare::kAlways: return CompareOp::kAlways;
+	case corefacade::Compare::kNever: return CompareOp::kNever;
+	case corefacade::Compare::kLess: return CompareOp::kLess;
+	case corefacade::Compare::kEqual: return CompareOp::kEqual;
+	case corefacade::Compare::kLessEqual: return CompareOp::kLessEqual;
+	case corefacade::Compare::kGreater: return CompareOp::kGreater;
+	case corefacade::Compare::kNotEqual: return CompareOp::kNotEqual;
+	case corefacade::Compare::kGreaterEqual: return CompareOp::kGreaterEqual;
+	case corefacade::Compare::kAlways: return CompareOp::kAlways;
 	}
 	return CompareOp::kLessEqual;
 }
@@ -2573,8 +2573,8 @@ static void DecorateCoreTarget( render::legacy::CorePassTarget &target )
 	FillCoreSlotTerms( target );
 	if ( !mesh || g_CurrentSnapshot < 0 || g_CurrentSnapshot >= g_Snapshots.Count() )
 		return;
-	const PicaSnapshot &snapshot = g_Snapshots[g_CurrentSnapshot];
-	const pica::DrawState &state = snapshot.state;
+	const FacadeSnapshot &snapshot = g_Snapshots[g_CurrentSnapshot];
+	const corefacade::DrawState &state = snapshot.state;
 	render::material::SurfaceDrawState &out = target.drawState;
 	out.overrideDepth = true;
 	out.depthTest = state.depthTest;
@@ -2616,7 +2616,7 @@ static void DecorateCoreTarget( render::legacy::CorePassTarget &target )
 #endif
 }
 
-class CPicaCorePassSlots final : public render::legacy::ICorePassSlots
+class CFacadeCorePassSlots final : public render::legacy::ICorePassSlots
 {
 public:
 	void MarkSlot( std::uint32_t tag ) override
@@ -2626,13 +2626,13 @@ public:
 #if !defined( PLATFORM_3DS )
 		// What changed in textures the core imported (a font page's new
 		// glyphs) reaches their images before the core records this slot.
-		for ( PicaTexture *texture : g_DirtyImported )
+		for ( FacadeTexture *texture : g_DirtyImported )
 			if ( texture->dirty )
 				UploadTexture( *texture );
 		g_DirtyImported.RemoveAll();
 #endif
-		pica::CoreSectionTarget section;
-		render::device::CommandEncoder *encoder = pica::BeginCoreSection( section );
+		corefacade::CoreSectionTarget section;
+		render::device::CommandEncoder *encoder = corefacade::BeginCoreSection( section );
 		if ( !encoder )
 			return;
 		render::legacy::CorePassTarget target;
@@ -2641,14 +2641,14 @@ public:
 		target.depth = render::device::TextureId{ section.depth };
 		target.colorFormat = render::device::Format::kRGBA8Unorm;
 #if !defined( PLATFORM_3DS )
-		// The screen and the render targets are copy sources (pica_renderer),
+		// The screen and the render targets are copy sources (core_renderer),
 		// for the full model's scene-color reads.
 		target.colorCopySource = true;
 #endif
-		target.depthFormat = pica::kDepthFormat;
+		target.depthFormat = corefacade::kDepthFormat;
 		target.width = section.width;
 		target.height = section.height;
-		target.textures = &g_PicaCoreTextures;
+		target.textures = &g_FacadeCoreTextures;
 		target.frame = section.serial;
 		target.submitted = render::device::CompletionToken{ render::device::QueueKind::kGraphics,
 			section.submittedEpoch, section.submittedValue };
@@ -2674,7 +2674,7 @@ public:
 		// pages scaled by 16 in integer HDR (2^2.2 in LDR), the tone-mapping
 		// scale in HDR, the eye (c10), env maps at 16 in integer HDR (1 in
 		// LDR), and specular unless mat_fastspecular is off or mat_fullbright
-		// 2. Albedo is read through sRGB twins (CPicaCoreTextures::Import).
+		// 2. Albedo is read through sRGB twins (CFacadeCoreTextures::Import).
 		const bool integerHdr = CurrentHDRType() == HDR_TYPE_INTEGER;
 		target.lightmapScale = integerHdr ? 16.0f : powf( 2.0f, 2.2f );
 		target.outputScale = integerHdr ? g_ToneMappingScale.x : 1.0f;
@@ -2706,14 +2706,14 @@ public:
 			g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_AVAILABLE ) > 0.0f;
 		DecorateCoreTarget( target );
 		g_CorePassRecorder->RecordSlot( tag, *encoder, target );
-		pica::EndCoreSection();
+		corefacade::EndCoreSection();
 	}
 };
-CPicaCorePassSlots g_PicaCorePassSlots;
+CFacadeCorePassSlots g_FacadeCorePassSlots;
 
 static void FillLifecycle( render::LegacyShaderServices *services );
 
-static bool CreatePicaShaderBackend( render::LegacyShaderServices *services )
+static bool CreateCoreShaderBackend( render::LegacyShaderServices *services )
 {
 	if ( !services )
 		return false;
@@ -2724,38 +2724,38 @@ static bool CreatePicaShaderBackend( render::LegacyShaderServices *services )
 	services->hardware = &g_ShaderAPIEmpty;
 	services->debugTextures = &g_ShaderAPIEmpty;
 	services->describeAdapter = DescribePicaAdapter;
-	services->corePassSlots = &g_PicaCorePassSlots;
+	services->corePassSlots = &g_FacadeCorePassSlots;
 	return true;
 }
 
-extern "C" DLL_EXPORT void PicaShaderBackend_BindCorePassRecorder(
+extern "C" DLL_EXPORT void CoreShaderBackend_BindCorePassRecorder(
 	render::legacy::ICorePassRecorder *recorder )
 {
 	g_CorePassRecorder = recorder;
 }
 
-extern "C" DLL_EXPORT void PicaShaderBackend_BindDevice( render::device::IRenderDevice2 *device )
+extern "C" DLL_EXPORT void CoreShaderBackend_BindDevice( render::device::IRenderDevice2 *device )
 {
 #if !defined( PLATFORM_3DS )
 	// The fixed display (presentation.fixedDisplay) is the window's size the
 	// launch names: the browser page's canvas (RFC 0029).
-	pica::SetScreenSize( CommandLine()->ParmValue( "-w", 1280 ), CommandLine()->ParmValue( "-h", 720 ) );
+	corefacade::SetScreenSize( CommandLine()->ParmValue( "-w", 1280 ), CommandLine()->ParmValue( "-h", 720 ) );
 #endif
-	pica::BindDevice( device );
+	corefacade::BindDevice( device );
 }
 
 #if !defined( PLATFORM_3DS )
-extern "C" DLL_EXPORT void PicaShaderBackend_BindPresenter( pica::Presenter presenter, void *context )
+extern "C" DLL_EXPORT void CoreShaderBackend_BindPresenter( corefacade::Presenter presenter, void *context )
 {
-	pica::BindPresenter( presenter, context );
+	corefacade::BindPresenter( presenter, context );
 }
 #endif
 
-DLL_EXPORT const render::LegacyShaderProvider *PicaShaderBackend_Describe()
+DLL_EXPORT const render::LegacyShaderProvider *CoreShaderBackend_Describe()
 {
 	// The render core draws everything this shader API is given (RFC 0026).
 	static const render::LegacyShaderProvider provider = {
-	    "pica", "shaderapipica", CreatePicaShaderBackend, false, nullptr, nullptr, true };
+	    "core", "shaderapicore", CreateCoreShaderBackend, false, nullptr, nullptr, true };
 	return &provider;
 }
 
@@ -2839,13 +2839,13 @@ static void FillLifecycle( render::LegacyShaderServices *services )
 	{
 		*out = render::LegacyPresentationFacts();
 		out->presenting = true;
-		out->backBufferWidth = out->windowWidth = pica::kScreenWidth;
-		out->backBufferHeight = out->windowHeight = pica::kScreenHeight;
+		out->backBufferWidth = out->windowWidth = corefacade::kScreenWidth;
+		out->backBufferHeight = out->windowHeight = corefacade::kScreenHeight;
 	};
 	services->presentation.fixedDisplay = []( void *, int *width, int *height, int *refreshHz )
 	{
-		*width = pica::kScreenWidth;
-		*height = pica::kScreenHeight;
+		*width = corefacade::kScreenWidth;
+		*height = corefacade::kScreenHeight;
 		*refreshHz = 60;
 		return true;
 	};
@@ -2854,10 +2854,10 @@ static void FillLifecycle( render::LegacyShaderServices *services )
 void CShaderDeviceEmpty::GetBackBufferDimensions( int& width, int& height ) const
 {
 #if defined( PLATFORM_3DS )
-	width = pica::kScreenWidth;
-	height = pica::kScreenHeight;
+	width = corefacade::kScreenWidth;
+	height = corefacade::kScreenHeight;
 #else
-	pica::ScreenSize( width, height );
+	corefacade::ScreenSize( width, height );
 #endif
 }
 
@@ -3019,7 +3019,7 @@ bool CEmptyMesh::Lock( int nMaxIndexCount, bool bAppend, IndexDesc_t& desc )
 		desc.m_nOffset = 0;
 		return nMaxIndexCount <= 0;
 	}
-	pica::PrepareWrite( m_pIndices );
+	corefacade::PrepareWrite( m_pIndices );
 	m_nLockFirstIndex = first;
 	m_nLockedIndices = nMaxIndexCount;
 	desc.m_pIndices = m_pIndices + first;
@@ -3042,7 +3042,7 @@ void CEmptyMesh::Unlock( int nWrittenIndexCount, IndexDesc_t& desc )
 		if ( m_nLockFirstIndex + nWrittenIndexCount > m_nIndices )
 			m_nIndices = m_nLockFirstIndex + nWrittenIndexCount;
 		if ( !m_bIsDynamic )
-			pica::FlushLinear( m_pIndices + m_nLockFirstIndex, nWrittenIndexCount * sizeof( unsigned short ) );
+			corefacade::FlushLinear( m_pIndices + m_nLockFirstIndex, nWrittenIndexCount * sizeof( unsigned short ) );
 	}
 }
 
@@ -3057,7 +3057,7 @@ void CEmptyMesh::ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, 
 	}
 	// In place: a recorded draw reading these indices is submitted first.
 	if ( !bReadOnly )
-		pica::PrepareWrite( m_pIndices );
+		corefacade::PrepareWrite( m_pIndices );
 	m_nLockFirstIndex = nFirstIndex;
 	m_nLockedIndices = nIndexCount;
 	desc.m_pIndices = m_pIndices + nFirstIndex;
@@ -3069,7 +3069,7 @@ void CEmptyMesh::ModifyBegin( bool bReadOnly, int nFirstIndex, int nIndexCount, 
 void CEmptyMesh::ModifyEnd( IndexDesc_t& desc )
 {
 	if ( m_pIndices && !m_bIsDynamic )
-		pica::FlushLinear( m_pIndices, m_nIndices * sizeof( unsigned short ) );
+		corefacade::FlushLinear( m_pIndices, m_nIndices * sizeof( unsigned short ) );
 }
 
 void CEmptyMesh::Spew( int nIndexCount, const IndexDesc_t & desc )
@@ -3122,7 +3122,7 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	desc.m_ActualVertexSize = 0;
 	desc.m_CompressionType = VERTEX_COMPRESSION_NONE;
 	desc.m_nFirstVertex = first;
-	desc.m_nOffset = first * sizeof( pica::Vertex );
+	desc.m_nOffset = first * sizeof( corefacade::Vertex );
 	m_nLockFirstVertex = first;
 	if ( nVertexCount == 0 )
 		return true;
@@ -3130,13 +3130,13 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 	// Defaults for what the format leaves unwritten: white, (0, 0), unskinned.
 	for ( int i = first; i < first + nVertexCount; ++i )
 	{
-		pica::Vertex &v = m_pVertices[i];
+		corefacade::Vertex &v = m_pVertices[i];
 		memset( v.pos, 0, sizeof( v.pos ) );
 		memset( v.color, 0xFF, sizeof( v.color ) );
 		v.uv[0] = v.uv[1] = 0.0f;
 	}
-	pica::Vertex *base = m_pVertices + first;
-	const int stride = sizeof( pica::Vertex );
+	corefacade::Vertex *base = m_pVertices + first;
+	const int stride = sizeof( corefacade::Vertex );
 	desc.m_pPosition = base->pos;
 	desc.m_VertexSize_Position = stride;
 	if ( m_Format & VERTEX_COLOR )
@@ -3200,7 +3200,7 @@ void CEmptyMesh::Unlock( int nVertexCount, VertexDesc_t &desc )
 		if ( m_nLockFirstVertex + nVertexCount > m_nVertices )
 			m_nVertices = m_nLockFirstVertex + nVertexCount;
 		if ( !m_bIsDynamic )
-			pica::FlushLinear( m_pVertices + m_nLockFirstVertex, nVertexCount * sizeof( pica::Vertex ) );
+			corefacade::FlushLinear( m_pVertices + m_nLockFirstVertex, nVertexCount * sizeof( corefacade::Vertex ) );
 	}
 }
 
@@ -3236,8 +3236,8 @@ void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, i
 	VertexDesc_t &vdesc = *static_cast<VertexDesc_t*>( &desc );
 	if ( m_pVertices && firstVertex + numVerts <= m_nVertexCapacity )
 	{
-		pica::Vertex *base = m_pVertices + firstVertex;
-		const int stride = sizeof( pica::Vertex );
+		corefacade::Vertex *base = m_pVertices + firstVertex;
+		const int stride = sizeof( corefacade::Vertex );
 		vdesc.m_pPosition = base->pos;
 		vdesc.m_VertexSize_Position = stride;
 		if ( m_Format & VERTEX_COLOR )
@@ -3287,7 +3287,7 @@ void CEmptyMesh::ModifyEnd( MeshDesc_t& desc )
 		CommitWideTexCoords( m_nModifyFirstVertex, m_nModifyVertexCount );
 	m_nModifyVertexCount = 0;
 	if ( m_pVertices && !m_bIsDynamic )
-		pica::FlushLinear( m_pVertices, m_nVertices * sizeof( pica::Vertex ) );
+		corefacade::FlushLinear( m_pVertices, m_nVertices * sizeof( corefacade::Vertex ) );
 	ModifyEnd( *static_cast<IndexDesc_t*>( &desc ) );
 }
 
@@ -3307,7 +3307,7 @@ void CEmptyMesh::SetPrimitiveType( MaterialPrimitiveType_t type )
 void CEmptyMesh::Draw( int firstIndex, int numIndices )
 {
 	++g_Counters.meshDraws;
-	if ( !pica::Initialized() || SourceVertexCount() <= 0 )
+	if ( !corefacade::Initialized() || SourceVertexCount() <= 0 )
 		return;
 	m_pPrims = NULL;
 	m_nPrims = 0;
@@ -3319,7 +3319,7 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 void CEmptyMesh::Draw(CPrimList *pPrims, int nPrims)
 {
 	++g_Counters.primListDraws;
-	if ( !pica::Initialized() || SourceVertexCount() <= 0 || nPrims <= 0 )
+	if ( !corefacade::Initialized() || SourceVertexCount() <= 0 || nPrims <= 0 )
 	{
 		++g_Counters.primListEmpty;
 		return;
@@ -3331,14 +3331,14 @@ void CEmptyMesh::Draw(CPrimList *pPrims, int nPrims)
 	m_nPrims = 0;
 }
 
-void *CEmptyMesh::AllocStorage( pica::Memory kind, size_t bytes )
+void *CEmptyMesh::AllocStorage( corefacade::Memory kind, size_t bytes )
 {
 	// A model's mesh (normals, no lightmap coordinates) keeps its one copy in
 	// device memory, which the render core reads in place (EmitToCore's
 	// CoreMeshStreams); world meshes, which the core draws from its own
 	// data, stay CPU memory.
 	const bool inPlace = ( m_Format & VERTEX_NORMAL ) && TexCoordSize( 1, m_Format ) == 0;
-	return m_bIsDynamic ? malloc( bytes ) : pica::AllocLinear( kind, bytes, inPlace );
+	return m_bIsDynamic ? malloc( bytes ) : corefacade::AllocLinear( kind, bytes, inPlace );
 }
 
 void CEmptyMesh::FreeStorage( void *storage )
@@ -3346,7 +3346,7 @@ void CEmptyMesh::FreeStorage( void *storage )
 	if ( m_bIsDynamic )
 		free( storage );
 	else
-		pica::FreeLinear( storage );
+		corefacade::FreeLinear( storage );
 }
 
 bool CEmptyMesh::EnsureVertices( int count, bool exact )
@@ -3358,13 +3358,13 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 		capacity *= 2;
 	if ( exact && !m_bIsDynamic )
 		capacity = count;
-	pica::Vertex *vertices = static_cast<pica::Vertex *>(
-		AllocStorage( pica::Memory::kVertices, capacity * sizeof( pica::Vertex ) ) );
+	corefacade::Vertex *vertices = static_cast<corefacade::Vertex *>(
+		AllocStorage( corefacade::Memory::kVertices, capacity * sizeof( corefacade::Vertex ) ) );
 	if ( !vertices )
 		return false;
 	if ( m_pVertices )
 	{
-		memcpy( vertices, m_pVertices, m_nVertexCapacity * sizeof( pica::Vertex ) );
+		memcpy( vertices, m_pVertices, m_nVertexCapacity * sizeof( corefacade::Vertex ) );
 		FreeStorage( m_pVertices );
 	}
 	m_pVertices = vertices;
@@ -3374,7 +3374,7 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 		// The weights with the vertices (the core reads them in place); the
 		// bone indices stay CPU memory (the palette slots replace them).
 		float *weights = static_cast<float *>(
-			AllocStorage( pica::Memory::kVertices, capacity * 2 * sizeof( float ) ) );
+			AllocStorage( corefacade::Memory::kVertices, capacity * 2 * sizeof( float ) ) );
 		if ( !weights )
 			return false;
 		unsigned char *indices = new unsigned char[capacity * 4];
@@ -3395,7 +3395,7 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 	if ( m_Format & VERTEX_NORMAL )
 	{
 		float *normals = static_cast<float *>(
-			AllocStorage( pica::Memory::kVertices, capacity * 3 * sizeof( float ) ) );
+			AllocStorage( corefacade::Memory::kVertices, capacity * 3 * sizeof( float ) ) );
 		if ( !normals )
 			return false;
 		memset( normals, 0, capacity * 3 * sizeof( float ) );
@@ -3449,7 +3449,7 @@ bool CEmptyMesh::EnsureIndices( int count, bool exact )
 	if ( exact && !m_bIsDynamic )
 		capacity = count;
 	unsigned short *indices = static_cast<unsigned short *>(
-		AllocStorage( pica::Memory::kIndices, capacity * sizeof( unsigned short ) ) );
+		AllocStorage( corefacade::Memory::kIndices, capacity * sizeof( unsigned short ) ) );
 	if ( !indices )
 		return false;
 	if ( m_pIndices )
@@ -3760,10 +3760,10 @@ bool CEmptyMesh::SkinSlots()
 		return false;
 	if ( !m_pSkinSlots )
 		m_pSkinSlots = static_cast<unsigned char *>(
-			AllocStorage( pica::Memory::kVertices, size_t( m_nBoneCapacity ) * 4 ) );
+			AllocStorage( corefacade::Memory::kVertices, size_t( m_nBoneCapacity ) * 4 ) );
 	if ( !m_pSkinSlots )
 		return false;
-	pica::PrepareWrite( m_pSkinSlots );
+	corefacade::PrepareWrite( m_pSkinSlots );
 	constexpr int kPalette = int( render::material::kMaxReducedBones );
 	signed char slotOf[kMaxBones];
 	memset( slotOf, -1, sizeof( slotOf ) );
@@ -3792,7 +3792,7 @@ bool CEmptyMesh::SkinSlots()
 		}
 		out[3] = 0;
 	}
-	pica::FlushLinear( m_pSkinSlots, size_t( m_nVertices ) * 4 );
+	corefacade::FlushLinear( m_pSkinSlots, size_t( m_nVertices ) * 4 );
 	m_nSkinBones = count;
 	return count > 0;
 }
@@ -3803,7 +3803,7 @@ static void FillModelLighting( render::legacy::CoreMeshDraw &draw )
 {
 	draw.modelLighting = true;
 	memcpy( draw.ambientCube, g_AmbientCube, sizeof( draw.ambientCube ) );
-	for ( int i = 0; i < kPicaMaxLights && draw.lightCount < render::material::kMaxModelLights; ++i )
+	for ( int i = 0; i < kFacadeMaxLights && draw.lightCount < render::material::kMaxModelLights; ++i )
 	{
 		const LightDesc_t &desc = g_Lights[i];
 		if ( desc.m_Type == MATERIAL_LIGHT_DISABLE )
@@ -3847,7 +3847,7 @@ static void FillCoreView( render::legacy::CoreMeshDraw &draw, const float *model
 			draw.viewToClip[row * 4 + col] = projection[col * 4 + row];
 			draw.modelToWorld[row * 4 + col] = model[col * 4 + row];
 		}
-	int vx = 0, vy = 0, vw = pica::kScreenWidth, vh = pica::kScreenHeight;
+	int vx = 0, vy = 0, vw = corefacade::kScreenWidth, vh = corefacade::kScreenHeight;
 	ShaderViewport_t viewport;
 	g_ShaderAPIEmpty.GetViewports( &viewport, 1 );
 	if ( viewport.m_nWidth > 0 && viewport.m_nHeight > 0 )
@@ -3869,7 +3869,7 @@ static bool QueueCore( const render::legacy::CoreMeshDraw &draw, std::size_t geo
 	const std::uint32_t tag = g_CorePassRecorder->QueueMesh( draw );
 	if ( !tag )
 		return false;
-	g_PicaCorePassSlots.MarkSlot( tag );
+	g_FacadeCorePassSlots.MarkSlot( tag );
 	// Each queued draw is also a queued view of the core's (tens of KB of
 	// heap until recorded): a frame of many draws flushes by count too.
 	static std::size_t s_pendingBytes = 0;
@@ -3877,7 +3877,7 @@ static bool QueueCore( const render::legacy::CoreMeshDraw &draw, std::size_t geo
 	s_pendingBytes += geometryBytes;
 	if ( s_pendingBytes > ( 3u << 19 ) || ++s_pendingDraws >= 64 )
 	{
-		pica::FlushRecording();
+		corefacade::FlushRecording();
 		s_pendingBytes = 0;
 		s_pendingDraws = 0;
 	}
@@ -3942,8 +3942,8 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	// palette: the vertices stay in bone space and the palette holds each
 	// bone's bone-to-world rows; an unskinned mesh is one "bone", its model
 	// matrix. The CPU loop below is the fallback (more bones) and the A/B
-	// reference (-pica_cpu_skinning).
-	static const bool s_CpuSkinning = CommandLine()->FindParm( "-pica_cpu_skinning" ) != 0;
+	// reference (-core_cpu_skinning).
+	static const bool s_CpuSkinning = CommandLine()->FindParm( "-core_cpu_skinning" ) != 0;
 	constexpr int kPalette = int( render::material::kMaxReducedBones );
 	float palette[kPalette * 12];
 	int paletteCount = 0;
@@ -3953,20 +3953,20 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	// built or copied per draw when the core reads streams and every stream
 	// is in the mesh's in-place memory (AllocStorage); a skinned mesh adds its
 	// weights and palette slots (SkinSlots), its palette the slots' bones.
-	static_assert( sizeof( pica::Vertex ) == 24 && offsetof( pica::Vertex, color ) == 12 &&
-		offsetof( pica::Vertex, uv ) == 16, "the record CoreMeshStreams names" );
+	static_assert( sizeof( corefacade::Vertex ) == 24 && offsetof( corefacade::Vertex, color ) == 12 &&
+		offsetof( corefacade::Vertex, uv ) == 16, "the record CoreMeshStreams names" );
 	render::legacy::CoreMeshStreams streams;
-	// -pica_no_mesh_streams: build every draw's vertices (the A/B reference).
-	static const bool s_NoMeshStreams = CommandLine()->FindParm( "-pica_no_mesh_streams" ) != 0;
+	// -core_no_mesh_streams: build every draw's vertices (the A/B reference).
+	static const bool s_NoMeshStreams = CommandLine()->FindParm( "-core_no_mesh_streams" ) != 0;
 	bool inPlace = gpu && cacheable && !s_NoMeshStreams && g_CorePassRecorder->AcceptsMeshStreams() &&
-		pica::DeviceBufferOf( src.m_pVertices, streams.record, streams.recordOffset ) &&
-		pica::DeviceBufferOf( src.m_pNormals, streams.normals, streams.normalOffset );
+		corefacade::DeviceBufferOf( src.m_pVertices, streams.record, streams.recordOffset ) &&
+		corefacade::DeviceBufferOf( src.m_pNormals, streams.normals, streams.normalOffset );
 	if ( inPlace && skinned )
 	{
 		CEmptyMesh &source = const_cast<CEmptyMesh &>( src );
 		inPlace = source.SkinSlots() &&
-			pica::DeviceBufferOf( src.m_pBoneWeights, streams.weights, streams.weightOffset ) &&
-			pica::DeviceBufferOf( src.m_pSkinSlots, streams.slots, streams.slotOffset );
+			corefacade::DeviceBufferOf( src.m_pBoneWeights, streams.weights, streams.weightOffset ) &&
+			corefacade::DeviceBufferOf( src.m_pSkinSlots, streams.slots, streams.slotOffset );
 		if ( inPlace )
 		{
 			paletteCount = src.m_nSkinBones;
@@ -4016,7 +4016,7 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		vertices.reserve( src.m_nVertices );
 		for ( int i = 0; i < src.m_nVertices; ++i )
 		{
-			const pica::Vertex &in = src.m_pVertices[i];
+			const corefacade::Vertex &in = src.m_pVertices[i];
 			const float *n = src.m_pNormals + i * 3;
 			float weight0 = 1.0f, weight1 = 0.0f;
 			float offsets[3] = { 0.0f, 0.0f, 0.0f };
@@ -4043,7 +4043,7 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		vertices.resize( src.m_nVertices );
 	for ( int i = 0; !( gpu && paletteCount > 0 ) && i < src.m_nVertices; ++i )
 	{
-		const pica::Vertex &in = src.m_pVertices[i];
+		const corefacade::Vertex &in = src.m_pVertices[i];
 		const float *n = src.m_pNormals + i * 3;
 		render::material::SurfaceWorldVertex &out = vertices[i];
 		float pos[3] = { 0, 0, 0 }, normal[3] = { 0, 0, 0 };
@@ -4138,7 +4138,7 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	{
 		const struct mallinfo heap = mallinfo();
 		printf( "pica: %u core model draws, heap used %u KB, frame %d\n", s_taken,
-			(unsigned)( heap.uordblks / 1024 ), g_PicaFrame );
+			(unsigned)( heap.uordblks / 1024 ), g_FacadeFrame );
 	}
 	return true;
 }
@@ -4275,7 +4275,7 @@ bool CEmptyMesh::EmitSurfaceToCore( int firstIndex, int indexCount, render::lega
 	vertices.reserve( last - first + 1 );
 	for ( int i = first; i <= last; ++i )
 	{
-		const pica::Vertex &in = src.m_pVertices[i];
+		const corefacade::Vertex &in = src.m_pVertices[i];
 		const float zero[3] = { 0.0f, 0.0f, 1.0f };
 		const float *n = normals ? src.m_pNormals + i * 3 : zero;
 		float pos[3] = { 0, 0, 0 }, normal[3] = { 0, 0, 0 };
@@ -4494,7 +4494,7 @@ void CShaderShadowEmpty::SetDefaultState()
 	m_IsAlphaTested = false;
 	m_bIsDepthWriteEnabled = true;
 	m_bUsesVertexAndPixelShaders = false;
-	m_State = pica::DrawState();
+	m_State = corefacade::DrawState();
 	m_VertexFormat = 0;
 	m_PolyOffset = SHADER_POLYOFFSET_DISABLE;
 }
@@ -5065,7 +5065,7 @@ StateSnapshot_t	 CShaderAPIEmpty::TakeSnapshot( )
 			index = i;
 	if ( index < 0 )
 	{
-		PicaSnapshot snapshot;
+		FacadeSnapshot snapshot;
 		snapshot.state = g_ShaderShadow.m_State;
 		snapshot.format = g_ShaderShadow.m_VertexFormat;
 		snapshot.polyOffset = g_ShaderShadow.m_PolyOffset;
@@ -5202,7 +5202,7 @@ void CShaderAPIEmpty::SetHeightClipMode( enum MaterialHeightClipMode_t heightCli
 // Sets the lights
 void CShaderAPIEmpty::SetLight( int lightNum, const LightDesc_t& desc )
 {
-	if ( lightNum >= 0 && lightNum < kPicaMaxLights )
+	if ( lightNum >= 0 && lightNum < kFacadeMaxLights )
 		g_Lights[lightNum] = desc;
 }
 
@@ -5225,13 +5225,13 @@ void CShaderAPIEmpty::SetAmbientLightCube( Vector4D cube[6] )
 // Get lights
 int CShaderAPIEmpty::GetMaxLights( void ) const
 {
-	return kPicaMaxLights;
+	return kFacadeMaxLights;
 }
 
 const LightDesc_t& CShaderAPIEmpty::GetLight( int lightNum ) const
 {
 	static LightDesc_t blah;
-	return lightNum >= 0 && lightNum < kPicaMaxLights ? g_Lights[lightNum] : blah;
+	return lightNum >= 0 && lightNum < kFacadeMaxLights ? g_Lights[lightNum] : blah;
 }
 
 // Render state for the ambient light cube (vertex shaders)
@@ -5566,8 +5566,8 @@ void CShaderAPIEmpty::SetViewports( int nCount, const ShaderViewport_t* pViewpor
 	if ( nCount <= 0 || !pViewports )
 		return;
 	g_Viewport = pViewports[0];
-	if ( g_bDrawingToBackBuffer && pica::Initialized() )
-		pica::SetViewport( g_Viewport.m_nTopLeftX, g_Viewport.m_nTopLeftY, g_Viewport.m_nWidth,
+	if ( g_bDrawingToBackBuffer && corefacade::Initialized() )
+		corefacade::SetViewport( g_Viewport.m_nTopLeftX, g_Viewport.m_nTopLeftY, g_Viewport.m_nWidth,
 			g_Viewport.m_nHeight );
 }
 
@@ -5577,7 +5577,7 @@ int CShaderAPIEmpty::GetViewports( ShaderViewport_t* pViewports, int nMax ) cons
 	{
 		pViewports[0] = g_Viewport;
 		if ( g_Viewport.m_nWidth <= 0 || g_Viewport.m_nHeight <= 0 )
-			pViewports[0].Init( 0, 0, pica::kScreenWidth, pica::kScreenHeight );
+			pViewports[0].Init( 0, 0, corefacade::kScreenWidth, corefacade::kScreenHeight );
 	}
 	return 1;
 }
@@ -5695,7 +5695,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 						 ImageFormat srcFormat, bool bSrcIsTiled, void *imageData )
 {
 	++g_TextureCounters.images;
-	PicaTexture *texture = TextureFor( g_ModifyTexture );
+	FacadeTexture *texture = TextureFor( g_ModifyTexture );
 	if ( texture && level == 0 && cubeFace <= 0 )
 		texture->linearSource = IsLinearSourceFormat( srcFormat ) || IsLinearSourceFormat( dstFormat );
 	if ( texture && texture->cube )
@@ -5749,7 +5749,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 		if ( size == width )
 			memcpy( out.Base(), rgba.Base(), rgba.Count() );
 		else
-			pica::Resample( rgba.Base(), width, height, out.Base(), size, size );
+			corefacade::Resample( rgba.Base(), width, height, out.Base(), size, size );
 		MarkTextureDirty( texture );
 		return;
 	}
@@ -5807,9 +5807,9 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 		++g_TextureCounters.convertFailed;
 		return;
 	}
-	// -pica_dump_texture <debug name>: the converted RGBA of each level the
+	// -core_dump_texture <debug name>: the converted RGBA of each level the
 	// backend receives, as sdmc:/source-engine/texdump_<level>.ppm.
-	static const char *s_DumpName = CommandLine()->ParmValue( "-pica_dump_texture", (const char *)NULL );
+	static const char *s_DumpName = CommandLine()->ParmValue( "-core_dump_texture", (const char *)NULL );
 	if ( s_DumpName && !V_stricmp( s_DumpName, texture->name ) )
 	{
 		char path[96];
@@ -5840,7 +5840,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 	if ( wantW == width && wantH == height )
 		memcpy( out.Base(), rgba.Base(), rgba.Count() );
 	else
-		pica::Resample( rgba.Base(), width, height, out.Base(), wantW, wantH );
+		corefacade::Resample( rgba.Base(), width, height, out.Base(), wantW, wantH );
 	texture->levelHashes.AddToTail( LevelHash( out ) );
 	MarkTextureDirty( texture );
 }
@@ -5848,7 +5848,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 void CShaderAPIEmpty::TexSubImage2D( int level, int cubeFace, int xOffset, int yOffset, int zOffset, int width, int height,
 						 ImageFormat srcFormat, int srcStride, bool bSrcIsTiled, void *imageData )
 {
-	PicaTexture *texture = TextureFor( g_ModifyTexture );
+	FacadeTexture *texture = TextureFor( g_ModifyTexture );
 	if ( !texture || level != 0 || cubeFace != 0 || !imageData || texture->levels.Count() == 0 ||
 		texture->mipLevels > 1 )
 		return;
@@ -5889,7 +5889,7 @@ void CShaderAPIEmpty::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 		return;
 #if !defined( PLATFORM_3DS )
 	// The full model's cube maps: each face's base level (TexImage2D's cube path).
-	PicaTexture *target = TextureFor( g_ModifyTexture );
+	FacadeTexture *target = TextureFor( g_ModifyTexture );
 	if ( target && target->cube )
 	{
 		int width = 0, height = 0, depth = 0;
@@ -5930,7 +5930,7 @@ static ImageFormat g_TexLockFormat = IMAGE_FORMAT_RGBA8888;
 bool CShaderAPIEmpty::TexLock( int level, int cubeFaceID, int xOffset, int yOffset, 
 								int width, int height, CPixelWriter& writer )
 {
-	PicaTexture *texture = TextureFor( g_ModifyTexture );
+	FacadeTexture *texture = TextureFor( g_ModifyTexture );
 	if ( !texture || level != 0 || cubeFaceID != 0 || width <= 0 || height <= 0 ||
 		texture->mipLevels > 1 || texture->renderTarget || texture->depth )
 		return false;
@@ -5996,7 +5996,7 @@ void CShaderAPIEmpty::TexMagFilter( ShaderTexFilterMode_t texFilterMode )
 
 void CShaderAPIEmpty::TexWrap( ShaderTexCoordComponent_t coord, ShaderTexWrapMode_t wrapMode )
 {
-	PicaTexture *texture = TextureFor( g_ModifyTexture );
+	FacadeTexture *texture = TextureFor( g_ModifyTexture );
 	if ( !texture )
 		return;
 	const bool wrap = wrapMode == SHADER_TEXWRAPMODE_REPEAT;
@@ -6044,7 +6044,7 @@ void CShaderAPIEmpty::CreateTextures(
 {
 	for ( int k = 0; k < count; ++k )
 	{
-		PicaTexture *texture = new PicaTexture;
+		FacadeTexture *texture = new FacadeTexture;
 		texture->used = true;
 		texture->width = width;
 		texture->height = height;
@@ -6080,7 +6080,7 @@ ShaderAPITextureHandle_t CShaderAPIEmpty::CreateDepthTexture( ImageFormat render
 
 void CShaderAPIEmpty::DeleteTexture( ShaderAPITextureHandle_t textureHandle )
 {
-	PicaTexture *texture = TextureFor( textureHandle );
+	FacadeTexture *texture = TextureFor( textureHandle );
 	if ( !texture )
 		return;
 	for ( int i = 0; i < 16; ++i )
@@ -6104,17 +6104,17 @@ bool CShaderAPIEmpty::IsTexture( ShaderAPITextureHandle_t textureHandle )
 
 bool CShaderAPIEmpty::IsTextureResident( ShaderAPITextureHandle_t textureHandle )
 {
-	PicaTexture *texture = TextureFor( textureHandle );
+	FacadeTexture *texture = TextureFor( textureHandle );
 	return texture && texture->gpu.Valid();
 }
 
 // stuff that isn't to be used from within a shader
 void CShaderAPIEmpty::ClearBuffers( bool bClearColor, bool bClearDepth, bool bClearStencil, int renderTargetWidth, int renderTargetHeight )
 {
-	if ( g_bDrawingToBackBuffer && pica::Initialized() )
+	if ( g_bDrawingToBackBuffer && corefacade::Initialized() )
 	{
 		++g_Counters.clears;
-		pica::Clear( bClearColor, bClearDepth, g_ClearColor );
+		corefacade::Clear( bClearColor, bClearDepth, g_ClearColor );
 	}
 }
 
@@ -6169,7 +6169,7 @@ void CShaderAPIEmpty::ReadPixels( Rect_t *pSrcRect, Rect_t *pDstRect, unsigned c
 	const int width = pSrcRect->width, height = pSrcRect->height;
 	CUtlVector<unsigned char> rgba;
 	rgba.SetCount( width * height * 4 );
-	if ( !pica::ReadCurrentTarget( pSrcRect->x, pSrcRect->y, width, height, rgba.Base() ) )
+	if ( !corefacade::ReadCurrentTarget( pSrcRect->x, pSrcRect->y, width, height, rgba.Base() ) )
 		return;
 	const int stride = nDstStride > 0 ? nDstStride : ImageLoader::GetMemRequired( width, 1, 1, dstFormat, false );
 	ImageLoader::ConvertImageFormat( rgba.Base(), IMAGE_FORMAT_RGBA8888, data, dstFormat, width, height, 0, stride );

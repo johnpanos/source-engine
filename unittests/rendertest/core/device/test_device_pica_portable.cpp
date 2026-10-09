@@ -710,7 +710,7 @@ void LayoutCases( testing::Checks &checks )
 	}
 
 	// ETC (D40): the stored blocks in the order the 3DS reads them, as
-	// materialsystem/shaderapipica/pica_texture.cpp writes them (proven on
+	// materialsystem/shaderapicore/pica_texture.cpp writes them (proven on
 	// the device): tiles row-major, each tile's four blocks in Z order, at
 	// consecutive offsets; an ETC1 word stored little-endian, the port's in
 	// the specification's byte order; ETC1A4 blocks the same 16 bytes.

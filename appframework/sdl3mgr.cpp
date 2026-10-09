@@ -268,7 +268,7 @@ InitReturnVal_t CSDL3Mgr::Init()
 	const SDL_WindowFlags pixelDensity =
 	    CommandLine()->FindParm( "-nohighdpi" ) ? 0 : SDL_WINDOW_HIGH_PIXEL_DENSITY;
 #if defined( PLATFORM_3DS )
-	// The 3DS's top screen (400x240): the PICA backend (shaderapipica) draws
+	// The 3DS's top screen (400x240): the PICA backend (shaderapicore) draws
 	// it through citro3d, so the window carries no graphics API.
 	m_Window = SDL_CreateWindow( "", 400, 240, 0 );
 #elif defined( PLATFORM_WASM )

@@ -30,7 +30,7 @@
         "1080"
       ],
       "renderer": [
-        "pica"
+        "core"
       ],
       "job_args": [
         "+cl_render_start_graph",

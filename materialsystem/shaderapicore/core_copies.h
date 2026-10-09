@@ -12,7 +12,7 @@ namespace render::legacy
 class ICorePassRecorder;
 }
 
-namespace pica
+namespace corefacade
 {
 
 class Texture;
@@ -53,6 +53,6 @@ CopyResult CopyTargetRegion( Texture &destination, const CopyRect &region,
     const CopyDepthAlpha *depthAlpha = nullptr,
     render::legacy::ICorePassRecorder *recorder = nullptr );
 
-} // namespace pica
+} // namespace corefacade
 
 #endif // SHADERAPIPICA_CORE_COPIES_H

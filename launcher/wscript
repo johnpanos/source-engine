@@ -42,7 +42,7 @@ def build(bld):
 	# -renderer. Each is built only when its SDK was configured, so guard both
 	# the link and the catalog entry on the same condition.
 	if bld.env.CORE_SHADER_API:
-		libs += ['shaderapipica']
+		libs += ['shaderapicore']
 		defines += ['LINKED_PICA_BACKEND']
 		# RFC 0016 R91 part f: on the Linux desktop the core shader API's
 		# frames show through the SDL3-Vulkan bridge's core presenter.
