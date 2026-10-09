@@ -53,7 +53,6 @@ def build(bld):
 		'portal_refract_helper.cpp',
 		'refract.cpp',
 		'refract_dx9_helper.cpp',
-		'screenspace_general.cpp',
 		'shatteredglass.cpp',
 		'skin_dx9_helper.cpp',
 		'sky_hdr_dx9.cpp',

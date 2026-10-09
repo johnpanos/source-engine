@@ -76,6 +76,7 @@ enum class Op
 	PolyOffset,     // EnablePolyOffset( PolygonOffsetMode_t( a ) )
 	FogToGreyRaw,   // DisableFogGammaCorrection( true ); FogToGrey()
 	DecalFormat,    // DecalModulate's format: POSITION | COMPRESSED, plus NORMAL and texcoords { 2, 0, 3 } with fast vertex textures
+	LinearReadTexture, // when param b (extra, or -1 the base texture) is defined: sampler a, sRGB read unless 16-bit or extra c is set
 	ClearWrites,    // BufferClearObeyStencil: depth, colour and alpha writes from extras 2, 0 and 1
 	CullAlphaTested, // EnableCulling( $alphatest && !$nocull )
 	DepthWriteAlpha, // DepthWrite's alpha-clip / vertex-texture samplers (extra a: $color_depth)
@@ -88,6 +89,7 @@ enum class When
 	Flag,    // MATERIAL_VAR_* c is set
 	NotFlag, // MATERIAL_VAR_* c is clear
 	Param,   // extra param c is nonzero
+	NotParam, // extra param c is zero
 };
 
 struct Step
@@ -117,6 +119,7 @@ enum class LoadAs
 	SkyTexture,     // TEXTUREFLAGS_SRGB unless the texture is 16 bits per channel
 	BumpMap,        // LoadBumpMap
 	BumpMapWithDefault, // LoadBumpMap, first giving an undefined param its default name
+	LinearRead,     // TEXTUREFLAGS_SRGB unless 16 bits per channel or extra textureFlags is set
 };
 
 // Row-specific init that is not a plain default.
@@ -166,9 +169,9 @@ struct Load
 	LoadAs as = LoadAs::Texture;
 };
 
-constexpr int kMaxParams = 12;
+constexpr int kMaxParams = 32;
 constexpr int kMaxLoads = 4;
-constexpr int kMaxSteps = 16;
+constexpr int kMaxSteps = 24;
 
 struct FixedStateRow
 {
@@ -321,6 +324,39 @@ const FixedStateRow kRows[] = {
 	        { Op::Blending, SHADER_BLEND_DST_COLOR, SHADER_BLEND_SRC_COLOR },
 	        { Op::FogToGreyRaw, 0, 0 }, { Op::DecalFormat, 0, 0 } },
 	    MATERIAL_VAR_NO_DEBUG_OVERRIDE, {}, {}, nullptr, InitHook::VertexIdSkinning },
+	{ "screenspace_general", "screenspace_general_dx9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "screenspace_general_dx9", nullptr, SHADER_NOT_EDITABLE, 0,
+	    { { "$C0_X", F, "0", "" }, { "$C0_Y", F, "0", "" }, { "$C0_Z", F, "0", "" }, { "$C0_W", F, "0", "" }, { "$C1_X", F, "0", "" }, { "$C1_Y", F, "0", "" }, { "$C1_Z", F, "0", "" }, { "$C1_W", F, "0", "" }, { "$C2_X", F, "0", "" }, { "$C2_Y", F, "0", "" }, { "$C2_Z", F, "0", "" }, { "$C2_W", F, "0", "" }, { "$C3_X", F, "0", "" }, { "$C3_Y", F, "0", "" }, { "$C3_Z", F, "0", "" }, { "$C3_W", F, "0", "" }, 
+	        { "$PIXSHADER", S, "", "Name of the pixel shader to use" },
+	        { "$DISABLE_COLOR_WRITES", I, "0", "" }, { "$ALPHATESTED", F, "0", "" },
+	        { "$ALPHA_BLEND_COLOR_OVERLAY", I, "0", "" }, { "$ALPHA_BLEND", I, "0", "" },
+	        { "$TEXTURE1", T, "", "" }, { "$TEXTURE2", T, "", "" }, { "$TEXTURE3", T, "", "" },
+	        { "$LINEARREAD_BASETEXTURE", I, "0", "" }, { "$LINEARREAD_TEXTURE1", I, "0", "" },
+	        { "$LINEARREAD_TEXTURE2", I, "0", "" }, { "$LINEARREAD_TEXTURE3", I, "0", "" },
+	        { "$LINEARWRITE", I, "0", "" },
+	        { "$X360APPCHOOSER", I, "0", "Needed for movies in 360 launcher" },
+	        { "$COPYALPHA", I, "0", "" } },
+	    -1, 0,
+	    // Each texture reads linear when it is 16 bits per channel or its
+	    // $LINEARREAD_* is set (the POSIX branch; every client is POSIX).
+	    { { false, BASETEXTURE, true, 24, LoadAs::LinearRead },
+	        { true, 21, true, 25, LoadAs::LinearRead }, { true, 22, true, 26, LoadAs::LinearRead },
+	        { true, 23, true, 27, LoadAs::LinearRead } },
+	    { { Op::DepthWrites, 0, 0 }, { Op::LinearReadTexture, SHADER_SAMPLER0, -1, When::Always, 24 },
+	        { Op::LinearReadTexture, SHADER_SAMPLER1, 21, When::Always, 25 },
+	        { Op::LinearReadTexture, SHADER_SAMPLER2, 22, When::Always, 26 },
+	        { Op::LinearReadTexture, SHADER_SAMPLER3, 23, When::Always, 27 },
+	        { Op::Format, VERTEX_POSITION | VERTEX_COLOR, 1, When::Param, 29 },
+	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA, When::Param, 29 },
+	        { Op::Format, VERTEX_POSITION, 1, When::NotParam, 29 },
+	        { Op::SrgbWrite, 1, 0, When::NotParam, 28 }, { Op::SrgbWrite, 0, 0, When::Param, 28 },
+	        { Op::ColorWrites, 0, 0, When::Param, 17 }, { Op::AlphaTest, 1, 0 },
+	        { Op::AlphaFunc, SHADER_ALPHAFUNC_GREATER, 0 },
+	        { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ONE, When::Flag, MATERIAL_VAR_ADDITIVE },
+	        { Op::Blending, SHADER_BLEND_ONE, SHADER_BLEND_ONE_MINUS_SRC_ALPHA, When::Param, 19 },
+	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA, When::Param, 20 },
+	        { Op::BlendEnable, 0, 0, When::Param, 30 },
+	        { Op::AlphaFunc, SHADER_ALPHAFUNC_ALWAYS, 0, When::Param, 30 } } },
 	{ "Downsample_nohdr", nullptr, SHADER_NOT_EDITABLE, 0,
 	    { { "$BLOOMTINTENABLE", I, "1", "" }, { "$CSTRIKE", I, "0", "" } }, 0, 1,
 	    { { false, BASETEXTURE, false } },
@@ -683,6 +719,15 @@ protected:
 				LoadTexture( param, IsSixteenBitPerChannel( params[param]->GetTextureValue() )
 				                        ? 0 : TEXTUREFLAGS_SRGB );
 				break;
+			case LoadAs::LinearRead:
+			{
+				// textureFlags names the extra param that asks for a linear read.
+				const IMaterialVar *linear = params[Extra( load.textureFlags )];
+				const bool srgb = !IsSixteenBitPerChannel( params[param]->GetTextureValue() ) &&
+				                  !( linear->IsDefined() && linear->GetIntValue() );
+				LoadTexture( param, srgb ? TEXTUREFLAGS_SRGB : 0 );
+				break;
+			}
 			case LoadAs::OsxSrgbTexture:
 				LoadTexture( param, IsOSX() && g_pHardwareConfig->CanDoSRGBReadFromRTs()
 				                        ? TEXTUREFLAGS_SRGB : 0 );
@@ -707,6 +752,8 @@ protected:
 				if ( step.when == When::NotFlag && IS_FLAG_SET( MaterialVarFlags_t( step.c ) ) )
 					continue;
 				if ( step.when == When::Param && !params[Extra( step.c )]->GetIntValue() )
+					continue;
+				if ( step.when == When::NotParam && params[Extra( step.c )]->GetIntValue() )
 					continue;
 				Apply( step, params, pShaderShadow );
 			}
@@ -881,6 +928,18 @@ private:
 			pShaderShadow->VertexShaderVertexFormat(
 			    VERTEX_POSITION | VERTEX_FORMAT_COMPRESSED | ( fast ? VERTEX_NORMAL : 0 ), fast ? 3 : 1,
 			    texCoordDims, 0 );
+			break;
+		}
+		case Op::LinearReadTexture:
+		{
+			IMaterialVar *texture = params[step.b < 0 ? int( BASETEXTURE ) : Extra( step.b )];
+			if ( !texture->IsDefined() )
+				break;
+			pShaderShadow->EnableTexture( Sampler_t( step.a ), true );
+			const IMaterialVar *linear = params[Extra( step.c )];
+			pShaderShadow->EnableSRGBRead( Sampler_t( step.a ),
+			    !IsSixteenBitPerChannel( texture->GetTextureValue() ) &&
+			        !( linear->IsDefined() && linear->GetIntValue() ) );
 			break;
 		}
 		case Op::ClearWrites:
