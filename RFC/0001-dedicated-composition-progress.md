@@ -164,7 +164,7 @@ server has no shader schemas. Only `env_sprite` bounds read sprite sizes on a
 server, and this material isn't one.
 
 Conformance rows: `dedicated.selftest`, `dedicated.absence`,
-`dedicated.lifecycle` and `dedicated.material-facts`.
+`dedicated.lifecycle`, `dedicated.material-facts` and `dedicated.join`.
 
 Reproduction:
 
@@ -179,22 +179,41 @@ python3 tools/quality/dedicated_server.py facts-check --runtime out/dedicated-li
 ./kiln build dedicated-windows && ./kiln package dedicated-windows
 python3 tools/quality/dedicated_server.py absence --install out/dedicated-windows/dev/install \
     --runtime out/dedicated-windows/dev/runtime --wineprefix out/dedicated-windows/dev/wineprefix
+./kiln build portal && ./kiln package portal
+python3 tools/quality/dedicated_server.py join --runtime out/dedicated-linux/dev/runtime \
+    --client-runtime out/portal-linux-native-vulkan/dev/runtime
 ```
 
 ### Open items and scope
 
-- **Engine render code still compiled in.** The dedicated `libengine`
-  compiles engine render translation units (`gl_rsurf.cpp`, `r_decal.cpp`,
-  `matsys_interface.cpp`, ...). With no material system they're unreachable,
-  since `materials` is null and any reach would crash the gates' map runs.
-  No render module is linked or loaded. Removing those units from the
-  dedicated engine is follow-on work.
-- **No client can join a dedicated server in this tree.** This predates R12:
-  the server ignores every connectionless packet (info query, challenge,
-  connect), and the pre-R12 binary fails the same way. `dedicated_server.py
-  join` drives the attempt, with RCON for status and quit, and stays outside
-  the gate until networking is fixed. So no gameplay with a connected player
-  has run on either binary.
+- **Engine render units.** The dedicated `libengine` builds none of the
+  engine's render translation units: `gl_rsurf`, `l_studio`, `r_decal`,
+  `decal_clip`, `Overlay`, `disp`, `disp_interface`, `disp_mapload`,
+  `gl_shader`, `matsys_interface`, `r_linefile` and `OcclusionSystem`.
+  The geometry the server reads from them is now in
+  `engine/brush_model_geometry.cpp`, built into every engine and deleted
+  from the originals: brush model planes, surface centroids and
+  `R_ComputeLightingOrigin`. The remaining client-only calls in
+  `modelloader`, `staticpropmgr`, `host`, `cmd`, `sys_engine` and
+  `cbenchmark` are compiled out under `SWDS`. Server displacement collision
+  comes from the collision model's own trees, and the facts gate shows the
+  same displacement surface properties as before. `absence` also rejects
+  defined engine render entry points (`R_DrawWorldLists`, `DispInfo_*`,
+  `Shader_*`, `CModelRender::`, `COverlayMgr::`, `COcclusionSystem::` and
+  others), with a seeded self-test case.
+- **A client joins and plays.** `dedicated_server.py join`
+  (`dedicated.join`) starts the dedicated server and a headless Portal
+  client, which connects over UDP. Both pass `net_usesocketsforloopback 1`,
+  because packets to 127.0.0.1 otherwise take the in-process loopback, which
+  a second process can't reach. The client walks forward (`+forward`) and
+  becomes an active player on `testchmb_a_01`. An RCON `changelevel` then
+  moves it to `testchmb_a_02`, where it is active again. Result: 5 of 5
+  checks. An earlier version of this record said no client could join a
+  dedicated server. That was wrong: the test never used real sockets.
 - **Physics by filename.** The dedicated root still loads its physics
   provider by filename. That's R39's concern, not an R12 criterion.
-- **Not run.** Apple, Android and hosted CI were not run.
+- **Profiles.** R12's dedicated profiles are `dedicated-linux` and
+  `dedicated-windows` (MSVC under Wine), and both gates pass. No Apple or
+  Android dedicated product is declared. Apple and MSVC runners are optional
+  (user decision, 2026-09-25). Hosted CI was not run: the user tests
+  locally, and the rows are in the manifest for when it is.

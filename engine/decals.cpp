@@ -46,7 +46,12 @@ CUtlVector< int > g_DecalLookup;
 //-----------------------------------------------------------------------------
 int Draw_DecalMax( void )
 {
+#ifndef SWDS
 	return g_nMaxDecals;
+#else
+	// The dedicated product keeps no decal pool.
+	return 0;
+#endif
 }
 
 //-----------------------------------------------------------------------------

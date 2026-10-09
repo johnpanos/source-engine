@@ -17,10 +17,11 @@
       Installed startup and shutdown: a map loads and the server quits cleanly;
       a level change unloads and reloads; partial failures (a missing physics
       provider, a missing game, a missing map) fail by name without a crash.
-  join --runtime DIR --client-runtime DIR [--map M] [--seconds N]
+  join --runtime DIR --client-runtime DIR [--map M] [--next-map M] [--seconds N]
       A Portal client (null renderer, offscreen) connects to the dedicated
-      server and plays; the server's status must list the player active, and
-      the server must quit cleanly.
+      server and walks forward; the server changes level with it connected;
+      status must list the player active on each map, and the server must
+      quit cleanly.
   selftest
       Seeded violations each fail the absence checks; a clean tree passes.
   facts-check --runtime DIR --reference FILE [--deviations FILE]
@@ -204,7 +205,12 @@ FORBIDDEN_MODULE = re.compile(
     r"wayland-\w+|gtk-\w+|gdk-\w+|render_\w+|d3d\w*|dxgi|opengl32|vulkan-1)(\.so.*|\.dll)?$", re.I)
 FORBIDDEN_CODE = re.compile(
     r"^(CMaterialSystem::|CShaderAPI\w*::|CShaderDevice\w*::|CStudioRender\w*::|CMatSystemSurface::|"
-    r"vgui::Panel::|vgui::Frame::|CVGui::|render::(device|graph|frame|renderer|pass|scene)::|RenderCore_\w+$)")
+    r"vgui::Panel::|vgui::Frame::|CVGui::|render::(device|graph|frame|renderer|pass|scene)::|RenderCore_\w+$|"
+    # The engine's own render units (gl_rsurf, l_studio, r_decal, Overlay, disp*, OcclusionSystem,
+    # matsys_interface, gl_shader), which the dedicated product does not build.
+    r"(R_DrawWorldLists|R_DecalShoot|R_StudioDrawPoses|Shader_\w+|DispInfo_\w+|InitMaterialSystem|"
+    r"MaterialSystem_\w+|R_BrushBatchInit|R_LoadSkys|R_DrawLineFile)\(|CModelRender::|COverlayMgr::|"
+    r"COcclusionSystem::|CDispInfo::)")
 
 
 def elf_files(tree: Path) -> list[Path]:
@@ -352,6 +358,12 @@ def selftest() -> int:
         cpp.write_text("struct CMaterialSystem { int Init(); }; int CMaterialSystem::Init(){ return 0; }\n")
         subprocess.run(["g++", "-shared", "-fPIC", "-o", str(code / "bin/libengine.so"), str(cpp)], check=True)
         expect(any("render/UI symbols" in e for e in install_violations(code)[1]), "defined CMaterialSystem code fails")
+        engine = root / "bad-engine"
+        shutil.copytree(clean, engine)
+        cpp.write_text("void R_DrawWorldLists(void *, int, float) {}\n")
+        subprocess.run(["g++", "-shared", "-fPIC", "-o", str(engine / "bin/libengine.so"), str(cpp)], check=True)
+        expect(any("render/UI symbols" in e for e in install_violations(engine)[1]),
+               "a defined engine world renderer fails")
         trace = "      1234:\tfile=/x/bin/libstudiorender.so [0];  needed by /x/bin/libengine.so [0]\n"
         expect(any(FORBIDDEN_MODULE.match(Path(o).name) for o in loaded_objects(trace)), "a loaded studiorender is seen")
         expect(not FORBIDDEN_MODULE.match("libvphysics_box3d.so") and not FORBIDDEN_MODULE.match("libserver.so"),
@@ -495,11 +507,13 @@ def join(args) -> int:
         server = subprocess.Popen(
             [str(runtime / "dedicated_launcher"), "-game", "portal", "-defaultgamedir", "portal", "-console",
              "-consolelog", str(console), "-insecure", "-ip", "127.0.0.1", "-port", str(port), "-usercon", "+maxplayers", "2",
+             # Two processes on one host: without it the engine treats 127.0.0.1
+             # as its in-process loopback and never sends the replies.
+             "+net_usesocketsforloopback", "1",
              "+rcon_password", password, "+map", args.map],
             cwd=runtime, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         player = None
         code = None
-        statuses = []
         try:
             deadline = time.time() + 120
             while time.time() < deadline and server.poll() is None and not (
@@ -514,20 +528,30 @@ def join(args) -> int:
             client_log = open(Path(scratch) / "client.out", "wb")
             player = subprocess.Popen(
                 [str(client / "hl2_launcher"), "-renderer", "null", "-game", "portal", "-windowed", "-w", "640",
-                 "-h", "480", "-multirun", "-novid", "-insecure", "-console", "+connect", "127.0.0.1:%d" % port],
+                 "-h", "480", "-multirun", "-novid", "-insecure", "-console", "+net_usesocketsforloopback", "1",
+                 "+forward", "+connect", "127.0.0.1:%d" % port],
                 cwd=client, env=cenv, stdin=subprocess.DEVNULL, stdout=client_log, stderr=subprocess.STDOUT)
             rcon = Rcon(port, password)
-            deadline = time.time() + args.seconds
-            while time.time() < deadline:
-                time.sleep(5)
-                text = rcon.command("status")
-                (Path(scratch) / "status.txt").write_text(text)
-                if ACTIVE_PLAYER.search(text):
-                    statuses.append(text)
-                    if len(statuses) >= 2:
-                        break
-            expect(len(statuses) >= 2, "the client is listed active in status, twice", "(%d)" % len(statuses))
+
+            def wait_active(map_name):
+                deadline = time.time() + args.seconds
+                while time.time() < deadline:
+                    time.sleep(5)
+                    text = rcon.command("status")
+                    (Path(scratch) / "status.txt").write_text(text)
+                    if ACTIVE_PLAYER.search(text) and STATUS_MAP.findall(text) == [map_name]:
+                        return text
+                return None
+
+            first = wait_active(args.map)
+            expect(first is not None, "the client joins and is active on " + args.map)
+            # The player walks (+forward): movement, world collision and its
+            # surface properties run on the server with no material system.
+            time.sleep(15)
             expect(server.poll() is None and player.poll() is None, "server and client still run")
+            rcon.command("changelevel " + args.next_map)
+            second = wait_active(args.next_map)
+            expect(second is not None, "after changelevel the client is active on " + args.next_map)
             rcon.command("quit")
             code = server.wait(timeout=60)
         except Exception as error:  # noqa: BLE001 - reported as a failed check
@@ -563,7 +587,8 @@ def main() -> int:
     p.add_argument("--runtime", required=True, type=Path)
     p.add_argument("--client-runtime", required=True, type=Path)
     p.add_argument("--map", default="testchmb_a_01")
-    p.add_argument("--seconds", type=int, default=120)
+    p.add_argument("--next-map", default="testchmb_a_02")
+    p.add_argument("--seconds", type=int, default=240)
     sub.add_parser("selftest")
     p = sub.add_parser("facts-check")
     p.add_argument("--runtime", required=True, type=Path)
