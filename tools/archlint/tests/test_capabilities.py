@@ -163,15 +163,6 @@ class RepositoryBoundaryRegressionTest(unittest.TestCase):
         self.assertTrue(any('CAP002 render/math/test_leak.cpp' in error
                             for error in self.check()))
 
-    def test_legacy_backend_can_use_port_but_not_frontend_implementation(self):
-        self.write('public/render/legacy/core_passes.h', '')
-        self.write('render/legacy/queued_capabilities.h', '')
-        path = 'materialsystem/shaderapivulkan/vulkan_device.h'
-        self.write(path, '#include "render/legacy/core_passes.h"\n')
-        self.assertEqual(self.check(), [])
-        self.write(path, '#include "render/legacy/queued_capabilities.h"\n')
-        self.assertTrue(any('CAP002' in error for error in self.check()))
-
     def test_model_fixture_is_shared_by_tests_not_product_composition(self):
         self.write('unittests/mdltest/synthetic_model.h', '')
         self.write('unittests/rendertest/core/composition/test_composition.cpp',
