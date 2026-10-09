@@ -6,11 +6,11 @@
     },
     "materialsystem/shaderapipica": {
       "files": 8,
-      "lines": 8381
+      "lines": 8398
     },
     "materialsystem/stdshaders": {
-      "files": 66,
-      "lines": 12709
+      "files": 65,
+      "lines": 12598
     }
   },
   "note": "Legacy backend retirement ratchet (user decision 2026-10-07, RFC 0028): files and lines per legacy backend directory. Exact and shrink-only; record deletions with `retirement_scans.py legacy-backends --write`. The goal is an empty map.",
