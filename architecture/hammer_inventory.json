@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 682,
     "totalHammerCppFiles": 334,
     "totalHammerHeaderFiles": 350,
-    "filesClassified": 388,
+    "filesClassified": 468,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'. 2026-10-03 (R08-REPLACE-TEXTURES, HAM-REPLACETEX-001): 22 reviewed records for the files that slice read or changed, and the authored totals refreshed to the live universe that 'archlint hammer --coverage' measures (hammer/ plus the strict roots)."
   },
   "files": [
@@ -5257,6 +5257,1069 @@
       "factorization": "split",
       "evidence": "observed",
       "note": "Declares CMapDecal and DecalFace_t with RMF and MAP serialization and its Render3D hook."
+    },
+    {
+      "path": "hammer/mapdefs.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "world.map-geometry",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Only defines the COORD_NOTINIT sentinel and includes WorldSize.h; no state or behaviour."
+    },
+    {
+      "path": "hammer/mapdisp.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation",
+        "file-io",
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapDisp implements trace, UpdateData, VMF load/save and IMesh rendering; hammer/core/scene/displacement_geometry.cpp already holds the headless geometry."
+    },
+    {
+      "path": "hammer/mapdisp.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation",
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapDisp declares trace, update, LoadVMF/SaveVMF and Render3D members over a CMapAtom base; the displacement data is saved document content."
+    },
+    {
+      "path": "hammer/mapentity.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation",
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapEntity covers helper creation, bounds, copy and LoadSolidCallback-based VMF loading, with 2D/3D rendering and key handling in the same file."
+    },
+    {
+      "path": "hammer/mapentity.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapEntity header declares LoadVMF/SaveVMF, helper management, and Render2D/Render3D hooks over CMapClass and CEditGameClass."
+    },
+    {
+      "path": "hammer/maperrorsdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CMapErrorsDlg is an MFC CDialog with message maps and OnClear/OnView handlers; the GTK problems panel in hammer/core/presenters replaces it."
+    },
+    {
+      "path": "hammer/maperrorsdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CMapErrorsDlg header declares a CDialog subclass with CWnd parent and standard MFC dialog overrides."
+    },
+    {
+      "path": "hammer/mapface.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "world.map-geometry",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation",
+        "file-io",
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapFace declares PLANE/TEXTURE types, LoadVMF/SaveVMF and CMeshBuilder/IMesh render hooks in one header."
+    },
+    {
+      "path": "hammer/mapfrustum.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapFrustum rebuilds spotlight cone faces (BuildFrustumFaces, RenderUnlit) from entity keys, a derived helper for the viewport."
+    },
+    {
+      "path": "hammer/mapfrustum.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapFrustum header declares Render3D and ShouldRenderLast for the spotlight frustum helper over CMapHelper."
+    },
+    {
+      "path": "hammer/mapgroup.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation",
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapGroup manages children, logical 2D positions and LoadVMF/SaveVMF of group membership."
+    },
+    {
+      "path": "hammer/mapgroup.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapGroup header declares child management, logical positions and LoadVMF/SaveVMF over CMapClass."
+    },
+    {
+      "path": "hammer/maphelper.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "selection-policy",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapHelper::PrepareSelection decides which helper object a selection mode picks, so it is selection policy."
+    },
+    {
+      "path": "hammer/mapinfodlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CMapInfoDlg counts entities, faces, solids and textures for an MFC CDialog; a GTK presenter over the scene counts replaces it."
+    },
+    {
+      "path": "hammer/mapinfodlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CMapInfoDlg header declares a CDialog subclass with a fixed 1024-entry texture array and CountEntity/CountFace hooks."
+    },
+    {
+      "path": "hammer/mapinstance.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io",
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapInstance resolves instance file paths and opens the instanced map through APP()->OpenDocumentFile, which reads an external document."
+    },
+    {
+      "path": "hammer/mapinstance.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapInstance header declares path resolution, the instanced CMapDoc accessor and Render2D/Render3D over CMapHelper."
+    },
+    {
+      "path": "hammer/mapkeyframe.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation",
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapKeyFrame computes bounds, copy/clone and quaternion angles and draws through Render3D for the animator path."
+    },
+    {
+      "path": "hammer/mapkeyframe.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapKeyFrame header declares the keyframe helper over CMapHelper with Render3D and clone hooks."
+    },
+    {
+      "path": "hammer/maplight.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapLight is a light helper whose creation, copy, selection and key changes follow entity keyvalues."
+    },
+    {
+      "path": "hammer/maplight.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapLight header declares the light helper over CMapHelper with copy, PrepareSelection and OnParentKeyChanged."
+    },
+    {
+      "path": "hammer/maplightcone.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapLightCone rebuilds the spotlight cone zones and per-face colour and alpha (BuildCone) as a viewport helper."
+    },
+    {
+      "path": "hammer/maplightcone.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapLightCone header declares the cone helper with Render3D and ShouldRenderLast over CMapHelper."
+    },
+    {
+      "path": "hammer/mapline.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapLine draws its helper line with DrawLine in Render2D and a CMeshBuilder/IMesh path in Render3D."
+    },
+    {
+      "path": "hammer/mapline.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapLine header declares Render3D over CMapHelper for the line helper."
+    },
+    {
+      "path": "hammer/mapoverlay.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation",
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapOverlay holds the overlay side data, handle state (Handles_Init, HitTest) and Render3D through IMesh; the overlay file format is headless in hammer/core/formats/overlay.cpp."
+    },
+    {
+      "path": "hammer/mapoverlay.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapOverlay header declares overlay handles, hit tests and Render3D over CMapSideList with a CMapView forward declaration."
+    },
+    {
+      "path": "hammer/mapoverlaytrans.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io",
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapOverlayTransition computes shore transition geometry, draws it in Render3D and has LoadVMF/SaveVMF persistence that the formats overlay codec in hammer/core/formats already covers."
+    },
+    {
+      "path": "hammer/mapoverlaytrans.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapOverlayTransition header declares ShoreEntityData_t, Render3D and LoadVMF/SaveVMF over CMapHelper."
+    },
+    {
+      "path": "hammer/mappath.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation",
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapPath and CMapPathNode hold path nodes and implement LoadVMF/SaveVMF for path data in one file."
+    },
+    {
+      "path": "hammer/mappath.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapPath header declares path node and path classes; its VMF load/save declarations are commented out and the header does not run file I/O."
+    },
+    {
+      "path": "hammer/mapplayerhullhandle.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapPlayerHullHandle is a draggable player-hull handle created from helper info, drawn with Render2D/Render3D and used for interactive edits."
+    },
+    {
+      "path": "hammer/mapplayerhullhandle.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapPlayerHullHandle header declares the handle over CMapHelper with Render2D/Render3D and friend access to CMapAxisHandle."
+    },
+    {
+      "path": "hammer/mappoint.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapPoint stores an origin vector with Get/SetOrigin accessors."
+    },
+    {
+      "path": "hammer/mappoint.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapPoint header declares a CMapAtom subclass holding m_Origin with Get/SetOrigin virtuals."
+    },
+    {
+      "path": "hammer/mappointhandle.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapPointHandle is a draggable point handle that draws its line to the parent and is used by ToolPointHandle for interactive edits."
+    },
+    {
+      "path": "hammer/mappointhandle.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapPointHandle header declares the handle over CMapHelper with friends CToolPointHandle and CMapAxisHandle."
+    },
+    {
+      "path": "hammer/mapquadbounds.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation",
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapQuadBounds computes the four corner positions of a quad helper and draws it through the Render3D mesh path."
+    },
+    {
+      "path": "hammer/mapquadbounds.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMapQuadBounds header declares the quad-bounds helper with four corner vectors over CMapHelper."
+    },
+    {
+      "path": "hammer/mapsidelist.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation",
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapSideList stores side lists, consults CMapDoc::GetActiveMapDoc and renders faces through a CMeshBuilder/IMesh in Render3D."
+    },
+    {
+      "path": "hammer/mapsidelist.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapSideList is a CMapHelper that manages the entity 'side' keyvalue, with Render2D/Render3D hooks and ShouldSerialize returning false."
+    },
+    {
+      "path": "hammer/mapsolid.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "world.map-geometry",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapSolid's Carve, ClipByFace and face-ID generation are pure brush geometry, with render and view hooks mixed in."
+    },
+    {
+      "path": "hammer/mapsolid.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "geometry",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapSolid declares LoadVMF/SaveVMF and RMF/MAP serialization alongside its face array and cordon state."
+    },
+    {
+      "path": "hammer/mapsphere.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapSphere is a radius helper with CalcBounds, SetRadius, a 2D hit test and a tool-object factory."
+    },
+    {
+      "path": "hammer/mapsphere.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapSphere declares Render2D/Render3D hooks, and its SerializeRMF and SerializeMAP are stubs that return 0."
+    },
+    {
+      "path": "hammer/mapsprite.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io",
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapSprite loads sprite files and draws preview icons through IMesh and the material system."
+    },
+    {
+      "path": "hammer/mapsprite.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapSprite declares its render mode and sprite-model state over CMapHelper, with a CreateMapSprite path factory."
+    },
+    {
+      "path": "hammer/mapstudiomodel.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io",
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapStudioModel loads studio model files, advances animation and draws through IMesh and the texture system."
+    },
+    {
+      "path": "hammer/mapstudiomodel.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapStudioModel declares its oriented-bounds and reverse-pitch state over CMapHelper, with creation from a model path."
+    },
+    {
+      "path": "hammer/mapsweptplayerhull.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation",
+        "gpu-work"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapSweptPlayerHull computes its swept bounds and renders through Render2D/Render3D and IMesh."
+    },
+    {
+      "path": "hammer/mapsweptplayerhull.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapSweptPlayerHull declares CMapHelper state, point handles and the IsSweptHullClass entity test."
+    },
+    {
+      "path": "hammer/mapview.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapView is the shared 2D/3D view base: render throttling by frame timing, activation, and SelectAt against the document."
+    },
+    {
+      "path": "hammer/mapview2d.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapView2D has an MFC message map, draw-type cycling, a render list and the 2D render entry points."
+    },
+    {
+      "path": "hammer/mapview2d.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapView2D declares the render list, instance rendering and culling-circle helpers over CMapView2DBase."
+    },
+    {
+      "path": "hammer/mapview2dbase.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CMapView2DBase is an MFC CView with a vgui panel, a CRender2D member and the grid and point-file drawing."
+    },
+    {
+      "path": "hammer/mapview2dbase.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CMapView2DBase declares the CView, CMapView and vgui base classes with CRender2D and grid helpers."
+    },
+    {
+      "path": "hammer/mapview3d.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CMapView3D is an MFC CView that owns a CRender3D and handles focus, draw type and 3D message routing."
+    },
+    {
+      "path": "hammer/mapview3d.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CMapView3D declares its CRender3D member, the render entry points and the MFC CView base."
+    },
+    {
+      "path": "hammer/mapviewlogical.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CMapViewLogical is the MFC logical view with cascading selection, a render dictionary and entity connection drawing."
+    },
+    {
+      "path": "hammer/mapviewlogical.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CMapViewLogical declares its render-list state and connection drawing over CMapView2DBase."
+    },
+    {
+      "path": "hammer/mapworld.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapWorld owns the document's child objects, used-texture collection and save-list builds."
+    },
+    {
+      "path": "hammer/mapworld.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapWorld declares LoadVMF and SaveVMF with CChunkFile over CMapClass and CEditGameClass."
+    },
+    {
+      "path": "hammer/material.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io",
+        "gpu-work"
+      ],
+      "state": "external-resource",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CMaterial's IEditorTexture implementation loads material images through the material system with preview and image caches."
+    },
+    {
+      "path": "hammer/material.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "asset-service",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "external-resource",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CMaterial declares the IEditorTexture implementation over IMaterial and the material cache classes."
+    },
+    {
+      "path": "hammer/materialdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CFaceSmoothingDlg is an MFC dialog with an OnInitDialog that builds button IDs and saves its window position."
+    },
+    {
+      "path": "hammer/materialdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CFaceSmoothingDlg and CFaceSmoothingVisualDlg are MFC CDialog classes with control handlers."
+    },
+    {
+      "path": "hammer/materialproxyfactory_wc.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.composition",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CMaterialProxyFactory resolves material proxies by name from the client module's factory via Sys_GetFactoryThis."
+    },
+    {
+      "path": "hammer/materialproxyfactory_wc.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.composition",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "GetHammerMaterialProxyFactory is the single accessor that returns the proxy factory for the material system."
+    },
+    {
+      "path": "hammer/mdiclientwnd.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "CMDIClientWnd is the MFC MDI client window whose erase-background handler paints the workspace; the GTK host replaces it."
+    },
+    {
+      "path": "hammer/mdiclientwnd.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "CMDIClientWnd derives from CWnd and exists only to host MDI child windows."
+    },
+    {
+      "path": "hammer/messagewnd.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CMessageWnd is an MFC MDI child that creates and appends messages to a log window."
+    },
+    {
+      "path": "hammer/messagewnd.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CMessageWnd privately derives from CMDIChildWnd and declares its message-log entry points."
+    },
+    {
+      "path": "hammer/misc.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Miscellaneous helpers: random seeding, duplicate-solid notification, mychdir, a wcdebug.txt writer and a world-object test."
+    },
+    {
+      "path": "hammer/modelfactory.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.composition",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CModelFactory::CreateModel maps a ModelType_t and model data string to a CMapClass object."
+    },
+    {
+      "path": "hammer/modelfactory.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.composition",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CModelFactory declares the CreateModel factory method over CMapClass and ModelType_t."
+    },
+    {
+      "path": "hammer/mychecklistbox.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CMyCheckListBox derives from the MFC CCheckListBox widget."
+    },
+    {
+      "path": "hammer/newdoctype.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CNewDocType is an MFC CDialog for choosing a new document type, with DoDataExchange and a message map."
+    },
+    {
+      "path": "hammer/newdoctype.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CNewDocType declares the MFC CDialog constructor and its document-type dialog."
+    },
+    {
+      "path": "hammer/newkeyvalue.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CNewKeyValue is an MFC CDialog that collects a new key/value pair, with DoDataExchange and a message map."
+    },
+    {
+      "path": "hammer/newkeyvalue.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CNewKeyValue declares the MFC CDialog constructor for the new key/value dialog."
     }
   ]
 }
