@@ -122,6 +122,8 @@ public:
 	{
 		ResetTemporalHistory();
 		m_QueuedLighting.clear();
+		m_SurfacePageIds.clear();
+		m_SurfacePageHandles.clear();
 		m_StageSet = false;
 		m_StageWorld.reset();
 		m_WorldCasters.reset();
@@ -586,6 +588,11 @@ private:
 		std::shared_ptr<PendingView> pending;
 	};
 	std::vector<QueuedLighting> m_QueuedLighting;
+	// The world surfaces' material-system lightmap page ids (SetWorld), and
+	// the handles they resolved to (RefreshLightmapPages; main thread).
+	std::vector<int> m_SurfacePageIds;
+	std::vector<int> m_SurfacePageHandles;
+	void RefreshLightmapPages();
 	// A queued view's inputs, taken on the main thread.
 	ViewLightInputs TakeViewLightInputs(
 	    const float worldToView[16], const float viewToClip[16], const float viewport[6] ) const;

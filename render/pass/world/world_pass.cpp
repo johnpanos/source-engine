@@ -22,6 +22,22 @@ void WorldPass::SetSurfaceFragmentModule( std::span<const std::uint32_t> module 
 	m_State->fragmentModule = module;
 }
 
+void WorldPass::RemapLightmapPages( std::span<const int> handles )
+{
+	State &s = *m_State;
+	if ( !s.world || handles.size() != s.world->surfaces.size() )
+		return;
+	bool changed = false;
+	for ( std::size_t i = 0; i < handles.size() && !changed; ++i )
+		changed = s.world->surfaces[i].lightmapPage != handles[i];
+	if ( !changed )
+		return;
+	auto world = std::make_shared<WorldData>( *s.world );
+	for ( std::size_t i = 0; i < handles.size(); ++i )
+		world->surfaces[i].lightmapPage = handles[i];
+	s.world = std::move( world );
+}
+
 void WorldPass::SetWorld( WorldData data )
 {
 	State &s = *m_State;

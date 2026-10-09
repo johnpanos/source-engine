@@ -356,6 +356,7 @@ void CoreWorld::EndFrame()
 
 void CoreWorld::BeginFrame()
 {
+	RefreshLightmapPages();
 	if ( m_TemporalEnabled )
 	{
 		const auto halton = []( unsigned index, unsigned base )

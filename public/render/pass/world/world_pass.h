@@ -817,6 +817,12 @@ public:
 
 	// Main thread.
 	void SetWorld( WorldData data );
+	// The surfaces' lightmap page handles again, one per surface in SetWorld's
+	// order: the material system reallocates its pages after a level's world
+	// is set (a level transition), so a handle resolved at SetWorld can name
+	// a deleted page. A change replaces the world's copy; draw groups follow
+	// the new handles. Main thread.
+	void RemapLightmapPages( std::span<const int> handles );
 	// Set after SetWorld. With a source, the pass releases a level's CPU
 	// staging after uploading it to the GPU; without one it retains staging
 	// as the only source a re-upload has. The source must outlive the world.

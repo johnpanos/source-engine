@@ -130,13 +130,17 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 	}
 	data.indices.assign( indices, indices + indexCount );
 	data.surfaces.reserve( surfaceCount );
+	m_SurfacePageIds.resize( surfaceCount );
+	m_SurfacePageHandles.resize( surfaceCount );
 	for ( unsigned int i = 0; i < surfaceCount; ++i )
 	{
+		m_SurfacePageIds[i] = surfaces[i].lightmapPage;
 		pass::world::WorldSurface surface;
 		surface.material = surfaces[i].material;
 		surface.lightmapPage = m_Host && m_Host->lightmapPageHandle
 		                           ? m_Host->lightmapPageHandle( surfaces[i].lightmapPage )
 		                           : 0;
+		m_SurfacePageHandles[i] = surface.lightmapPage;
 		surface.firstIndex = surfaces[i].firstIndex;
 		surface.indexCount = surfaces[i].indexCount;
 		data.surfaces.push_back( surface );
@@ -176,6 +180,29 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 	}
 	SetWorldCasters( data, opaqueTriangles );
 	m_Pass.SetWorld( std::move( data ) );
+}
+
+void CoreWorld::RefreshLightmapPages()
+{
+	if ( !m_Host || !m_Host->lightmapPageHandle || m_SurfacePageIds.empty() )
+		return;
+	// A handful of pages: resolve each id once.
+	std::map<int, int> resolved;
+	bool changed = false;
+	for ( std::size_t i = 0; i < m_SurfacePageIds.size(); ++i )
+	{
+		const int id = m_SurfacePageIds[i];
+		auto at = resolved.find( id );
+		if ( at == resolved.end() )
+			at = resolved.emplace( id, m_Host->lightmapPageHandle( id ) ).first;
+		if ( m_SurfacePageHandles[i] != at->second )
+		{
+			m_SurfacePageHandles[i] = at->second;
+			changed = true;
+		}
+	}
+	if ( changed )
+		m_Pass.RemapLightmapPages( m_SurfacePageHandles );
 }
 
 void CoreWorld::SetWorldCasters(
