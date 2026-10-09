@@ -781,10 +781,6 @@ void CheckDeviceFacadeDevice()
 int main()
 {
 	CheckNullProvider();
-#if defined( LINKED_NATIVE_VULKAN_BACKEND )
-	// Its manager enumerates its single adapter without a composed material system.
-	CheckRealProvider( NativeVulkanShaderBackend_Describe(), "vulkan", false );
-#endif
 	CheckTranslation();
 	CheckBadProviders();
 	CheckQuirkTable();

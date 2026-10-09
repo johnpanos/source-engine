@@ -24,7 +24,7 @@ import sepipe_loader  # noqa: E402
 
 
 SHADER_REGEN = (Path(__file__).resolve().parents[2] /
-                "materialsystem/shaderapivulkan/shaders/regen_material_spv.py")
+                "render/shaders/legacy/regen_material_spv.py")
 # The sizes exercise grow, shrink, aspect changes and non-aligned dimensions.
 # Version 2 fixes the frame time and waits several frames per step (see
 # resize_commands) and adds the queued settle sweep.

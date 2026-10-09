@@ -4,48 +4,6 @@
   "allocation_exceptions": [],
   "idle_waits": [
     {
-      "path": "materialsystem/shaderapivulkan/vulkan_device.cpp",
-      "function": "CVulkanContext::ApplySampleCount",
-      "count": 1,
-      "class": "mode-change",
-      "reason": "MSAA sample count change (video options); runs only between frames (returns early while a frame is open) and rebuilds the multisample targets"
-    },
-    {
-      "path": "materialsystem/shaderapivulkan/vulkan_device.cpp",
-      "function": "CVulkanContext::EnsureSurfaceCurrent",
-      "count": 1,
-      "class": "loss-recovery",
-      "reason": "the native surface was lost or replaced (Android surfaceDestroyed/Created); presents nothing more to the old surface before rebuilding the swapchain"
-    },
-    {
-      "path": "materialsystem/shaderapivulkan/vulkan_device.cpp",
-      "function": "CVulkanContext::RecreateBackBuffers",
-      "count": 1,
-      "class": "mode-change",
-      "reason": "back-buffer size change (SetMode/resize); old back buffers and framebuffers are destroyed"
-    },
-    {
-      "path": "materialsystem/shaderapivulkan/vulkan_device.cpp",
-      "function": "CVulkanContext::RecreateSwapchain",
-      "count": 1,
-      "class": "mode-change",
-      "reason": "swapchain recreation (out-of-date surface, vsync or present-mode change)"
-    },
-    {
-      "path": "materialsystem/shaderapivulkan/vulkan_device.cpp",
-      "function": "CVulkanContext::SetAnisotropicLevel",
-      "count": 1,
-      "class": "mode-change",
-      "reason": "a video-settings change: CMaterialSystem::OverrideConfig when mat_forceaniso changes, and RestoreShaderObjects after a device reset, replace the anisotropic samplers that every live texture set names; never called while a frame is recorded"
-    },
-    {
-      "path": "materialsystem/shaderapivulkan/vulkan_device.cpp",
-      "function": "CVulkanContext::Shutdown",
-      "count": 1,
-      "class": "teardown",
-      "reason": "device teardown"
-    },
-    {
       "path": "render/device/vulkan/device.cpp",
       "function": "VulkanDevice::Recover",
       "count": 1,
@@ -65,27 +23,6 @@
       "count": 1,
       "class": "teardown",
       "reason": "adapter teardown"
-    },
-    {
-      "path": "unittests/shaderapivulkantest/test_compute.cpp",
-      "function": "main",
-      "count": 1,
-      "class": "test-fixture",
-      "reason": "test fixture teardown before destroying its own device"
-    },
-    {
-      "path": "unittests/shaderapivulkantest/test_indirect_sdf.cpp",
-      "function": "main",
-      "count": 2,
-      "class": "test-fixture",
-      "reason": "test fixture: drains its own device between cases and before teardown"
-    },
-    {
-      "path": "unittests/shaderapivulkantest/test_pbr_brdf_glsl.cpp",
-      "function": "main",
-      "count": 1,
-      "class": "test-fixture",
-      "reason": "test fixture teardown before destroying its own device"
     }
   ]
 }

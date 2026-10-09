@@ -15,7 +15,8 @@
   },
   "configure_options": {
     "platform_provider": "sdl3",
-    "render_backend": "native-vulkan",
+    "render_backend": "core",
+    "render_core_device": "vulkan",
     "build_games": "portal2",
     "physics_backend": "both",
     "render_core_gl": true
@@ -39,7 +40,10 @@
         "1"
       ],
       "video": [],
-      "renderer_args": [],
+      "renderer_args": [
+        "-renderer",
+        "pica"
+      ],
       "fsr_args": []
     },
     "arguments": [

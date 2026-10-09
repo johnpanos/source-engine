@@ -74,9 +74,9 @@ def build(bld):
 		'worldvertextransition_dx8_helper.cpp',
 		'../../public/tier0/memoverride.cpp'
 	]
-	# The canonical shader binds Vulkan's native world pipeline. DX9 keeps the
-	# existing fallback material route in its independently built profile.
-	source.append('pbr_metalrough_native.cpp' if bld.env.NATIVE_VULKAN
+	# The canonical shader's parameters, which the render core reads; the
+	# 3DS keeps the fallback route.
+	source.append('pbr_metalrough_native.cpp' if bld.env.CLIENT_VULKAN
 	              else 'pbr_metalrough_fallback.cpp')
 
 	includes = [

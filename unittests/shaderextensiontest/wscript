@@ -29,9 +29,6 @@ def build(bld):
 	# mirrors the composition root's own link conditions and defines.
 	binding_use = ['materialsystem', 'shaderapiempty', 'tier0', 'vstdlib']
 	binding_defines = list(test_env.DEFINES)
-	if bld.env.NATIVE_VULKAN:
-		binding_use += ['shaderapivulkan']
-		binding_defines += ['LINKED_NATIVE_VULKAN_BACKEND']
 	if bld.env.SDL3:
 		binding_use += ['SDL3']
 	bld.program(
@@ -46,9 +43,6 @@ def build(bld):
 	# the real null module, the native Vulkan module where linked, and bad fakes.
 	provider_use = ['shaderapiempty', 'tier0', 'tier1', 'vstdlib']
 	provider_defines = list(test_env.DEFINES)
-	if bld.env.NATIVE_VULKAN:
-		provider_use += ['shaderapivulkan']
-		provider_defines += ['LINKED_NATIVE_VULKAN_BACKEND']
 	bld.program(
 		features='cxx', env=test_env.derive(),
 		source=['test_legacy_render_provider.cpp',
@@ -60,9 +54,6 @@ def build(bld):
 		name='legacy_render_provider_conformance',
 		includes=includes + ['../rendertest'], defines=provider_defines,
 		use=provider_use, install_path=None,
-		# Unique object names: shaderapivulkantest compiles the same shared
-		# suite, and per-directory indices made both write one .o (every
-		# build recompiled it).
 		idx=bld.get_taskgen_count())
 	if not bld.env.DEDICATED:
 		bld.program(
@@ -70,6 +61,6 @@ def build(bld):
 			source=['test_builtin_shaders.cpp', '../../materialsystem/builtin_shader_catalog.cpp'],
 			target='builtin_shader_conformance', name='builtin_shader_conformance',
 			includes=includes,
-			defines=['NATIVE_PBR_METALROUGH'] if bld.env.NATIVE_VULKAN else [],
+			defines=['NATIVE_PBR_METALROUGH'] if bld.env.CLIENT_VULKAN else [],
 			use=['stdshader_dx9', 'tier1', 'tier0', 'vstdlib'],
 			install_path=None)

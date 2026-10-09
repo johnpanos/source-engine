@@ -310,22 +310,18 @@ def resolve_render_backend(conf):
 			conf.options.RENDER_BACKEND = 'core'
 		conf.msg('Render backend', conf.options.RENDER_BACKEND)
 		return
-	if conf.options.RENDER_BACKEND == 'core':
-		# The core shader API on a desktop: the browser client's renderer on
-		# the native Dawn (its debugging lane).
-		if conf.env.DEST_OS != 'linux' or not client:
-			conf.fatal('--render-backend=core builds a Linux or WebAssembly client')
-		conf.msg('Render backend', conf.options.RENDER_BACKEND)
-		return
-	if conf.options.RENDER_BACKEND == 'auto':
-		conf.options.RENDER_BACKEND = 'native-vulkan' if client else 'legacy'
-	if client and conf.options.RENDER_BACKEND != 'native-vulkan':
-		conf.fatal('clients render only through native Vulkan; ToGL, ToGLES and DXVK Native '
-			'were removed (2026-10-07)')
+	# The clients render through the core shader API (materialsystem/
+	# shaderapipica) on the render core's device (R91, 2026-10-08: the native
+	# Vulkan backend, shaderapivulkan, is deleted); 'native-vulkan' names the
+	# same renderer for the profiles and scripts that still say it.
+	if conf.options.RENDER_BACKEND in ('auto', 'native-vulkan'):
+		conf.options.RENDER_BACKEND = 'core' if client else 'legacy'
+	if client and conf.options.RENDER_BACKEND != 'core':
+		conf.fatal('clients render only through the core shader API (--render-backend=core)')
 	if client and (conf.options.TARGET32 or conf.options.PLATFORM_PROVIDER == 'sdl2'
 			or conf.env.DEST_OS not in ('linux', 'android', 'darwin', 'ios')):
-		conf.fatal('no client renderer for this target: native Vulkan needs a 64-bit SDL3 '
-			'Linux, Android or Apple client (ToGL was removed 2026-10-07)')
+		conf.fatal('no client renderer for this target: the core shader API needs a 64-bit SDL3 '
+			'Linux, Android or Apple client')
 	conf.msg('Render backend', conf.options.RENDER_BACKEND)
 
 def resolve_platform_provider(conf):
@@ -349,7 +345,10 @@ def define_platform(conf):
 	resolve_render_backend(conf)
 	resolve_platform_provider(conf)
 	conf.env.SDL3 = conf.options.PLATFORM_PROVIDER == 'sdl3'
-	conf.env.NATIVE_VULKAN = conf.options.RENDER_BACKEND == 'native-vulkan'
+	# A client on Vulkan: the core shader API on the render core's Vulkan
+	# device (the loader is checked below).
+	conf.env.CLIENT_VULKAN = conf.options.RENDER_BACKEND == 'core' and \
+		conf.env.DEST_OS in ('linux', 'android', 'darwin', 'ios')
 	conf.env.PICA = conf.options.RENDER_BACKEND == 'pica'
 	# The core shader API (materialsystem/shaderapipica): the 3DS's, and the
 	# same shader API on another render core device (core).
@@ -374,14 +373,14 @@ def define_platform(conf):
 		conf.options.SDL = 1
 		conf.options.GL = 0
 		conf.define('USE_SDL3', 1)
-	elif conf.env.SDL3 or conf.env.NATIVE_VULKAN:
+	elif conf.env.SDL3 or conf.env.CLIENT_VULKAN:
 		if conf.env.DEST_OS not in ['linux', 'android', 'darwin', 'ios'] or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
 			conf.fatal('The SDL3/Vulkan profiles currently target the Linux, Android and Apple clients')
-	if conf.env.APPLE and not (conf.env.NATIVE_VULKAN and conf.env.SDL3):
-		conf.fatal('The Apple clients require --platform-provider=sdl3 --render-backend=native-vulkan')
-	if conf.env.DEST_OS not in ('3ds', 'emscripten') and (conf.env.SDL3 or conf.env.NATIVE_VULKAN):
-		if not (conf.env.SDL3 and (conf.env.NATIVE_VULKAN or conf.options.RENDER_BACKEND == 'core')):
-			conf.fatal('SDL3 and the native Vulkan backend require each other')
+	if conf.env.APPLE and not (conf.env.CLIENT_VULKAN and conf.env.SDL3):
+		conf.fatal('The Apple clients require --platform-provider=sdl3 --render-backend=core')
+	if conf.env.DEST_OS not in ('3ds', 'emscripten') and (conf.env.SDL3 or conf.env.CLIENT_VULKAN):
+		if not (conf.env.SDL3 and conf.env.CLIENT_VULKAN):
+			conf.fatal('SDL3 and the Vulkan client require each other')
 		conf.options.SDL = 1
 		conf.define('USE_SDL3', 1)
 	# The SDL3/native Vulkan Android client (build-android-apk.sh). Its native
@@ -575,9 +574,9 @@ def options(opt):
 			'sdl2 for legacy-renderer products [default: %default]')
 	grp.add_option('--render-backend', choices=['auto', 'legacy', 'native-vulkan', 'pica', 'core'], default='auto',
 		dest='RENDER_BACKEND',
-		help='linked renderer; clients render through native-vulkan, server, test and tool '
-			'products link none (legacy); the 3DS client links pica; core is the same shader '
-			'API on the render core\'s device (the browser client, RFC 0029) [default: %default]')
+		help='linked renderer; clients render through the core shader API on the render core\'s '
+			'device (core; native-vulkan is a name for it), server, test and tool products link '
+			'none (legacy); the 3DS client links pica [default: %default]')
 	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal', 'd3d12', 'webgpu', 'pica'], default='null',
 		dest='RENDER_CORE_DEVICE',
 		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
@@ -1065,10 +1064,10 @@ def configure(conf):
 
 	check_deps( conf )
 
-	if conf.env.NATIVE_VULKAN and conf.env.DEST_OS == 'android':
+	if conf.env.CLIENT_VULKAN and conf.env.DEST_OS == 'android':
 		# The NDK sysroot provides the Vulkan headers and loader stub.
 		conf.check_cc(lib='vulkan', header_name='vulkan/vulkan.h', uselib_store='VULKAN')
-	elif conf.env.NATIVE_VULKAN:
+	elif conf.env.CLIENT_VULKAN:
 		conf.check_cfg(package='vulkan', uselib_store='VULKAN', args=['--cflags', '--libs'])
 	if conf.options.KTX_SOURCE_ROOT or conf.options.KTX_BUILD_ROOT:
 		if not (conf.options.KTX_SOURCE_ROOT and conf.options.KTX_BUILD_ROOT):
@@ -1078,8 +1077,8 @@ def configure(conf):
 		# Clients with the native Vulkan backend, and the Linux tools product (the
 		# Hammer shell's KTX2 material previews, RFC 0008 F3).
 		ktx_tools = conf.options.TOOLS and conf.env.DEST_OS == 'linux'
-		if not ( ( conf.env.NATIVE_VULKAN and conf.env.DEST_OS in ('linux', 'android', 'darwin', 'ios') ) or ktx_tools ):
-			conf.fatal('KTX reader profile requires a Linux, Android or Apple native Vulkan client '
+		if not ( conf.env.CLIENT_VULKAN or ktx_tools ):
+			conf.fatal('KTX reader profile requires a Linux, Android or Apple Vulkan client '
 				'or the Linux tools product')
 		with open('quality/product_profiles/ktx2-linux-tools.json') as profile_file:
 			ktx_profile = json.load(profile_file)
@@ -1237,15 +1236,11 @@ def configure(conf):
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
 		if conf.env.CORE_SHADER_API:
 			projects['game'] += ['materialsystem/shaderapipica']
-			if conf.env.RENDER_CORE_VULKAN and not conf.env.NATIVE_VULKAN:
+			if conf.env.RENDER_CORE_VULKAN:
 				projects['game'] += ['render/bridge/sdl3-vulkan']
-		if conf.env.NATIVE_VULKAN:
-			projects['game'] += ['materialsystem/shaderapivulkan', 'render/bridge/sdl3-vulkan']
-			if not conf.env.ANDROID_SDL3:
-				projects['game'] += ['unittests/shaderapivulkantest']
+		if conf.env.CLIENT_VULKAN and not conf.env.ANDROID_SDL3:
 			# Its KTX2 suites are gated inside; the VTF 7.6 suite needs no KTX.
-			if not conf.env.ANDROID_SDL3:
-				projects['game'] += ['unittests/texturecontainertest']
+			projects['game'] += ['unittests/texturecontainertest']
 		if not conf.env.WEB_OR_MOBILE and conf.env.DEST_OS != '3ds':
 			projects['game'] += ['unittests/physicstest']
 		if conf.env.VIDEO_FFMPEG:
@@ -1277,7 +1272,8 @@ def configure_render_core(conf):
 	Device adapters build only when configured: Vulkan with the native Vulkan
 	backend, OpenGL with --render-core-gl (K10).'''
 	conf.env.RENDER_CORE = not (conf.options.DEDICATED or conf.options.KILN_HOST)
-	conf.env.RENDER_CORE_VULKAN = bool(conf.env.RENDER_CORE and conf.env.NATIVE_VULKAN)
+	conf.env.RENDER_CORE_VULKAN = bool(conf.env.RENDER_CORE and conf.env.CLIENT_VULKAN and
+		conf.env.DEST_OS != 'linux')
 	# The tools product has no engine renderer, so the editor's viewports take
 	# the Vulkan adapter on their own (RFC 0016 "Editor viewports").
 	# The core shader API on the Linux desktop (render backend core) takes it
@@ -1344,7 +1340,7 @@ def configure_render_core(conf):
 		conf.check_cfg(package='egl', uselib_store='EGL', args=['--cflags', '--libs'],
 			msg='Checking for EGL (render core OpenGL adapter)', mandatory=True)
 	if conf.options.RENDER_CORE_DEVICE == 'vulkan' and not conf.env.RENDER_CORE_VULKAN:
-		conf.fatal('--render-core-device=vulkan needs the native Vulkan backend (--render-backend=native-vulkan)')
+		conf.fatal('--render-core-device=vulkan needs the Vulkan loader (a core client or the tools product)')
 	if conf.options.RENDER_CORE_DEVICE in ('gl', 'gles') and not conf.env.RENDER_CORE_GL:
 		conf.fatal('--render-core-device=%s needs --render-core-gl' % conf.options.RENDER_CORE_DEVICE)
 	if conf.options.RENDER_CORE_DEVICE == 'pica' and not conf.env.N3DS:
@@ -1425,15 +1421,11 @@ def build(bld):
 			projects['game'] = [p for p in projects['game'] if p not in ('utils/vtex', 'serverbrowser')]
 		if bld.env.CORE_SHADER_API:
 			projects['game'] += ['materialsystem/shaderapipica']
-			if bld.env.RENDER_CORE_VULKAN and not bld.env.NATIVE_VULKAN:
+			if bld.env.RENDER_CORE_VULKAN:
 				projects['game'] += ['render/bridge/sdl3-vulkan']
-		if bld.env.NATIVE_VULKAN:
-			projects['game'] += ['materialsystem/shaderapivulkan', 'render/bridge/sdl3-vulkan']
-			if not bld.env.ANDROID_SDL3:
-				projects['game'] += ['unittests/shaderapivulkantest']
+		if bld.env.CLIENT_VULKAN and not bld.env.ANDROID_SDL3:
 			# Its KTX2 suites are gated inside; the VTF 7.6 suite needs no KTX.
-			if not bld.env.ANDROID_SDL3:
-				projects['game'] += ['unittests/texturecontainertest']
+			projects['game'] += ['unittests/texturecontainertest']
 		if not bld.env.WEB_OR_MOBILE and bld.env.DEST_OS != '3ds':
 			projects['game'] += ['unittests/physicstest']
 		if bld.env.VIDEO_FFMPEG:

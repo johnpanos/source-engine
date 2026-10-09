@@ -14,7 +14,8 @@
   },
   "configure_options": {
     "platform_provider": "sdl3",
-    "render_backend": "native-vulkan",
+    "render_backend": "core",
+    "render_core_device": "vulkan",
     "build_games": "fstop"
   },
   "launch": {
@@ -29,7 +30,7 @@
         "1080"
       ],
       "renderer": [
-        "native-vulkan"
+        "pica"
       ],
       "job_args": [
         "+cl_render_start_graph",

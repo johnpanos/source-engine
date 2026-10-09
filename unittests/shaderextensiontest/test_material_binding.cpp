@@ -52,9 +52,6 @@ void Check( bool passed, const char *condition, int line )
 void CheckProviderCatalogIsDistinct()
 {
 	const render::LegacyShaderProvider *catalog[] = {
-#if defined( LINKED_NATIVE_VULKAN_BACKEND )
-	    NativeVulkanShaderBackend_Describe(),
-#endif
 	    NullShaderBackend_Describe() };
 	const int count = (int)( sizeof( catalog ) / sizeof( catalog[0] ) );
 	for ( int i = 0; i < count; ++i )
@@ -245,11 +242,7 @@ void Run()
 	CheckProviderCatalogIsDistinct();
 	// The graphics backend this product actually linked, whichever it is.
 	const render::LegacyShaderProvider *actual =
-#if defined( LINKED_NATIVE_VULKAN_BACKEND )
-	    NativeVulkanShaderBackend_Describe();
-#else
 	    NullShaderBackend_Describe();
-#endif
 	CHECK( material != NULL );
 	CHECK( actual != NULL );
 	if ( !material || !actual )

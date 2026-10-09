@@ -106,7 +106,6 @@ DECLARED_NONDETERMINISTIC = {("Downsample_nohdr", "base_texture_transform"): (2,
 CAPTURE_SOURCES = ("engine/gl_rmain.cpp", "engine/gl_rsurf.cpp", "engine/sys_dll.cpp",
                    "particles/particles.cpp", "materialsystem/cmatrendercontext.cpp",
                    "materialsystem/vieworaclecapture.h", "materialsystem/drawstatefixture.h",
-                   "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
                    "tools/quality/portal_boot.py", "tools/render/view_oracle.py",
                    "quality/workloads/render-view-oracles-v1.json")
 

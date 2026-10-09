@@ -5,7 +5,7 @@ shaders that are compiled with options (demo_triangle_spv.h holds the rest),
 and material_spv_index.h: each array's content hash and source, which names
 the shader modules the backend creates (vulkan_shader_library.cpp).
 
-    python3 materialsystem/shaderapivulkan/shaders/regen_material_spv.py --out DIR
+    python3 render/shaders/legacy/regen_material_spv.py --out DIR
     python3 .../regen_material_spv.py --check --compare-dir DIR
     python3 .../regen_material_spv.py --check-index --compare-dir DIR
     python3 .../regen_material_spv.py --debug-out DIR [--shipped DIR]

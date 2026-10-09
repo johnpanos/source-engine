@@ -110,9 +110,6 @@
     "materialsystem/cmaterialsystem.cpp": {
       "pool-wait": 5
     },
-    "materialsystem/shaderapivulkan/shaderapivulkan.cpp": {
-      "fork-join": 1
-    },
     "materialsystem/texturemanager.cpp": {
       "thread-create": 2
     },

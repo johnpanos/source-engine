@@ -18,7 +18,7 @@ import sys
 
 top = '.'
 
-SHADERS = 'materialsystem/shaderapivulkan/shaders'
+SHADERS = 'render/shaders/legacy'
 # The generated header names (shader_toolchain.GENERATED_NAMES).
 def generated_headers(root):
 	sys.path.insert(0, os.path.join(root, 'tools', 'render'))

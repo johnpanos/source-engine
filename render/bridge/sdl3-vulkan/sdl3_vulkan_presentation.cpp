@@ -8,7 +8,7 @@
 
 #include "sdl3_dynamic_range.h"
 
-#include "../../../materialsystem/shaderapivulkan/vulkan_present_mode.h"
+#include "vulkan_present_mode.h"
 #include "../../device/vulkan/backend_v1/render_backend_v1.h"
 #include "../../device/vulkan/host_device.h"
 #include "../../../platform/sdl3/render_surface/sdl3_render_surfaces.h"

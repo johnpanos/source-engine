@@ -98,8 +98,7 @@ sys.path.insert(0, str(ROOT / "tools" / "quality"))
 import shader_toolchain as st  # noqa: E402
 from conformance_result import Checks  # noqa: E402
 
-SHADERS = "materialsystem/shaderapivulkan/shaders"
-BACKEND = "materialsystem/shaderapivulkan"
+SHADERS = "render/shaders/legacy"
 LAYOUTS = ROOT / "render" / "shaders" / "layouts.json"
 LAYOUT_SCHEMA = "render-shader-layouts/v1"
 INDEX_SCHEMA = "render-shader-artifacts/v1"

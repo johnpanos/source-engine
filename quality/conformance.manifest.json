@@ -1808,47 +1808,6 @@
       "expect": "pass"
     },
     {
-      "id": "render.presentation.edr",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0001",
-      "migration": "REND-PRESENT-001",
-      "contract": "unittests/rendertest/contracts/render.presentation.v1.md",
-      "kind": "positive",
-      "profile": "apple-uikit-device",
-      "description": "render.presentation.v1 \"Dynamic range\" on the SDL3-Vulkan pair on an iPhone or Apple TV (MoltenVK). An extended-linear kRGBA16Float presentation gets a half-float swapchain in extended linear sRGB, keeps 4.0 (four times SDR white) in the presented image, sets the Metal layer to high dynamic range, and sees the screen's current headroom rise above 1 while it presents. A standard presentation on the same window is the control: it clips 4.0 to white, reports headroom 1 and returns the layer to standard. The frames alternate SDR white and brighter-than-white. Runs through tools/quality/ios_conformance.py; unavailable on hosts.",
-      "result_protocol": "checks-v1",
-      "optional": true,
-      "requires": [
-        "env:CONFORMANCE_APPLE_DEVICE"
-      ],
-      "extra_flags": [
-        "-pthread",
-        "-isystemdependencies/vulkan-memory-allocator/include"
-      ],
-      "sources": [
-        "unittests/shaderapivulkantest/test_presentation_edr.cpp",
-        "render/bridge/sdl3-vulkan/sdl3_vulkan_presentation.cpp",
-        "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
-        "render/bridge/sdl3-vulkan/sdl3_dynamic_range_apple.mm",
-        "platform/sdl3/render_surface/sdl3_render_surfaces.cpp",
-        "render/device/vulkan/backend_v1/render_backend_v1.cpp",
-        "render/device/port.cpp",
-        "render/device/encoder.cpp",
-        "render/device/validation.cpp",
-        "render/device/vulkan/device.cpp",
-        "render/device/vulkan/fsr_features.cpp",
-        "render/device/vulkan/encoder.cpp",
-        "render/device/vulkan/host_device.cpp",
-        "render/device/vulkan/instance.cpp",
-        "render/device/vulkan/memory.cpp",
-        "render/device/vulkan/pipelines.cpp",
-        "render/device/vulkan/resources.cpp",
-        "render/device/vulkan/transitions.cpp",
-        "render/device/vulkan/upload_ring.cpp"
-      ],
-      "expect": "pass"
-    },
-    {
       "id": "render.lab.hdr",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",
@@ -9065,177 +9024,6 @@
       "expect": "pass"
     },
     {
-      "id": "render.compute",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0011",
-      "kind": "positive",
-      "profile": "linux-native-vulkan-gpu",
-      "result_protocol": "checks-v1",
-      "description": "RFC 0011 G5 compute foundation on a headless device: capabilities queried and enabled through the VkPhysicalDeviceFeatures2 chain and claimed only as enabled (a provider claiming unenabled ray query is rejected); a compute program writes a storage buffer and an R32F storage image on the graphics queue, read back exactly; a retired resource lives until its submission completes and the seeded early free is caught; validation-clean with the layer. The same source runs on Android from /data/local/tmp",
-      "sources": [
-        "unittests/shaderapivulkantest/test_compute.cpp",
-        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
-        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
-        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp",
-        "render/device/port.cpp",
-        "render/device/encoder.cpp",
-        "render/device/validation.cpp",
-        "render/device/vulkan/device.cpp",
-        "render/device/vulkan/fsr_features.cpp",
-        "render/device/vulkan/encoder.cpp",
-        "render/device/vulkan/host_device.cpp",
-        "render/device/vulkan/instance.cpp",
-        "render/device/vulkan/memory.cpp",
-        "render/device/vulkan/pipelines.cpp",
-        "render/device/vulkan/resources.cpp",
-        "render/device/vulkan/transitions.cpp",
-        "render/device/vulkan/upload_ring.cpp"
-      ],
-      "extra_flags": [
-        "-pthread",
-        "-isystemdependencies/vulkan-memory-allocator/include"
-      ],
-      "expect": "pass"
-    },
-    {
-      "id": "render.indirect-light.sdf",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0011",
-      "kind": "positive",
-      "profile": "linux-native-vulkan-gpu",
-      "result_protocol": "checks-v1",
-      "description": "RFC 0011 G6/G7 traced producers on a headless device through the renderer's compute service (render/gpu_compute.h over vulkan_compute's GpuComputeService): the shared producer suite (unittests/rendertest/indirect_contract.h) against the SDF-traced producer and, on a device with ray query, the ray-query producer (the contract scene's triangles as a scene with proxy-box instances), including the geometry oracle (a proxy box around a probe darkens it below 5% of the seed); each traced field's own reference sees no light through the thin wall, and erasing the wall (from the field, or its triangles) is detected; without ray query the ray-query producer fails with missing-feature and creates nothing; sphere and spot lights (SDFV v2) match L r^2 / d^2 cos per texel and the spot's cone leaves a probe outside it unlit (the sphere lights it); a light cell that omits the light leaves its probe unlit; a focus of probe 0 without a budget references probe 0 only, a focus of every probe is the no-focus schedule byte for byte, after a change a focused probe updates while an unfocused one waits, and a budget brings every probe to rest; validation-clean with the layer. The same source runs on Android from /data/local/tmp",
-      "sources": [
-        "unittests/shaderapivulkantest/test_indirect_sdf.cpp",
-        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
-        "mapcontainer/probe_volume.cpp",
-        "mapcontainer/radiosity_transfer.cpp",
-        "mapcontainer/sdf_volume.cpp",
-        "mapcontainer/world_mesh.cpp",
-        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
-        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp",
-        "render/device/port.cpp",
-        "render/device/encoder.cpp",
-        "render/device/validation.cpp",
-        "render/device/vulkan/device.cpp",
-        "render/device/vulkan/fsr_features.cpp",
-        "render/device/vulkan/encoder.cpp",
-        "render/device/vulkan/host_device.cpp",
-        "render/device/vulkan/instance.cpp",
-        "render/device/vulkan/memory.cpp",
-        "render/device/vulkan/pipelines.cpp",
-        "render/device/vulkan/resources.cpp",
-        "render/device/vulkan/transitions.cpp",
-        "render/device/vulkan/upload_ring.cpp",
-        "render/pass/indirect/port_compute.cpp",
-        "render/shaderlib/shaderlib.cpp",
-        "render/shaderlib/core_artifacts.cpp",
-        "render/shaderlib/debug_view.cpp"
-      ],
-      "extra_flags": [
-        "-pthread",
-        "-isystemdependencies/vulkan-memory-allocator/include"
-      ],
-      "expect": "pass",
-      "min_checks": 26
-    },
-    {
-      "id": "render.pbr-brdf.glsl",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0007",
-      "migration": "PBR-BRDF-001",
-      "contract": "unittests/rendertest/contracts/render.pbr-brdf.v1.md",
-      "kind": "positive",
-      "profile": "linux-native-vulkan-gpu",
-      "result_protocol": "checks-v1",
-      "description": "render/shaders/common/pbr_brdf.glsl, the BRDF every native PBR stage and the render.material pbr family include, evaluated in a compute program on a headless device and compared with public/render/pbr_brdf.h on 1,080 cases (GGX, Smith, Schlick, the single-scatter lobe, multiple-scattering compensation and directional albedo, clear coat); seeded C++ models without compensation, with alpha = roughness, or with an unweighted coat are rejected by the same comparator; validation-clean with the layer",
-      "sources": [
-        "unittests/shaderapivulkantest/test_pbr_brdf_glsl.cpp",
-        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
-        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
-        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp",
-        "render/device/port.cpp",
-        "render/device/encoder.cpp",
-        "render/device/validation.cpp",
-        "render/device/vulkan/device.cpp",
-        "render/device/vulkan/fsr_features.cpp",
-        "render/device/vulkan/encoder.cpp",
-        "render/device/vulkan/host_device.cpp",
-        "render/device/vulkan/instance.cpp",
-        "render/device/vulkan/memory.cpp",
-        "render/device/vulkan/pipelines.cpp",
-        "render/device/vulkan/resources.cpp",
-        "render/device/vulkan/transitions.cpp",
-        "render/device/vulkan/upload_ring.cpp"
-      ],
-      "extra_flags": [
-        "-pthread",
-        "-isystemdependencies/vulkan-memory-allocator/include"
-      ],
-      "expect": "pass"
-    },
-    {
-      "id": "render.gpu-runner.zero-checks",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0011",
-      "kind": "sensitivity",
-      "profile": "linux-native-vulkan-gpu",
-      "description": "A GPU suite that renders a frame but reports zero checks must fail (RFC 0011 G0): the GPU runner certifies nothing without counted checks",
-      "sources": [
-        "unittests/shaderapivulkantest/test_gpu_zero_checks.cpp",
-        "materialsystem/shaderapivulkan/vulkan_device.cpp",
-        "materialsystem/shaderapivulkan/vulkan_compute.cpp",
-        "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
-        "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
-        "materialsystem/shaderapivulkan/vulkan_texture_image.cpp",
-        "texturecontainer/block_decode.cpp",
-        "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
-        "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp",
-        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
-        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp",
-        "render/device/port.cpp",
-        "render/device/encoder.cpp",
-        "render/device/validation.cpp",
-        "render/device/vulkan/device.cpp",
-        "render/device/vulkan/fsr_features.cpp",
-        "render/device/vulkan/encoder.cpp",
-        "render/device/vulkan/host_device.cpp",
-        "render/device/vulkan/instance.cpp",
-        "render/device/vulkan/memory.cpp",
-        "render/device/vulkan/pipelines.cpp",
-        "render/device/vulkan/resources.cpp",
-        "render/device/vulkan/transitions.cpp",
-        "render/device/vulkan/upload_ring.cpp"
-      ],
-      "extra_flags": [
-        "-isystemexternal/bcdec",
-        "-pthread",
-        "-isystemdependencies/vulkan-memory-allocator/include"
-      ],
-      "expect": "fail",
-      "result_protocol": "checks-v1",
-      "expected_divergence": "zero checks executed"
-    },
-    {
-      "id": "render.vulkan-debug-tools",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0001",
-      "kind": "positive",
-      "profile": "linux-headless-core",
-      "result_protocol": "checks-v1",
-      "description": "Native Vulkan capture-tool support without a device: material_spv_index.h agrees with material_spv.h (every embedded array's C++ FNV-1a hash is the generator's, a changed bit is unnamed); VulkanShaderLibrary takes a debug variant only for a known hash, well-formed SPIR-V and a device with VK_KHR_shader_non_semantic_info when it imports NonSemantic info, from files and from a directory scan that reports stale, partial and NonSemantic files, and resolves embedded code to it under the embedded name; DebugLabelsWanted's policy table; VulkanDebugUtils over recording entry points is inert until loaded, names objects, and keeps every command buffer's labels balanced over 200 seeded push/pop/insert/frame sequences, with controls proving the balance check rejects unclosed and unopened labels",
-      "sources": [
-        "unittests/shaderapivulkantest/test_vulkan_debug_tools.cpp",
-        "materialsystem/shaderapivulkan/vulkan_debug_utils.cpp",
-        "materialsystem/shaderapivulkan/vulkan_shader_library.cpp"
-      ],
-      "link_flags": [
-        "-lvulkan"
-      ],
-      "min_checks": 64,
-      "expect": "pass"
-    },
-    {
       "id": "render.device.v2.null",
       "domain": "Q-PRESENTATION",
       "rfc": "0016",
@@ -15338,7 +15126,6 @@
         "render/pass/world/world_dynamic.cpp",
         "render/pass/debug/debug_overlays.cpp",
         "render/pass/debug/hatch.frag",
-        "materialsystem/shaderapivulkan/vulkan_device.cpp",
         "render/resources/mip_feedback.cpp",
         "render/graph/scene_color.cpp",
         "render/material/refract_family.cpp",
@@ -15427,7 +15214,6 @@
         "render/pass/world/world_dynamic.cpp",
         "render/pass/debug/debug_overlays.cpp",
         "render/pass/debug/hatch.frag",
-        "materialsystem/shaderapivulkan/vulkan_device.cpp",
         "render/resources/mip_feedback.cpp",
         "render/graph/scene_color.cpp",
         "render/material/refract_family.cpp",
@@ -20804,26 +20590,6 @@
       "expect": "pass"
     },
     {
-      "id": "render.bridge.legacy-presentation",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0016",
-      "kind": "positive",
-      "profile": "linux-native-vulkan-gpu",
-      "description": "RFC 0016 legacy device facade F3: render_vulkan::ILegacyPresentation, the SDL3-Vulkan bridge's presentation state for the legacy backend's window that the composition root owns: the video mode request (back buffer, vsync, samples) and the gamma ramp with their revisions, the gamma ramp set from another thread while presents read it, the mode-change callbacks registered once and dispatched once per change, a window the bridge refuses with a named reason, and Close with nothing open.",
-      "sources": [
-        "unittests/shaderapivulkantest/test_legacy_presentation.cpp",
-        "render/bridge/sdl3-vulkan/legacy_presentation.cpp",
-        "render/bridge/sdl3-vulkan/sdl3_vulkan_surface_host.cpp",
-        "render/bridge/sdl3-vulkan/sdl3_dynamic_range.cpp"
-      ],
-      "extra_flags": [
-        "-pthread"
-      ],
-      "result_protocol": "checks-v1",
-      "min_checks": 19,
-      "expect": "pass"
-    },
-    {
       "id": "render.record-replay",
       "domain": "Q-ARCH",
       "rfc": "0016",
@@ -20936,7 +20702,7 @@
       "contract": "tools/render/retirement_scans.py",
       "kind": "positive",
       "profile": "linux-host-corpus",
-      "description": "RFC 0016 K9 'Dead code removed', static half: materialsystem/shaderapivulkan/shaders/ is empty and deleted. Fails until the legacy ports and their GLSL move to render/legacy/family/ (46 files on 2026-09-28).",
+      "description": "RFC 0016 K9 'Dead code removed', static half: the native backend's legacy shader directory (materialsystem/shaderapivulkan/shaders/) is gone: shaderapivulkan was deleted on 2026-10-08 (R91), and the GLSL its regenerators read moved to render/shaders/legacy/.",
       "command": [
         "{python}",
         "tools/render/retirement_scans.py",
@@ -20952,7 +20718,7 @@
       "requires": [
         "executable:git"
       ],
-      "expect": "fail",
+      "expect": "pass",
       "expected_divergence": "FAIL k9.dead-code.legacy-shader-sources-deleted"
     },
     {
@@ -21035,7 +20801,7 @@
       "sources": [
         "tools/render/shader_toolchain.py",
         "quality/toolchain/shader-compiler.json",
-        "materialsystem/shaderapivulkan/shaders/regen_material_spv.py",
+        "render/shaders/legacy/regen_material_spv.py",
         "tools/quality/conformance_result.py",
         "unittests/rendertest/core/device/test_shaders.h",
         "unittests/rendertest/core/device/test_device_vulkan.cpp"
@@ -21069,7 +20835,7 @@
       "sources": [
         "tools/render/shader_toolchain.py",
         "quality/toolchain/shader-compiler.json",
-        "materialsystem/shaderapivulkan/shaders/regen_material_spv.py",
+        "render/shaders/legacy/regen_material_spv.py",
         "tools/quality/conformance_result.py"
       ],
       "expect": "pass"
@@ -21216,7 +20982,7 @@
         "tools/render/shader_toolchain.py",
         "render/shaders/layouts.json",
         "quality/toolchain/shader-compiler.json",
-        "materialsystem/shaderapivulkan/shaders/regen_material_spv.py",
+        "render/shaders/legacy/regen_material_spv.py",
         "tools/quality/conformance_result.py"
       ],
       "expect": "pass"
@@ -21252,100 +21018,6 @@
         "render/shaders/layouts.json",
         "quality/toolchain/shader-compiler.json",
         "tools/quality/conformance_result.py"
-      ],
-      "expect": "pass"
-    },
-    {
-      "id": "render.view-oracles",
-      "kind": "positive",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0016",
-      "migration": "R86",
-      "profile": "linux-host-corpus",
-      "description": "RFC 0016 K0 'View oracles captured' (tools/render/view_oracle.py suite --check views). Boots each scenario of quality/workloads/render-view-oracles-v1.json headless on native Vulkan through portal_boot.py: testchmb_a_00, testchmb_a_08 and testchmb_a_01 (the legacy-ports view set where it is defined) on the Portal client (kiln profile portal) and sp_a1_wakeup on the Portal 2 client (kiln profile portal2). Per shot the backend records the screenshot frame's views and draws (source-view-oracle/v1, -vieworacle): every CRender::Push3DView/Push2DView...PopView span in submission order, nested as the engine nested it, with each draw's material, shader, pass, primitive, index range, vertex count, target and viewport. Each shot must equal its frozen capture in quality/fixtures/render-views (every view field exactly, origin and angles within 0.11 of their 0.1-printed values, every draw and clear in order) and cover its declared feature: portal recursion at every depth to the limit (r_portal_stencil_depth 1, 2 and 10, two portals facing each other), water reflection and refraction (Portal 2; no Portal map has a Water material), a monitor (a spawned point_camera on the Portal maps; the Portal 2 client compiles monitors out), glass, and the legacy-ports view set (eight yaws, two upward views, the pause menu). Frames are made repeatable with host_framerate, -deterministicrender (particle seeds, world static batch and material sort order, invariant random seed), -nosound, noclip and a camera placed again before every screenshot. About 6 minutes.",
-      "command": [
-        "{python}",
-        "tools/render/view_oracle.py",
-        "suite",
-        "--check",
-        "views",
-        "--out",
-        "{out}"
-      ],
-      "result_protocol": "checks-v1",
-      "min_checks": 128,
-      "timeout_seconds": 2400,
-      "requires": [
-        "path:run/runtime",
-        "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu"
-      ],
-      "sources": [
-        "tools/render/view_oracle.py",
-        "tools/quality/portal_boot.py",
-        "tools/quality/draw_state_diff.py",
-        "tools/quality/legacy_ports_views.py",
-        "tools/quality/conformance_result.py",
-        "quality/workloads/render-view-oracles-v1.json",
-        "quality/fixtures/render-views/portal_testchmb_a_00/provenance.json",
-        "quality/fixtures/render-views/portal_testchmb_a_08/provenance.json",
-        "quality/fixtures/render-views/portal_testchmb_a_01_ports/provenance.json",
-        "quality/fixtures/render-views/portal2_sp_a1_wakeup/provenance.json",
-        "materialsystem/vieworaclecapture.h",
-        "materialsystem/drawstatefixture.h",
-        "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-        "engine/gl_rmain.cpp",
-        "engine/gl_rsurf.cpp",
-        "engine/sys_dll.cpp",
-        "particles/particles.cpp",
-        "materialsystem/cmatrendercontext.cpp"
-      ],
-      "expect": "pass"
-    },
-    {
-      "id": "render.draw-state",
-      "kind": "positive",
-      "domain": "Q-PRESENTATION",
-      "rfc": "0016",
-      "migration": "R86",
-      "profile": "linux-host-corpus",
-      "description": "RFC 0016 K0 'Per-draw fixtures captured' (tools/render/view_oracle.py suite --check draw-state). The same scenarios and shots as render.view-oracles; per shot the backend's per-draw state (source-draw-state/v1, -drawstatefixture: samplers, blend, depth, alpha test, modulation and base-texture registers, target, viewport, submission) must equal the frozen fixture draw by draw in order (draw_state_diff.compare_exact), except the declared uninitialized components: Downsample_nohdr's c48.zw and c49.zw, which the legacy shader never writes (view_oracle.DECLARED_NONDETERMINISTIC). About 6 minutes.",
-      "command": [
-        "{python}",
-        "tools/render/view_oracle.py",
-        "suite",
-        "--check",
-        "draw-state",
-        "--out",
-        "{out}"
-      ],
-      "result_protocol": "checks-v1",
-      "min_checks": 66,
-      "timeout_seconds": 2400,
-      "requires": [
-        "path:run/runtime",
-        "env:SOURCE_PORTAL2_STEAM_ROOT",
-        "vulkan-device:gpu"
-      ],
-      "sources": [
-        "tools/render/view_oracle.py",
-        "tools/quality/portal_boot.py",
-        "tools/quality/draw_state_diff.py",
-        "tools/quality/legacy_ports_views.py",
-        "tools/quality/conformance_result.py",
-        "quality/workloads/render-view-oracles-v1.json",
-        "quality/fixtures/render-views/portal_testchmb_a_00/provenance.json",
-        "quality/fixtures/render-views/portal_testchmb_a_08/provenance.json",
-        "quality/fixtures/render-views/portal_testchmb_a_01_ports/provenance.json",
-        "quality/fixtures/render-views/portal2_sp_a1_wakeup/provenance.json",
-        "materialsystem/vieworaclecapture.h",
-        "materialsystem/drawstatefixture.h",
-        "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-        "engine/gl_rmain.cpp",
-        "engine/gl_rsurf.cpp",
-        "engine/sys_dll.cpp",
-        "particles/particles.cpp",
-        "materialsystem/cmatrendercontext.cpp"
       ],
       "expect": "pass"
     },

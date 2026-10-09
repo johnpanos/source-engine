@@ -48,17 +48,12 @@ def build(bld):
 	# The composition root offers every backend this product linked through
 	# -renderer. Each is built only when its SDK was configured, so guard both
 	# the link and the catalog entry on the same condition.
-	if bld.env.NATIVE_VULKAN:
-		# The backend, and the SDL3-Vulkan bridge whose presentation this root
-		# owns and lends it (RFC 0016 legacy device facade F3).
-		libs += ['shaderapivulkan', 'render_bridge_sdl3_vulkan']
-		defines += ['LINKED_NATIVE_VULKAN_BACKEND']
 	if bld.env.CORE_SHADER_API:
 		libs += ['shaderapipica']
 		defines += ['LINKED_PICA_BACKEND']
 		# RFC 0016 R91 part f: on the Linux desktop the core shader API's
 		# frames show through the SDL3-Vulkan bridge's core presenter.
-		if bld.env.RENDER_CORE_VULKAN and bld.env.DEST_OS == 'linux':
+		if bld.env.RENDER_CORE_VULKAN:
 			libs += ['render_bridge_sdl3_vulkan_core', 'render_pass_output', 'render_device_vulkan',
 				'SDL3', 'VULKAN']
 			defines += ['LINKED_CORE_PRESENTER']

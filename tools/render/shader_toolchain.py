@@ -81,7 +81,7 @@ SPIRV_MAGIC = 0x07230203
 sys.path.insert(0, str(ROOT / "tools" / "quality"))
 from conformance_result import Checks  # noqa: E402
 
-SHADERS = "materialsystem/shaderapivulkan/shaders"
+SHADERS = "render/shaders/legacy"
 DEVICE = "unittests/rendertest/core/device"
 SKINNING = "render/pass/skinning"
 CULL = "render/culling"
@@ -757,8 +757,6 @@ def render_glsl(header, text_of):
 
 # Files whose SPIR-V-looking initializers are not compiler output.
 EXEMPT = {
-    "unittests/shaderapivulkantest/test_vulkan_debug_tools.cpp":
-        "hand-written magic/version words that exercise the debug-variant table's validation",
 }
 
 HEX = r"0[xX][0-9a-fA-F]+[uU]?"

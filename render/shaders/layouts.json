@@ -5,9 +5,9 @@
   "present": {
    "description": "The present-time gamma pass and the frame copy's depth-to-alpha (soft particles).",
    "sources": [
-    "materialsystem/shaderapivulkan/shaders/present_gamma.vert",
-    "materialsystem/shaderapivulkan/shaders/present_gamma.frag",
-    "materialsystem/shaderapivulkan/shaders/depth_to_alpha.frag"
+    "render/shaders/legacy/present_gamma.vert",
+    "render/shaders/legacy/present_gamma.frag",
+    "render/shaders/legacy/depth_to_alpha.frag"
    ],
    "push_constants": [
     "fragment"
@@ -34,7 +34,7 @@
   "compute-fill": {
    "description": "RFC 0011 G5 compute conformance program.",
    "sources": [
-    "materialsystem/shaderapivulkan/shaders/compute_fill.comp"
+    "render/shaders/legacy/compute_fill.comp"
    ],
    "push_constants": [
     "compute"
@@ -61,7 +61,7 @@
   "pbr-brdf-check": {
    "description": "render.pbr-brdf.glsl suite program.",
    "sources": [
-    "materialsystem/shaderapivulkan/shaders/pbr_brdf_check.comp"
+    "render/shaders/legacy/pbr_brdf_check.comp"
    ],
    "push_constants": [
     "compute"

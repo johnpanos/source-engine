@@ -669,77 +669,6 @@
         ]
       },
       {
-        "id": "render.vulkan.core",
-        "kind": "backend",
-        "paths": [
-          "materialsystem/shaderapivulkan/vulkan_device.h",
-          "materialsystem/shaderapivulkan/vulkan_device.cpp",
-          "materialsystem/shaderapivulkan/vulkan_scene_capture.cpp",
-          "materialsystem/shaderapivulkan/vulkan_surface_host.h",
-          "materialsystem/shaderapivulkan/vulkan_present_mode.h",
-          "materialsystem/shaderapivulkan/vulkan_adapter.h",
-          "materialsystem/shaderapivulkan/vulkan_adapter.cpp",
-          "materialsystem/shaderapivulkan/demo_triangle_spv.h",
-          "materialsystem/shaderapivulkan/material_spv.h",
-          "materialsystem/shaderapivulkan/vulkan_compute.h",
-          "materialsystem/shaderapivulkan/vulkan_debug_utils.h",
-          "materialsystem/shaderapivulkan/vulkan_frame_stats.h",
-          "materialsystem/shaderapivulkan/vulkan_shader_library.h"
-        ],
-        "allowedEdges": [
-          "render.contracts",
-          "render.device",
-          "render.device.vulkan",
-          "render.shader-library",
-          "render.legacy-pass-contract"
-        ],
-        "externalHeaders": [
-          "vulkan/vulkan.h"
-        ],
-        "uselib": [
-          "VULKAN"
-        ]
-      },
-      {
-        "id": "render.bridge.texture-image-vulkan",
-        "kind": "backend",
-        "paths": [
-          "materialsystem/shaderapivulkan/vulkan_texture_image.h",
-          "materialsystem/shaderapivulkan/vulkan_texture_image.cpp"
-        ],
-        "allowedEdges": [
-          "content.block-decode",
-          "content.texture-contract",
-          "render.vulkan.core"
-        ],
-        "uselib": [
-          "VULKAN"
-        ]
-      },
-      {
-        "id": "render.bridge.world-mesh-vulkan",
-        "kind": "legacy-interop",
-        "paths": [
-          "materialsystem/shaderapivulkan/vulkan_world_mesh_upload.h",
-          "materialsystem/shaderapivulkan/vulkan_world_mesh_upload.cpp",
-          "materialsystem/shaderapivulkan/vulkan_world_lightmap.h",
-          "materialsystem/shaderapivulkan/vulkan_world_lightmap.cpp",
-          "materialsystem/shaderapivulkan/vulkan_world_reflection_probes.cpp"
-        ],
-        "allowedEdges": [
-          "render.vulkan.core",
-          "render.bridge.texture-image-vulkan",
-          "render.contracts",
-          "world.map-container"
-        ],
-        "legacyIncludes": [
-          "tier0/dbg.h"
-        ],
-        "uselib": [
-          "VULKAN"
-        ]
-      },
-      {
         "id": "platform.sdl3.render-surface",
         "kind": "backend",
         "paths": [
@@ -763,7 +692,6 @@
         ],
         "allowedEdges": [
           "render.contracts",
-          "render.vulkan.core",
           "platform.sdl3.render-surface",
           "render.device.vulkan",
           "render.device"
@@ -836,46 +764,6 @@
         ]
       },
       {
-        "id": "render.bridge.sdl3-vulkan.native-tests",
-        "kind": "native-test",
-        "paths": [
-          "unittests/shaderapivulkantest/test_sdl3_vulkan_presentation.cpp",
-          "unittests/shaderapivulkantest/test_presentation_edr.cpp",
-          "unittests/shaderapivulkantest/test_pbr_pixels.cpp",
-          "unittests/shaderapivulkantest/test_ktx2_pixels.cpp",
-          "unittests/shaderapivulkantest/test_world_pbr_pixels.cpp",
-          "unittests/shaderapivulkantest/test_indirect_switching.cpp"
-        ],
-        "allowedEdges": [
-          "content.ktx2-reader",
-          "content.texture-contract",
-          "platform.sdl3.render-surface",
-          "render.bridge.sdl3-vulkan",
-          "render.bridge.texture-image-vulkan",
-          "render.bridge.world-mesh-vulkan",
-          "render.conformance-tests",
-          "render.contracts",
-          "render.indirect-light",
-          "render.vulkan.core",
-          "testing.contracts",
-          "world.map-container",
-          "world.map-container.test-cases",
-          "render.device.vulkan"
-        ],
-        "externalHeaders": [
-          "SDL3/SDL.h",
-          "vulkan/vulkan.h",
-          "unistd.h",
-          "csignal",
-          "fstream",
-          "iterator"
-        ],
-        "uselib": [
-          "SDL3",
-          "VULKAN"
-        ]
-      },
-      {
         "id": "render.vulkan.native-tests",
         "kind": "native-test",
         "paths": [
@@ -884,7 +772,6 @@
         "allowedEdges": [
           "render.contracts",
           "render.conformance-tests",
-          "render.vulkan.core",
           "render.device.vulkan"
         ],
         "uselib": [
@@ -2665,12 +2552,11 @@
         {
           "id": "render-legacy",
           "owner": "R46",
-          "reason": "Legacy material system and shader API modules. materialsystem and shaderapivulkan compile strict modules beside legacy code (the provider catalog links shaderapivulkan; R39), so no single module bounds them.",
+          "reason": "Legacy material system and shader API modules. materialsystem compiles strict modules beside legacy code (R39), so no single module bounds them.",
           "targets": [
             "materialsystem",
             "shaderapiempty",
             "shaderapipica",
-            "shaderapivulkan",
             "shaderlib",
             "stdshader_dx9",
             "studiorender",
@@ -2851,7 +2737,6 @@
             "server",
             "shaderapiempty",
             "shaderapipica",
-            "shaderapivulkan",
             "soundemittersystem",
             "stdshader_dx9",
             "steam_api",
@@ -3010,17 +2895,13 @@
         "outside": [
           {
             "owner": "R91",
-            "reason": "Render modules from before the core (the native Vulkan backend inside shaderapivulkan, its bridges and tests, and the legacy provider glue). RFC 0016 moves them into the layered modules by phase (Appendix A.3) and deletes the rest at K9.",
+            "reason": "Render modules from before the core (the native Vulkan backend's former bridges, and the legacy provider glue). RFC 0016 moves them into the layered modules by phase (Appendix A.3) and deletes the rest at K9.",
             "modules": [
               "render.indirect-light",
               "render.dxsupport-keyvalues",
               "render.legacy-backend-provider",
               "render.conformance-tests",
-              "render.vulkan.core",
-              "render.bridge.texture-image-vulkan",
-              "render.bridge.world-mesh-vulkan",
               "render.bridge.sdl3-vulkan",
-              "render.bridge.sdl3-vulkan.native-tests",
               "render.bridge.sdl3-d3d12",
               "render.bridge.sdl3-d3d12.native-tests",
               "render.vulkan.native-tests",

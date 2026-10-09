@@ -12,12 +12,9 @@ def configure(conf):
 def build(bld):
 	# The SDL3-Vulkan pair bridge (render.bridge.sdl3-vulkan): the only code
 	# that includes SDL for Vulkan presentation. The composition root links it
-	# and owns its presentation (RFC 0016 legacy device facade F3); the
-	# backend reaches it through render_vulkan::ILegacyPresentation only.
+	# and owns its presentation (RFC 0016 legacy device facade F3).
 	bridge_source = [
-		'sdl3_vulkan_surface_host.cpp',
 		'sdl3_dynamic_range.cpp',
-		'legacy_presentation.cpp',
 	]
 	bridge_libs = ['VULKAN', 'SDL3']
 	bridge_defines = []
@@ -41,7 +38,7 @@ def build(bld):
 	# The desktop core shader API's presentation (core_presenter.h, RFC 0016
 	# R91 cutover part f): the render.backend.v1 device, the SDL3 surfaces and
 	# the bridge's own presentation, which the composition root owns.
-	if bld.env.CORE_SHADER_API and bld.env.RENDER_CORE_VULKAN and bld.env.DEST_OS == 'linux':
+	if bld.env.CORE_SHADER_API and bld.env.RENDER_CORE_VULKAN:
 		core_source = ['core_presenter.cpp', 'sdl3_vulkan_presentation.cpp',
 			'../../device/vulkan/backend_v1/render_backend_v1.cpp',
 			'../../../platform/sdl3/render_surface/sdl3_render_surfaces.cpp'] + \
@@ -56,16 +53,3 @@ def build(bld):
 			defines = bridge_defines,
 			use = bridge_libs + ['render_device_vulkan', 'render_device'],
 			install_path = None)
-	if not bld.env.NATIVE_VULKAN:
-		return
-	bld.stlib(
-		features = 'c cxx',
-		source = bridge_source,
-		target = 'render_bridge_sdl3_vulkan',
-		name = 'render_bridge_sdl3_vulkan',
-		arch_module = 'render.bridge.sdl3-vulkan',
-		includes = [ '.', '../../../public', '../../../materialsystem/shaderapivulkan' ] + bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
-		defines = bridge_defines,
-		use = bridge_libs,
-		install_path = None)
-

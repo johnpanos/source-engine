@@ -8,8 +8,7 @@
   "dialect": "cxx20",
   "include_roots": [
     "public",
-    ".",
-    "materialsystem/shaderapivulkan"
+    "."
   ],
   "generated_include_roots": [
     {

@@ -1,6 +1,6 @@
 {
   "schema": "shader-compiler-pin/v1",
-  "description": "The pinned GLSL-to-SPIR-V compiler (RFC 0016 K0, check shader.toolchain-pin). Every committed SPIR-V module in the tree is built with this compiler and must rebuild byte-identically with it; a compiler reporting any other identity fails the check. tools/render/shader_toolchain.py is the single owner of the pin logic: 'build' makes dependencies/shader-toolchain (gitignored) from the pinned archives below, 'check' verifies the compiler identity and rebuilds every committed module, and the regenerators (materialsystem/shaderapivulkan/shaders/regen_*.py) locate the compiler through it. Host compiler facts for the tree's C++ stay in policy.json; this file owns only the shader compiler.",
+  "description": "The pinned GLSL-to-SPIR-V compiler (RFC 0016 K0, check shader.toolchain-pin). Every committed SPIR-V module in the tree is built with this compiler and must rebuild byte-identically with it; a compiler reporting any other identity fails the check. tools/render/shader_toolchain.py is the single owner of the pin logic: 'build' makes dependencies/shader-toolchain (gitignored) from the pinned archives below, 'check' verifies the compiler identity and rebuilds every committed module, and the regenerators (render/shaders/legacy/regen_*.py) locate the compiler through it. Host compiler facts for the tree's C++ stay in policy.json; this file owns only the shader compiler.",
   "directory": "dependencies/shader-toolchain",
   "compiler": {
     "executable": "glslc",

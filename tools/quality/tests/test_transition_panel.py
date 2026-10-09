@@ -150,68 +150,6 @@ int main(int argc, char **argv) {
 }
 '''
 
-
-COPY_DOUBLE = r"""
-#include <cstdlib>
-struct Rect_t { int x, y, width, height; };
-using ShaderAPITextureHandle_t = int;
-namespace render_vulkan {
-struct CVulkanContext {
-    struct DepthToAlpha { float projection[4]; float invRange; };
-    bool lastDepth = false, succeeds = true;
-    int copies = 0;
-    bool QueueCopyToTexture(int, int *, int *, const DepthToAlpha *depth) {
-        ++copies;
-        lastDepth = depth != nullptr;
-        return succeeds;
-    }
-};
-}
-render_vulkan::CVulkanContext g_VulkanContext;
-struct { float destAlphaDepthRange = 400; } g_Fog;
-int g_TargetCopies = 0, g_TargetCopiesDropped = 0;
-float projection[16] = {};
-const float *DrawProjection() { return projection; }
-struct CommandLineDouble {
-    bool disabled = false;
-    int FindParm(const char *) { return disabled ? 1 : 0; }
-} commands;
-CommandLineDouble *CommandLine() { return &commands; }
-void NoteDeviceUse(const char *) {}
-#define VK_UNIMPLEMENTED() do {} while (false)
-struct CShaderAPIVulkan {
-    void CopyRenderTargetToTextureEx(ShaderAPITextureHandle_t, int, Rect_t *, Rect_t *);
-};
-void check(bool value) { if (!value) std::exit(42); }
-"""
-COPY_CASES = r"""
-int main(int argc, char **argv) {
-    check(argc == 2);
-    if (std::atoi(argv[1]) == 1) commands.disabled = true;
-    CShaderAPIVulkan api;
-    // Orthographic UI projection: its alpha is opacity and must survive.
-    projection[15] = 1;
-    api.CopyRenderTargetToTextureEx(1, 0, nullptr, nullptr);
-    check(!g_VulkanContext.lastDepth && g_TargetCopies == 1);
-    // Perspective opaque scene: retain the soft-particle depth contract.
-    projection[15] = 0;
-    projection[11] = -1;
-    api.CopyRenderTargetToTextureEx(1, 0, nullptr, nullptr);
-    check(g_VulkanContext.lastDepth == !commands.disabled && g_TargetCopies == 2);
-    // A following UI copy must not inherit the scene's policy.
-    projection[15] = 1;
-    projection[11] = 0;
-    api.CopyRenderTargetToTextureEx(1, 0, nullptr, nullptr);
-    check(!g_VulkanContext.lastDepth && g_TargetCopies == 3);
-    api.CopyRenderTargetToTextureEx(1, 1, nullptr, nullptr);
-    check(g_VulkanContext.copies == 3);
-    g_VulkanContext.succeeds = false;
-    api.CopyRenderTargetToTextureEx(1, 0, nullptr, nullptr);
-    check(g_TargetCopies == 3 && g_TargetCopiesDropped == 1);
-}
-"""
-
-
 class TransitionPanelTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -249,19 +187,6 @@ class TransitionPanelTests(unittest.TestCase):
                 executable = self.compile(self.methods.replace(old, new), name)
                 result = subprocess.run([executable, str(case)], timeout=5)
                 self.assertNotEqual(result.returncode, 0)
-
-    def test_production_copy_alpha_policy(self):
-        source = (ROOT / "materialsystem/shaderapivulkan/shaderapivulkan.cpp").read_text()
-        body = method(source, "CopyRenderTargetToTextureEx", "CShaderAPIVulkan")
-        executable = self.compile(body, "copy-current", COPY_DOUBLE, COPY_CASES)
-        for rollback in range(2):
-            with self.subTest(depth_copy_disabled=rollback):
-                subprocess.run([executable, str(rollback)], check=True, timeout=5)
-        old = "s_depthAlpha && projection[2 * 4 + 3] != 0.0f"
-        self.assertIn(old, body)
-        broken = self.compile(body.replace(old, "s_depthAlpha"), "copy-ui-depth",
-                              COPY_DOUBLE, COPY_CASES)
-        self.assertNotEqual(subprocess.run([broken, "0"], timeout=5).returncode, 0)
 
 
 if __name__ == "__main__":

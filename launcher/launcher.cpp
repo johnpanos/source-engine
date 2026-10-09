@@ -95,13 +95,6 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #include "engine/render_core_binding.h"
 #include "render/composition/render_core.h"
 #include "render/composition/render_device_setting.h"
-#if defined( LINKED_NATIVE_VULKAN_BACKEND )
-#include "render/device/vulkan/host_binding.h"
-#include "render/render_backend.h"
-#include "../render/bridge/sdl3-vulkan/legacy_presentation.h"
-#include "render/legacy/core_passes.h"
-#include "render/legacy/frame_source.h"
-#endif
 #if defined( LINKED_PICA_BACKEND )
 #include "render/device/pica/host_binding.h"
 #endif
@@ -654,15 +647,6 @@ private:
 	};
 	std::unique_ptr<CorePresentation> m_pCorePresentation;
 #endif
-#if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
-	// RFC 0016 legacy device facade F2: the owner of the native Vulkan
-	// backend's device; the backend borrows it, and the material system has
-	// it created before SetMode and released after Shutdown.
-	render::device::vulkan::IHostDeviceOwner *m_pDeviceOwner = nullptr;
-	// F3: the SDL3-Vulkan bridge's presentation for the engine's window; the
-	// backend borrows it.
-	render_vulkan::ILegacyPresentation *m_pPresentation = nullptr;
-#endif
 };
 
 
@@ -751,26 +735,6 @@ static bool BindAudioProviders( IEngineAPI *engine )
 //-----------------------------------------------------------------------------
 // Instantiate all main libraries
 //-----------------------------------------------------------------------------
-#if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
-// The core Vulkan adapter's identity of its host device's adapter, as the
-// material system's device facade reports it (RFC 0016 legacy device facade).
-static bool DescribeCoreVulkanAdapter( void *context, int adapter, render::RenderAdapterInfo *info )
-{
-	render::device::vulkan::HostAdapterIdentity identity;
-	if ( !render::device::vulkan::DescribeHostAdapter(
-	         *static_cast<const render::device::vulkan::IHostDeviceOwner *>( context ), adapter,
-	         &identity ) )
-		return false;
-	*info = render::RenderAdapterInfo();
-	Q_strncpy( info->name, identity.name, sizeof( info->name ) );
-	info->vendorId = identity.vendorId;
-	info->deviceId = identity.deviceId;
-	// MaterialAdapterInfo_t's high word, as the D3D9 and Vulkan managers reported it.
-	info->driverVersion = static_cast<uint64>( identity.driverVersion ) << 32;
-	info->deviceMemoryBytes = identity.deviceLocalBytes;
-	return true;
-}
-#endif
 
 bool CSourceAppSystemGroup::Create()
 {
@@ -957,10 +921,6 @@ bool CSourceAppSystemGroup::Create()
 	    // The 3DS client's only drawing backend.
 	    PicaShaderBackend_Describe(),
 #endif
-#if defined( LINKED_NATIVE_VULKAN_BACKEND )
-	    // The client renderer (RFC 0001 R32).
-	    NativeVulkanShaderBackend_Describe(),
-#endif
 	    NullShaderBackend_Describe() };
 	const char *defaultProvider = CommandLine()->FindParm( "-noshaderapi" ) ? "null" : catalog[0]->id;
 	const char *requested = CommandLine()->ParmValue( "-renderer", defaultProvider );
@@ -975,20 +935,6 @@ bool CSourceAppSystemGroup::Create()
 		Warning( "Required render provider '%s' is not available in this product.\n", requested );
 		return false;
 	}
-#if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
-	// RFC 0016 K1 and legacy device facade F2: the native Vulkan backend
-	// borrows the device this root's owner (render.device.vulkan, linked once,
-	// here) creates and destroys.
-	if ( !m_pDeviceOwner )
-		m_pDeviceOwner =
-		    render::device::vulkan::CreateHostDeviceOwner( CommandLine()->FindParm( "-fsr" ) != 0 );
-	NativeVulkanShaderBackend_BindDeviceOwner( m_pDeviceOwner );
-	if ( !m_pPresentation )
-		m_pPresentation = render_vulkan::CreateSdl3LegacyPresentation();
-	NativeVulkanShaderBackend_BindPresentation( m_pPresentation );
-	// RFC 0016 K3: its frames run in the render core's frame graph.
-	NativeVulkanShaderBackend_BindFrameExecutor( &render::legacy::LegacyFrameExecutor() );
-#endif
 	const render::LegacyShaderProvider *bound = selected;
 #if defined( LINKED_RENDER_CORE )
 	// RFC 0016 A.7: compose the render core around the selected legacy
@@ -1165,21 +1111,6 @@ bool CSourceAppSystemGroup::Create()
 			    nullptr );
 		}
 #endif
-#if defined( LINKED_NATIVE_VULKAN_BACKEND )
-		// RFC 0016 legacy device facade (F1): the material system reports the
-		// adapter the core's Vulkan adapter creates the backend's device on.
-		if ( !Q_stricmp( selected->id, "native-vulkan" ) )
-		{
-			render::LegacyShaderServices::CoreAdapterSource source;
-			source.context = m_pDeviceOwner;
-			source.describe = DescribeCoreVulkanAdapter;
-			RenderCore_SetLegacyAdapterSource( m_pRenderCore, &source );
-		}
-#endif
-#if defined( LINKED_NATIVE_VULKAN_BACKEND )
-		// RFC 0016 K5: core passes at slots of the backend's stream.
-		NativeVulkanShaderBackend_BindCorePassRecorder( binding->corePasses );
-#endif
 		Msg( "Render core: device %s, features %s\n", binding->deviceName, config.features );
 		if ( result.substitutionCount )
 			Msg( "Render core substitutions: %s\n", result.substitutions );
@@ -1334,9 +1265,6 @@ void CSourceAppSystemGroup::Destroy()
 
 #if defined( LINKED_RENDER_CORE )
 	// Every system and module that borrowed the core is gone.
-#if defined( LINKED_NATIVE_VULKAN_BACKEND )
-	NativeVulkanShaderBackend_BindCorePassRecorder( nullptr );
-#endif
 #if defined( LINKED_PICA_BACKEND ) &&                                                              \
     ( defined( LINKED_WEBGPU_DEVICE ) || defined( LINKED_CORE_PRESENTER ) )
 	PicaShaderBackend_BindPresenter( nullptr, nullptr );
@@ -1357,16 +1285,6 @@ void CSourceAppSystemGroup::Destroy()
 #endif
 	DestroyComputePoolWorkerBackend( m_pRenderCoreWorkers );
 	m_pRenderCoreWorkers = nullptr;
-#endif
-#if defined( LINKED_NATIVE_VULKAN_BACKEND ) && defined( LINKED_RENDER_CORE )
-	// The material system released the device at its Shutdown; the owner
-	// goes after the backend that borrowed it.
-	NativeVulkanShaderBackend_BindDeviceOwner( nullptr );
-	render::device::vulkan::DestroyHostDeviceOwner( m_pDeviceOwner );
-	m_pDeviceOwner = nullptr;
-	NativeVulkanShaderBackend_BindPresentation( nullptr );
-	render_vulkan::DestroySdl3LegacyPresentation( m_pPresentation );
-	m_pPresentation = nullptr;
 #endif
 
 #ifdef WIN32

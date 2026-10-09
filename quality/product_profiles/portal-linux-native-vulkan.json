@@ -11,6 +11,10 @@
   "aliases": [
     "portal@linux-x86_64"
   ],
+  "configure_options": {
+    "render_backend": "core",
+    "render_core_device": "vulkan"
+  },
   "launch": {
     "game": "portal",
     "default_map": "testchmb_a_01",
@@ -29,7 +33,7 @@
         "-windowed"
       ],
       "renderer": [
-        "native-vulkan"
+        "pica"
       ],
       "job_args": [
         "+cl_render_start_graph",

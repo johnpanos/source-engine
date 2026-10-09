@@ -9,7 +9,7 @@
     package="@PACKAGE@"
     android:installLocation="auto">
 
-    <!-- The renderer is native Vulkan 1.1 (materialsystem/shaderapivulkan). -->
+    <!-- The renderer is the core shader API on the render core's Vulkan 1.1 device. -->
     <uses-feature android:name="android.hardware.vulkan.version"
         android:version="0x401000" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />

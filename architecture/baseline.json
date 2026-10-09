@@ -2040,20 +2040,6 @@
       "excerpt": ": static_cast<CreateInterfaceFn>( NULL );"
     },
     {
-      "fingerprint": "278e1198388c3195a8d6",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-      "line": 3355,
-      "excerpt": "static bool ConnectBackend( void *, CreateInterfaceFn factory )"
-    },
-    {
-      "fingerprint": "44edca0a0167700adada",
-      "rule": "ARCH105",
-      "path": "materialsystem/shaderapivulkan/shaderapivulkan.cpp",
-      "line": 3401,
-      "excerpt": "return static_cast<CreateInterfaceFn>( ShaderInterfaceFactory );"
-    },
-    {
       "fingerprint": "cda253b9ed1044df605e",
       "rule": "ARCH103",
       "path": "materialsystem/shaderextension_compatibility_host.cpp",
