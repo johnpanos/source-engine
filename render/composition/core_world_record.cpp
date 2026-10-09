@@ -40,6 +40,8 @@ private:
 void CoreWorld::RecordSlot(
     std::uint32_t tag, device::CommandEncoder &encoder, const legacy::CorePassTarget &target )
 {
+	if ( target.device )
+		OpenPipelineStore( *target.device );
 	if ( ( tag & 0xff000000u ) == 0x88000000u )
 	{
 		std::optional<TemporalRequest> request;

@@ -4,6 +4,9 @@
 //
 //=============================================================================//
 
+#ifdef RENDER_CORE_VULKAN
+#include "render/device/vulkan/provider.h"
+#endif
 #include "core_world_internal.h"
 
 namespace render::composition
@@ -56,6 +59,11 @@ void CoreWorld::SetPipelineStore( const char *directory )
 		return;
 	SavePipelineKeys();
 	m_PipelineKeysPath = path;
+	{
+		std::lock_guard<std::mutex> lock( m_PipelineStoreLock );
+		if ( m_PipelineStoreDirectory.empty() && directory && directory[0] )
+			m_PipelineStoreDirectory = directory;
+	}
 	m_PipelineKeys.clear();
 	if ( FILE *file = path.empty() ? nullptr : std::fopen( path.c_str(), "r" ) )
 	{
@@ -82,8 +90,29 @@ void CoreWorld::SetPipelineStore( const char *directory )
 	m_Pass.SetPipelinePrewarm( { m_PipelineKeys.begin(), m_PipelineKeys.end() } );
 }
 
+void CoreWorld::OpenPipelineStore( device::IRenderDevice2 &device )
+{
+	std::lock_guard<std::mutex> lock( m_PipelineStoreLock );
+	if ( m_PipelineStoreTried || m_PipelineStoreDirectory.empty() )
+		return;
+	m_PipelineStoreTried = true;
+#ifdef RENDER_CORE_VULKAN
+	if ( device::vulkan::OpenPipelineStore( device, m_PipelineStoreDirectory.c_str() ) )
+		m_PipelineStoreDevice = &device;
+#else
+	(void)device;
+#endif
+}
+
 void CoreWorld::SavePipelineKeys()
 {
+	{
+		std::lock_guard<std::mutex> lock( m_PipelineStoreLock );
+#ifdef RENDER_CORE_VULKAN
+		if ( m_PipelineStoreDevice )
+			(void)device::vulkan::SavePipelineStore( *m_PipelineStoreDevice );
+#endif
+	}
 	if ( m_PipelineKeysPath.empty() )
 		return;
 	const std::size_t before = m_PipelineKeys.size();

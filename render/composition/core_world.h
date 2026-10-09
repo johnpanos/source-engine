@@ -720,6 +720,14 @@ private:
 	// The pipeline prewarm list (SetPipelineStore): its file, and the keys
 	// read from it or saved to it. Main thread.
 	void SavePipelineKeys();
+	// The device pipeline store (render.device.vulkan's vulkan_pipelines.cache)
+	// in the pipeline-key directory: opened on the first slot that names the
+	// device, written back with the keys.
+	std::mutex m_PipelineStoreLock;
+	std::string m_PipelineStoreDirectory;          // under m_PipelineStoreLock
+	device::IRenderDevice2 *m_PipelineStoreDevice = nullptr; // under m_PipelineStoreLock
+	bool m_PipelineStoreTried = false;             // under m_PipelineStoreLock
+	void OpenPipelineStore( device::IRenderDevice2 &device );
 	std::string m_PipelineKeysPath;
 	std::set<std::string> m_PipelineKeys;
 	std::vector<std::string> m_CookieNames;

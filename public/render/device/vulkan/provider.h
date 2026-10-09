@@ -70,6 +70,13 @@ DeviceResult<std::unique_ptr<IRenderDevice2>> Create( const VulkanAdapterOptions
 // Warnings and errors the validation layer reported for device so far; 0 when
 // validation is off or device was not made by this adapter.
 std::uint64_t ValidationMessages( const IRenderDevice2 &device );
+// A pipeline store in directory (vulkan_pipelines.cache): the device's
+// pipeline creations use a VkPipelineCache started from the file, so later
+// launches skip the driver's compiles. False for a device this adapter did
+// not make, a store already open, or a cache the driver refuses. Main thread.
+bool OpenPipelineStore( IRenderDevice2 &device, const char *directory );
+// Writes the store's cache back (replaced only once complete).
+bool SavePipelineStore( IRenderDevice2 &device );
 // Uploads that found the ring full and took a dedicated staging buffer; 0
 // for a device not made by this adapter.
 std::uint64_t DeferredUploads( const IRenderDevice2 &device );

@@ -680,6 +680,9 @@ public:
 	{
 		m_PipelineCache.store( cache, std::memory_order_release );
 	}
+	// The device's own persisted cache (OpenPipelineStore in provider.h).
+	bool OpenPipelineStore( const char *directory );
+	bool SavePipelineStore();
 	MemoryAllocator &Memory() { return m_Memory; }
 	VkSemaphore TimelineSemaphore() const { return m_Timeline; }
 	std::uint64_t ReserveValue();
@@ -865,6 +868,9 @@ private:
 	// A host's pipeline cache (IHostDevice::SetPipelineCache), which every
 	// pipeline creation uses while set; the host owns, persists and destroys it.
 	std::atomic<VkPipelineCache> m_PipelineCache{ VK_NULL_HANDLE };
+	// The cache this device made for its pipeline store, and the store's directory.
+	VkPipelineCache m_OwnedPipelineCache = VK_NULL_HANDLE;
+	std::string m_PipelineStoreDirectory;
 	std::mutex m_QueueMutex; // the graphics queue's external synchronization
 	// Progressive enhancement for devices without dynamic rendering (Vulkan
 	// 1.1, Adreno 730): rendering passes and graphics pipelines use render

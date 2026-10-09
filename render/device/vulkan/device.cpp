@@ -681,6 +681,13 @@ void VulkanDevice::DestroyLogical()
 	m_HoldValue = 0;
 	m_Holding = false;
 	m_Memory.Destroy();
+	if ( m_OwnedPipelineCache != VK_NULL_HANDLE )
+	{
+		if ( m_PipelineCache.load( std::memory_order_relaxed ) == m_OwnedPipelineCache )
+			m_PipelineCache.store( VK_NULL_HANDLE, std::memory_order_relaxed );
+		vkDestroyPipelineCache( m_Device, m_OwnedPipelineCache, nullptr );
+		m_OwnedPipelineCache = VK_NULL_HANDLE;
+	}
 	vkDestroyDevice( m_Device, nullptr );
 	m_Device = VK_NULL_HANDLE;
 	m_Queue = VK_NULL_HANDLE;
@@ -1270,6 +1277,95 @@ DeviceResult<std::unique_ptr<IRenderDevice2>> Create( const VulkanAdapterOptions
 	if ( auto initialized = device->Initialize(); !initialized )
 		return foundation::MakeUnexpected( initialized.Error() );
 	return std::unique_ptr<IRenderDevice2>( std::move( device ) );
+}
+
+namespace
+{
+constexpr char kPipelineCacheFile[] = "vulkan_pipelines.cache";
+} // namespace
+
+bool VulkanDevice::OpenPipelineStore( const char *directory )
+{
+	if ( m_Device == VK_NULL_HANDLE || !directory || !directory[0] ||
+	     m_OwnedPipelineCache != VK_NULL_HANDLE ||
+	     m_PipelineCache.load( std::memory_order_acquire ) != VK_NULL_HANDLE )
+		return false;
+	const std::string path = std::string( directory ) + "/" + kPipelineCacheFile;
+	std::vector<char> data;
+	if ( FILE *file = std::fopen( path.c_str(), "rb" ) )
+	{
+		char buffer[65536];
+		std::size_t got;
+		while ( ( got = std::fread( buffer, 1, sizeof( buffer ), file ) ) > 0 )
+			data.insert( data.end(), buffer, buffer + got );
+		if ( std::ferror( file ) )
+			data.clear();
+		std::fclose( file );
+	}
+	VkPipelineCacheCreateInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+	info.initialDataSize = data.size();
+	info.pInitialData = data.empty() ? nullptr : data.data();
+	VkResult result = vkCreatePipelineCache( m_Device, &info, nullptr, &m_OwnedPipelineCache );
+	if ( result != VK_SUCCESS && info.initialDataSize )
+	{
+		// Data the driver will not take starts the cache empty.
+		info.initialDataSize = 0;
+		info.pInitialData = nullptr;
+		result = vkCreatePipelineCache( m_Device, &info, nullptr, &m_OwnedPipelineCache );
+	}
+	if ( result != VK_SUCCESS )
+	{
+		m_OwnedPipelineCache = VK_NULL_HANDLE;
+		return false;
+	}
+	m_PipelineStoreDirectory = directory;
+	m_PipelineCache.store( m_OwnedPipelineCache, std::memory_order_release );
+	std::fprintf( stderr, "[render.device.vulkan] pipeline store %s: %zu bytes of cache data\n",
+	    directory, data.size() );
+	return true;
+}
+
+bool VulkanDevice::SavePipelineStore()
+{
+	if ( m_OwnedPipelineCache == VK_NULL_HANDLE || m_PipelineStoreDirectory.empty() )
+		return false;
+	std::size_t size = 0;
+	std::vector<char> data;
+	if ( vkGetPipelineCacheData( m_Device, m_OwnedPipelineCache, &size, nullptr ) != VK_SUCCESS )
+		return false;
+	data.resize( size );
+	if ( size && vkGetPipelineCacheData( m_Device, m_OwnedPipelineCache, &size, data.data() ) !=
+	                 VK_SUCCESS )
+		return false;
+	data.resize( size );
+	if ( data.empty() )
+		return true;
+	// Replaced only once complete, so an interrupted save keeps the previous store.
+	const std::string path = m_PipelineStoreDirectory + "/" + kPipelineCacheFile;
+	const std::string temporary = path + ".tmp";
+	FILE *file = std::fopen( temporary.c_str(), "wb" );
+	if ( !file )
+		return false;
+	const bool written = std::fwrite( data.data(), 1, data.size(), file ) == data.size();
+	if ( std::fclose( file ) != 0 || !written || std::rename( temporary.c_str(), path.c_str() ) != 0 )
+	{
+		std::remove( temporary.c_str() );
+		return false;
+	}
+	return true;
+}
+
+bool OpenPipelineStore( IRenderDevice2 &device, const char *directory )
+{
+	VulkanDevice *vulkan = dynamic_cast<VulkanDevice *>( &device );
+	return vulkan && vulkan->OpenPipelineStore( directory );
+}
+
+bool SavePipelineStore( IRenderDevice2 &device )
+{
+	VulkanDevice *vulkan = dynamic_cast<VulkanDevice *>( &device );
+	return vulkan && vulkan->SavePipelineStore();
 }
 
 std::uint64_t ValidationMessages( const IRenderDevice2 &device )
