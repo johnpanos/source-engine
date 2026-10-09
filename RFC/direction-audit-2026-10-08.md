@@ -236,6 +236,45 @@ without changing it, is recorded in
 - `appframework/glmdisplaydb_linuxwin.inl` (togl's display database): its
   only reference was a provenance comment, now reworded.
 
+## The job system
+
+User direction (2026-10-08): "do the same for jobsystem's rfcs and the task
+plan" (RFC 0003 and row R94, "one task system").
+
+R94 delivered real structure: the wave executor is deleted, the backend runs
+tasks only, `TaskExecutor` is the one product executor with strong oracles
+(1,000 seeded graphs against the deterministic executor, TSan, mutation
+checks), and a runtime thread census exists. The same gaps as elsewhere
+remain:
+
+| Finding | Measurement |
+| --- | --- |
+| Two task APIs. The legacy pool (`vstdlib/jobthread.cpp`, `public/vstdlib/jobthread.h`, `job_steal_deque.h`; 3,438 lines) is still the pool and the API most code schedules with; `TaskExecutor` posts one `CJob` per task onto it through the bridge | 297 first-party uses of `CJob`, `CFunctorJob`, `IThreadPool`, `ThreadExecute`, `QueueCall` and `g_pThreadPool` in 67 files outside the pool itself: `materialsystem/` 102 (54 in the queued render context), `engine/` 59, `filesystem/` 38, `game/` 31, `replay/` 25, `vphysics_box3d/` 13 (the Box3D step scheduler uses the legacy pool directly) |
+| The ratchet counted none of it | `jobs_ratchet.py` counted thread creation, fork/join, pool waits and serial host phases; the second task API was in no category |
+| Name-based invariants | `wave-executor` forbids the names `PooledExecutor` and `ParallelForWithCaller`; a wave loop under another name passed |
+| A proxy for J6 | `unaudited-node` counts host-phase declarations, not main-thread work |
+| The ratchet failed at HEAD | two `thread-create` counts had fallen without being recorded, and two declared owners (`public/tier0/threadtools.inl`, `tier0/thread.cpp`) no longer created threads after R103 |
+| Subsystem code in the scheduler | `jobsystem/pilot_particles.cpp` is built into the product library, but only tests use it |
+| Implementation naming | `TaskExecutor` is implemented in `parallel_executor.cpp`, named after the thread-owning test executor |
+| A third, unrelated job system | `gcsdk/` (Game Coordinator SDK, `gcsdk::CJob`): no wscript builds it; a few Portal game-coordinator headers include it |
+
+Changes:
+
+- `jobs_ratchet.py` gains the shrink-only category `legacy-job-api` (297
+  sites recorded; the pool's implementation, frozen header and bridge
+  declared with reasons) and the structural invariant `foreign-executor`
+  (no class implements `IGraphExecutor` or `IWorkerBackend` outside the job
+  system and its bridge). Its sensitivity suite seeds both (40 checks, 0
+  failures). The two stale declarations are removed and the fallen counts
+  recorded; `check` passes again (25 checks).
+- [RFC 0003](0003-dependency-aware-job-system.md#what-the-checks-measure-direction-audit-2026-10-08)
+  gains goal J8 (one task API) and a statement of which phase I checks
+  measure the goal and which are proxies, the layering rule (no subsystem
+  work in the scheduler), and the ports-and-adapters reading of
+  `IWorkerBackend`.
+- Not done: moving `pilot_particles` to the tests, renaming the scheduler's
+  file, and the J8 migration itself.
+
 ## What is enforced now
 
 **The anti-corruption boundary: archlint CAP011 rules 8 and 9**, declared
@@ -342,6 +381,10 @@ geometry into the scene, so that the counter has a consumer.
 | [0028](0028-direct3d9-device-adapter.md) | Decision 9 (mod `ShaderDLL004` bytecode bound with its D3D9 registers on the core) withdrawn; gate D9-5 amended | It put a legacy format and register model inside a core port. The adapter itself, compiling the core's own programs to SM3, is an ordinary adapter and stays |
 | [0027](0027-product-pipeline-lowering-streaming-kiln.md) | The VMT mapping and the material IR belong to `render.vmt-translation`; `VmtProfile` moves to `content.vmt` with the reader | Followed RFC 0016's old owner |
 | [0001](0001-capability-based-platform-architecture.md) | Tier 0 facade rule 6: platform selection lives in the providers; R103 closes at the branch ratchet's floor | Its gate counted calls, so every branch survived |
+| [0001](0001-capability-based-platform-architecture.md) | Where platform and adapter code may live: the provider homes and five CAP012 ratchets; the dependency-enforcement section notes that the engine and games are covered lexically until they join the module graph | The principle "portable code MUST NOT select behavior with `IsWindows()`" had no check |
+| [0027](0027-product-pipeline-lowering-streaming-kiln.md) | Formats stay in their libraries; declared consumers only where needed | User direction: the engine and games do not know formats or shapes |
+| [0003](0003-dependency-aware-job-system.md) | Goal J8 (one task API); what each phase I check measures; scheduler layering | ["The job system"](#the-job-system) |
+| [0015](0015-asset-identity-content-build-graph.md), [0008](0008-canonical-world-data-and-runtime-formats.md), [0004](0004-box3d-primary-physics-backend.md), [0005](0005-quality-and-correctness-harnesses.md), [0010](0010-portable-vgui-surface.md) | The VMT mapping authority is the translator (0015); F9's contract starts from the runtime model with compiled-model indices (0008); the IVP provider is the declared collision-format consumer (0004); Q-ARCH's ratchets measure the goal and the structure checks are listed (0005); font provider code lives under provider homes (0010) | Consistency with the decisions above |
 
 The device-adapter RFCs (0022, 0024, 0025, 0026's PICA adapter, 0029) are
 adapters on the device port and consistent with the boundary; whether to keep

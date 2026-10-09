@@ -755,7 +755,7 @@ marks no implementation gate done.
 | 78 / R39 | First-party module retirement; 0001 rank 18 / retirement B–D | R12, R18 | Pseudo-modules removed; mandatory systems and provider catalogs use typed linked factories; no filename/string discovery for migrated services | active ([Phase D](RFC/0001-phase-b-progress.md#later-work-not-claimed-here)) |
 | 79 / R40 | Tool executable/process cleanup; 0001 rank 19 / retirement E | R11, R12, R22 | Launchable-DLL wrappers retired by cohort; structured argv/process protocol, outputs/cancellation and required compiler workflows pass; integrations tool-only | active ([Phase E](RFC/0001-phase-e-progress.md)) |
 | 80 / R41 | Extension hosts and public-loader removal; 0001 rank 20 / retirement F–G | R07, R11, R39, R40 | Family-owned versioned ABI/trust/lifetime fixtures pass; Waf enumerates boundaries; only approved hosts load; Tier1/filesystem general loader APIs retired | planned |
-| 81 / R42 | Scheduler consolidation; 0003 H | R35, R38 | Redundant queues/waits have zero consumers; process worker budget controlled; supported host modes retain correctness/latency and rollback evidence | planned |
+| 81 / R42 | Scheduler consolidation; 0003 H | R35, R38 | Redundant queues/waits have zero consumers; process worker budget controlled; supported host modes retain correctness/latency and rollback evidence | planned (2026-10-08: the legacy pool's task API is the main redundant queue; RFC 0003 J8 and `jobs_ratchet.py` `legacy-job-api` count its consumers) |
 | 82 / R43 | Hammer legacy retirement; 0002 H7 | R33, R60 | Declared product parity/recovery gate met; old consumer counts zero; superseded shell/glue/build references and stale exceptions removed | planned |
 | 83 / R44 | IVP simulation retirement; 0004 F first gate | R37 | Declared profiles no longer depend on IVP simulation, while IVP stays built and selectable as the fallback provider (user direction 2026-10-07, [RFC 0026](RFC/0026-box3d-beyond-ivp.md#the-ivp-fallback-guarantee)); gameplay/save/package gates pass and rollback/support decision recorded; decoder dependency remains explicit; removing the IVP runtime from any profile needs a new user decision | planned |
 | 84 / R45 | Independent collision decoding/cooking; 0004 F second gate | R40, R44 | Legacy/native format corpus and tool compatibility pass without IVP code; dependency audit clean; schema and old-content policy explicit | planned (2026-10-08: the IVP provider is the one declared consumer of the collision format under CAP012 `format-*-outside-owners` ([RFC 0004](RFC/0004-box3d-primary-physics-backend.md)); this row's decoder removes the declaration) |
@@ -1240,6 +1240,16 @@ Keep the table concise and link details below or from the domain progress file.
     (`tools/quality/thread_census.py`), the `CmpJob` worker-count control
     (`-compute_workers`) and the phase I ratchet (`tools/quality/jobs_ratchet.py`)
     are installed; `-render-core-record` is still proposed.
+  - Direction audit (2026-10-08, user direction "do the same for
+    jobsystem's rfcs and the task plan"): R94 left two task APIs (the job
+    system, and the legacy pool's `CJob`/`ThreadExecute`/`QueueCall` with
+    297 first-party sites in 67 files, which no ratchet counted). RFC 0003
+    gains goal J8 (one task API) and states which checks measure the goal
+    (J1's oracle, J3's runtime census, J5's pacing) and which are proxies
+    (J6's static census). `jobs_ratchet.py` gains `legacy-job-api` and the
+    structural `foreign-executor` invariant; its HEAD failure (two
+    unrecorded decreases, two stale tier0 declarations) is fixed
+    ([audit](RFC/direction-audit-2026-10-08.md#the-job-system)).
 - R95–R96 (RFC 0016 lighting model, K11–K12): added 2026-09-28 at the
   user's direction ("Source 2 quality"; "get the hard parts done first, and
   then integrate them"; renders outside the game with the render core are

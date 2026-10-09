@@ -1,5 +1,10 @@
 {
   "declared": {
+    "legacy-job-api": {
+      "public/vstdlib/jobthread.h": "the legacy pool's frozen, mod-facing declarations (CJob, IThreadPool); stays as a facade for mods once first-party code uses one task API",
+      "vstdlib/jobgraph_pool_bridge.cpp": "the bridge that makes the legacy pool an IWorkerBackend (one CJob per task)",
+      "vstdlib/jobthread.cpp": "the legacy pool's implementation: becomes the backend under IWorkerBackend, not a second task API"
+    },
     "thread-create": {
       "filesystem/filesystem_async.cpp": "RFC 0003 J3 declared owner: filesystem I/O threads",
       "jobsystem/dynamic_scope.cpp": "RFC 0003 J3 declared owner: DynamicScope's own workers, for tests and tools; the thread-executor invariant keeps it out of products",
@@ -10,9 +15,7 @@
       "platform/runners/thread_task_runner.h": "RFC 0003 J3 declared owner: ThreadTaskRunner's thread member",
       "public/jobsystem/dynamic_scope.h": "RFC 0003 J3 declared owner: DynamicScope's worker member",
       "public/tier0/threadtools.h": "RFC 0003 J3 declared owner: the thread primitives' declarations",
-      "public/tier0/threadtools.inl": "RFC 0003 J3 declared owner: the thread primitives' inline definitions",
       "public/vstdlib/jobthread.h": "RFC 0003 J3 declared owner: the engine thread pool's interface (CreateThreadPool)",
-      "tier0/thread.cpp": "RFC 0003 J3 declared owner: the thread primitives (POSIX CThread implementation)",
       "tier0/threadtools.cpp": "RFC 0003 J3 declared owner: the thread primitives (ThreadCreate, CThread) every owner uses",
       "vstdlib/jobgraph_pool_bridge.cpp": "RFC 0003 J3 declared owner: CreateThreadPoolWorkerBackend: a private pool a test or tool root asks for; products lend the compute pool",
       "vstdlib/jobthread.cpp": "RFC 0003 J3 declared owner: the engine thread pool: the compute pool (CmpJob) and the MatQueue pool"
@@ -34,27 +37,51 @@
     "dedicated/console/conproc.cpp": {
       "thread-create": 1
     },
+    "engine/audio/snd_dma.cpp": {
+      "legacy-job-api": 1
+    },
+    "engine/bugreporter.cpp": {
+      "legacy-job-api": 6
+    },
     "engine/gl_lightmap.cpp": {
-      "fork-join": 1
+      "fork-join": 1,
+      "legacy-job-api": 9
     },
     "engine/host.cpp": {
+      "legacy-job-api": 14,
       "pool-wait": 1
     },
+    "engine/host_frame_graph.h": {
+      "legacy-job-api": 2
+    },
     "engine/host_frame_phases.h": {
+      "legacy-job-api": 3,
       "pool-wait": 1,
       "unaudited-node": 26
     },
     "engine/host_saverestore.cpp": {
+      "legacy-job-api": 14,
       "thread-create": 1
     },
     "engine/indirect_light_host.cpp": {
-      "fork-join": 2
+      "fork-join": 2,
+      "legacy-job-api": 3
+    },
+    "engine/l_studio.cpp": {
+      "legacy-job-api": 2
     },
     "engine/net_ws_queued_packet_sender.cpp": {
       "thread-create": 1
     },
+    "engine/r_decal.cpp": {
+      "legacy-job-api": 2
+    },
+    "engine/sv_main.cpp": {
+      "legacy-job-api": 2
+    },
     "engine/sv_packedentities.cpp": {
-      "fork-join": 1
+      "fork-join": 1,
+      "legacy-job-api": 1
     },
     "engine/sv_uploadgamestats.cpp": {
       "thread-create": 1
@@ -62,32 +89,91 @@
     "engine/sys_dll.cpp": {
       "thread-create": 1
     },
+    "filesystem/QueuedLoader.cpp": {
+      "legacy-job-api": 20
+    },
+    "filesystem/basefilesystem.h": {
+      "legacy-job-api": 2
+    },
+    "filesystem/filesystem_async.cpp": {
+      "legacy-job-api": 16
+    },
     "filesystem/filetracker.cpp": {
       "thread-create": 1
     },
     "game/client/c_baseanimating.cpp": {
-      "fork-join": 1
+      "fork-join": 1,
+      "legacy-job-api": 2
+    },
+    "game/client/c_rope.cpp": {
+      "legacy-job-api": 1
+    },
+    "game/client/cdll_client_int.cpp": {
+      "legacy-job-api": 1
     },
     "game/client/client_render_start_steps.h": {
       "unaudited-node": 1
     },
+    "game/client/clientshadowmgr.cpp": {
+      "legacy-job-api": 1
+    },
     "game/client/particlemgr.cpp": {
       "fork-join": 2
     },
+    "game/client/particlemgr.h": {
+      "legacy-job-api": 2
+    },
+    "game/client/portal2/c_paintblob_render.cpp": {
+      "legacy-job-api": 2
+    },
     "game/client/portal2/gameui/portal2/uigamedata_storage.cpp": {
       "thread-create": 1
+    },
+    "game/client/viewpostprocess.cpp": {
+      "legacy-job-api": 1
     },
     "game/client/viewrender.cpp": {
       "fork-join": 2
     },
     "game/server/ai_basenpc.cpp": {
+      "legacy-job-api": 2,
       "pool-wait": 1
+    },
+    "game/server/hl2/npc_rollermine.cpp": {
+      "legacy-job-api": 1
+    },
+    "game/server/hl2/prop_combine_ball.cpp": {
+      "legacy-job-api": 1
+    },
+    "game/server/physics.cpp": {
+      "legacy-job-api": 6
+    },
+    "game/server/portal/prop_portal.cpp": {
+      "legacy-job-api": 1
+    },
+    "game/server/props.cpp": {
+      "legacy-job-api": 1
     },
     "game/shared/achievementmgr.cpp": {
       "thread-create": 1
     },
+    "game/shared/portal/PortalSimulation.cpp": {
+      "legacy-job-api": 1
+    },
+    "game/shared/portal/portal_carve.h": {
+      "legacy-job-api": 4
+    },
+    "game/shared/portal2/portal_base2d_shared.cpp": {
+      "legacy-job-api": 1
+    },
+    "game/shared/portal2/portalsimulation.cpp": {
+      "legacy-job-api": 1
+    },
     "game/shared/querycache.cpp": {
       "fork-join": 1
+    },
+    "game/shared/ugc_utils.cpp": {
+      "legacy-job-api": 2
     },
     "gameui/BasePanel.cpp": {
       "thread-create": 1
@@ -104,17 +190,57 @@
     "inputsystem/gyro_sensor.cpp": {
       "thread-create": 1
     },
+    "matchmaking/datacenter.cpp": {
+      "legacy-job-api": 2
+    },
     "matchmaking/matchmakingqos.cpp": {
       "thread-create": 1
     },
+    "matchmaking/x360_xlsp_cmd.h": {
+      "legacy-job-api": 2
+    },
+    "materialsystem/cmaterial.cpp": {
+      "legacy-job-api": 2
+    },
     "materialsystem/cmaterialsystem.cpp": {
+      "legacy-job-api": 13,
       "pool-wait": 5
+    },
+    "materialsystem/cmaterialsystem.h": {
+      "legacy-job-api": 6
+    },
+    "materialsystem/cmaterialvar.cpp": {
+      "legacy-job-api": 11
+    },
+    "materialsystem/cmatlightmaps.cpp": {
+      "legacy-job-api": 2
+    },
+    "materialsystem/cmatqueuedrendercontext.cpp": {
+      "legacy-job-api": 54
+    },
+    "materialsystem/cmatqueuedrendercontext.h": {
+      "legacy-job-api": 13
+    },
+    "materialsystem/ctexture.cpp": {
+      "legacy-job-api": 1
     },
     "materialsystem/texturemanager.cpp": {
       "thread-create": 2
     },
+    "platform/posix/thread_provider.cpp": {
+      "thread-create": 1
+    },
+    "platform/win32/thread_provider.cpp": {
+      "thread-create": 1
+    },
+    "public/filesystem.h": {
+      "legacy-job-api": 2
+    },
     "public/gcsdk/workthreadpool.h": {
       "thread-create": 1
+    },
+    "public/materialsystem/imaterialsystem.h": {
+      "legacy-job-api": 1
     },
     "public/panorama/data/imageloader.h": {
       "thread-create": 1
@@ -131,28 +257,63 @@
     "public/render/indirect_sdf.h": {
       "fork-join": 1
     },
+    "public/vphysics/parallel_step.h": {
+      "legacy-job-api": 2
+    },
+    "public/vstdlib/jobgraph_frame.h": {
+      "legacy-job-api": 2
+    },
+    "public/vstdlib/jobgraph_parallel.h": {
+      "legacy-job-api": 5
+    },
     "public/vstdlib/jobthread.h": {
       "fork-join": 11,
       "pool-wait": 16
     },
+    "public/vstdlib/task_runner_pool_bridge.h": {
+      "legacy-job-api": 2
+    },
+    "replay/cl_performancecontroller.cpp": {
+      "legacy-job-api": 2
+    },
+    "replay/cl_performancecontroller.h": {
+      "legacy-job-api": 2
+    },
+    "replay/cl_replaycontext.h": {
+      "legacy-job-api": 1
+    },
     "replay/shared_replaycontext.cpp": {
+      "legacy-job-api": 3,
       "pool-wait": 1,
       "thread-create": 1
     },
+    "replay/shared_replaycontext.h": {
+      "legacy-job-api": 5
+    },
+    "replay/sv_basejob.cpp": {
+      "legacy-job-api": 1
+    },
+    "replay/sv_basejob.h": {
+      "legacy-job-api": 1
+    },
     "replay/sv_filepublish.cpp": {
+      "legacy-job-api": 5,
       "pool-wait": 1
     },
     "replay/sv_fileservercleanup.cpp": {
       "pool-wait": 1
     },
-    "tier0/cpumonitoring.cpp": {
-      "thread-create": 2
+    "replay/sv_replaycontext.cpp": {
+      "legacy-job-api": 1
+    },
+    "replay/sv_replaycontext.h": {
+      "legacy-job-api": 4
+    },
+    "studiorender/studiorendercontext.cpp": {
+      "legacy-job-api": 3
     },
     "tier0/tslist.cpp": {
       "thread-create": 9
-    },
-    "tier0/vcrmode.cpp": {
-      "thread-create": 2
     },
     "tier0/vcrmode_posix.cpp": {
       "thread-create": 1
@@ -160,19 +321,39 @@
     "tier1/interface.cpp": {
       "thread-create": 1
     },
+    "tier3/mdlutils.cpp": {
+      "legacy-job-api": 2
+    },
+    "vphysics_box3d/main.cpp": {
+      "legacy-job-api": 1
+    },
+    "vphysics_box3d/physics_environment.cpp": {
+      "legacy-job-api": 1
+    },
+    "vphysics_box3d/physics_environment.h": {
+      "legacy-job-api": 3
+    },
     "vphysics_box3d/pool_step_scheduler.cpp": {
+      "legacy-job-api": 3,
       "pool-wait": 1
+    },
+    "vphysics_box3d/pool_step_scheduler.h": {
+      "legacy-job-api": 5
     },
     "vstdlib/jobthread.cpp": {
       "pool-wait": 4
+    },
+    "vstdlib/task_runner_pool_bridge.cpp": {
+      "legacy-job-api": 6
     }
   },
   "note": "RFC 0003 phase I (R94): work outside the one task system, per file and category. Only shrinks; rewrite with `jobs_ratchet.py check --write` after review. J3 needs thread-create at 0; J6 shrinks unaudited-node. Declared owners are listed with a reason.",
   "schema": "jobs-ratchet/v1",
   "totals": {
-    "fork-join": 32,
+    "fork-join": 31,
+    "legacy-job-api": 297,
     "pool-wait": 32,
-    "thread-create": 38,
+    "thread-create": 36,
     "unaudited-node": 27
   }
 }

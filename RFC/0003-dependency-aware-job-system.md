@@ -682,9 +682,10 @@ user's standing instruction and can be revised with a recorded reason.
 | **J4. Overhead stays small.** Scheduling costs little next to the work it schedules | frame trace with per-job timings | on the frame's critical path, queueing, wake and join time is at most 5 % of the pooled work it runs; a cohort that cannot meet this runs serially (the serial fast path) and says so in its record | R20 |
 | **J5. Low capacity holds.** One worker, and two performance cores, are supported configurations | `frame_pacing.py` with the compute pool held to 1 and 2 workers on desktop (J5's control is installed: `-compute_workers N` sizes the engine's `CmpJob` pool, 0 runs graphs inline; `-threads` sizes only the global pool); the iPhone 16 Pro and the Fold7 | pooled configurations are no slower than serial beyond each cohort's recorded regression budget; the serial configuration stays the oracle | R20, R21, R29 |
 | **J6. The main thread shrinks.** Main-thread frame work (busy time excluding waits for the pool, the render sequence and present) goes down cohort by cohort | frame trace; host-graph census of nodes that declare `FRAME_DOMAIN_ALL` (static census installed 2026-10-07: `jobs_ratchet.py` category `unaudited-node`, serial host-frame phases and `FRAME_DOMAIN_ALL` declarations, shrink-only) | shrink-only ratchets on both: a cohort that moves work off the main thread lowers them, and no change raises them without a recorded decision | R30, R35, R38 |
+| **J8. One task API** (added 2026-10-08, [direction audit](direction-audit-2026-10-08.md#the-job-system)). First-party code schedules work through the job system only; the legacy pool (`CThreadPool`, `CJob`, `ThreadExecute`, `QueueCall`) is the backend under `IWorkerBackend`, and its frozen header stays only as the facade mods use | `jobs_ratchet.py` category `legacy-job-api` (installed 2026-10-08; the pool's implementation, its frozen header and the bridge are declared owners) and invariant `foreign-executor` (no class implements `IGraphExecutor` or `IWorkerBackend` outside the job system and its bridge) | `legacy-job-api` is 0 outside the declared owners; shrink-only until then | R20, R42 |
 | **J7. Simulation as jobs.** The server tick runs as gather, compute and ordered commit per audited family, with entity command buffers ([Entity command buffers](#entity-command-buffers)) | per-family three-mode captures (legacy, serial graph, pooled graph) | each migrated family's captured gameplay equals legacy or records an approved behavior change; tick latency does not regress | R38 |
 
-J1 to J5 are scheduler work and gate phase I. J6 and J7 are portfolio
+J1 to J5 and J8 are scheduler work and gate phase I. J6 and J7 are portfolio
 targets that each migrating cohort advances. They close only when the
 cohorts they name are migrated, and no single change is expected to finish
 them. None of these goals permits adding a frame of input or prediction
@@ -700,6 +701,46 @@ and the runtime census count the rest. J1's suite, the J3 census, J5's
 control and the J6 static census are installed; J2's product overlap trace,
 J4's critical-path overhead measurement, the Fold7 and iPhone rows and the J7
 ratchet are open. Evidence: [R94 record](0003-progress.md#r94-one-task-system-2026-10-07).
+
+### What the checks measure (direction audit, 2026-10-08)
+
+User direction (2026-10-08): apply the [direction audit](direction-audit-2026-10-08.md#the-job-system)
+to the job system and the task plan. Its lesson elsewhere was that gates
+measured a proxy instead of the goal: Tier 0's ratchet counted OS calls by
+name and let every platform branch survive. For phase I:
+
+- **Measure the goal.** J1 (the model oracle and saturation invariant), J3's
+  runtime thread census and J5's frame pacing measure the goal itself. The
+  static `thread-create` count is a companion to J3's census, not a
+  substitute for it. J6's static `unaudited-node` count is a proxy: it
+  counts declarations, not main-thread work. J6 is judged by the frame
+  trace's main-thread busy time, and the static count cannot close it.
+- **"One task system" means one task API, not one product executor.** R94
+  made `TaskExecutor` the one product executor. The legacy pool's API is
+  still the task API most code uses: at 2026-10-08 it has 297 first-party
+  call sites outside its declared owners, in `materialsystem/` (the queued
+  context), `engine/` (host, save/restore) and others. Until J8 passes there
+  are two task systems, one of them behind a bridge. J8 is the goal check.
+- **Structural over name-based invariants.** `wave-executor` forbids two
+  names, so a wave loop under another name would pass. `backend-surface`
+  (the backend has exactly its four virtual functions) and the new
+  `foreign-executor` (no second implementation of the executor or backend
+  interfaces outside the job system) check structure. Prefer them.
+- **The scheduler holds no subsystem work.** `jobsystem/pilot_particles.cpp`
+  (the particle pilot) is compiled into the product library, but only tests
+  use it. It moves to the tests. A cohort's kernel belongs to its subsystem,
+  as `game/client/bone_setup_shadow_verify.cpp` already does over the
+  generic `batch_shadow_verify.h`. `TaskExecutor`'s implementation lives in
+  `parallel_executor.cpp`, the file named after the thread-owning test
+  executor, because the two share one scheduler. It is named for the
+  product executor when the file is next split, so the product path is the
+  one a reader finds.
+- **Ports and adapters.** `IWorkerBackend` is the port, and the engine pool
+  bridge and `ThreadWorkerBackend` are its adapters. Thread creation and
+  every other platform call stay in Tier 0's providers
+  ([RFC 0001](0001-capability-based-platform-architecture.md#where-platform-and-adapter-code-may-live-user-direction-2026-10-08)),
+  and archlint holds the job system as a strict module. The module's size
+  is under CAP013's line ceilings like every other area.
 
 ## Compatibility and incremental integration
 

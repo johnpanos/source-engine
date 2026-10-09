@@ -21,6 +21,10 @@ Invariants (zero, never recordable; --write refuses while any holds):
                     virtual functions WorkerCount, PostTask, SettleTask and
                     ShouldRunInline (and the destructor): no barrier can be
                     added to the boundary under another name;
+  foreign-executor  a class implementing IGraphExecutor or IWorkerBackend
+                    outside the job system and its pool bridge: a second
+                    scheduler under any name (structural; added 2026-10-08
+                    because the wave-executor invariant matches names);
   thread-executor   ParallelExecutor, DynamicScope or ThreadWorkerBackend
                     (executors that own threads) constructed outside the job
                     system, its tests and tools: products run graphs on
@@ -47,6 +51,13 @@ lookup ratchet):
                     graph replaces them with nodes;
   pool-wait         a blocking wait on pool work: WaitForFinish,
                     WaitForFinishAndRelease, YieldWait;
+  legacy-job-api    the second task API (direction audit 2026-10-08): the
+                    legacy pool's jobs and calls (CJob, CFunctorJob,
+                    CJobSet, IThreadPool/CThreadPool, ThreadExecute*,
+                    QueueCall*, CreateFunctorJob, g_pThreadPool) outside the
+                    job system. One task system means one task API; the
+                    pool's implementation, its frozen header and the bridge
+                    are declared owners;
   unaudited-node    a host frame node in legacy order (J6 host-graph census):
                     a HOST_FRAME_PHASE/HostFrame_AddPhase call (a serial
                     host-frame phase) or a FRAME_DOMAIN_ALL declaration
@@ -91,8 +102,11 @@ POOL_BRIDGE = ("vstdlib/jobgraph_", "public/vstdlib/jobgraph_")
 WORKER_BACKEND = "public/jobsystem/worker_backend.h"
 BACKEND_VIRTUALS = {"WorkerCount", "PostTask", "SettleTask", "ShouldRunInline"}
 
-INVARIANTS = ("wave-executor", "backend-fork-join", "backend-surface", "thread-executor")
-RATCHETS = ("thread-create", "fork-join", "pool-wait", "unaudited-node")
+INVARIANTS = ("wave-executor", "backend-fork-join", "backend-surface", "thread-executor",
+              "foreign-executor")
+RATCHETS = ("thread-create", "fork-join", "pool-wait", "unaudited-node", "legacy-job-api")
+# The Game Coordinator SDK's gcsdk::CJob is an unrelated, unbuilt job system.
+LEGACY_JOB_API_SKIPPED = ("gcsdk/", "public/gcsdk/")
 
 WAVE_EXECUTOR = re.compile(r"\b(?:PooledExecutor|ParallelForWithCaller)\b")
 PARALLEL_FOR = re.compile(r"\bParallelFor\b")
@@ -114,6 +128,21 @@ FORK_JOIN = re.compile(
 POOL_WAIT = re.compile(r"\b(?:WaitForFinish|WaitForFinishAndRelease|YieldWait)\s*\(")
 UNAUDITED_NODE = re.compile(
     r"\b(?:HOST_FRAME_PHASE|HostFrame_AddPhase)\s*\(\s*phases\b|\bFRAME_DOMAIN_ALL\b")
+# The second task API: the legacy pool's jobs and calls (direction audit
+# 2026-10-08). One task system means one task API in first-party code; the
+# legacy pool's own implementation, its frozen mod-facing header and the
+# bridge that turns it into an IWorkerBackend are declared owners. Calls the
+# fork-join and pool-wait categories already count are not counted again.
+LEGACY_JOB_API = re.compile(
+    r"\b(?:CJob|CFunctorJob|CJobSet|IThreadPool|CThreadPool)\b"
+    r"|\b(?:ThreadExecute\w*|QueueCall\w*|CreateFunctorJob)\s*\("
+    r"|\bg_pThreadPool\b")
+# An executor or worker backend implemented outside the job system and its
+# pool bridge: a second scheduler under any name (structural, unlike the
+# name-based wave-executor invariant).
+FOREIGN_EXECUTOR = re.compile(
+    r"\b(?:class|struct)\s+\w+(?:\s+final)?\s*:\s*(?:public\s+)?(?:jobsystem::)?"
+    r"(?:IGraphExecutor|IWorkerBackend)\b")
 VIRTUAL = re.compile(r"\bvirtual\b[^;{(]*?(~?\w+)\s*\(")
 
 
@@ -159,6 +188,10 @@ def count_file(path, text):
     add("pool-wait", len(POOL_WAIT.findall(code)))
     if not in_job_system:
         add("unaudited-node", len(UNAUDITED_NODE.findall(code)))
+    if not in_job_system and not path.startswith(POOL_BRIDGE):
+        add("foreign-executor", len(FOREIGN_EXECUTOR.findall(code)))
+    if not in_job_system and not path.startswith(LEGACY_JOB_API_SKIPPED):
+        add("legacy-job-api", len(LEGACY_JOB_API.findall(code)))
     return found
 
 
@@ -388,6 +421,11 @@ def sensitivity():
                                        append=True))
         seeded("new-domain-all", write("game/client/steps.h",
                                        "FrameAccess a = { jobsystem::FRAME_DOMAIN_ALL, true };\n"))
+        seeded("foreign-executor", write(
+            "engine/my_scheduler.cpp",
+            "class CWaveRunner final : public jobsystem::IGraphExecutor {};\n"), True)
+        seeded("new-legacy-job", write("game/client/loader.cpp",
+                                       "void L() { g_pThreadPool->QueueCall( Load ); }\n"))
         seeded("stale-ratchet", write("game/client/render_start.cpp", "void R() {}\n"))
         seeded("stale-declaration", lambda t: (t / "tier0/threadtools.cpp").write_text("\n"))
 
