@@ -5942,8 +5942,25 @@ bool CShaderAPIEmpty::TexLock( int level, int cubeFaceID, int xOffset, int yOffs
 	// A 16-bit page (integer-HDR lightmaps) is written as 16-bit integers,
 	// as shaderapivulkan's TexLock did; else 8-bit colour.
 	const int bpp = texture->wide ? 8 : 4;
+	// The writer starts from what the level holds: the material system locks
+	// a whole page and rewrites only some of it (dynamic lightmap updates in
+	// UpdateLightmap), and TexUnlock writes the whole rectangle back.
 	g_TexLockPixels.SetCount( width * height * bpp );
-	memset( g_TexLockPixels.Base(), 0, g_TexLockPixels.Count() );
+	const unsigned char *src = texture->levels[0].Base();
+	const int dw = texture->baseWidth, dh = texture->baseHeight;
+	for ( int y = 0; y < height; ++y )
+	{
+		const int ty = ( yOffset + y ) * dh / texture->height;
+		for ( int x = 0; x < width; ++x )
+		{
+			const int tx = ( xOffset + x ) * dw / texture->width;
+			unsigned char *out = g_TexLockPixels.Base() + ( y * width + x ) * bpp;
+			if ( ty >= 0 && ty < dh && tx >= 0 && tx < dw )
+				memcpy( out, src + ( ty * dw + tx ) * bpp, bpp );
+			else
+				memset( out, 0, bpp );
+		}
+	}
 	g_TexLockTexture = g_ModifyTexture;
 	g_TexLockRect[0] = xOffset;
 	g_TexLockRect[1] = yOffset;
