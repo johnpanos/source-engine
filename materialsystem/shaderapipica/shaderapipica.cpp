@@ -6089,16 +6089,36 @@ void CShaderAPIEmpty::ClearBuffers( bool bClearColor, bool bClearDepth, bool bCl
 	}
 }
 
+// As CShaderAPIDx8 (ported from shaderapivulkan): a full-screen quad through
+// BufferClearObeyStencil (DrawClearBufferQuad), so the clear obeys the current
+// stencil test, drawn with user clip planes off because the quad is in altered
+// world space. Portal 2's stencil portals clear depth inside each portal's
+// stencil this way before drawing the view through it; with these empty the
+// view failed the depth test against the wall behind the portal.
 void CShaderAPIEmpty::ClearBuffersObeyStencil( bool bClearColor, bool bClearDepth )
 {
+	ClearBuffersObeyStencilEx( bClearColor, bClearColor, bClearDepth );
 }
 
 void CShaderAPIEmpty::ClearBuffersObeyStencilEx( bool bClearColor, bool bClearAlpha, bool bClearDepth )
 {
+	if ( !bClearColor && !bClearAlpha && !bClearDepth )
+		return;
+	const int clipPlanes = g_CoreClipPlanesEnabled;
+	g_CoreClipPlanesEnabled = 0;
+	// g_ClearColor packs r g b a into bytes 0 to 3.
+	ShaderUtil()->DrawClearBufferQuad( g_ClearColor & 0xFF, ( g_ClearColor >> 8 ) & 0xFF,
+		( g_ClearColor >> 16 ) & 0xFF, ( g_ClearColor >> 24 ) & 0xFF, bClearColor, bClearAlpha,
+		bClearDepth );
+	g_CoreClipPlanesEnabled = clipPlanes;
 }
 
 void CShaderAPIEmpty::PerformFullScreenStencilOperation( void )
 {
+	const int clipPlanes = g_CoreClipPlanesEnabled;
+	g_CoreClipPlanesEnabled = 0;
+	ShaderUtil()->DrawClearBufferQuad( 0, 0, 0, 0, false, false, false );
+	g_CoreClipPlanesEnabled = clipPlanes;
 }
 
 void CShaderAPIEmpty::SetScissorRect( const int nLeft, const int nTop, const int nRight, const int nBottom, const bool bEnableScissor )
