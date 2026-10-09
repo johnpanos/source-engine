@@ -275,7 +275,18 @@ the same image as the native Dawn lane (`portal-webgpu-core`). Commits
 - **Writable content.** A lazily read content file turns into an ordinary
   in-memory file on its first write or truncation (the engine rewrites a
   map's sound cache at level start; the truncation trapped before).
+- **Through a portal, and a level transition.** A longer real-input session
+  in `testchmb_a_04`: the shot portal takes the player across the chamber
+  (`getpos` jumps 703 units, from (-696, 51) to (-64, 359)), then the
+  player reaches the exit elevator and the game changes level. There it
+  stops: the core's world pass keeps the old map's lightmap texture
+  handles (resolved once at world upload, `core_world_scene.cpp`), which
+  the material system frees and reallocates, and strict mode ends the run
+  ("lightmap-page:N did not import"). It reproduces natively with
+  `changelevel` on `portal-webgpu-core` with `r_core_world 1`, so it is the
+  core world pass's, on every device; handed to the R91 session
+  (2026-10-08). Without `r_core_world` the world draws black.
 
-Open: audio in a page without a user gesture;
+Open: level transitions with the core's world pass (above); audio in a page without a user gesture;
 load time (map in 14 s, about 2,400 lazily read files) and frame time; the
 Node lane and W1/W4/W6.
