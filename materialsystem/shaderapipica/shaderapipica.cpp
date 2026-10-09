@@ -2331,8 +2331,14 @@ public:
 #endif
 		if ( !texture || srgb )
 		{
-			printf( "pica: core import of texture %d refused: %s\n", handle,
-				srgb ? "sRGB view" : "no such texture" );
+			const int index = handle - 1;
+			printf( "pica: core import of texture %d refused: %s (%s; %d slots)\n", handle,
+				srgb ? "sRGB view" : "no such texture",
+				index < 0 || index >= g_Textures.Count() ? "out of range"
+				: !g_Textures[index]                     ? "empty slot"
+				: !g_Textures[index]->used               ? "freed slot"
+				                                         : "present",
+				g_Textures.Count() );
 			return render::device::TextureId{};
 		}
 		if ( texture && texture->dirty )
