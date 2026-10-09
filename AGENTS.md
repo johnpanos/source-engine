@@ -462,6 +462,7 @@ python3 tools/archlint/archlint.py inventory --verify
 python3 -m unittest discover -s tools/archlint/tests -v
 python3 tools/archlint/archlint.py structure --verify   # CAP012/CAP013, also run by check --all
 python3 tools/archlint/archlint.py structure --report   # sizes and ratchet totals
+python3 tools/archlint/archlint.py graph --family render  # module graph: --format png|svg|dot|json|graphml|mermaid
 ```
 
 The structure ratchets (CAP012/CAP013, [`architecture/structure.json`](architecture/structure.json),
@@ -472,6 +473,40 @@ area has a code-line ceiling: `--write` lowers ceilings, and growth is a
 reviewed decision recorded with `structure --raise AREA --reason TEXT`. Never
 raise a ceiling or re-adopt a rule to get green. See the
 [direction audit](RFC/direction-audit-2026-10-08.md).
+
+**Look at the graph on big changes** (user direction, 2026-10-09). The checks
+read text; some structural problems are easier to see than to state. Before
+and after a change that adds, removes, splits or moves a module, changes
+`allowedEdges` or a layer contract, or moves responsibility between layers,
+regenerate the affected family and the group overview and compare them:
+
+```sh
+python3 tools/archlint/archlint.py graph                         # module groups
+python3 tools/archlint/archlint.py graph --family render         # or product, kiln
+python3 tools/archlint/archlint.py graph --family render --focus <module> --depth 2
+```
+
+Tools and agents can read the same graph as data: `--format json` (schema
+`archlint-graph/v1`: nodes with group, role and layer; edges with kind,
+`shown` and pending owner; group cycles), `graphml` (yEd, Gephi, networkx) or
+`mermaid` (Markdown). Cycles are also a check: archlint CAP014 rejects any
+module cycle, and any cycle between module groups (an id's first segment,
+test modules excluded) except through the edges recorded in
+`groupCycles.pending` in `architecture/modules.json`, each with its row; the
+graph draws group-cycle edges in orange.
+
+Look for:
+- an edge pointing up a layer, or a new cycle between groups;
+- a new red (pending) edge;
+- a live module landing in the "outside the contract" box;
+- a translator or adapter that the core depends on;
+- a pass, scene or other core module gaining format or legacy edges;
+- a module whose fan-in or fan-out jumps.
+
+Record what you saw in the change's progress entry: the images are written to
+`out/archlint/` and are not committed. Findings from the first look
+(2026-10-09) are in the
+[direction audit](RFC/direction-audit-2026-10-08.md#what-the-graphs-show-2026-10-09).
 
 Installed style commands (install the pinned formatter as described in the
 [setup instructions](tools/stylelint/README.md) first):

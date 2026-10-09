@@ -939,6 +939,63 @@ class TranslationContractTest(unittest.TestCase):
         self.assertTrue(any('owner must be a roadmap row' in e for e in errors), errors)
 
 
+class CycleTest(unittest.TestCase):
+    """CAP014: module and group dependency cycles."""
+
+    def setUp(self):
+        self.block = {'modules': [
+            {'id': 'platform.window', 'paths': ['platform/window/'], 'allowedEdges': ['render.contracts']},
+            {'id': 'render.contracts', 'paths': ['render/contracts/'], 'allowedEdges': []},
+            {'id': 'render.bridge', 'paths': ['render/bridge/'], 'allowedEdges': ['platform.surface']},
+            {'id': 'platform.surface', 'paths': ['platform/surface/'], 'allowedEdges': []},
+            {'id': 'platform.tests', 'paths': ['platform/tests/'], 'allowedEdges': ['render.bridge']}]}
+
+    def errors(self):
+        return capabilities.cycle_errors(self.block)
+
+    def module(self, mid):
+        return next(m for m in self.block['modules'] if m['id'] == mid)
+
+    def test_group_cycle_fails(self):
+        errors = self.errors()
+        self.assertEqual(len(errors), 1, errors)
+        self.assertIn('CAP014 group cycle platform <-> render', errors[0])
+        self.assertIn('platform.window -> render.contracts', errors[0])
+
+    def test_test_modules_take_no_part(self):
+        self.module('platform.window')['allowedEdges'] = []
+        self.assertEqual(self.errors(), [])  # platform.tests -> render.bridge alone is no cycle
+
+    def test_pending_edge_excuses_until_stale(self):
+        self.block['groupCycles'] = {'reason': 'debt', 'pending': [
+            {'module': 'platform.window', 'edge': 'render.contracts', 'owner': 'R18', 'reason': 'move it'}]}
+        self.assertEqual(self.errors(), [])
+        self.module('render.bridge')['allowedEdges'] = []  # the cycle is gone
+        self.assertTrue(any('closes no group cycle' in e for e in self.errors()))
+        self.module('platform.window')['allowedEdges'] = []  # the edge is gone
+        self.assertTrue(any('no such edge' in e for e in self.errors()))
+
+    def test_pending_needs_row_and_reason(self):
+        self.block['groupCycles'] = {'pending': [
+            {'module': 'platform.window', 'edge': 'render.contracts', 'owner': 'soon'}]}
+        self.assertTrue(any('needs an owning row and a reason' in e for e in self.errors()))
+
+    def test_module_cycle_and_self_edge_fail(self):
+        self.module('render.contracts')['allowedEdges'] = ['render.contracts']
+        self.module('platform.surface')['allowedEdges'] = ['platform.window']
+        self.module('platform.window')['allowedEdges'] = ['platform.surface']
+        errors = self.errors()
+        self.assertTrue(any('render.contracts: depends on itself' in e for e in errors), errors)
+        self.assertTrue(any('module cycle: platform.surface -> platform.window' in e for e in errors), errors)
+
+    def test_components_without_recursion_limit(self):
+        nodes = {f'n{i}' for i in range(5000)}
+        targets = {f'n{i}': {f'n{i + 1}'} for i in range(4999)}
+        targets['n4999'] = {'n0'}
+        components = capabilities.strongly_connected(nodes, targets)
+        self.assertEqual([len(c) for c in components if len(c) > 1], [5000])
+
+
 class KilnContractTest(unittest.TestCase):
     """RFC 0027 L0: the real `product` and `kiln` layer contracts in
     architecture/modules.json catch a core that names a provider (rule 3), a

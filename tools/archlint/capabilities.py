@@ -145,6 +145,138 @@ def check(root, block, strip):
                 errors.append(f'CAP002 {relative}: forbidden include {name}; inject a narrow capability')
     if block.get('layerContracts') is not None:
         errors += layer_contract_errors(root, block, strip)
+    errors += cycle_errors(block)
+    return errors
+
+
+# --- Dependency cycles (CAP014) ----------------------------------------------
+
+GROUP_CYCLE_KEYS = {'reason', 'pending'}
+GROUP_PENDING_KEYS = {'module', 'edge', 'owner', 'reason'}
+
+
+def is_test_module(mid):
+    """A test or fixture module: it may depend on anything it tests, so it
+    takes no part in group cycles and is hidden in `archlint graph`."""
+    return mid.endswith(('-tests', '.tests', 'native-tests', '-test')) or '.tests.' in mid \
+        or 'fixture' in mid
+
+
+def module_group(mid):
+    return mid.split('.')[0]
+
+
+def strongly_connected(nodes, targets):
+    """Tarjan's components, iteratively (no recursion limit)."""
+    index, low, stack, on_stack, out, counter = {}, {}, [], set(), [], [0]
+    for start in sorted(nodes):
+        if start in index:
+            continue
+        work = [(start, iter(sorted(targets.get(start, ()))))]
+        index[start] = low[start] = counter[0]
+        counter[0] += 1
+        stack.append(start)
+        on_stack.add(start)
+        while work:
+            node, children = work[-1]
+            advanced = False
+            for child in children:
+                if child not in index:
+                    index[child] = low[child] = counter[0]
+                    counter[0] += 1
+                    stack.append(child)
+                    on_stack.add(child)
+                    work.append((child, iter(sorted(targets.get(child, ())))))
+                    advanced = True
+                    break
+                if child in on_stack:
+                    low[node] = min(low[node], index[child])
+            if advanced:
+                continue
+            work.pop()
+            if work:
+                low[work[-1][0]] = min(low[work[-1][0]], low[node])
+            if low[node] == index[node]:
+                component = []
+                while True:
+                    member = stack.pop()
+                    on_stack.discard(member)
+                    component.append(member)
+                    if member == node:
+                        break
+                out.append(sorted(component))
+    return out
+
+
+def group_cycles(block, skip=frozenset()):
+    """Cycles between module groups (an id's first segment) over the
+    non-test modules' edges, leaving out the (module, edge) pairs in `skip`:
+    a list of (groups, the cross-group module edges inside the cycle)."""
+    modules = {m['id']: m for m in block['modules']}
+    keep = {mid for mid in modules if not is_test_module(mid)}
+    crossing = [(mid, dep) for mid in sorted(keep) for dep in modules[mid]['allowedEdges']
+                if dep in keep and module_group(dep) != module_group(mid) and (mid, dep) not in skip]
+    targets = {}
+    for mid, dep in crossing:
+        targets.setdefault(module_group(mid), set()).add(module_group(dep))
+    groups = {module_group(mid) for mid in keep}
+    cycles = []
+    for component in strongly_connected(groups, targets):
+        if len(component) > 1:
+            inside = set(component)
+            cycles.append((component, [(m, d) for m, d in crossing
+                                       if module_group(m) in inside and module_group(d) in inside]))
+    return cycles
+
+
+def cycle_errors(block):
+    """CAP014: no dependency cycles.
+
+    1. no cycle between capability modules (any module, tests included);
+    2. no cycle between module groups (an id's first segment) over non-test
+       modules, except through the edges recorded in `groupCycles.pending`,
+       each with an owning row and a reason. A pending edge that is gone, or
+       whose group cycle no longer needs it, is stale and fails, so the list
+       only shrinks.
+    """
+    modules = {m['id']: m for m in block['modules']}
+    errors = []
+    targets = {mid: {d for d in m['allowedEdges'] if d in modules} for mid, m in modules.items()}
+    for mid in sorted(modules):
+        if mid in targets[mid]:
+            errors.append(f'CAP014 {mid}: depends on itself')
+    for component in strongly_connected(set(modules), targets):
+        if len(component) > 1:
+            errors.append(f'CAP014 module cycle: {" -> ".join(component)}; dependencies must form a DAG')
+    section = block.get('groupCycles', {})
+    if not isinstance(section, dict):
+        return errors + ['CAP014 groupCycles must be an object']
+    errors += [f'CAP014 groupCycles: unknown key {key}' for key in sorted(set(section) - GROUP_CYCLE_KEYS)]
+    pending = section.get('pending', [])
+    skip = set()
+    for index, entry in enumerate(pending):
+        where = f'CAP014 groupCycles pending {index + 1}'
+        if not isinstance(entry, dict):
+            errors.append(f'{where}: must be an object')
+            continue
+        errors += [f'{where}: unknown key {key}' for key in sorted(set(entry) - GROUP_PENDING_KEYS)]
+        if not ROADMAP_ROW.match(str(entry.get('owner', ''))) or not entry.get('reason'):
+            errors.append(f'{where}: needs an owning row and a reason')
+        mid, dep = entry.get('module'), entry.get('edge')
+        if mid not in modules or dep not in modules[mid]['allowedEdges']:
+            errors.append(f'CAP014 groupCycles pending {mid} -> {dep}: no such edge; remove it')
+            continue
+        skip.add((mid, dep))
+    for groups, edges in group_cycles(block, frozenset(skip)):
+        shown = ', '.join(f'{m} -> {d}' for m, d in edges[:6]) + (', ...' if len(edges) > 6 else '')
+        errors.append(f'CAP014 group cycle {" <-> ".join(groups)} through {shown}; dependencies '
+                      f'between groups must form a DAG (record a pending edge with its row only '
+                      f'as debt)')
+    for mid, dep in sorted(skip):
+        rest = frozenset(skip - {(mid, dep)})
+        if not any((mid, dep) in edges for _, edges in group_cycles(block, rest)):
+            errors.append(f'CAP014 groupCycles pending {mid} -> {dep}: closes no group cycle; '
+                          f'remove it')
     return errors
 
 

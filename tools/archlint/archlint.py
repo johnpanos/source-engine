@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Iterable, Sequence
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import capabilities
+import graph
 import structure
 
 
@@ -1793,6 +1794,19 @@ def build_parser() -> argparse.ArgumentParser:
     action.add_argument("--raise", dest="raise_area", metavar="AREA", help="raise one area's line ceiling")
     shape.add_argument("--reason", help="why the area grows (required with --raise)")
     shape.add_argument("--top", type=int, default=40)
+    drawing = subparsers.add_parser(
+        "graph", help="draw or export the module dependency graph (PNG, SVG, DOT, JSON, GraphML, Mermaid)"
+    )
+    drawing.add_argument("--family", help="a layer contract to draw by layer and role (render, product, kiln)")
+    drawing.add_argument("--focus", metavar="MODULE", help="draw only this module's neighborhood")
+    drawing.add_argument("--depth", type=int, default=1, help="neighborhood depth with --focus")
+    drawing.add_argument("--all-edges", action="store_true", help="draw every edge, not the reduction")
+    drawing.add_argument("--fixtures", action="store_true", help="include fixtures and test modules")
+    drawing.add_argument("--modules", action="store_true",
+                         help="without --family or --focus, draw every module instead of the groups")
+    drawing.add_argument("--format", choices=["png", "svg", "dot", "json", "graphml", "mermaid"], default="png")
+    drawing.add_argument("--dpi", type=int, default=110)
+    drawing.add_argument("-o", "--output", help="output file (default out/archlint/graph-<name>.<format>)")
     return parser
 
 
@@ -1804,6 +1818,8 @@ def main(argv: Sequence[str] | None = None, root: Path | None = None) -> int:
         return check_command(args, root, manifest)
     if args.command == "targets":
         return targets_command(root, manifest, args.trees, args.partial)
+    if args.command == "graph":
+        return graph.command(root, manifest, args)
     if args.command == "structure":
         return structure.command(root, manifest, args, strip_comments_and_literals)
     if args.command == "tools":

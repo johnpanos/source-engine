@@ -2823,6 +2823,47 @@
         }
       ]
     },
+    "groupCycles": {
+      "reason": "CAP014: module groups (an id's first segment) form a DAG over non-test modules. These edges close today's group cycles; each is debt with its row, and an entry fails as stale once its edge is gone or no cycle needs it (direction audit, 2026-10-09).",
+      "pending": [
+        {
+          "module": "platform.composition",
+          "edge": "render.contracts",
+          "owner": "R18",
+          "reason": "the platform window and presentation contracts use the presentation surface types in render.contracts (the loose public/render/*.h headers), so platform depends on render while the render bridges depend on platform; the surface types move into a neutral contract module below both groups"
+        },
+        {
+          "module": "platform.sdl3.render-surface",
+          "edge": "render.contracts",
+          "owner": "R18",
+          "reason": "the platform window and presentation contracts use the presentation surface types in render.contracts (the loose public/render/*.h headers), so platform depends on render while the render bridges depend on platform; the surface types move into a neutral contract module below both groups"
+        },
+        {
+          "module": "platform.sdl3.window",
+          "edge": "render.contracts",
+          "owner": "R18",
+          "reason": "the platform window and presentation contracts use the presentation surface types in render.contracts (the loose public/render/*.h headers), so platform depends on render while the render bridges depend on platform; the surface types move into a neutral contract module below both groups"
+        },
+        {
+          "module": "platform.window-contracts",
+          "edge": "render.contracts",
+          "owner": "R18",
+          "reason": "the platform window and presentation contracts use the presentation surface types in render.contracts (the loose public/render/*.h headers), so platform depends on render while the render bridges depend on platform; the surface types move into a neutral contract module below both groups"
+        },
+        {
+          "module": "platform.window-support",
+          "edge": "render.contracts",
+          "owner": "R18",
+          "reason": "the platform window and presentation contracts use the presentation surface types in render.contracts (the loose public/render/*.h headers), so platform depends on render while the render bridges depend on platform; the surface types move into a neutral contract module below both groups"
+        },
+        {
+          "module": "world.map-container",
+          "edge": "content.block-container",
+          "owner": "R83",
+          "reason": "content.* and world.* are one family of format libraries under two prefixes (content.vmf also depends on world.map-geometry); one layer contract, or one prefix, orders them"
+        }
+      ]
+    },
     "layerContracts": [
       {
         "id": "render",

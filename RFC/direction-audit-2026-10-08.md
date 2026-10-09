@@ -275,6 +275,35 @@ Changes:
 - Not done: moving `pilot_particles` to the tests, renaming the scheduler's
   file, and the J8 migration itself.
 
+## What the graphs show (2026-10-09)
+
+`archlint graph` (added 2026-10-09) draws `modules.json` with the contract's
+roles. The first look at the render family and the group overview:
+
+| Finding | Detail | Action |
+| --- | --- | --- |
+| The game does not draw from the scene | 1 of 19 passes depends on `render.scene` (`render.pass.opaque`, Hammer's path); `render.pass.world` depends on material, resources, frame and culling only | The `WorldPass` inventory above; `render-scene-bypass` (R89) |
+| `render` ↔ `platform` group cycle | five platform modules (`platform.window-contracts`, `platform.window-support`, `platform.sdl3.window`, `platform.composition`, `platform.tests`) depend on `render.contracts`, the old loose `public/render/*.h` contract headers; render's edges to platform are the pair-specific bridges and `render_lab`'s app, which is correct | Move the presentation surface types into a neutral contract module below both groups |
+| Live adapters filed as retiring | the presentation bridges `render.bridge.sdl3-vulkan` and `sdl3-d3d12` (R16's current adapters) sit in the render contract's `outside` group beside genuinely retiring modules (`render.indirect-light`, `render.dxsupport-keyvalues`, `render.legacy-backend-provider`, the shader-extension host) | Place them in the adapter column of the presentation port |
+| A translator depends on passes | `render.map-media` depends on `render.pass.lights` and `render.pass.volumetric` to hand them map data | It produces core-owned types (the lighting environment in scene or frame); the passes read those |
+| Composition fan-out | 43 edges, five of them red pending format edges | The red edges close under R96; the rest is the root wiring |
+| `content` ↔ `world` group cycle | `world.map-container` → `content.block-container`, `content.vmf` → `world.map-geometry`: one family of format libraries under two names | One layer contract for the format libraries, so CAP011 orders them |
+| Hammer is not drawn | its modules are in `hammerModules`, not `capabilityModules` | Draw them when the graph command learns that section |
+
+CAP011 checks layers within one family, so nothing rejected a cycle between
+groups; the two above were found only by looking. Since 2026-10-09 archlint
+**CAP014** does: no module cycle, and no cycle between module groups (test
+modules excluded) except through the edges recorded in
+`groupCycles.pending` (`architecture/modules.json`), each with its row and an
+exact stale check. Measured, the render–platform cycle is larger than the
+picture first suggested: `jobs`, `platform`, `render` and `testing` form one
+component (`render.graph` → `jobs.graph` → `platform.contracts`,
+`testing.runner` → `platform.composition`), closed by the five
+`platform.* → render.contracts` edges, which are recorded as R18 debt.
+`world.map-container → content.block-container` is recorded as R83 debt.
+`archlint graph` writes the same graph as PNG, SVG, DOT, JSON
+(`archlint-graph/v1`), GraphML or Mermaid.
+
 ## What is enforced now
 
 **The anti-corruption boundary: archlint CAP011 rules 8 and 9**, declared
