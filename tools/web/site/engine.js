@@ -108,8 +108,15 @@ if (harness) {
 }
 let beats = 0;
 if (harness)
-	setInterval(() => say('page: alive ' + (++beats * 5) + ' s, ' + document.visibilityState +
-                      (document.hasFocus() ? ', focused' : '')), 5000);
+	setInterval(() => {
+		// The engine's WebAudio output (engine/audio/snd_dev_sdl.cpp): its
+		// context's state and how far ahead it is scheduled.
+		const A = window.engineModule && window.engineModule.sourceAudio;
+		const audio = A && A.context ? ', audio ' + A.context.state + ' ' +
+		    Math.max(0, A.next - A.context.currentTime).toFixed(2) + ' s ahead' : '';
+		say('page: alive ' + (++beats * 5) + ' s, ' + document.visibilityState +
+		    (document.hasFocus() ? ', focused' : '') + audio);
+	}, 5000);
 function finish(code) {
 	flush();
 	if (harness)
@@ -276,7 +283,7 @@ function handBack(module, text) {
 		document.head.appendChild(script);
 	});
 	let module = null;
-	module = await createSourceEngine({
+	module = window.engineModule = await createSourceEngine({
 		canvas,
 		thisProgram: '/game/hl2_launcher',
 		locateFile: (path) => '/engine/' + path,

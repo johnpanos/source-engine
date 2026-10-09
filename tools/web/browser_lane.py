@@ -2,13 +2,14 @@
 """Runs the WebAssembly product in a real browser (RFC 0029 W2/W5 lane).
 
     browser_lane.py [--profile portal-wasm32-webgpu] [--flavor dev]
-                    [--display private-x11] [--map MAP] [--set SWITCH]...
+                    [--display private] [--map MAP] [--set SWITCH]...
                     [--timeout S] [--out DIR] [-- engine args]
 
 The lane is the profile's own launch through kiln.api: the `browser-page`
 run provider starts the page server (tools/web/serve.py) and the browser on
-the GPU, in the display session given (by default kiln's private headless
-compositor with Xwayland, so no window reaches the user's desktop). The page
+the GPU, in the display session given (by default kiln's private headless Wayland
+compositor, so no window reaches the user's desktop; Firefox on Wayland, no
+Xwayland). The page
 posts the engine's console, the captures it writes (-pica_capture_path) and
 its exit status to the server, which writes them to the profile's web
 session directory; the lane copies them to --out, prints the console and
@@ -16,6 +17,7 @@ exits with the engine's status (2 when the run never reported one).
 """
 
 import argparse
+import os
 import shutil
 import sys
 import time
@@ -30,7 +32,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--profile", default="portal-wasm32-webgpu")
     parser.add_argument("--flavor", default="dev")
-    parser.add_argument("--display", default="private-x11")
+    parser.add_argument("--display", default="private")
     parser.add_argument("--map")
     parser.add_argument("--set", dest="switches", action="append", default=[])
     parser.add_argument("--timeout", type=int, default=900)
@@ -38,6 +40,9 @@ def main(argv=None):
     parser.add_argument("engine_args", nargs="*")
     args = parser.parse_args(argv)
 
+    # Kiln's private session has no path to the desktop's audio server: the
+    # page's audio plays into the browser's null sink (serve.py).
+    os.environ.setdefault("SOURCE_WEB_NULL_AUDIO", "1")
     tree = ROOT / "out" / args.profile / args.flavor
     session_dir = tree / "web-session"  # the profile's {web_out}
     shutil.rmtree(session_dir, ignore_errors=True)

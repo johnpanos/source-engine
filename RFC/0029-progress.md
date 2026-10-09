@@ -249,14 +249,23 @@ the same image as the native Dawn lane (`portal-webgpu-core`). Commits
   752, 171), the mouse turns back (104.6) and S walks back (734.6, -43.0),
   all from the default `kiln run portal-wasm32-webgpu`. (The session drops
   the first key press, so a throwaway Shift goes first.)
-- **Audio is off in the browser by default** (`-nosound`; `--set sound` turns
-  it on): once the page's AudioContext runs (Firefox after the first click,
-  Chrome at once) the page deadlocks in SDL's Emscripten audio callback
-  (`scriptProcessorNode.onaudioprocess`), which re-enters wasm while the
-  engine's stack is suspended (JSPI). Pushing the mix from the engine's
-  frame instead of SDL's callback did not change it; the wait is inside
-  SDL's port and is open.
+- **Audio.** In the browser the engine has its own WebAudio output
+  (`engine/audio/snd_dev_sdl.cpp` under `PLATFORM_WASM`): after each mix it
+  schedules the ring buffer's next PCM as AudioBuffers, about 100 ms ahead,
+  and nothing in the page calls into the engine (SDL's Emscripten device
+  pulled from a page audio event while the engine's stack was suspended).
+  The freeze that looked like an engine deadlock is Firefox's: in kiln's
+  private session its main thread stalls once it plays to the desktop's
+  audio server, a bare page's oscillator included, so the harnesses play into
+  Firefox's null sink (`SOURCE_WEB_NULL_AUDIO=1`, set by
+  `browser_lane.py`); `kiln play` in the user's session plays normally.
+- **Sustained play.** About 40 s of real input, sound on, after spawn: mouse
+  look (yaw 120 to 73 to 144 to 113, pitch to 19.8 and back), W/S walking,
+  A/D strafing, a jump and crouch; positions and angles from `getpos`,
+  the page alive to the end, the engine's audio running 0.11 s ahead, no
+  errors. `browser_lane.py` (kiln.api, private Wayland session, Firefox)
+  runs 3,781 frames and hands back its frame capture.
 
-Open: audio (above); audio in a page without a user gesture;
+Open: audio in a page without a user gesture;
 load time (map in 14 s, about 2,400 lazily read files) and frame time; the
 Node lane and W1/W4/W6.

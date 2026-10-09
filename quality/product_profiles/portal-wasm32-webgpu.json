@@ -121,9 +121,6 @@
       ],
       "web_profile": [
         "{runtime}/../web-profile"
-      ],
-      "sound_args": [
-        "-nosound"
       ]
     },
     "arguments": [],
@@ -145,7 +142,6 @@
           "--",
           "-game",
           "portal",
-          "{sound_args}",
           "-novid",
           "-noip",
           "-w",
@@ -177,14 +173,7 @@
       "port": "{port}",
       "timeout": "60"
     },
-    "switches": {
-      "sound": {
-        "description": "Turn the game's audio on (off by default in the browser: once the page's AudioContext runs, SDL's Emscripten audio deadlocks the page; RFC 0029 progress)",
-        "set": {
-          "sound_args": []
-        }
-      }
-    },
+    "switches": {},
     "environment": {
       "MOZ_ENABLE_WAYLAND": "1"
     }

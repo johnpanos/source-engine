@@ -23,6 +23,10 @@
 #include "SDL.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
+#if defined( PLATFORM_WASM )
+#include <emscripten.h>
+#endif
+
 #include "tier0/memdbgon.h"
 
 extern bool snd_firsttime;
@@ -243,6 +247,29 @@ void CAudioDeviceSDLAudio::OpenWaveOut( void )
 	//#define SDLAUDIO_FAIL(fnstr) do { printf("SDLAUDIO: " fnstr " failed: %s\n", SDL_GetError ? SDL_GetError() : "???"); CloseWaveOut(); return; } while (false)
 	#define SDLAUDIO_FAIL(fnstr) do { const char *err = SDL_GetError(); printf("SDLAUDIO: " fnstr " failed: %s\n", err ? err : "???"); CloseWaveOut(); return; } while (false)
 
+#if defined( PLATFORM_WASM )
+	// The browser: the engine's own WebAudio output (PaintEnd), not SDL's.
+	// SDL's Emscripten device pulls from a page audio event that re-enters
+	// wasm while the engine's stack is suspended (JSPI), and the page
+	// deadlocks; here the page never calls into the engine.
+	m_devId = 1;
+	AllocateOutputBuffers();
+	MAIN_THREAD_EM_ASM( { (function() {
+		var A = Module.sourceAudio = { context: null, next: 0 };
+		A.open = function() {
+			if (A.context) return A.context;
+			try { A.context = new AudioContext({ sampleRate: $0 }); } catch (e) { return null; }
+			// Browsers start a page's audio on a user gesture.
+			var resume = function() { if (A.context && A.context.state === 'suspended') A.context.resume(); };
+			for (var type of ['pointerdown', 'keydown'])
+				window.addEventListener(type, resume, true);
+			return A.context;
+		};
+		A.open();})(); }, SOUND_DMA_SPEED );
+	Msg( "RFC0001 provider: audio=web-audio\n" );
+	return;
+#endif
+
 #if defined( USE_SDL3 )
 	// Own one subsystem reference even when recording or another provider uses it.
 	if ( !SDL_InitSubSystem( SDL_INIT_AUDIO ) )
@@ -311,6 +338,17 @@ void CAudioDeviceSDLAudio::OpenWaveOut( void )
 //-----------------------------------------------------------------------------
 void CAudioDeviceSDLAudio::CloseWaveOut( void )
 {
+#if defined( PLATFORM_WASM )
+	if ( m_devId )
+	{
+		MAIN_THREAD_EM_ASM( { (function() {
+			var A = Module.sourceAudio;
+			if (A && A.context) { A.context.close(); A.context = null; }})(); } );
+	}
+	m_devId = 0;
+	FreeOutputBuffers();
+	return;
+#endif
 #if defined( USE_SDL3 )
 	if ( m_pAudioStream )
 	{
@@ -475,6 +513,42 @@ void CAudioDeviceSDLAudio::AudioCallback(Uint8 *stream, int len)
 void CAudioDeviceSDLAudio::PaintEnd( void )
 {
 	debugsdl("SDLAUDIO: PaintEnd...\n");
+#if defined( PLATFORM_WASM )
+	// Keep about 100 ms scheduled ahead of the context's clock, read from the
+	// ring the mixer just painted exactly as a device callback would.
+	if ( m_devId && m_pBuffer && m_pauseCount == 0 )
+	{
+		static Uint8 s_chunk[4096]; // 1024 stereo 16-bit frames
+		const int frames = sizeof( s_chunk ) / ( DeviceChannels() * DeviceSampleBytes() );
+		for ( int chunks = 0; chunks < 16; ++chunks )
+		{
+			const double ahead = MAIN_THREAD_EM_ASM_DOUBLE( { return (function() {
+				var A = Module.sourceAudio;
+				var c = A && A.open();
+				if (!c || c.state !== 'running') return 1e9;
+				return Math.max(0, A.next - c.currentTime);})(); } );
+			if ( ahead >= 0.1 )
+				break;
+			AudioCallback( s_chunk, sizeof( s_chunk ) );
+			MAIN_THREAD_EM_ASM( { (function() {
+				var A = Module.sourceAudio, c = A.context;
+				var frames = $1, pcm = $0 >> 1;
+				var buffer = c.createBuffer(2, frames, $2);
+				var left = buffer.getChannelData(0), right = buffer.getChannelData(1);
+				for (var i = 0; i < frames; ++i) {
+					left[i] = HEAP16[pcm + 2 * i] / 32768;
+					right[i] = HEAP16[pcm + 2 * i + 1] / 32768;
+				}
+				var source = c.createBufferSource();
+				source.buffer = buffer;
+				source.connect(c.destination);
+				var at = Math.max(A.next, c.currentTime + 0.02);
+				source.start(at);
+				A.next = at + frames / $2;})(); }, s_chunk, frames, SOUND_DMA_SPEED );
+		}
+	}
+	return;
+#endif
 
 #if 0  // !!! FIXME: this is the 1.3 headers, but not implemented yet in SDL.
 	if (SDL_AudioDeviceConnected(m_devId) != 1)
@@ -500,7 +574,9 @@ void CAudioDeviceSDLAudio::Pause( void )
 	if (m_pauseCount == 1)
 	{
 		debugsdl("SDLAUDIO: PAUSE\n");
-#if defined( USE_SDL3 )
+#if defined( PLATFORM_WASM )
+		MAIN_THREAD_EM_ASM( { var A = Module.sourceAudio; if (A && A.context) A.context.suspend(); } );
+#elif defined( USE_SDL3 )
 		SDL_PauseAudioDevice( m_devId );
 #else
 		SDL_PauseAudioDevice(m_devId, 1);
@@ -517,7 +593,9 @@ void CAudioDeviceSDLAudio::UnPause( void )
 		if (m_pauseCount == 0)
 		{
 			debugsdl("SDLAUDIO: UNPAUSE\n");
-#if defined( USE_SDL3 )
+#if defined( PLATFORM_WASM )
+			MAIN_THREAD_EM_ASM( { var A = Module.sourceAudio; if (A && A.context) A.context.resume(); } );
+#elif defined( USE_SDL3 )
 			SDL_ResumeAudioDevice( m_devId );
 #else
 			SDL_PauseAudioDevice(m_devId, 0);

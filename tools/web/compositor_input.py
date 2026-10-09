@@ -5,8 +5,8 @@
 
 where <script> is `<at s>:<action>[:<args>]`, comma-separated, times from
 now. Actions: `click` (left button at the screen's centre: the page's canvas
-takes it, and with it pointer lock, as a user's click), `look:<s>:<dx>`
-(relative motion, dx per 1/60 s for s seconds), `key:<evdev code>:<s>` (a key
+takes it, and with it pointer lock, as a user's click), `look:<s>:<dx>[:<dy>]`
+(relative motion per 1/60 s for s seconds), `key:<evdev code>:<s>` (a key
 held for s seconds; W is 17, S 31, Escape 1).
 
 The input goes through mutter's RemoteDesktop API on the display session's
@@ -101,8 +101,9 @@ def main(argv):
             remote.button(False)
         elif action == "look":
             seconds, dx = float(args[0]), float(args[1])
+            dy = float(args[2]) if len(args) > 2 else 0.0
             for _ in range(int(seconds * 60)):
-                remote.motion(dx, 0)
+                remote.motion(dx, dy)
                 time.sleep(1 / 60)
         elif action == "key":
             code, seconds = int(args[0]), float(args[1])

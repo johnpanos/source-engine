@@ -232,12 +232,20 @@ FIREFOX_PREFS = {
 
 
 def fresh_firefox_profile(directory):
-    """A new, empty Firefox profile holding only the page's preferences."""
+    """A new, empty Firefox profile holding only the page's preferences.
+
+    SOURCE_WEB_NULL_AUDIO=1 (the harnesses, in kiln's private session) plays
+    the page's audio into Firefox's null sink: in that session Firefox's main
+    thread stalls once it plays to the desktop's audio server, a bare page's
+    oscillator included; the page's whole audio path still runs."""
     directory = Path(directory)
     shutil.rmtree(directory, ignore_errors=True)
     directory.mkdir(parents=True)
+    prefs = dict(FIREFOX_PREFS)
+    if os.environ.get("SOURCE_WEB_NULL_AUDIO") == "1":
+        prefs["media.cubeb.force_null_context"] = True
     with open(directory / "user.js", "w") as f:
-        for name, value in FIREFOX_PREFS.items():
+        for name, value in prefs.items():
             f.write("user_pref(%s, %s);\n" % (json.dumps(name), json.dumps(value)))
 
 
