@@ -22023,6 +22023,35 @@
       ],
       "expect": "fail",
       "expected_divergence": "FAIL mp_coop_doors.plays"
+    },
+    {
+      "id": "render.queue-mode-parity",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0016",
+      "migration": "R91",
+      "contract": "tools/quality/queue_mode_parity.py",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "Queued and direct rendering draw the same frame (user request, 2026-10-08): each scenario (Portal testchmb_a_01, Portal 2 sp_a1_intro4 and sp_a1_intro3's moss floor) boots headless in mat_queue_mode 0 and 2, and the renderer's end-of-frame captures at the same frame must match (at most 2% of pixels differ by more than 16 levels, mean difference at most 2); a control at another view must exceed both limits.",
+      "command": [
+        "{python}",
+        "tools/quality/queue_mode_parity.py",
+        "run",
+        "--out",
+        "{out}/queue-mode-parity"
+      ],
+      "sources": [
+        "tools/quality/queue_mode_parity.py",
+        "tools/quality/portal_boot.py",
+        "tools/quality/conformance_result.py"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 6,
+      "timeout_seconds": 5400,
+      "requires": [
+        "executable:git"
+      ],
+      "expect": "pass"
     }
   ]
 }
