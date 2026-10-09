@@ -104,6 +104,22 @@
         "allowedEdges": ["product.contracts"]
       },
       {
+        "id": "platform.n3ds.compat",
+        "kind": "backend",
+        "owns": "3DS guest compatibility shims over devkitARM libctru (POSIX names the engine expects)",
+        "paths": ["platform/n3ds/compat/"],
+        "allowedEdges": [],
+        "externalHeaders": ["3ds.h", "arpa/inet.h", "dlfcn.h", "errno.h", "pthread.h", "pwd.h", "sched.h", "setjmp.h", "stdarg.h", "stdio.h", "sys/mman.h", "sys/mount.h", "sys/resource.h", "sys/statvfs.h", "sys/time.h", "sys/types.h", "sys/uio.h", "sys/vfs.h", "time.h"]
+      },
+      {
+        "id": "platform.wasm.compat",
+        "kind": "backend",
+        "owns": "RFC 0029: Emscripten compatibility shims (threading, resource and file calls)",
+        "paths": ["platform/wasm/compat/"],
+        "allowedEdges": [],
+        "externalHeaders": ["emscripten/threading.h", "fcntl.h", "pthread.h", "sys/resource.h", "sys/stat.h", "sys/time.h"]
+      },
+      {
         "id": "product.toolchain.n3ds",
         "owns": "RFC 0027/0026: the n3ds-devkitarm cross toolchain provider (pinned devkitARM image, cross-built sysroot archives)",
         "paths": ["public/product/toolchain_n3ds.h", "product/toolchain/n3ds.cpp"],
@@ -202,6 +218,7 @@
         "id": "kiln.tests",
         "kind": "native-test",
         "paths": ["unittests/kilntest/"],
+        "externalHeaders": ["signal.h"],
         "allowedEdges": ["kiln.core", "kiln.composition", "kiln.fixture-platform", "product.contracts", "product.profile", "product.toolchain.linux", "product.toolchain.msvc-wine", "product.stage.waf", "product.package.linux-dir", "content.vpk", "product.display.desktop", "product.run.desktop", "platform.contracts", "platform.posix", "jobs.graph", "foundation", "foundation.json", "testing.contracts"]
       },
       {
@@ -445,6 +462,7 @@
         ],
         "legacyIncludes": [
           "appframework/ilaunchermgr.h",
+          "appframework/ilauncherplatformservices.h",
           "inputsystem/ButtonCode.h",
           "tier0/icommandline.h",
           "tier1/convar.h",
@@ -469,6 +487,9 @@
           "tier0/icommandline.h",
           "inputsystem/provider_catalog.h",
           "inputsystem/iinputsystem.h",
+          "tier1/convar.h",
+          "tier1/tier1.h",
+          "icvar.h",
           "vstdlib/cvar.h"
         ],
         "allowedEdges": [
@@ -944,7 +965,8 @@
         ],
         "kind": "backend",
         "externalHeaders": [
-          "webgpu/webgpu.h"
+          "webgpu/webgpu.h",
+          "emscripten/html5.h"
         ],
         "uselib": [
           "WEBGPU"
@@ -1492,6 +1514,7 @@
           "appframework/IAppSystem.h",
           "materialsystem/imaterial.h",
           "materialsystem/imaterialvar.h",
+          "shaderapi/IShaderDevice.h",
           "tier1/strtools.h"
         ]
       },
@@ -1597,7 +1620,8 @@
           "linux/dma-buf.h",
           "sys/ioctl.h",
           "sys/mman.h",
-          "3ds.h"
+          "3ds.h",
+          "emscripten/emscripten.h"
         ],
         "legacyIncludes": [
           "appframework/IAppSystem.h"

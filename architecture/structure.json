@@ -2676,7 +2676,7 @@
         "ceiling": 3436
       },
       "kiln.app": {
-        "ceiling": 294
+        "ceiling": 289
       },
       "kiln.composition": {
         "ceiling": 142
@@ -2757,7 +2757,7 @@
         "ceiling": 259
       },
       "platform.composition": {
-        "ceiling": 913
+        "ceiling": 604
       },
       "platform.contracts": {
         "ceiling": 1087
@@ -2765,11 +2765,30 @@
       "platform.input-gamepad-contract": {
         "ceiling": 49
       },
+      "platform.n3ds.compat": {
+        "ceiling": 275,
+        "raised": [
+          {
+            "date": "2026-10-09",
+            "from": null,
+            "to": 275,
+            "reason": "3DS guest shims existed untracked by any area before; registering the existing 275 lines, no new code"
+          }
+        ]
+      },
       "platform.native-path": {
         "ceiling": 35
       },
       "platform.posix": {
-        "ceiling": 2771
+        "ceiling": 2791,
+        "raised": [
+          {
+            "date": "2026-10-09",
+            "from": 2771,
+            "to": 2791,
+            "reason": "SIGINT/SIGTERM installation moved from kiln.app into the POSIX provider (kiln.app shrank by the same code); CAP012 forbids platform calls in the application"
+          }
+        ]
       },
       "platform.posix.native-tests": {
         "ceiling": 1179
@@ -2812,6 +2831,17 @@
       },
       "platform.tool-process": {
         "ceiling": 54
+      },
+      "platform.wasm.compat": {
+        "ceiling": 34,
+        "raised": [
+          {
+            "date": "2026-10-09",
+            "from": null,
+            "to": 34,
+            "reason": "Emscripten guest shims existed unregistered; registering the existing 34 lines, no new code"
+          }
+        ]
       },
       "platform.win32": {
         "ceiling": 1656

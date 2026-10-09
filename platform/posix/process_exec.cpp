@@ -10,10 +10,33 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <csignal>
+
 #include <unistd.h>
 
 namespace platform
 {
+
+namespace
+{
+void ( *g_OnInterrupt )() = nullptr;
+
+void HandleInterrupt( int )
+{
+	if ( g_OnInterrupt )
+		g_OnInterrupt();
+}
+} // namespace
+
+void InstallInterruptHandler( void ( *onInterrupt )() )
+{
+	g_OnInterrupt = onInterrupt;
+	struct sigaction action{};
+	action.sa_handler = &HandleInterrupt;
+	sigemptyset( &action.sa_mask );
+	sigaction( SIGINT, &action, nullptr );
+	sigaction( SIGTERM, &action, nullptr );
+}
 
 void ExecReplacingProcess( const std::vector<std::string> &argv,
     const std::vector<ToolProcessEnvironmentOverride> &environment,

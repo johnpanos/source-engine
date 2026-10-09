@@ -2,7 +2,7 @@
 // include/dlfcn.h). Linked once, in tier0.
 #include <3ds.h>
 
-#include "n3ds_compat.h"
+#include "include/n3ds_compat.h"
 #include "dlfcn.h"
 #include "sys/mman.h"
 

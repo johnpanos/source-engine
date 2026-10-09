@@ -24,6 +24,10 @@ void ExecReplacingProcess( const std::vector<std::string> &argv,
     const std::vector<ToolProcessEnvironmentOverride> &environment,
     const std::string &workingDirectory, std::string &error );
 
+// Calls `onInterrupt` on SIGINT and SIGTERM. The function runs in signal
+// context, so it must be async-signal-safe (a lock-free atomic store).
+void InstallInterruptHandler( void ( *onInterrupt )() );
+
 } // namespace platform
 
 #endif // PLATFORM_POSIX_PROCESS_EXEC_H

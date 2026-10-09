@@ -10,7 +10,6 @@
 #include "kiln/api.h"
 #include "kiln/composition.h"
 
-#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -33,18 +32,14 @@ namespace fs = std::filesystem;
 // the handler.
 product::CancellationFlag g_Interrupted;
 
-void Interrupt( int )
+void Interrupt()
 {
 	g_Interrupted.Cancel();
 }
 
 void CancelOnSignals()
 {
-	struct sigaction action{};
-	action.sa_handler = &Interrupt;
-	sigemptyset( &action.sa_mask );
-	sigaction( SIGINT, &action, nullptr );
-	sigaction( SIGTERM, &action, nullptr );
+	platform::InstallInterruptHandler( &Interrupt );
 }
 using foundation::json::Value;
 
