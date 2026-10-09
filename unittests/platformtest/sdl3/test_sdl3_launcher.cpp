@@ -310,6 +310,19 @@ int main( int argc, char **argv )
 	CHECK( manager->GetWindowRef() == NULL );
 	CHECK( manager->CreateGameWindow( "SDL3 lifecycle fixture", true, 640, 480 ) );
 	CHECK( manager->GetWindowRef() != NULL );
+	// The first show maps the window at the requested mode: the drawable the UI
+	// lays out at (DisplayedSize) is the mode at once, not the creation size,
+	// even where the window system grants sizes only to mapped windows (Wayland).
+	{
+		uint drawableWidth = 0, drawableHeight = 0;
+		manager->DisplayedSize( drawableWidth, drawableHeight );
+		const float scale = manager->GetWindowDisplayScale();
+		CHECK( drawableWidth == uint( 640 * scale + 0.5f ) &&
+		       drawableHeight == uint( 480 * scale + 0.5f ) );
+		if ( drawableWidth != uint( 640 * scale + 0.5f ) )
+			std::printf( "first show: drawable %ux%u at scale %.2f\n", drawableWidth,
+			    drawableHeight, scale );
+	}
 	manager->Shutdown();
 	CHECK( manager->GetWindowRef() == NULL );
 	CHECK( ( SDL_WasInit( SDL_INIT_VIDEO ) & SDL_INIT_VIDEO ) == 0 );

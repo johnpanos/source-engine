@@ -218,6 +218,7 @@ private:
 	void HandleKey( const SDL_KeyboardEvent &event );
 	void MousePosition( CCocoaEvent &event, float x, float y );
 	void RenderedToWindowScale( float &scaleX, float &scaleY );
+	bool ShowAndSync( int requestedWidth, int requestedHeight );
 
 	SDL_Window *m_Window = NULL;
 	SDL_Cursor *m_Cursor = NULL; // Borrowed from the UI cursor owner.
@@ -270,10 +271,16 @@ InitReturnVal_t CSDL3Mgr::Init()
 	// The 3DS's top screen (400x240): the PICA backend (shaderapipica) draws
 	// it through citro3d, so the window carries no graphics API.
 	m_Window = SDL_CreateWindow( "", 400, 240, 0 );
-#elif defined( PLATFORM_WASM ) || defined( CORE_SHADER_API )
+#elif defined( PLATFORM_WASM )
 	// The browser's canvas (RFC 0029): the render core's WebGPU device takes
 	// its surface from the canvas, so the window carries no graphics API.
 	m_Window = SDL_CreateWindow( "", 1280, 720, pixelDensity | SDL_WINDOW_RESIZABLE );
+#elif defined( CORE_SHADER_API )
+	// The core's device takes its surface from the window (SDL_Vulkan_CreateSurface
+	// needs no window flag). Hidden until the mode switch shows it at the mode's
+	// size (ShowAndSync), as the window the UI lays out at must be that size.
+	m_Window =
+	    SDL_CreateWindow( "", 1280, 720, SDL_WINDOW_HIDDEN | pixelDensity | SDL_WINDOW_RESIZABLE );
 #else
 	m_Window = SDL_CreateWindow( "", 1280, 720,
 	    SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN | pixelDensity | SDL_WINDOW_RESIZABLE );
@@ -347,7 +354,7 @@ bool CSDL3Mgr::CreateGameWindow( const char *title, bool windowed, int width, in
 		return false;
 	}
 	sdl_displayindex_fullscreen.SetValue( windowed ? -1 : sdl_displayindex.GetInt() );
-	return SDL_ShowWindow( m_Window );
+	return ShowAndSync( width, height );
 }
 
 void CSDL3Mgr::DecWindowRefCount()
@@ -457,7 +464,33 @@ void CSDL3Mgr::SizeWindow( int width, int height )
 		Warning( "SDL3 window resize failed: %s\n", SDL_GetError() );
 		return;
 	}
-	SDL_ShowWindow( m_Window );
+	ShowAndSync( width, height );
+}
+
+// Shows the window. When this maps it (the startup mode switch), waits for the
+// window system to apply the pending size and state: Wayland grants a size only
+// to a mapped window, so an unsynced first show keeps the creation size, and the
+// UI would lay out at it while the engine renders the requested mode. A visible
+// window's later resizes stay asynchronous; they complete through resize events.
+bool CSDL3Mgr::ShowAndSync( int requestedWidth, int requestedHeight )
+{
+	const bool wasHidden = ( SDL_GetWindowFlags( m_Window ) & SDL_WINDOW_HIDDEN ) != 0;
+	if ( !SDL_ShowWindow( m_Window ) )
+		return false;
+	if ( !wasHidden )
+		return true;
+	if ( !SDL_SyncWindow( m_Window ) )
+		Warning( "SDL3 window did not settle at its first show: %s\n", SDL_GetError() );
+	// A window manager may map the window at its creation size and drop a size
+	// set while it was hidden (X11 under mutter); ask again now that it is mapped.
+	int width = 0, height = 0;
+	SDL_GetWindowSize( m_Window, &width, &height );
+	const bool fullscreen = ( SDL_GetWindowFlags( m_Window ) & SDL_WINDOW_FULLSCREEN ) != 0;
+	if ( !fullscreen && ( width != requestedWidth || height != requestedHeight ) &&
+	     SDL_SetWindowSize( m_Window, requestedWidth, requestedHeight ) &&
+	     !SDL_SyncWindow( m_Window ) )
+		Warning( "SDL3 window did not take its size at its first show: %s\n", SDL_GetError() );
+	return true;
 }
 
 bool CSDL3Mgr::ApplyWindowPresentation( bool windowed, bool borderless )
