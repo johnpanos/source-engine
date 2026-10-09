@@ -190,6 +190,16 @@ platform acceptance.
 - Native OS/SDK types stay in backend implementations and named private interop
   bridges. Portable code requests behavior, not OS/backend identity. CPU/compiler
   layout checks remain narrowly scoped foundation concerns.
+- No platform or adapter code outside providers, and no content formats or
+  their on-disk shapes outside format libraries and translators (user
+  direction, 2026-10-08): the engine and games request behavior through
+  contracts and take runtime models.
+  [RFC 0001](RFC/0001-capability-based-platform-architecture.md#where-platform-and-adapter-code-may-live-user-direction-2026-10-08)
+  and [RFC 0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md#formats-stay-in-their-libraries-user-direction-2026-10-08)
+  own the rules; the provider homes and format owners are the named scopes
+  in `architecture/structure.json`, checked by archlint CAP012. A real need
+  for a format is a `declared` entry with its reason and row ("unless they
+  absolutely need to and it makes sense"); convenience is not a reason.
 - Each authoritative state and policy has one owner. Derived caches carry
   revisions/epochs and invalidate through the owner's committed change.
 - Separate mechanism from product policy, authored data from presentation,
@@ -796,7 +806,14 @@ Keep the table concise and link details below or from the domain progress file.
   areas. RFCs amended: 0016 (boundary section, K5 checks, VMT translation
   leaves `render.material`), 0028 (mod bytecode withdrawn), 0027 (VMT
   mapping owner), 0001 (Tier 0 platform branches); RFC 0030 deleted, its
-  record moved to RFC 0016's progress file. R103 reopened. Open: the
+  record moved to RFC 0016's progress file. Same day, at the user's
+  direction: no platform, adapter or format code in the engine and games;
+  CAP012 gained the provider and format-owner scopes, declared consumers
+  and seven product-wide ratchets (2,495 platform branches, 469 native
+  includes, 1,343 OS calls, 503 identity tests, 565 graphics-API sites, 360
+  format includes, 1,601 format-structure uses); RFCs 0001 and 0027 own the
+  rules; dead `common/GL`, `common/opengl` and togl's display database
+  deleted. R103 reopened. Open: the
   runtime draw-origin census, and the user's decisions on scope, the ceiling
   policy and the render row order.
 - RFC 0027 L0 (2026-10-07, user goal "complete L0 ... on the desktop

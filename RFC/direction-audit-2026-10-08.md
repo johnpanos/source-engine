@@ -180,6 +180,58 @@ file"). It holds 2,430 lines, mostly per-slice narrative that duplicates the
 progress records. Every session loads it. The harness and record volume is
 about half of what was added since 2026-09-20.
 
+## Platform and adapter code outside providers
+
+User direction (2026-10-08): "can we make it so that there's no platform or
+adapter code in the engine / games too?", then "and games/engine don't know
+about content formats or shapes? unless they absolutely need to and it makes
+sense".
+
+RFC 0001 already said portable code "MUST NOT select behavior with
+`IsWindows()`, `IsLinux()`, `IsOSX()`, `POSIX`", with no check. Measured over
+product code outside the provider homes
+([RFC 0001](0001-capability-based-platform-architecture.md#where-platform-and-adapter-code-may-live-user-direction-2026-10-08)):
+
+| Rule | engine/ | game/ | other product code | Total |
+| --- | --- | --- | --- | --- |
+| Platform branches | 350 | 754 | 1,391 | 2,495 in 617 files |
+| Native SDK includes | 86 | 33 | 350 | 469 in 213 files |
+| Direct OS and SDL calls | 162 | 51 | 1,130 | 1,343 in 212 files |
+| Platform identity tests | 119 | 208 | 176 | 503 in 185 files |
+| Graphics API and backend code | 25 | 0 | 540 | 565 in 48 files |
+
+The heaviest are engine providers living in product directories: the SDL,
+DirectSound, XAudio and 3DS audio devices and voice recorders in
+`engine/audio/`, the SDL joystick, gyro, touch and vibrator code in
+`inputsystem/`, the launcher's platform services, Xbox stubs in
+`common/xbox/` and image-format code with D3D enums in `bitmap/`.
+
+### Formats outside their owners
+
+[RFC 0027](0027-product-pipeline-lowering-streaming-kiln.md#formats-stay-in-their-libraries-user-direction-2026-10-08)
+now says formats and their on-disk shapes live in their libraries and
+translators; the engine and games take runtime models.
+
+| Rule | engine/ | game/ | other product code | Declared |
+| --- | --- | --- | --- | --- |
+| Format headers included | 57 | 140 | 163 | 4 sites in `vphysics/` |
+| Format structures named (`studiohdr_t`, `mstudio*_t`, BSP lumps, VTF and PHY headers) | 271 | 246 | 1,084 | 8 sites in `vphysics/` |
+
+The game's animation code reads `mstudio*` records directly, the engine's
+map loader reads BSP lumps, and the choreography (VCD) parser lives in
+`game/shared/`. The only declared consumer is the IVP physics provider,
+reading the collision format it simulates (R45). The first draft also
+declared the Box3D provider; the stale-declaration check showed it reads no
+format, and the declaration was removed.
+
+### Deleted as dead
+
+- `common/GL/` and `common/opengl/` (7 vendored OpenGL headers, about
+  5,200 matches of the adapter rule): nothing in the product includes them
+  since ToGL's deletion; only reference trees do.
+- `appframework/glmdisplaydb_linuxwin.inl` (togl's display database): its
+  only reference was a provenance comment, now reworded.
+
 ## What is enforced now
 
 **The anti-corruption boundary: archlint CAP011 rules 8 and 9**, declared
@@ -222,6 +274,15 @@ check --all` and recorded in [`architecture/structure.json`](../architecture/str
   (comments and literals stripped). A new file or a higher count fails; a
   lower count fails until recorded with `--write`, so the record stays
   current and only shrinks. A new rule is recorded once with `--adopt`.
+- **Named scopes and declared consumers.** Where providers and format
+  owners live is declared once (`scopes` in the record) and rules refer to it
+  by name. A rule's `declared` entries name code that genuinely needs what the
+  rule forbids, each with a reason and an owning row; declared sites are
+  reported, not counted, and a declaration with no site left fails as stale.
+- **Speed.** Pattern rules run behind a required-literal substring
+  prefilter, and per-file results are cached in `out/archlint/` keyed by
+  file modification time and size, the rules, the module paths and the
+  checker's code: about 13 s cold, 1.5 s warm.
 - **CAP013 line ceilings.** Every area (the capability module that owns a
   file, or its legacy directory) has a ceiling of code lines. Above it fails.
   `--write` lowers ceilings and never raises one. Growth is a reviewed
@@ -235,7 +296,10 @@ check --all` and recorded in [`architecture/structure.json`](../architecture/str
 | `render-scene-bypass` | Render core, engine, client, material system: the non-scene geometry channel (`SetWorld`, `SetStaticProps`, `WorldData`, `PosedModel`, `DynamicDraw`, ...) | 345 in 36 files | 0 | R89 |
 | `tier0-platform-branches` | `tier0/`, `public/tier0/` | 438 in 54 files | Frozen ABI declarations only | R103 |
 | `console-platform-code` | Whole tree | 1,790 in 278 files | 0 | R46 |
-| `platform-branches-outside-providers` | Whole tree except providers, bridges, Tier 0, tests, tools | 2,552 in 639 files | 0 outside providers | R46 |
+| `platform-branches-outside-providers` | the `outside-providers` scope (redefined 2026-10-08 as one named declaration; recounted) | 2,495 in 617 files | 0 | R46 |
+| `native-includes-outside-providers`, `os-calls-outside-providers`, `platform-identity-outside-providers` | the `outside-providers` scope | 469 / 1,343 / 503 | 0 | R46 |
+| `adapter-code-outside-adapters` | the `outside-providers` scope | 565 in 48 files | 0 | R91 |
+| `format-includes-outside-owners`, `format-shapes-outside-owners` | the `outside-format-owners` scope; declared consumers listed with reason and row | 360 / 1,601 | 0 except declared | R83 / R62 |
 | Line ceilings | All 495 areas | Current size, 2026-10-08 | Falling | Each area's row |
 
 `tools/archlint/tests/test_structure.py` seeds each violation (an identifier

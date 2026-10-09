@@ -416,6 +416,45 @@ User direction, 2026-10-07: "make sure the content tools can also be used
 as libraries standalone so we can build tools on top of these. I don't want
 to be confined to CLI wrappers".
 
+### Formats stay in their libraries (user direction, 2026-10-08)
+
+User direction (2026-10-08): the engine and games do not know content
+formats or their data shapes, "unless they absolutely need to and it makes
+sense". A format's reader, writer and on-disk structures belong to its
+library (this section's rules) or to a translator that hands the runtime
+its own representation (RFC 0016's
+[anti-corruption boundary](0016-render-core.md#the-anti-corruption-boundary-user-decision-2026-10-08)).
+The engine and games take runtime models: a skeleton, sequences and
+attachments rather than `mstudio*` records; a world's runtime geometry and
+entities rather than BSP lumps; textures by id rather than VTF headers.
+
+The owners are one declaration, the `outside-format-owners` scope in
+[`architecture/structure.json`](../architecture/structure.json): the
+`content/`, `mapcontainer/`, `mdl/`, `texturecontainer/`, `kvtext/`, `vmf/`,
+`mapgeometry/` and `vpklib/` libraries, the legacy format libraries (`vtf/`,
+`mdllib/`, `dmxloader/`, `dmserializers/`, `choreoobjects/`), the header that
+defines each legacy format (`studio.h`, `bspfile.h`, `phyfile.h`,
+`vcollide_parse.h`, `optimize.h`, the zip headers), the translator
+`render/map_media`, and, by purpose, tools, compilers and the editor's
+domain.
+
+Archlint CAP012 checks two shrink-only ratchets over that scope:
+`format-includes-outside-owners` (a format header included outside its
+owners) and `format-shapes-outside-owners` (a format's on-disk structures
+named outside them: `studiohdr_t`, `mstudio*_t`, `dheader_t`, `lump_t`,
+`d*_t` lumps, `texinfo_t`, `VTFFileHeader_t`, `phyheader_t`, ...).
+
+**The exception.** Code that genuinely needs a format, and for which it makes
+sense, is listed under the rule's `declared` entries with a reason and an
+owning row. Declared sites are reported but not counted, and a declaration
+whose code no longer touches the format fails as stale. The first and only
+declaration is the IVP physics provider (`vphysics/`), which reads the
+collision format it simulates until RFC 0004 F's independent decoder (R45)
+owns it. Convenience, an existing caller or a missing translator is not a
+reason: that code is counted debt under R83 (the resolver) and R62 (the
+model asset path), and the scope declaration names the libraries that
+should absorb it.
+
 ### Rules for every library
 
 - **A public header is the contract.** Each module in

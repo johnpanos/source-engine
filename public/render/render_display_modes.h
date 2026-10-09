@@ -28,7 +28,7 @@ struct DisplayModeFacts
 };
 
 // Standard 4:3, 16:9 and 16:10 window sizes: the table togl offers
-// (appframework/glmdisplaydb_linuxwin.inl, GLMDisplayInfo::PopulateModes)
+// (GLMDisplayInfo::PopulateModes, deleted with togl's display database)
 // plus 2560x1440 and 3840x2160.
 struct StandardModeSize
 {

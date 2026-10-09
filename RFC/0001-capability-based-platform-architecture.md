@@ -280,6 +280,47 @@ Compile-time checks for compiler syntax, CPU instructions, structure layout,
 and other properties that cannot reasonably be runtime capabilities remain
 permitted in narrowly scoped foundation headers.
 
+#### Where platform and adapter code may live (user direction, 2026-10-08)
+
+User direction (2026-10-08): "can we make it so that there's no platform or
+adapter code in the engine / games too?" This principle had no check, and
+the engine, games and shared modules held about 2,500 platform branches,
+470 native SDK includes, 1,340 direct OS and SDL calls, 500 runtime
+platform-identity tests and 560 graphics-API references outside any
+provider ([direction audit](direction-audit-2026-10-08.md#platform-and-adapter-code-outside-providers)).
+
+Platform and adapter code lives only in providers and pair-specific bridges.
+The homes are one declaration, the `outside-providers` scope in
+[`architecture/structure.json`](../architecture/structure.json):
+`platform/` and `public/platform/` (OS providers), `render/device/` and
+`render/bridge/` (device adapters and presentation bridges),
+`launcher_main/` and `dedicated_main/` (the OS entry shims), `product/` (the
+kiln platform providers), Hammer's GTK and adapter layers, and Tier 0 while
+R103 moves its branches into providers. Tools, utilities, tests and
+reference trees are outside the product scope. Everything else (the engine,
+the games, and every shared module such as `tier1`, `vgui2`,
+`inputsystem`, `filesystem` and `materialsystem`) requests behavior through
+contracts.
+
+Archlint CAP012 checks five shrink-only ratchets over that scope, each with
+an exact per-file count and a target of zero:
+
+| Rule | What it counts |
+| --- | --- |
+| `platform-branches-outside-providers` | preprocessor conditionals on platform macros |
+| `native-includes-outside-providers` | OS, SDK and graphics API headers (`windows.h`, `unistd.h`, `pthread.h`, `SDL3/`, `vulkan/`, `android/`, Apple frameworks, ...) |
+| `os-calls-outside-providers` | direct OS, SDL and platform SDK calls |
+| `platform-identity-outside-providers` | runtime platform or backend identity tests (`IsWindows()`, `IsPC()`, `IsPlatform*()`, `IsOpenGL()`) |
+| `adapter-code-outside-adapters` | graphics API types and calls (Vulkan, D3D, GL, Metal, WebGPU) and legacy backend classes |
+
+A module that must hold platform code becomes a provider: it implements a
+contract, moves under a provider home, and is composed by a root. Adding a
+directory to the provider homes is a reviewed change to the declaration,
+never a way to get green. Existing engine providers that live in product
+directories today (the SDL and DirectSound audio devices in `engine/audio/`,
+the SDL input code in `inputsystem/`, the launcher's platform services) are
+counted as debt and move out under their rows.
+
 ### Keep contracts narrow
 
 There will be no monolithic `IPlatform` interface. Consumers should not acquire

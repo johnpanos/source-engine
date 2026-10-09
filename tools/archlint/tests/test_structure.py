@@ -150,6 +150,99 @@ class StructureRatchetTest(unittest.TestCase):
         self.assertTrue(any('unknown key extra' in e for e in errors))
 
 
+class ProviderAndFormatRulesTest(unittest.TestCase):
+    """Named scopes (where providers and format owners live), include and
+    pattern rules, and declared consumers with their reasons."""
+
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
+        self.manifest = {'capabilityModules': {'modules': []}}
+        self.write('platform/posix/thread.cpp', '#include <pthread.h>\nvoid S() { pthread_create(0, 0, 0, 0); }\n')
+        self.write('engine/host.cpp', '#include "tier0/platform.h"\nvoid H() {}\n')
+        self.write('mdl/reader.cpp', '#include "studio.h"\nstudiohdr_t *h;\n')
+        self.write('physics/collide.cpp', '#include "phyfile.h"\n')
+        self.document = {
+            'schema': structure.SCHEMA,
+            'scopes': {
+                'outside-providers': {'reason': 'providers own platforms', 'paths': [''],
+                                      'exceptPaths': ['platform/']},
+                'outside-format-owners': {'reason': 'libraries own formats', 'paths': [''],
+                                          'exceptPaths': ['mdl/']}},
+            'rules': [
+                {'id': 'native', 'kind': 'includes', 'scope': {'named': 'outside-providers'},
+                 'headers': [r'pthread\.h', r'SDL3?/.*'], 'reason': 'inject a contract', 'owner': 'R46',
+                 'target': 'zero', 'counts': {}},
+                {'id': 'os-calls', 'kind': 'patterns', 'scope': {'named': 'outside-providers'},
+                 'patterns': [r'\bpthread_\w+\s*\(', r'(?<![\w.>:])Sleep\s*\('], 'reason': 'call a contract',
+                 'owner': 'R46', 'target': 'zero', 'counts': {}},
+                {'id': 'formats', 'kind': 'includes', 'scope': {'named': 'outside-format-owners'},
+                 'headers': [r'(?:.*/)?studio\.h', r'(?:.*/)?phyfile\.h'], 'reason': 'use the runtime model',
+                 'owner': 'R83', 'target': 'zero', 'counts': {},
+                 'declared': {'physics/': {'reason': 'reads the format it simulates', 'owner': 'R45'}}}],
+            'lines': {'ceilings': {}}}
+        (self.root / 'architecture').mkdir()
+        structure.write(self.root, self.document)
+        for rule in ('native', 'os-calls', 'formats'):
+            self.command(adopt=rule)
+        document = structure.read_structure(self.root)
+        _, lines = structure.measure(self.root, document, None, None)
+        document['lines']['ceilings'] = {area: {'ceiling': n + 100} for area, n in lines.items()}
+        document['lines']['ceilings']['newdir/'] = {'ceiling': 100}
+        structure.write(self.root, document)
+
+    write = StructureRatchetTest.write
+
+    def command(self, **options):
+        args = argparse.Namespace(report=False, write=False, verify=False, adopt=None, raise_area=None,
+                                  reason=None, top=10)
+        for key, value in options.items():
+            setattr(args, key, value)
+        with redirect_stdout(io.StringIO()):
+            return structure.command(self.root, self.manifest, args, archlint.strip_comments_and_literals)
+
+    def errors(self):
+        return [e for e in structure.check_errors(self.root, self.manifest, archlint.strip_comments_and_literals)
+                if not e.startswith('CAP013')]
+
+    def test_providers_and_owners_are_clean(self):
+        self.assertEqual(self.errors(), [])
+        rules = {r['id']: r['counts'] for r in structure.read_structure(self.root)['rules']}
+        self.assertEqual(rules, {'native': {}, 'os-calls': {}, 'formats': {}})
+
+    def test_native_include_and_call_in_the_engine_fail(self):
+        self.write('engine/host.cpp', '#include <SDL3/SDL.h>\nvoid H() { Sleep( 1 ); ThreadSleep( 1 ); }\n')
+        errors = self.errors()
+        self.assertTrue(any('CAP012 native engine/host.cpp: 1 (new file)' in e for e in errors), errors)
+        self.assertTrue(any('CAP012 os-calls engine/host.cpp: 1 (new file)' in e for e in errors), errors)
+
+    def test_commented_include_does_not_count(self):
+        self.write('engine/host.cpp', '// #include <pthread.h>\n/* #include "studio.h" */\n')
+        self.assertEqual(self.errors(), [])
+
+    def test_format_header_in_the_game_fails(self):
+        self.write('game/server/anim.cpp', '#include "studio.h"\n')
+        self.assertTrue(any('CAP012 formats game/server/anim.cpp: 1 (new file)' in e for e in self.errors()))
+
+    def test_declared_consumer_is_excused_until_stale(self):
+        self.write('physics/more.cpp', '#include "phyfile.h"\n')
+        self.assertEqual(self.errors(), [])
+        self.write('physics/collide.cpp', '\n')
+        self.write('physics/more.cpp', '\n')
+        self.assertTrue(any('declared physics/: no site left' in e for e in self.errors()))
+
+    def test_declaration_needs_a_reason_and_scope_must_exist(self):
+        document = structure.read_structure(self.root)
+        document['rules'][2]['declared']['game/'] = {'reason': '', 'owner': 'R1'}
+        document['rules'][0]['scope'] = {'named': 'nowhere'}
+        structure.write(self.root, document)
+        errors = self.errors()
+        self.assertTrue(any('declared game/ needs a reason' in e for e in errors), errors)
+        self.assertTrue(any('no named scope nowhere' in e for e in errors), errors)
+
+
 class RepositoryStructureTest(unittest.TestCase):
     """The recorded structure covers the real tree's rules."""
 
@@ -158,7 +251,10 @@ class RepositoryStructureTest(unittest.TestCase):
         document = structure.read_structure(root)
         self.assertEqual(structure.shape_errors(document), [])
         ids = {rule['id'] for rule in document['rules']}
-        for required in ('render-composition-thin', 'render-scene-bypass',
+        for required in ('native-includes-outside-providers', 'os-calls-outside-providers',
+                         'platform-identity-outside-providers', 'adapter-code-outside-adapters',
+                         'format-includes-outside-owners', 'format-shapes-outside-owners',
+                         'render-composition-thin', 'render-scene-bypass',
                          'render-pass-content-import', 'tier0-platform-branches'):
             self.assertIn(required, ids)
 
