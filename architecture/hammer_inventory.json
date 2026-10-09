@@ -8,8 +8,8 @@
     "totalHammerSourceFiles": 682,
     "totalHammerCppFiles": 334,
     "totalHammerHeaderFiles": 350,
-    "filesClassified": 628,
-    "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'. 2026-10-03 (R08-REPLACE-TEXTURES, HAM-REPLACETEX-001): 22 reviewed records for the files that slice read or changed, and the authored totals refreshed to the live universe that 'archlint hammer --coverage' measures (hammer/ plus the strict roots)."
+    "filesClassified": 690,
+    "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'. 2026-10-03 (R08-REPLACE-TEXTURES, HAM-REPLACETEX-001): 22 reviewed records for the files that slice read or changed, and the authored totals refreshed to the live universe that 'archlint hammer --coverage' measures (hammer/ plus the strict roots). 2026-10-09: every file of that universe now has a record (682 of 682). 622 of them were classified from grep-level reads of each file by a scripted review (evidence 'observed', one-line note each) and have not had a second human read; status stays 'partial' until the records are reviewed and the migration records and legacy build evidence for R08 are complete."
   },
   "files": [
     {
@@ -8438,6 +8438,826 @@
       "factorization": "keep",
       "evidence": "observed",
       "note": "Translate, rotate, scale, mirror, snap and align apply affine transforms through DocumentEdit, with TransformedSolid and TransformedEntity as pure helpers."
+    },
+    {
+      "path": "public/hammer/app/ops/vertex_ops.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares headless vertex operations (MoveVertices, PushFace, ExtrudeFace, RebuildFromVertices) that act through a scene::DocumentEdit, matching its vertex_ops.cpp record."
+    },
+    {
+      "path": "public/hammer/app/ops/visgroup_ops.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares visgroup create/rename/delete/move/membership/visibility operations on a DocumentEdit plus reader queries, matching visgroup_ops.cpp."
+    },
+    {
+      "path": "public/hammer/app/selection.h",
+      "currentOwner": "hammer.app",
+      "destinationModule": "hammer.app",
+      "responsibility": "selection-policy",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Defines Selection, SelectMode and granularity plus pure pick, combine, prune, select-all and invert functions over a DocumentReader with no mutation."
+    },
+    {
+      "path": "public/hammer/formats/cordon.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares CordonBox/CordonResult and ApplyCordon over kvtext nodes, a pure format operation matching cordon.cpp's record."
+    },
+    {
+      "path": "public/hammer/formats/entity_property_sheet.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares PropertyRow, EntityPropertySheet and BuildPropertySheet, which build display rows from FGD classes and KeyValues with no I/O, matching entity_property_sheet.cpp."
+    },
+    {
+      "path": "public/hammer/formats/fgd.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares the FGD model (EntityClass, properties, helpers, I/O) and ParseFgd/ResolveClass over text, with no file access, matching fgd.cpp."
+    },
+    {
+      "path": "public/hammer/formats/fgd_entity_catalog.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "FgdEntityCatalog implements ports::IEntityCatalog from FGD text supplied through an injected FgdLoader callback, so the header itself performs no file reads, matching fgd_entity_catalog.cpp."
+    },
+    {
+      "path": "public/hammer/formats/groups.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares GroupTable, ParseGroups and ExpandGroupSelection over kvtext nodes, pure parsing of editor group ids, matching groups.cpp."
+    },
+    {
+      "path": "public/hammer/formats/instancing.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "composition",
+      "effects": [
+        "file-io",
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares ExpandInstances, which flattens func_instance entities and reads instance files through the ports::IFileStore parameter, matching instancing.cpp."
+    },
+    {
+      "path": "public/hammer/formats/map_export.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares CompileOptions and PrepareForCompile, which expands instances through an IFileStore before export, matching map_export.cpp."
+    },
+    {
+      "path": "public/hammer/formats/material.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares the Material type and ParseMaterial over VMT text with no I/O, matching material.cpp."
+    },
+    {
+      "path": "public/hammer/formats/material_catalog.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares MaterialCatalog, which indexes materials and reads VMT/VTF assets through ports::IAssetSource, matching material_catalog.cpp."
+    },
+    {
+      "path": "public/hammer/formats/material_info_adapter.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "MaterialInfoAdapter implements ports::IMaterialInfo over a MaterialCatalog for existence, size and name queries, matching material_info_adapter.cpp."
+    },
+    {
+      "path": "public/hammer/formats/overlay.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares Overlay, ParseOverlay and ExtractOverlays over kvtext entities, a pure decode, matching overlay.cpp."
+    },
+    {
+      "path": "public/hammer/formats/prefab.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares Placement, PrefabInstance and InstantiatePrefab, a pure transform of a prefab document into world objects, matching prefab.cpp."
+    },
+    {
+      "path": "public/hammer/formats/search_path_assets.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "SearchPathAssets implements ports::IAssetSource by ordered search over provider assets, keeping the first occurrence, matching search_path_assets.cpp."
+    },
+    {
+      "path": "public/hammer/formats/visgroups.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares VisGroup parsing from KeyValues and ApplyVisGroupFilter for hidden-set computation, pure and matching visgroups.cpp."
+    },
+    {
+      "path": "public/hammer/formats/vmf_map_codec.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "VmfMapCodec implements ports::IMapCodec over VMF text with typed decode and encode, no I/O, matching vmf_map_codec.cpp."
+    },
+    {
+      "path": "public/hammer/formats/vpk_archive.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "VpkArchive implements ports::IAssetSource over a ports::IByteStore that reads the VPK directory and entries, matching vpk_archive.cpp."
+    },
+    {
+      "path": "public/hammer/formats/vtf_image.h",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares ReadVtfInfo and DecodeVtf over in-memory bytes using the texturecontainer VTF reader, with no file access, matching vtf_image.cpp."
+    },
+    {
+      "path": "public/hammer/ports/asset_source.h",
+      "currentOwner": "hammer.ports",
+      "destinationModule": "hammer.ports",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "IAssetSource is the port for HasAsset, ReadAsset and ListAssets by path, implemented by VPK, search-path and disk providers."
+    },
+    {
+      "path": "public/hammer/ports/byte_store.h",
+      "currentOwner": "hammer.ports",
+      "destinationModule": "hammer.ports",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "IByteStore is a ranged byte-read port (Size, ReadRange) used by VPK reading and implemented by hammer/adapters/platform/disk_byte_store."
+    },
+    {
+      "path": "public/hammer/ports/entity_catalog.h",
+      "currentOwner": "hammer.ports",
+      "destinationModule": "hammer.ports",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares the entity class, key and I/O definition types and the IEntityCatalog lookup port, implemented by FgdEntityCatalog and matching entity_catalog.cpp."
+    },
+    {
+      "path": "public/hammer/ports/instance_content.h",
+      "currentOwner": "hammer.ports",
+      "destinationModule": "hammer.ports",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io",
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "IInstanceContent returns merged content for func_instance entities with a Revision that changes when content may have changed, used by app/instance_preview and viewport extraction."
+    },
+    {
+      "path": "public/hammer/ports/map_builder.h",
+      "currentOwner": "hammer.ports",
+      "destinationModule": "hammer.ports",
+      "responsibility": "composition",
+      "effects": [
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "IMapBuilder with MapBuildRequest and MapBuildResult is the port the compile queue calls to build a map, implemented out of process by the tool-process builder."
+    },
+    {
+      "path": "public/hammer/ports/map_codec.h",
+      "currentOwner": "hammer.ports",
+      "destinationModule": "hammer.ports",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "IMapCodec declares FormatName, Decode to DecodedMap and Encode to text with CodecError diagnostics, implemented by VmfMapCodec with no I/O in the port."
+    },
+    {
+      "path": "public/hammer/ports/material_info.h",
+      "currentOwner": "hammer.ports",
+      "destinationModule": "hammer.ports",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "IMaterialInfo declares Exists, Size and Names queries for materials, implemented by MaterialInfoAdapter over the catalog."
+    },
+    {
+      "path": "public/hammer/presenters/class_palette.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "ClassPalette builds filtered, categorized entity class entries from the catalog and the active selection with no mutation, matching class_palette.cpp."
+    },
+    {
+      "path": "public/hammer/presenters/entity_inspector.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "EntityInspector defines key, flag, output and input rows and applies validated key/value edits through the edit session, matching entity_inspector.cpp."
+    },
+    {
+      "path": "public/hammer/presenters/face_inspector.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "FaceInspector folds face texture fields across the selection and applies shift, justify, align and material edits through the session, matching face_inspector.cpp."
+    },
+    {
+      "path": "public/hammer/presenters/history_panel.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "HistoryPanel lists undo history rows from the edit session and routes jump, undo and redo to the change history, matching history_panel.cpp."
+    },
+    {
+      "path": "public/hammer/presenters/material_browser.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Material browser model: filtered, MRU and used-in-map rows over the IMaterialInfo port, with no widget."
+    },
+    {
+      "path": "public/hammer/presenters/object_label.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Single labeling rule for entities, solids and groups plus the I/O target match, a stateless pure function."
+    },
+    {
+      "path": "public/hammer/presenters/outliner.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Outliner tree rows built from the document with filter and expansion state, no toolkit."
+    },
+    {
+      "path": "public/hammer/presenters/problems_panel.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Problems rows are a CheckMap result cached by session revision and rescanned on read after a document change."
+    },
+    {
+      "path": "public/hammer/presenters/status_bar.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Status bar texts for the selection summary, size and cursor, computed from the session with no toolkit."
+    },
+    {
+      "path": "public/hammer/presenters/visgroup_panel.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Visgroup tree model whose actions run through SessionCommands, so each action is one undoable edit."
+    },
+    {
+      "path": "public/hammer/scene/change_set.h",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "DocumentEdit stages changes over a borrowed base and ChangeSet applies forward or backward patches to the document."
+    },
+    {
+      "path": "public/hammer/scene/displacement_geometry.h",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Builds the displacement surface of a side from its typed Displacement on each call, a pure bridge to mapgeometry."
+    },
+    {
+      "path": "public/hammer/scene/document_index.h",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Snapshot index over a document reader answering the structural queries in one pass, valid until the reader changes."
+    },
+    {
+      "path": "public/hammer/scene/map_document.h",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "The map document value holding every solid, entity and group plus settings, with low-level Put and Erase."
+    },
+    {
+      "path": "public/hammer/scene/map_objects.h",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Plain value types for solids, sides, entities, connections and groups with ObjectId and vmfId identity."
+    },
+    {
+      "path": "public/hammer/scene/map_queries.h",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Pure structural queries (group membership, leaves, owners, bounds, entity lookup) over a DocumentReader."
+    },
+    {
+      "path": "public/hammer/scene/solid_geometry.h",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Convex polygons, bounds and plane-to-side-point rules derived from a solid, under one mapgeometry tolerance policy."
+    },
+    {
+      "path": "public/hammer/tools/block_tool.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Block tool gesture state for a pending box, creating the primitive through an edit only on Enter commit."
+    },
+    {
+      "path": "public/hammer/tools/box_handles.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Box handle hit and drag geometry in the 2D view plane, shared by the Selection and Block tools."
+    },
+    {
+      "path": "public/hammer/tools/camera_controller.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Camera navigation that moves the host-owned viewport camera values and never touches the document."
+    },
+    {
+      "path": "public/hammer/tools/clip_tool.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Clip tool gesture state for a 2D clip line whose Apply commits the split through an edit."
+    },
+    {
+      "path": "public/hammer/tools/entity_tool.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Entity tool state machine that places a point entity with ops::PlaceEntity as one edit; the placement is an edit, not tool state."
+    },
+    {
+      "path": "public/hammer/tools/face_tool.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Face tool click handling that applies or toggles texture application on faces as one edit on release."
+    },
+    {
+      "path": "public/hammer/tools/input.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Normalized input and ToolResult/overlay value types so tools never see toolkit events."
+    },
+    {
+      "path": "public/hammer/tools/interaction_policy.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Shared drag threshold, snapping, transform constraint and hit-order policies that every tool calls."
+    },
+    {
+      "path": "public/hammer/tools/preview.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Gesture previews that stage the same operation in a scratch DocumentEdit and never commit it."
+    },
+    {
+      "path": "public/hammer/tools/selection_tool.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Selection tool state machine that drives EditSession selection operations, with the drag and handle modes."
+    },
+    {
+      "path": "public/hammer/tools/tool.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Tool contract: a gesture state machine from normalized input to edits, overlay and cursor intent."
+    },
+    {
+      "path": "public/hammer/tools/tool_manager.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Owns the tools, the active tool and pointer capture, and routes normalized input to the active tool."
+    },
+    {
+      "path": "public/hammer/tools/vertex_tool.h",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Vertex tool handles and edits over solid vertices and edge midpoints, committing through ops on release."
+    },
+    {
+      "path": "public/hammer/viewport/camera.h",
+      "currentOwner": "hammer.viewport",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Orthographic 2D and perspective 3D camera value types that own screen-space and view-angle conventions."
+    },
+    {
+      "path": "public/hammer/viewport/extraction.h",
+      "currentOwner": "hammer.viewport",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "RenderSnapshot extraction of stable ids, derived geometry, material names and selection as plain values."
+    },
+    {
+      "path": "public/hammer/viewport/grid.h",
+      "currentOwner": "hammer.viewport",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Grid snapping policy shared by tools and the grid lines a 2D view draws."
+    },
+    {
+      "path": "public/hammer/viewport/picking.h",
+      "currentOwner": "hammer.viewport",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Pure hit testing of 2D clicks, 3D rays and 2D marquees against a DocumentReader and camera."
+    },
+    {
+      "path": "public/hammer/viewport/view_policy.h",
+      "currentOwner": "hammer.viewport",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Visibility and appearance policies shared by picking and extraction so clicks and frames agree."
     }
   ]
 }
