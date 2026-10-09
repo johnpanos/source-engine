@@ -1,16 +1,16 @@
 {
   "backends": {
+    "materialsystem/shaderapicore": {
+      "files": 8,
+      "lines": 8402
+    },
     "materialsystem/shaderapiempty": {
       "files": 3,
       "lines": 2979
     },
-    "materialsystem/shaderapicore": {
-      "files": 8,
-      "lines": 8398
-    },
     "materialsystem/stdshaders": {
       "files": 64,
-      "lines": 12482
+      "lines": 12317
     }
   },
   "note": "Legacy backend retirement ratchet (user decision 2026-10-07, RFC 0028): files and lines per legacy backend directory. Exact and shrink-only; record deletions with `retirement_scans.py legacy-backends --write`. The goal is an empty map.",
