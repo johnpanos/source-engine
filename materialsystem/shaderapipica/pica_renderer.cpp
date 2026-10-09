@@ -985,6 +985,72 @@ void EndCoreSection()
 		BeginPass( false, false, 0 );
 }
 
+bool ReadCurrentTarget( int x, int y, int width, int height, std::uint8_t *rgba )
+{
+	if ( !g_state.initialized || width <= 0 || height <= 0 || !rgba )
+		return false;
+	const Target current = Current();
+	if ( x < 0 || y < 0 || std::uint32_t( x + width ) > current.width ||
+	     std::uint32_t( y + height ) > current.height )
+		return false;
+	BufferDesc out;
+	out.size = std::uint64_t( width ) * height * 4;
+	out.usages = { ResourceUsage::kCopyDestination };
+	out.memory = MemoryKind::kReadback;
+	auto readback = Device().CreateBuffer( out );
+	if ( !readback )
+		return false;
+	TextureBufferCopy region;
+	region.width = std::uint32_t( width );
+	region.height = std::uint32_t( height );
+	region.x = std::uint32_t( x );
+	region.y = std::uint32_t( y );
+	CompletionToken token{};
+	bool submitted = false;
+	if ( g_state.inFrame && g_state.encoder )
+	{
+		// In the frame: the target is a colour attachment of the open recording.
+		CommandEncoder &e = *g_state.encoder;
+		if ( g_state.rendering )
+			e.EndRendering();
+		g_state.rendering = false;
+		e.TransitionTexture( current.color, ResourceUsage::kColorAttachment, ResourceUsage::kCopySource );
+		e.TransitionBuffer( readback.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+		e.CopyTextureToBuffer( current.color, readback.Value(), region );
+		e.TransitionTexture( current.color, ResourceUsage::kCopySource, ResourceUsage::kColorAttachment );
+		SubmitRecording( false );
+		token = g_state.submitted;
+		submitted = g_state.lastSubmitTaken;
+	}
+	else if ( !g_state.target && g_state.colorUsage == ResourceUsage::kSampled )
+	{
+		auto encoder = Device().BeginEncoder( QueueKind::kGraphics );
+		if ( encoder )
+		{
+			CommandEncoder &e = encoder.Value();
+			e.TransitionTexture( g_state.color, ResourceUsage::kSampled, ResourceUsage::kCopySource );
+			e.TransitionBuffer( readback.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
+			e.CopyTextureToBuffer( g_state.color, readback.Value(), region );
+			e.TransitionTexture( g_state.color, ResourceUsage::kCopySource, ResourceUsage::kSampled );
+			CommandEncoder list[] = { std::move( e ) };
+			auto result = Device().Submit( QueueKind::kGraphics, list, {} );
+			submitted = bool( result );
+			if ( result )
+				token = result.Value();
+		}
+	}
+	bool read = false;
+	if ( submitted && Device().WaitIdle() )
+	{
+		std::vector<std::byte> pixels( std::size_t( out.size ) );
+		read = bool( Device().ReadBuffer( readback.Value(), 0, pixels ) );
+		if ( read )
+			std::memcpy( rgba, pixels.data(), pixels.size() );
+	}
+	(void)Device().Release( readback.Value(), token );
+	return read;
+}
+
 bool CaptureTopScreen( const char *path )
 {
 	if ( !g_state.initialized || g_state.inFrame || g_state.colorUsage != ResourceUsage::kSampled )

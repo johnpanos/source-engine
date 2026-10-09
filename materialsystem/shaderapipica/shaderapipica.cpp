@@ -6014,6 +6014,10 @@ void CShaderAPIEmpty::DeleteTexture( ShaderAPITextureHandle_t textureHandle )
 	for ( int i = 0; i < 16; ++i )
 		if ( g_BoundTextures[i] == textureHandle )
 			g_BoundTextures[i] = INVALID_SHADERAPI_TEXTURE_HANDLE;
+	// The lightmap the next core draw carries: a level change deletes the
+	// pages, and a draw before the next bind must not name a freed one.
+	if ( g_BoundLightmap == textureHandle )
+		g_BoundLightmap = INVALID_SHADERAPI_TEXTURE_HANDLE;
 	g_Textures[int( textureHandle ) - 1] = NULL;
 #if !defined( PLATFORM_3DS )
 	g_DirtyImported.FindAndRemove( texture );
@@ -6058,12 +6062,25 @@ void CShaderAPIEmpty::SetScissorRect( const int nLeft, const int nTop, const int
 {
 }
 
+// The engine's screenshots: what the frame drew into the current target,
+// converted to the caller's format (ported from shaderapivulkan's ReadPixels).
 void CShaderAPIEmpty::ReadPixels( int x, int y, int width, int height, unsigned char *data, ImageFormat dstFormat )
 {
+	Rect_t rect = { x, y, width, height };
+	ReadPixels( &rect, &rect, data, dstFormat, 0 );
 }
 
 void CShaderAPIEmpty::ReadPixels( Rect_t *pSrcRect, Rect_t *pDstRect, unsigned char *data, ImageFormat dstFormat, int nDstStride )
 {
+	if ( !pSrcRect || !data || pSrcRect->width <= 0 || pSrcRect->height <= 0 )
+		return;
+	const int width = pSrcRect->width, height = pSrcRect->height;
+	CUtlVector<unsigned char> rgba;
+	rgba.SetCount( width * height * 4 );
+	if ( !pica::ReadCurrentTarget( pSrcRect->x, pSrcRect->y, width, height, rgba.Base() ) )
+		return;
+	const int stride = nDstStride > 0 ? nDstStride : ImageLoader::GetMemRequired( width, 1, 1, dstFormat, false );
+	ImageLoader::ConvertImageFormat( rgba.Base(), IMAGE_FORMAT_RGBA8888, data, dstFormat, width, height, 0, stride );
 }
 
 void CShaderAPIEmpty::FlushHardware()

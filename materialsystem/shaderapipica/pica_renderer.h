@@ -281,6 +281,10 @@ render::device::CommandEncoder *BeginCoreSection( CoreSectionTarget &target );
 void FlushRecording();
 void EndCoreSection();
 
+// Reads a region of what the frame has drawn into the current target (the
+// screen, or the render target bound), as RGBA8 rows top first: the engine's
+// screenshots and ReadPixels. Submits the recording so far and waits for it.
+bool ReadCurrentTarget( int x, int y, int width, int height, std::uint8_t *rgba );
 // Writes the last presented frame as a binary PPM (400x240, RGB).
 bool CaptureTopScreen( const char *path );
 
