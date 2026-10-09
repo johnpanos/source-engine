@@ -680,6 +680,7 @@ public:
 		wanted.features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 		render::device::vulkan::HostDeviceRequest host;
 		host.adapterIndex = request.adapterIndex;
+		host.fsr411 = m_Options.fsr411;
 		host.user = &wanted;
 		host.describeDevice = []( void *user, VkPhysicalDevice, uint32_t,
 		                          render::device::vulkan::HostDeviceFeatures *out )
@@ -824,7 +825,7 @@ std::unique_ptr<VulkanRenderBackend> MakeVulkanRenderBackend(
 	request.instanceExtensionCount = static_cast<uint32_t>( extensions.size() );
 	char reason[256] = {};
 	std::unique_ptr<render::device::vulkan::IHostInstance> host =
-	    render::device::vulkan::HostDeviceFactory().CreateInstance(
+	    render::device::vulkan::HostDeviceFactory( options.fsr411 ).CreateInstance(
 	        request, reason, sizeof( reason ) );
 	if ( !host )
 	{

@@ -997,7 +997,7 @@ bool CSourceAppSystemGroup::Create()
 			char presenterError[512] = {};
 			auto presentation = std::make_unique<CorePresentation>();
 			presentation->presenter = render_vulkan::CreateSdl3CorePresenter(
-			    config.validation, presenterError, sizeof( presenterError ) );
+			    config.validation, config.temporal, presenterError, sizeof( presenterError ) );
 			if ( presentation->presenter )
 			{
 				config.borrowedDevice = &presentation->presenter->Port();

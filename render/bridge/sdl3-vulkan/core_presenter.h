@@ -74,9 +74,10 @@ public:
 };
 
 // Null, with the reason, when SDL3 has no Vulkan window system here (the
-// offscreen driver) or no adapter qualifies.
+// offscreen driver) or no adapter qualifies. fsr411: the device takes the FSR
+// 4.1.1 features the temporal upscaler needs (-fsr); unavailable fails creation.
 std::unique_ptr<ICorePresenter> CreateSdl3CorePresenter(
-    bool validation, char *error, std::size_t errorSize );
+    bool validation, bool fsr411, char *error, std::size_t errorSize );
 
 } // namespace render_vulkan
 

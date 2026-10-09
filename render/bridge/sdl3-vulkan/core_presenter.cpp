@@ -57,7 +57,7 @@ public:
 			SDL_QuitSubSystem( SDL_INIT_VIDEO );
 	}
 
-	bool Create( bool validation, std::string *error )
+	bool Create( bool validation, bool fsr411, std::string *error )
 	{
 		if ( !SDL_InitSubSystem( SDL_INIT_VIDEO ) )
 		{
@@ -75,6 +75,7 @@ public:
 		if ( !Sdl3VulkanInstanceExtensions( &options.instanceExtensions, error ) )
 			return false;
 		options.enableSwapchain = true;
+		options.fsr411 = fsr411;
 		m_Provider = MakeVulkanRenderBackend( options, error );
 		if ( !m_Provider )
 			return false;
@@ -347,11 +348,11 @@ private:
 } // namespace
 
 std::unique_ptr<ICorePresenter> CreateSdl3CorePresenter(
-    bool validation, char *error, std::size_t errorSize )
+    bool validation, bool fsr411, char *error, std::size_t errorSize )
 {
 	auto presenter = std::make_unique<CorePresenter>();
 	std::string reason;
-	if ( !presenter->Create( validation, &reason ) )
+	if ( !presenter->Create( validation, fsr411, &reason ) )
 	{
 		Copy( reason, error, errorSize );
 		return nullptr;

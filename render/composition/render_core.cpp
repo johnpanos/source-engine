@@ -331,7 +331,18 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	{
 		render::device::DeviceRequest request;
 		request.validation = config->validation;
+#if defined( RENDER_CORE_VULKAN )
+		// The temporal upscaler (-fsr) needs the FSR 4.1.1 device features, which
+		// the descriptor's default device does not take.
+		render::device::vulkan::VulkanAdapterOptions temporalOptions;
+		temporalOptions.validation = config->validation;
+		temporalOptions.fsr411 = true;
+		auto device = config->temporal && descriptor->id == "vulkan" && !masked->Bits()
+		                  ? render::device::vulkan::Create( temporalOptions )
+		                  : CreateDevice( *descriptor, request, *masked );
+#else
 		auto device = CreateDevice( *descriptor, request, *masked );
+#endif
 		if ( !device )
 			return Fail( result, RENDER_CORE_DEVICE_FAILED,
 			    std::string( "render device '" ) + config->device + "' failed" +

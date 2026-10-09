@@ -52,6 +52,8 @@ struct VulkanProviderOptions
 	// Test hook: create a timeline semaphore that can hold GPU completion of
 	// every later submission.
 	bool enableCompletionGate = false;
+	// Create devices with the FSR 4.1.1 features (the temporal upscaler, -fsr).
+	bool fsr411 = false;
 };
 
 class VulkanDeviceEndpoint
