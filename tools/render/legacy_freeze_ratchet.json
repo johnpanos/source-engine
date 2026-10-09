@@ -212,7 +212,6 @@
       "materialsystem/stdshaders/refract.cpp",
       "materialsystem/stdshaders/refract_dx9_helper.cpp",
       "materialsystem/stdshaders/refract_dx9_helper.h",
-      "materialsystem/stdshaders/screenspace_general.cpp",
       "materialsystem/stdshaders/shatteredglass.cpp",
       "materialsystem/stdshaders/skin_dx9_helper.cpp",
       "materialsystem/stdshaders/skin_dx9_helper.h",
