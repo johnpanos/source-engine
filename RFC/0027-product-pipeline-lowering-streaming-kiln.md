@@ -453,7 +453,9 @@ collision format it simulates until RFC 0004 F's independent decoder (R45)
 owns it. Convenience, an existing caller or a missing translator is not a
 reason: that code is counted debt under R83 (the resolver) and R62 (the
 model asset path), and the scope declaration names the libraries that
-should absorb it.
+should absorb it. What moving the engine's and games' current uses means
+for gameplay, and the oracle-gated migration order, are in
+[format shapes: gameplay impact and migration](format-shapes-gameplay-impact-2026-10-08.md).
 
 ### Rules for every library
 
@@ -1592,6 +1594,16 @@ change ([migration table](#migration-and-deletions)):
   `n3ds-cxi`, `azahar`, `n3ds-net`, and the `portal2-3ds` profile.
 - The Windows lane: `mingw`, `windows-dir`, `wine`.
 - The remote Linux host: `ssh`.
+
+**Pending port (noted 2026-10-08):** the eight root `build-*.sh` platform
+scripts must be ported into kiln and deleted with their callers:
+`build-android-apk.sh` and `build-android-portal2-apk.sh` (Android);
+`build-apple-app.sh`, `build-ios-app.sh`, `build-ios-portal2-app.sh`,
+`build-macos-app.sh`, `build-tvos-app.sh` and `build-tvos-portal2-app.sh`
+(Apple). They are tracked, and AGENTS.md, the Apple/Android product profiles,
+`quality/baseline.json`, `quality/profiles/ios-arm64-device.json`,
+`quality/product_profiles/README.md` and `tools/stylelint/root_files.py`
+name them. The root allowlist's pending entries shrink as each one goes.
 
 Gate, per platform:
 

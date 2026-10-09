@@ -850,7 +850,9 @@ Evidence:
   workflow: wscript, waf, waf.bat, kiln, the documentation and licence files,
   configuration and directories. Nine platform scripts are pending L7 in a
   shrink-only list (an entry whose file is gone fails). Five tests, with a
-  seeded stray file and a stale pending entry.
+  seeded stray file and a stale pending entry. The eight `build-*.sh` apps
+  among them are L7 work to port into kiln (noted 2026-10-08, RFC 0027 L7);
+  they stay tracked until then.
 - **No-callers scan.** `tools/kiln/retired_scan.py` (suites
   `kiln.l1.no-callers` 2/0 and `.selftest` 8/0): no retired path is tracked,
   and no tracked file outside RFC/ and Markdown names one except on a

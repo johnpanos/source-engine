@@ -184,6 +184,20 @@ entries. New strict code has no inherited debt. Validate migration dependencies,
 caller sets, required test selectors, exceptions, and retirement evidence.
 Seed invalid projects to demonstrate that each rule rejects its intended leak.
 
+A ratchet must measure the goal, not a proxy for it (direction audit,
+2026-10-08: a Tier 0 ratchet that counted OS calls by name let every
+platform branch survive behind a helper). Installed structure checks
+(archlint CAP011 rules 8–9, CAP012, CAP013; `architecture/structure.json`):
+the render core's anti-corruption boundary from the module manifest's roles;
+exact per-file ratchets for platform branches, native includes, OS calls,
+platform identity, graphics-API code and format headers and structures
+outside their declared homes (named scopes, declared consumers with a reason
+and row, stale declarations failing); and per-area code-line ceilings that
+only fall unless a raise is recorded with its reason. Each rule has seeded
+violations in `tools/archlint/tests/`. They are lexical; a runtime census
+remains required where the goal is behavioral (for example, the game's draws
+coming from the render scene).
+
 Mutation authority combines private APIs/edit contexts with symbol analysis and
 runtime revision/history tests. Lexical matches alone cannot certify exclusive
 ownership, DRY, or behavioral substitution.

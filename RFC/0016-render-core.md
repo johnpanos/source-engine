@@ -2,8 +2,9 @@
 
 - Status: Proposed (2026-09-26); no implementation gate complete. Revised
   the same day at the user's direction: the device contract serves several
-  backends (Vulkan first, OpenGL second), ToGL stays for mods, and the RFC
-  now fixes the directory layout, the ports and the layer contract, and
+  backends (Vulkan first, OpenGL second), ToGL stays for mods (superseded:
+  ToGL was deleted on 2026-10-07 and mod bytecode does not enter the core,
+  2026-10-08), and the RFC now fixes the directory layout, the ports and the layer contract, and
   states each gate as objective tests. The decisions in
   [Decisions](#decisions-2026-09-26) can be revisited before K1.
   Implementation started the same day: the layout, the layer contract and
@@ -99,8 +100,11 @@ adapters:
 4. **Vulkan is the first device adapter; OpenGL is the second.** The OpenGL
    adapter (K10) proves the port is backend-neutral, as RFC 0001 step 10
    requires. Apple runs through MoltenVK. The D3D9 path is not ported.
-   ToGL stays on the legacy D3D9 profiles, where it runs mod shader DLLs'
-   D3D bytecode (user decision, 2026-09-26).
+   ToGL stayed on the legacy D3D9 profiles to run mod shader DLLs' D3D
+   bytecode (user decision, 2026-09-26) until the legacy backends were
+   deleted on 2026-10-07 (user decision). Mod bytecode does not enter the
+   core on any adapter ([anti-corruption boundary](#the-anti-corruption-boundary-user-decision-2026-10-08),
+   2026-10-08).
 5. **A render graph (`render.graph.v1`).** Passes declare the resources
    they read and write. The graph orders passes, derives abstract resource
    transitions, allocates transient resources (aliasing them where the
@@ -659,6 +663,16 @@ limitations are documented in [the collector guide](../tools/quality/render_prof
   review covers it.
 - **Gates.** K11 is the proof gate for rule 3. K12's "One copy of the math"
   and K9's "Dead code removed" are the deletion gates for rule 4.
+- **Structure** (user decision, 2026-10-08). Archlint checks the shape the
+  rules promise, on every `check --all`: CAP011 rules 8–9 (the
+  [anti-corruption boundary](#the-anti-corruption-boundary-user-decision-2026-10-08)),
+  the CAP012 render ratchets (`render-scene-bypass`,
+  `render-composition-thin`, `render-pass-content-import`,
+  `adapter-code-outside-adapters`) and CAP013 line ceilings for every
+  render module. A slice that grows a module raises its ceiling with a
+  recorded reason (`archlint structure --raise`), never silently. Review
+  rejects a new `pending` entry, a raised ratchet or a re-adopted rule
+  offered to land a slice.
 
 ## Observed starting point (2026-09-26)
 
@@ -2360,8 +2374,9 @@ and no legacy frontend:
 
 - It reads a scene from the formats the core already serves: BSP2 maps
   through the `mapcontainer` readers (world mesh, `LMAP`, `PRBV`, `RPRB`,
-  entity lights), studio models through `mdl`, and materials through
-  `render.material`'s importers. It builds a `render.scene`, a light set
+  entity lights), studio models through `mdl`, and materials through the
+  VMT translation (`render.vmt-translation` once it moves out of
+  `render.material`; `render_lab` is a fixture, so it may use translators). It builds a `render.scene`, a light set
   and a `FrameDesc`, and renders through the Vulkan adapter to an image.
 - Its fixtures are versioned scenes with cameras and published maps. They extend the RFC 0011 gallery
   (`quality/fixtures/gi/`, `tools/quality/gi_gallery.py`,
@@ -3060,6 +3075,8 @@ legacy frontend problem, which is most of the work. Rejected.
 The OpenGL adapter could carry the legacy frontend on GL, but only for the
 GLSL ports. ToGL is what runs mod shader DLLs' D3D bytecode on GL.
 Rejected for now (user decision, 2026-09-26); ToGL stays for mods.
+Superseded: ToGL was deleted on 2026-10-07, and on 2026-10-08 mod bytecode
+was kept off the core entirely ([Mod shader DLLs](#mod-shader-dlls)).
 
 ### Replace the material system outright
 
@@ -3079,10 +3096,15 @@ The port names no graphics API; adapters implement it. Vulkan is the first
 adapter because every north-star target runs it. OpenGL 4.5 is the second,
 to prove the port (K10). Later adapters need their own decision.
 
-### 2. ToGL stays for mods
+### 2. ToGL stays for mods (superseded)
 
-The legacy D3D9 profiles keep ToGL, because it runs mod shader DLLs' D3D
-bytecode. The OpenGL adapter serves the core only.
+The legacy D3D9 profiles kept ToGL, because it ran mod shader DLLs' D3D
+bytecode. The OpenGL adapter serves the core only. Superseded twice: the
+legacy backends, ToGL included, were deleted on 2026-10-07 (user decision,
+RFC 0028 decision 10), and on 2026-10-08 mod bytecode was kept off the core
+on every adapter (user decision,
+[anti-corruption boundary](#the-anti-corruption-boundary-user-decision-2026-10-08));
+a mod material reaches the core only through a translator.
 
 ### 3. Four bind groups
 
@@ -3220,7 +3242,7 @@ public/render/
 │   ├── material.h        MaterialId, MaterialInstance, revision
 │   ├── parameter_block.h ParameterBlock, typed setters, dynamic block
 │   ├── registry.h        FamilyRegistry (families register at composition)
-│   └── vmt_import.h      ImportVmt(): Expected<MaterialDesc, ImportError>
+│   └── vmt_import.h      ImportVmt(): moves to render.vmt-translation (2026-10-08)
 ├── scene/                                  render.scene               [K5]
 │   ├── scene.h           IRenderScene, SceneFactory
 │   ├── objects.h         MeshInstanceDesc, SkinnedInstanceDesc, LightDesc, ProbeVolumeDesc,
@@ -3274,7 +3296,7 @@ render/
 │                    merge.cpp, executor_serial.cpp, executor_pooled.cpp, trace.cpp
 ├── shaderlib/       wscript, artifact_store.cpp, permutation.cpp, recipe.cpp
 ├── resources/       wscript, texture_cache.cpp, mesh_cache.cpp
-├── material/        wscript, registry.cpp, parameter_block.cpp, vmt_import.cpp
+├── material/        wscript, registry.cpp, parameter_block.cpp (vmt_import.cpp moves to the translator)
 │   └── families/<name>/   family.cpp, *.vert, *.frag, *.comp
 ├── shaders/common/  pbr_brdf.glsl, …                                   (owned by render.material)
 ├── scene/           wscript, scene.cpp, change_set.cpp, snapshot.cpp, visibility.cpp,

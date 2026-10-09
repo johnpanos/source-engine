@@ -992,6 +992,14 @@ a provider directly without including any provider header. Checking only link
 targets is also insufficient because native types and preprocessor decisions
 may leak through public headers.
 
+Legacy modules are not in the module graph yet, so the graph checks do not
+reach the engine and games. Since 2026-10-08 the
+[provider-home rule](#where-platform-and-adapter-code-may-live-user-direction-2026-10-08)
+covers them lexically: archlint CAP012 counts platform branches, native
+includes, OS and SDL calls, platform identity tests and graphics-API code
+outside the declared provider homes, per file, shrink-only. A module that
+joins the capability graph is then held by the graph checks as well.
+
 ### Architectural module manifest
 
 The repository should contain a versioned, dependency-free manifest at

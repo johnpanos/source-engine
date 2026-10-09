@@ -224,6 +224,10 @@ reading the collision format it simulates (R45). The first draft also
 declared the Box3D provider; the stale-declaration check showed it reads no
 format, and the declaration was removed.
 
+What moving these uses would mean for Portal gameplay, and how to move them
+without changing it, is recorded in
+[format shapes: gameplay impact and migration](format-shapes-gameplay-impact-2026-10-08.md).
+
 ### Deleted as dead
 
 - `common/GL/` and `common/opengl/` (7 vendored OpenGL headers, about

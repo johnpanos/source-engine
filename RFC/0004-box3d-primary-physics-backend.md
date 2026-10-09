@@ -379,7 +379,11 @@ semantics.
 
 The first decoder may reuse existing IVP structures and extraction code behind
 a private target. A later independent decoder can remove that dependency after
-it passes the same asset corpus. Neither stage requires a second live physics
+it passes the same asset corpus. Until then the IVP provider (`vphysics/`) is
+the one declared consumer of the collision format under RFC 0027's
+[formats stay in their libraries](0027-product-pipeline-lowering-streaming-kiln.md#formats-stay-in-their-libraries-user-direction-2026-10-08)
+rule (archlint CAP012, owner R45, 2026-10-08); the independent decoder is
+where that knowledge moves, and the declaration is then removed. Neither stage requires a second live physics
 provider or changes to consumer-facing `CPhysCollide` ownership.
 
 ### Geometry limits and failure policy

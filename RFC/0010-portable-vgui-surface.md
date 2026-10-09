@@ -271,6 +271,11 @@ screen-size-changed path. The installed `UIScale` owner is V1's starting point.
 
 Split the current per-OS font classes into two roles:
 
+Both roles' platform parts (fontconfig, GDI, packaged-font loading on
+mobile) live under a provider home, never in `vgui2/` or `vguimatsurface/`
+([RFC 0001's provider-home rule](0001-capability-based-platform-architecture.md#where-platform-and-adapter-code-may-live-user-direction-2026-10-08),
+2026-10-08); the surface takes the contracts.
+
 - **Font source provider** (per profile): resolves a scheme's face name,
   weight, italic flag and current language to font bytes. Providers:
   - fontconfig (Linux desktop);

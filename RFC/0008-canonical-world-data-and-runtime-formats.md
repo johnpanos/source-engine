@@ -250,6 +250,15 @@ for legacy content. Static, dynamic, and physics placements in RFC 0009 select
 the appropriate model capabilities through a validated reference, not filename
 or mesh inspection. A separate contract record is needed before implementation
 to pin animation, networking, persistence, and `studio.h` compatibility.
+Its starting point (2026-10-08) is
+[format shapes: gameplay impact and migration](format-shapes-gameplay-impact-2026-10-08.md):
+the engine and games take a runtime model (skeleton, sequences with events
+and bounds, hitbox sets, attachments, pose parameters, body groups, contents
+and surface property) instead of `mstudio*` records, with indices identical
+to the compiled model's, because sequence and hitbox-set indices are
+networked, saved and recorded in demos. RFC 0027's
+[formats stay in their libraries](0027-product-pipeline-lowering-streaming-kiln.md#formats-stay-in-their-libraries-user-direction-2026-10-08)
+rule and its CAP012 ratchets track the migration.
 *(Amended by RFC 0015.)* That validated reference is an RFC 0015 `AssetRef`
 of the model kind. The model compiler is an RFC 0015 compiler
 (`content.asset-compiler.v1`) and reports the model's runtime references
