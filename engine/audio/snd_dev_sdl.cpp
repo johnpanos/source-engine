@@ -254,6 +254,7 @@ void CAudioDeviceSDLAudio::OpenWaveOut( void )
 	// deadlocks; here the page never calls into the engine.
 	m_devId = 1;
 	AllocateOutputBuffers();
+	// clang-format off
 	MAIN_THREAD_EM_ASM( { (function() {
 		var A = Module.sourceAudio = { context: null, next: 0 };
 		A.open = function() {
@@ -266,6 +267,7 @@ void CAudioDeviceSDLAudio::OpenWaveOut( void )
 			return A.context;
 		};
 		A.open();})(); }, SOUND_DMA_SPEED );
+	// clang-format on
 	Msg( "RFC0001 provider: audio=web-audio\n" );
 	return;
 #endif
@@ -341,9 +343,11 @@ void CAudioDeviceSDLAudio::CloseWaveOut( void )
 #if defined( PLATFORM_WASM )
 	if ( m_devId )
 	{
+		// clang-format off
 		MAIN_THREAD_EM_ASM( { (function() {
 			var A = Module.sourceAudio;
 			if (A && A.context) { A.context.close(); A.context = null; }})(); } );
+		// clang-format on
 	}
 	m_devId = 0;
 	FreeOutputBuffers();
@@ -522,14 +526,17 @@ void CAudioDeviceSDLAudio::PaintEnd( void )
 		const int frames = sizeof( s_chunk ) / ( DeviceChannels() * DeviceSampleBytes() );
 		for ( int chunks = 0; chunks < 16; ++chunks )
 		{
+			// clang-format off
 			const double ahead = MAIN_THREAD_EM_ASM_DOUBLE( { return (function() {
 				var A = Module.sourceAudio;
 				var c = A && A.open();
 				if (!c || c.state !== 'running') return 1e9;
 				return Math.max(0, A.next - c.currentTime);})(); } );
+			// clang-format on
 			if ( ahead >= 0.1 )
 				break;
 			AudioCallback( s_chunk, sizeof( s_chunk ) );
+			// clang-format off
 			MAIN_THREAD_EM_ASM( { (function() {
 				var A = Module.sourceAudio, c = A.context;
 				var frames = $1, pcm = $0 >> 1;
@@ -545,6 +552,7 @@ void CAudioDeviceSDLAudio::PaintEnd( void )
 				var at = Math.max(A.next, c.currentTime + 0.02);
 				source.start(at);
 				A.next = at + frames / $2;})(); }, s_chunk, frames, SOUND_DMA_SPEED );
+			// clang-format on
 		}
 	}
 	return;
