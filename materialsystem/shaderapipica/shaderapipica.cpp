@@ -4728,9 +4728,17 @@ bool CShaderAPIEmpty::HasDestAlphaBuffer() const
 	return false;
 }
 
+// Off the 3DS the frame's depth is D32F with 8 stencil bits (kDepthFormat),
+// as shaderapivulkan's was; Portal 2 draws its portals' views through the
+// stencil only when the shader API reports one (without it an open portal
+// showed the wall behind it).
 bool CShaderAPIEmpty::HasStencilBuffer() const
 {
+#if defined( PLATFORM_3DS )
 	return false;
+#else
+	return true;
+#endif
 }
 
 int CShaderAPIEmpty::MaxViewports() const
@@ -4745,7 +4753,11 @@ int CShaderAPIEmpty::GetShadowFilterMode() const
 
 int CShaderAPIEmpty::StencilBufferBits() const
 {
+#if defined( PLATFORM_3DS )
 	return 0;
+#else
+	return 8;
+#endif
 }
 
 int	 CShaderAPIEmpty::GetFrameBufferColorDepth() const
