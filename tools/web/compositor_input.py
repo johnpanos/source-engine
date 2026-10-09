@@ -5,7 +5,8 @@
 
 where <script> is `<at s>:<action>[:<args>]`, comma-separated, times from
 now. Actions: `click` (left button at the screen's centre: the page's canvas
-takes it, and with it pointer lock, as a user's click), `look:<s>:<dx>[:<dy>]`
+takes it, and with it pointer lock, as a user's click), `press` (the left
+button where the pointer is: firing, once the view is locked), `look:<s>:<dx>[:<dy>]`
 (relative motion per 1/60 s for s seconds), `key:<evdev code>:<s>` (a key
 held for s seconds; W is 17, S 31, Escape 1).
 
@@ -96,6 +97,12 @@ def main(argv):
             # session's 1920x1080 virtual monitor.
             remote.motion(-10000, -10000)
             remote.motion(960, 540)
+            remote.button(True)
+            time.sleep(0.05)
+            remote.button(False)
+        elif action == "press":
+            # The left button where the pointer is (under pointer lock a
+            # move would turn the view).
             remote.button(True)
             time.sleep(0.05)
             remote.button(False)

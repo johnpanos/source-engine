@@ -175,7 +175,7 @@ function lazyFile(module, parent, name, url, size) {
 	};
 	const node = FS.createFile(parent, name, {}, true, false);
 	node.contents = { length: size };
-	Object.defineProperty(node, 'usedBytes', { get: () => size });
+	Object.defineProperty(node, 'usedBytes', { get: () => size, configurable: true });
 	const copy = (buffer, offset, length, position) => {
 		if (position >= size)
 			return 0;
@@ -194,8 +194,27 @@ function lazyFile(module, parent, name, url, size) {
 		}
 		return total;
 	};
-	const ops = Object.assign({}, node.stream_ops);
+	const fileOps = node.stream_ops, nodeOps = node.node_ops;
+	// The first write or truncation makes the file an ordinary in-memory file
+	// holding its bytes (the engine rewrites some content files, such as a
+	// map's sound cache, in place).
+	const materialize = () => {
+		if (node.stream_ops === fileOps)
+			return;
+		const bytes = new Uint8Array(size);
+		copy(bytes, 0, size, 0);
+		delete node.usedBytes;
+		node.contents = bytes;
+		node.usedBytes = size;
+		node.stream_ops = fileOps;
+		node.node_ops = nodeOps;
+	};
+	const ops = Object.assign({}, fileOps);
 	ops.read = (stream, buffer, offset, length, position) => copy(buffer, offset, length, position);
+	ops.write = (stream, ...rest) => { materialize(); return fileOps.write(stream, ...rest); };
+	node.node_ops = Object.assign({}, nodeOps, {
+		setattr: (n, attr) => { if (attr.size !== undefined) materialize(); return nodeOps.setattr(n, attr); },
+	});
 	ops.mmap = (stream, length, position) => {
 		const ptr = module._malloc(length);
 		if (!ptr)

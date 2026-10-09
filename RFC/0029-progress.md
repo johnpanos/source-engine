@@ -265,6 +265,16 @@ the same image as the native Dawn lane (`portal-webgpu-core`). Commits
   the page alive to the end, the engine's audio running 0.11 s ahead, no
   errors. `browser_lane.py` (kiln.api, private Wayland session, Firefox)
   runs 3,781 frames and hands back its frame capture.
+- **Interaction.** In `testchmb_a_04` a real click fires the portal gun in
+  the browser: before the shot `find_ent prop_portal` lists the map's one
+  portal (`portal_a_lvl5`); after it a second, the gun's own (entindex 140).
+  The native WebGPU build (Waf configured with `--render-core-webgpu
+  --render-core-device=webgpu`, "Render core: device webgpu") places the
+  same portal from the same commands. The spawn room of `testchmb_a_01` has
+  no portalable surface, natively as in the browser.
+- **Writable content.** A lazily read content file turns into an ordinary
+  in-memory file on its first write or truncation (the engine rewrites a
+  map's sound cache at level start; the truncation trapped before).
 
 Open: audio in a page without a user gesture;
 load time (map in 14 s, about 2,400 lazily read files) and frame time; the
