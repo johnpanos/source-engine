@@ -3107,8 +3107,11 @@ void ComputeLighting( const Vector& pt, const Vector* pNormal, bool bClamp, Vect
 	int i;
 	if ( pNormal )
 	{
-		LightDesc_t* pLightDesc = (LightDesc_t*)stackalloc( lightingState.numlights * sizeof(LightDesc_t) );
-		
+		// Every slot of the state's light array: the lighting routines read
+		// their lights in fixed batches, past numlights (AddressSanitizer
+		// caught a read past a numlights-sized stackalloc, intro4 demo).
+		LightDesc_t pLightDesc[ARRAYSIZE( lightingState.locallight )];
+		memset( pLightDesc, 0, sizeof( pLightDesc ) );
 		for ( i=0; i < lightingState.numlights; ++i )
 		{
 			// Construct a world light representing the dynamic light

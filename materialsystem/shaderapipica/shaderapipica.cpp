@@ -54,6 +54,7 @@
 #include "texture_group_names.h"
 #include <string>
 #include <memory>
+#include <atomic>
 #include <unordered_map>
 #include <vector>
 #include <malloc.h>
@@ -269,10 +270,14 @@ private:
 	// points read the first two (EmitSurfaceToCore's world vertices).
 	float *m_pTexCoord1 = nullptr;
 	int m_nTexCoord1Capacity = 0;
+	int m_nTexCoord1Size = 0; // floats per vertex the buffer holds
 	int m_nModifyFirstVertex = 0;
 	int m_nModifyVertexCount = 0;
 	bool WideTexCoords() const { return TexCoordSize( 0, m_Format ) > 2; }
 	bool EnsureWideTexCoords();
+	// The lightmap coordinates at the current format's width for the vertex
+	// capacity (a dynamic mesh's format changes between draws).
+	bool EnsureTexCoord1();
 	void CommitWideTexCoords( int first, int count );
 	unsigned char *m_pBoneIndices; // 4 per vertex
 	int m_nBoneCapacity;
@@ -825,8 +830,16 @@ void UploadTexture( PicaTexture &texture )
 // the cap, at least 8.
 void GpuSize( int w, int h, int cap, int &outW, int &outH )
 {
+#if defined( PLATFORM_3DS )
+	// The PICA200 samples only power-of-two textures.
 	outW = pica::FloorPow2( w < cap ? w : cap );
 	outH = pica::FloorPow2( h < cap ? h : cap );
+#else
+	// Other devices keep the texture's own size (a 1280x720 video frame
+	// resampled to 1024x512 dropped columns: stripes in the menu's movie).
+	outW = w < cap ? w : cap;
+	outH = h < cap ? h : cap;
+#endif
 	if ( outW < 8 ) outW = 8;
 	if ( outH < 8 ) outH = 8;
 }
@@ -3149,9 +3162,9 @@ bool CEmptyMesh::Lock( int nVertexCount, bool bAppend, VertexDesc_t &desc )
 		desc.m_pTexCoord[0] = base->uv;
 		desc.m_VertexSize_TexCoord[0] = stride;
 	}
-	if ( m_pTexCoord1 && first + nVertexCount <= m_nTexCoord1Capacity )
+	if ( EnsureTexCoord1() && first + nVertexCount <= m_nTexCoord1Capacity )
 	{
-		const int size = TexCoordSize( 1, m_Format );
+		const int size = m_nTexCoord1Size;
 		memset( m_pTexCoord1 + first * size, 0, nVertexCount * size * sizeof( float ) );
 		desc.m_pTexCoord[1] = m_pTexCoord1 + first * size;
 		desc.m_VertexSize_TexCoord[1] = size * sizeof( float );
@@ -3237,9 +3250,9 @@ void CEmptyMesh::ModifyBeginEx( bool bReadOnly, int firstVertex, int numVerts, i
 			vdesc.m_pNormal = m_pNormals + firstVertex * 3;
 			vdesc.m_VertexSize_Normal = 3 * sizeof( float );
 		}
-		if ( m_pTexCoord1 && firstVertex + numVerts <= m_nTexCoord1Capacity )
+		if ( EnsureTexCoord1() && firstVertex + numVerts <= m_nTexCoord1Capacity )
 		{
-			const int size = TexCoordSize( 1, m_Format );
+			const int size = m_nTexCoord1Size;
 			vdesc.m_pTexCoord[1] = m_pTexCoord1 + firstVertex * size;
 			vdesc.m_VertexSize_TexCoord[1] = size * sizeof( float );
 		}
@@ -3397,21 +3410,32 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 	// never reads (it draws the world from the map's own data). Elsewhere
 	// static meshes keep them too: brush entities (windows, doors) are static
 	// meshes the core draws through this path, lit by their own pages.
+	(void)EnsureTexCoord1();
+	return true;
+}
+
+bool CEmptyMesh::EnsureTexCoord1()
+{
+	const int size = TexCoordSize( 1, m_Format );
 #if defined( PLATFORM_3DS )
-	if ( m_bIsDynamic && TexCoordSize( 1, m_Format ) >= 2 )
+	if ( !m_bIsDynamic || size < 2 )
 #else
-	if ( TexCoordSize( 1, m_Format ) >= 2 )
+	if ( size < 2 )
 #endif
-	{
-		const int size = TexCoordSize( 1, m_Format );
-		float *coords = new float[capacity * size];
-		memset( coords, 0, capacity * size * sizeof( float ) );
-		if ( m_pTexCoord1 )
-			memcpy( coords, m_pTexCoord1, m_nTexCoord1Capacity * size * sizeof( float ) );
-		delete[] m_pTexCoord1;
-		m_pTexCoord1 = coords;
-		m_nTexCoord1Capacity = capacity;
-	}
+		return false;
+	if ( m_pTexCoord1 && m_nTexCoord1Size == size && m_nTexCoord1Capacity >= m_nVertexCapacity )
+		return true;
+	const int capacity = m_nVertexCapacity;
+	float *coords = new float[capacity * size];
+	memset( coords, 0, capacity * size * sizeof( float ) );
+	// Kept only at the same width; another width's values are another layout.
+	if ( m_pTexCoord1 && m_nTexCoord1Size == size )
+		memcpy( coords, m_pTexCoord1, ( m_nTexCoord1Capacity < capacity ? m_nTexCoord1Capacity : capacity ) *
+			size * sizeof( float ) );
+	delete[] m_pTexCoord1;
+	m_pTexCoord1 = coords;
+	m_nTexCoord1Capacity = capacity;
+	m_nTexCoord1Size = size;
 	return true;
 }
 
@@ -3593,10 +3617,13 @@ void BuildVariables( IMaterialInternal *material, MaterialVariables &out )
 			out.variables.push_back( { flag.key, "1", "0", 0 } );
 }
 
+// Per thread: with the queued material system draws reach this shader API on
+// more than one thread, and a shared cache was cleared and rehashed under a
+// reader (a crash in its lookup in a live ./kiln play portal2).
 const MaterialVariables &VariablesFor( IMaterialInternal *material )
 {
-	static std::unordered_map<IMaterialInternal *, MaterialVariables> s_cache;
-	static std::vector<std::uint32_t> s_signature;
+	thread_local std::unordered_map<IMaterialInternal *, MaterialVariables> s_cache;
+	thread_local std::vector<std::uint32_t> s_signature;
 	SignatureOf( material, s_signature );
 	auto at = s_cache.find( material );
 	if ( at != s_cache.end() && at->second.signature == s_signature )
@@ -3607,9 +3634,10 @@ const MaterialVariables &VariablesFor( IMaterialInternal *material )
 			s_cache.clear();
 		at = s_cache.emplace( material, MaterialVariables{} ).first;
 	}
-	static std::uint64_t s_revision = 0;
+	// Revisions stay unique across threads: the core caches by them.
+	static std::atomic<std::uint64_t> s_revision{ 0 };
 	at->second.signature = s_signature;
-	at->second.revision = ++s_revision;
+	at->second.revision = s_revision.fetch_add( 1, std::memory_order_relaxed ) + 1;
 	BuildVariables( material, at->second );
 	return at->second;
 }
@@ -4236,8 +4264,9 @@ bool CEmptyMesh::EmitSurfaceToCore( int firstIndex, int indexCount, render::lega
 	const float *model = Top( kStackModel );
 	const bool skinned = src.m_pBoneWeights && g_MaxBone > 0;
 	const bool normals = src.m_pNormals && src.m_nVertices <= src.m_nNormalCapacity;
-	const bool lightmapUv = src.m_pTexCoord1 && src.m_nVertices <= src.m_nTexCoord1Capacity;
-	const int lightmapStride = lightmapUv ? TexCoordSize( 1, src.m_Format ) : 0;
+	const bool lightmapUv = src.m_pTexCoord1 && src.m_nVertices <= src.m_nTexCoord1Capacity &&
+		src.m_nTexCoord1Size == TexCoordSize( 1, src.m_Format );
+	const int lightmapStride = lightmapUv ? src.m_nTexCoord1Size : 0;
 	const CEmptyMesh *colors = m_pColorMesh && m_pColorMesh->m_pVertices &&
 			m_nColorMeshOffset + src.m_nVertices <= m_pColorMesh->m_nVertices
 		? m_pColorMesh

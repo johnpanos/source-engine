@@ -1007,9 +1007,9 @@ void CBinkMaterial::OpenMovie( const char *theMovieFileName )
 			return;
 		}
 		int size = av_image_alloc( m_AVVideoData, m_AVVideoLinesize, m_VideoFrameWidth,
-		    m_VideoFrameHeight, m_AVPixFormat, 1 );
+		    m_VideoFrameHeight, AVPixelFormat( m_AVPixFormat ), 1 );
 
-		m_RGBData = calloc( m_VideoFrameWidth * m_VideoFrameHeight * 3, 1 );
+		m_RGBData = static_cast<uint8_t *>( calloc( m_VideoFrameWidth * m_VideoFrameHeight * 3, 1 ) );
 
 		printf( "m_AVVideoData size = %d\nm_VideoFrameWidth=%d\nm_VideoFrameHeight=%d\n", size,
 		    m_VideoFrameWidth, m_VideoFrameHeight );
