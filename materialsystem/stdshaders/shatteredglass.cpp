@@ -194,12 +194,6 @@ BEGIN_VS_SHADER( ShatteredGlass,
 			pShaderShadow->VertexShaderVertexFormat( flags, 3, 0, 0 );
 
 
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 
 			DefaultFog();
 		}

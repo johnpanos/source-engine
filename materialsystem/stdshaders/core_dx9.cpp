@@ -175,12 +175,6 @@ BEGIN_VS_SHADER( Core_DX90,
 			pShaderShadow->VertexShaderVertexFormat( flags, nTexCoordCount, NULL, userDataSize );
 
 
-			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 
 			DefaultFog();
 		}

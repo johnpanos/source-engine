@@ -259,12 +259,6 @@ BEGIN_VS_SHADER( Water_DX90,
 			// "REFLECT" "0..1"
 			// "REFRACT" "0..1"
 			
-			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 
 			FogToFogColor();
 

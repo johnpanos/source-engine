@@ -131,12 +131,6 @@ BEGIN_VS_SHADER( Sprite_DX9,
 		s_pShaderShadow->VertexShaderVertexFormat( flags, numTexCoords, 0, 0 );
 
 
-		if( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() ) // Always send GL down this path
-		{
-		}
-		else
-		{
-		}
 
 		// OSX always has to sRGB write (don't do this on Linux/Win GL - it causes glow sprites to be way too dark)
 		s_pShaderShadow->EnableSRGBWrite( bSRGB || ( IsOSX() && !g_pHardwareConfig->FakeSRGBWrite() ) );

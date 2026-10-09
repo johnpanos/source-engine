@@ -69,12 +69,6 @@ void DrawPortalRefract( CBaseVSShader *pShader, IMaterialVar** params,
 		bool bShaderSRGBRead = IsOSX() && !g_pHardwareConfig->CanDoSRGBReadFromRTs();
 		
 		// Pixel Shader
-		if( g_pHardwareConfig->SupportsPixelShaders_2_b() || g_pHardwareConfig->ShouldAlwaysUseShaderModel2bShaders() ) // Always send OpenGL / Posix down this path
-		{
-		}
-		else
-		{
-		}
 
 		// Textures
 		pShaderShadow->EnableTexture( SHADER_SAMPLER0, true ); // Refraction texture

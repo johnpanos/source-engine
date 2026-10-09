@@ -101,12 +101,6 @@ BEGIN_VS_SHADER( Teeth_DX9, "Help for Teeth_DX9" )
 
 
 					// ps_2_b version which does phong
-					if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-					{
-					}
-					else
-					{
-					}
 				}
 				else
 				{
@@ -123,12 +117,6 @@ BEGIN_VS_SHADER( Teeth_DX9, "Help for Teeth_DX9" )
 					bool bUseStaticControlFlow = g_pHardwareConfig->SupportsStaticControlFlow();
 
 
-					if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-					{
-					}
-					else
-					{
-					}
 				}
 				else
 				{
@@ -186,12 +174,6 @@ BEGIN_VS_SHADER( Teeth_DX9, "Help for Teeth_DX9" )
 			if ( !g_pHardwareConfig->HasFastVertexTextures() )
 			{
 
-				if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-				{
-				}
-				else
-				{
-				}
 			}
 			else
 			{

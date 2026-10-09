@@ -199,12 +199,6 @@ void DrawCloakBlendedPass( CBaseVSShader *pShader, IMaterialVar** params, IShade
 			// Vertex Shader
 
 			// Pixel Shader
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 		}
 		else
 		{

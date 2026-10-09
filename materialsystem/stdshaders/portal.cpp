@@ -149,12 +149,6 @@ BEGIN_VS_SHADER( Portal_DX90,
 				pShaderShadow->EnableTexture( SHADER_SAMPLER2, true );
 			
 
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 
 		}
 

@@ -141,12 +141,6 @@ void DrawEmissiveScrollBlendedPass( CBaseVSShader *pShader, IMaterialVar** param
 			// Vertex Shader
 
 			// Pixel Shader
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 		}
 		else
 		{

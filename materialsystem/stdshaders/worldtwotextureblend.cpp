@@ -246,12 +246,6 @@ END_SHADER_PARAMS
  //( bumpmap_variant == 2 )?1:0);
  //( bumpmap_variant == 2 )?1:0);
 
-			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 
 			// HACK HACK HACK - enable alpha writes all the time so that we have them for
 			// underwater stuff. 

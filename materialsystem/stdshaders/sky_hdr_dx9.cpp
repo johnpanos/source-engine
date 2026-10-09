@@ -129,12 +129,6 @@ BEGIN_VS_SHADER( Sky_HDR_DX9, "Help for Sky_HDR_DX9 shader" )
 				 mat_use_compressed_hdr_textures.GetBool() )
 			{
 				pShaderShadow->EnableSRGBRead(SHADER_SAMPLER0,false);
-				if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-				{
-				}
-				else
-				{
-				}
 			}
 			else
 			{
@@ -146,12 +140,6 @@ BEGIN_VS_SHADER( Sky_HDR_DX9, "Help for Sky_HDR_DX9 shader" )
 					pShaderShadow->EnableSRGBRead(SHADER_SAMPLER0,false);
 					pShaderShadow->EnableSRGBRead(SHADER_SAMPLER1,false);
 					pShaderShadow->EnableSRGBRead(SHADER_SAMPLER2,false);
-					if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-					{
-					}
-					else
-					{
-					}
 				}
 				else
 				{
@@ -162,12 +150,6 @@ BEGIN_VS_SHADER( Sky_HDR_DX9, "Help for Sky_HDR_DX9 shader" )
 					else
 						pShaderShadow->EnableSRGBRead(SHADER_SAMPLER0,true);
 					
-					if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-					{
-					}
-					else
-					{
-					}
 				}
 			}
 			// we are writing linear values from this shader.

@@ -303,19 +303,7 @@ SHADER_DRAW
 		}
 		else
 		{
-			if ( nSplineType )
-			{
-			}
-			else
-			{
-			}
 
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 
 			if ( !bDX8 )
 				pShaderShadow->EnableSRGBWrite( true );

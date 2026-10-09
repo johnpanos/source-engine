@@ -102,12 +102,6 @@ void DrawCloak_DX9( CBaseVSShader *pShader, IMaterialVar** params, IShaderDynami
 
 
 			// Bind ps_2_b shader so we can get Phong terms
-			if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 		}
 		else
 		{

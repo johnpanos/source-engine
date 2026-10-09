@@ -135,15 +135,6 @@ SHADER_DRAW
 
 
 		// Avoid setting a pixel shader when only doing depth/stencil operations, as recommended by PIX
-		if( bColorWrites || bAlphaMaskTexture || g_pHardwareConfig->PlatformRequiresNonNullPixelShaders() )
-		{
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
-		}
 	}
 
 	Draw();

@@ -82,12 +82,6 @@ static void DrawFlashlight( bool bDX9, CBaseVSShader *pShader, IMaterialVar** pa
 			if ( !g_pHardwareConfig->HasFastVertexTextures() )
 			{
 
-				if ( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-				{
-				}
-				else
-				{
-				}
 			}
 			else
 			{
@@ -146,12 +140,6 @@ static void DrawUsingVertexShader( bool bDX9, CBaseVSShader *pShader, IMaterialV
 				bool bUseStaticControlFlow = g_pHardwareConfig->SupportsStaticControlFlow();
 
 
-				if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-				{
-				}
-				else
-				{
-				}
 			}
 			else
 			{

@@ -108,12 +108,6 @@ void DrawWeaponSheenPass( CBaseVSShader *pShader, IMaterialVar** params, IShader
 			// Vertex Shader
 
 			// Pixel Shader
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 		}
 		else
 		{

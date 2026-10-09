@@ -155,12 +155,6 @@ BEGIN_VS_SHADER( LightmappedReflective_DX90, "Help for Lightmapped Reflective" )
 			// "REFLECT" "0..1"
 			// "REFRACT" "0..1"
 			
-			if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-			{
-			}
-			else
-			{
-			}
 
 			FogToFogColor();
 

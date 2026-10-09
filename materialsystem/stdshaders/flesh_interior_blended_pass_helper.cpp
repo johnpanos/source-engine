@@ -176,12 +176,6 @@ void DrawFleshInteriorBlendedPass( CBaseVSShader *pShader, IMaterialVar** params
 		// Vertex Shader
 
 		// Pixel Shader
-		if( g_pHardwareConfig->SupportsPixelShaders_2_b() )
-		{
-		}
-		else
-		{
-		}
 
 		// Textures
 		pShaderShadow->EnableTexture( SHADER_SAMPLER0, true );
