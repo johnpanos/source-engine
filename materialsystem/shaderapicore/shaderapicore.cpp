@@ -2842,6 +2842,9 @@ static void FillLifecycle( render::LegacyShaderServices *services )
 		out->backBufferWidth = out->windowWidth = corefacade::kScreenWidth;
 		out->backBufferHeight = out->windowHeight = corefacade::kScreenHeight;
 	};
+#if defined( PLATFORM_3DS ) || defined( PLATFORM_WASM )
+	// The 3DS's top screen and the browser page's canvas are fixed displays;
+	// a desktop's modes come from the launcher's display (the device facade).
 	services->presentation.fixedDisplay = []( void *, int *width, int *height, int *refreshHz )
 	{
 		*width = corefacade::kScreenWidth;
@@ -2849,6 +2852,7 @@ static void FillLifecycle( render::LegacyShaderServices *services )
 		*refreshHz = 60;
 		return true;
 	};
+#endif
 }
 
 void CShaderDeviceEmpty::GetBackBufferDimensions( int& width, int& height ) const
