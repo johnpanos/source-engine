@@ -55,6 +55,8 @@ public:
 	void	WriteCmdInfo( democmdinfo_t& info );
 	void	ReadCmdInfo( democmdinfo_t& info );
 
+	void	SkipCustomData();
+
 	void	WriteCmdHeader( unsigned char cmd, int tick );
 	void	ReadCmdHeader( unsigned char& cmd, int& tick );
 	

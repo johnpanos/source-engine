@@ -15,7 +15,13 @@
 #include "tier0/platform.h"
 
 #define DEMO_HEADER_ID		"HL2DEMO"
-#define DEMO_PROTOCOL		3
+#define DEMO_PROTOCOL		3	// the version this engine records
+
+// Portal 2 (retail) recordings, read only: command bytes after dem_stop shift (8 is
+// custom data, 9 string tables), every command header carries a player slot byte
+// after its tick, and each packet's view info holds one entry per split screen player.
+#define DEMO_PROTOCOL_PORTAL2	4
+#define DEMO_PORTAL2_SPLITSCREEN_PLAYERS	2
 
 #if !defined( MAX_OSPATH )
 #define	MAX_OSPATH		260			// max length of a filesystem pathname
@@ -41,8 +47,11 @@ enum
 
 	dem_stringtables,
 
-	// Last command
-	dem_lastcmd		= dem_stringtables
+	// Last command the engine records
+	dem_lastcmd		= dem_stringtables,
+
+	// Read only (protocol 4): application data, skipped on playback
+	dem_customdata
 };
 
 struct demoheader_t

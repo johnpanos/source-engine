@@ -1017,6 +1017,11 @@ bool CDemoPlayer::ParseAheadForInterval( int curtick, int intervalticks )
 					m_DemoFile.ReadStringTables( NULL );
 				}
 				break;
+			case dem_customdata:
+				{
+					m_DemoFile.SkipCustomData();
+				}
+				break;
 			default:
 				{
 					swallowmessages = false;
@@ -1264,6 +1269,11 @@ netpacket_t *CDemoPlayer::ReadPacket( void )
 				}
 
 				free( data );
+			}
+			break;
+		case dem_customdata:
+			{
+				m_DemoFile.SkipCustomData();
 			}
 			break;
 		case dem_usercmd:

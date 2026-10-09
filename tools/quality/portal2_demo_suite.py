@@ -34,6 +34,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import sys
 import threading
 import time
@@ -54,9 +55,13 @@ PLAYING = "Playing demo from "
 FINISHED = "Demo playback finished"
 # Substrings that fail the instance that logs them.
 FATAL = ("demo file protocol", "Failed to read demo header", "is not a valid demo file", "Host_Error",
-         "CDemo::Play: failed", "StartupDemoFile:", "Assertion failed",
+         "CDemo::Play: failed", "StartupDemoFile:", "Assertion failed", "Host_EndGame",
+         "unknown net message", "DataTable warning", "CreateDecoders failed",
          portal2_scenarios.SCRIPT_ERROR)
 RUNTIME_DEMOS = "demos"
+# A finished demo must have played at least this share of its recorded length.
+MIN_PLAYED_SHARE = 0.8
+HEADER_TIME_OFFSET = 1056   # demoheader_t::playback_time (float, seconds)
 
 
 class SuiteError(Exception):
@@ -76,6 +81,11 @@ def load_manifest(path, root):
         demo["path"] = directory / demo["file"]
         if not demo["path"].is_file():
             raise SuiteError("missing demo file %s" % demo["path"])
+        with open(demo["path"], "rb") as handle:
+            header = handle.read(HEADER_TIME_OFFSET + 4)
+        if len(header) < HEADER_TIME_OFFSET + 4 or not header.startswith(b"HL2DEMO\0"):
+            raise SuiteError("%s is not a demo file" % demo["path"])
+        demo["recorded_seconds"] = struct.unpack_from("<f", header, HEADER_TIME_OFFSET)[0]
     return data["demos"]
 
 
@@ -114,37 +124,53 @@ def partition(items, workers, chunk):
     return [job for job in jobs if job]
 
 
-def evaluate(demos, log, finished_early=None):
+def evaluate(demos, log):
     """Per-demo results for one chain from its console log: a list of
     (demo, ok, detail). Demos after the first one the log did not reach have
-    detail "not run"."""
+    detail starting "not run". A fatal line counts against the demo playing
+    when it was logged."""
     lines = log.splitlines()
-    fatal = next((line.strip() for line in lines if any(mark in line for mark in FATAL)), None)
-    events = []
-    for line in lines:
+    fatals = [(number, line.strip()) for number, line in enumerate(lines)
+              if any(mark in line for mark in FATAL)]
+    events = []   # (kind, value, line number)
+    for number, line in enumerate(lines):
         if PLAYING in line:
-            events.append(("play", line.split(PLAYING, 1)[1].strip().rstrip(".")))
+            events.append(("play", line.split(PLAYING, 1)[1].strip().rstrip("."), number))
         elif FINISHED in line:
-            events.append(("done", None))
+            seconds = line.split("(", 1)[1].split()[0] if "(" in line else ""
+            events.append(("done", float(seconds) if seconds.replace(".", "", 1).isdigit()
+                           else None, number))
     results = []
     cursor = 0
     for demo in demos:
         stem = Path(demo["file"]).stem
         if cursor >= len(events) or events[cursor][0] != "play" or \
                 Path(events[cursor][1]).stem != stem:
-            results.append((demo, False, "not run" if cursor >= len(events) else
-                            "out of order: %s" % (events[cursor][1],)))
-            if fatal and cursor >= len(events) and not any(r[1] for r in results):
-                results[-1] = (demo, False, "not run: " + fatal)
+            if cursor >= len(events):
+                before = fatals[0][1] if fatals and not any(r[1] for r in results) else None
+                results.append((demo, False, "not run" + (": " + before if before else "")))
+            else:
+                results.append((demo, False, "out of order: %s" % (events[cursor][1],)))
             continue
+        start = events[cursor][2]
         cursor += 1
-        if cursor < len(events) and events[cursor][0] == "done":
+        end = next((event[2] for event in events[cursor:] if event[0] == "play"), len(lines))
+        fatal = next((text for number, text in fatals if start <= number < end), None)
+        if fatal:
+            if cursor < len(events) and events[cursor][0] == "done":
+                cursor += 1
+            results.append((demo, False, fatal))
+        elif cursor < len(events) and events[cursor][0] == "done":
+            seconds = events[cursor][1]
             cursor += 1
-            results.append((demo, True, "played"))
+            recorded = demo.get("recorded_seconds")
+            if recorded and seconds is not None and seconds < MIN_PLAYED_SHARE * recorded:
+                results.append((demo, False,
+                                "ended after %.1fs of %.1fs recorded" % (seconds, recorded)))
+            else:
+                results.append((demo, True, "played"))
         else:
-            results.append((demo, False, "did not finish" + (": " + fatal if fatal else "")))
-    if fatal and all(ok for _, ok, _ in results):
-        results[-1] = (results[-1][0], False, fatal)
+            results.append((demo, False, "did not finish"))
     return results
 
 
@@ -273,6 +299,13 @@ def self_test():
     err = evaluate(two, "ERROR: demo file protocol 4 outdated\n")
     checks.check(not err[0][1] and "protocol" in err[0][2], "evaluate.names-protocol-error")
     checks.check(not evaluate(two, good + "Host_Error: x\n")[-1][1], "evaluate.fatal-after-success")
+    short = dict(two[0], recorded_seconds=20.0)
+    quick = evaluate([short], play(short) + "Demo playback finished ( 3.6 seconds, 81 render frames, 22.42 fps).\n")
+    checks.check(not quick[0][1] and "recorded" in quick[0][2], "evaluate.ended-early")
+    full = evaluate([short], play(short) + "Demo playback finished ( 21.0 seconds, 81 render frames, 22.42 fps).\n")
+    checks.check(full[0][1], "evaluate.full-length")
+    ended = evaluate(two, play(two[0]) + "Host_EndGame: CL_ParseClassInfo_EndClasses\n" + FINISHED + " ( 3.6 seconds)\n")
+    checks.check(not ended[0][1], "evaluate.host-endgame")
     swapped = play(two[1]) + FINISHED + "\n" + play(two[0]) + FINISHED + "\n"
     checks.check(not evaluate(two, swapped)[0][1], "evaluate.out-of-order")
     return checks.report()

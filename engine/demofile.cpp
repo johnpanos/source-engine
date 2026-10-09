@@ -132,6 +132,13 @@ void CDemoFile::ReadCmdInfo( democmdinfo_t& info )
 	m_pBuffer->Get( &info, sizeof(democmdinfo_t) );
 
 	ByteSwap_democmdinfo_t( info );
+
+	if ( m_DemoHeader.demoprotocol >= DEMO_PROTOCOL_PORTAL2 )
+	{
+		// The first player's view is the one played back; skip the others.
+		m_pBuffer->SeekGet( CUtlBuffer::SEEK_CURRENT,
+			( DEMO_PORTAL2_SPLITSCREEN_PLAYERS - 1 ) * (int)sizeof(democmdinfo_t) );
+	}
 }
 
 
@@ -183,7 +190,19 @@ void CDemoFile::ReadCmdHeader( unsigned char& cmd, int& tick )
 		return;
 	}
 
-	if ( cmd <= 0 || cmd > dem_lastcmd )
+	const bool portal2 = m_DemoHeader.demoprotocol >= DEMO_PROTOCOL_PORTAL2;
+	if ( portal2 )
+	{
+		// Protocol 4 numbers custom data 8 and string tables 9.
+		if ( cmd == 8 )
+			cmd = dem_customdata;
+		else if ( cmd == 9 )
+			cmd = dem_stringtables;
+		else if ( cmd >= dem_stringtables )
+			cmd = 0;
+	}
+
+	if ( cmd <= 0 || cmd > ( portal2 ? dem_customdata : dem_lastcmd ) )
 	{
 		ConDMsg("Unexepcted command token [%d] in .demo file\n", cmd );
 		cmd = dem_stop;
@@ -191,6 +210,21 @@ void CDemoFile::ReadCmdHeader( unsigned char& cmd, int& tick )
 	}
 
 	tick = m_pBuffer->GetInt( );
+
+	if ( portal2 )
+	{
+		m_pBuffer->GetUnsignedChar( );	// player slot
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Skip a protocol 4 dem_customdata payload (an id, then sized data)
+//-----------------------------------------------------------------------------
+void CDemoFile::SkipCustomData()
+{
+	Assert( m_pBuffer && m_pBuffer->IsValid() );
+	m_pBuffer->GetInt( );
+	ReadRawData( NULL, 0 );
 }
 
 void CDemoFile::WriteConsoleCommand( const char *cmdstring, int tick )
@@ -454,11 +488,11 @@ demoheader_t *CDemoFile::ReadDemoHeader()
 		return NULL;
 	}
 
-	if ( ( m_DemoHeader.demoprotocol > DEMO_PROTOCOL) ||
+	if ( ( m_DemoHeader.demoprotocol > DEMO_PROTOCOL_PORTAL2) ||
 		 ( m_DemoHeader.demoprotocol < 2 ) )
 	{
-		ConMsg ("ERROR: demo file protocol %i outdated, engine vnoteersion is %i \n", 
-			m_DemoHeader.demoprotocol, DEMO_PROTOCOL );
+		ConMsg ("ERROR: demo file protocol %i outdated, engine version is %i \n", 
+			m_DemoHeader.demoprotocol, DEMO_PROTOCOL_PORTAL2 );
 
 		return NULL;
 	}
