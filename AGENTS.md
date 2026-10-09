@@ -27,7 +27,7 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0013](RFC/0013-opt-in-physics-capabilities.md) | Opt-in Box3D capabilities beside the IVP-parity contract: one versioned interface per capability, profile selection, per-capability benchmark gates; parallel step first (proposed) |
 | [0014](RFC/0014-native-vulkan-and-bsp2-debug-controls.md) | Render core and BSP2 debug controls (retargeted to the core 2026-09-28): one frame-owned view catalog as a neutral specialization constant, lighting-term isolation for `render_lab`, draw pick/bisection on draw lists, shader reload/capture, graph sync/reuse checks, BSP2 lump inspection (proposed) |
 | [0015](RFC/0015-asset-identity-content-build-graph.md) | Asset identity (`AssetRef`), one content build graph and compiler contract for every asset kind, legacy-format passthrough, per-profile packages with an asset index, runtime resolver, desktop live reload (proposed; rows R81–R85, R57 carries C2) |
-| [0016](RFC/0016-render-core.md) | Clustered Forward+ render core as ports and adapters beneath the frozen material API: backend-neutral `render.device.v2` with Vulkan, OpenGL and null adapters, render graph, GPU scene and views, forward-shaded material families, froxel light lists and shadow atlas, one legacy frontend running `IMatRenderContext`/`IShaderAPI` as graph passes; layers enforced by archlint CAP011; ToGL kept for mods (proposed; rows R86–R92, R95–R96) |
+| [0016](RFC/0016-render-core.md) | Clustered Forward+ render core as ports and adapters beneath the frozen material API: backend-neutral `render.device.v2` with Vulkan, OpenGL and null adapters, render graph, GPU scene and views, forward-shaded material families, froxel light lists and shadow atlas, one legacy frontend running `IMatRenderContext`/`IShaderAPI` as graph passes; layers enforced by archlint CAP011; [anti-corruption boundary](RFC/0016-render-core.md#the-anti-corruption-boundary-user-decision-2026-10-08) (user decision 2026-10-08): core ports in core terms, translators alone read formats and the legacy model, the game draws from the scene, enforced by CAP011 rules 8–9 and CAP012/CAP013 (proposed; rows R86–R92, R95–R96) |
 | [0017](RFC/0017-lan-discovery-and-coop-pairing.md) | LAN discovery contract (`platform.lan-discovery.v1`) with mDNS providers, and Portal 2 co-op pairing without Steam through the matchmaking framework's `lan` network type and a new lobby session (proposed; row R93) |
 | [0018](RFC/0018-hammer-interaction-design.md) | Hammer interaction and UI/UX: flows with entry points, states, errors and undo; tool state machines, focus and key routing, the shortcut map reconciled with `ActionCatalog`, pointer gestures, layout, HiDPI, theming and AT-SPI names; a UI-driven case per flow; gap table and slice order UX1–UX12 (proposed; children of R08, R17, R23–R25, R60) |
 | [0019](RFC/0019-temporal-upscaling-contract.md) | Temporal upscaling contract: frame inputs, stable view history, portal resets, graph/output placement, provider capabilities and quality gates; FSR 4.1.1 is the first candidate and the intended replacement for 4x MSAA in High after qualification (user direction, 2026-10-03; proposed; initial lab provider and [game integration evidence](RFC/0019-fsr-game-wip-2026-10-03.md), no qualification gate complete or ranked row yet) |
@@ -39,9 +39,8 @@ consumer at every new boundary. The active program is defined by these RFCs:
 | [0025](RFC/0025-metal-device-adapter.md) | Metal device adapter for the render core: `render.device.metal` (Objective-C++), `kMsl` MSL 3.0 artifacts from the pinned SPIRV-Cross, bind groups as argument buffers, Metal 3 floor (proposed, user direction 2026-10-07; M0 partial, no device run) |
 | [0026](RFC/0026-box3d-beyond-ivp.md) | Box3D beyond IVP with IVP as the fallback: the IVP fallback guarantee (F1–F7), a measured "surpasses IVP" scoreboard, Box3D-only capabilities in order (B1 continuous collision, B2 capsules, B3 rolling resistance and surface velocity, B4 contact events, then joint drive, sensors, explosions, recording, runtime collision) through RFC 0013's mechanism, per-phase done checklist, six ratchets, published scenario maps (proposed, user direction 2026-10-07; scenario maps installed, no phase gate passed; row R98) |
 | [0027](RFC/0027-product-pipeline-lowering-streaming-kiln.md) | One product pipeline in C++, libraries first: standalone public libraries (codecs, IRs, readers/writers, lowerings, graph, resolver, profiles, `kiln.api`) that tools, Hammer, bakers and Python (`sepipe`) use directly, with `kiln` as a thin CLI and an exported SDK; a breaking workflow change (`./kiln play <profile>` replaces `./play*`, `run.sh`, `run.conf` and the platform and CI scripts with no wrappers; trees move to `out/<profile>/<flavor>`); shared concerns lifted to one owner each; canonical texture encoders/decoders; texture, material and model IRs lowered per target as RFC 0015 compilers; streamable package units; extension by substitution (providers selected by name, shared suites with bad providers, a fixture platform through an unchanged core) (proposed, user direction 2026-10-07; [L0 implemented](RFC/0027-progress.md) 2026-10-07: `foundation.json`, `product.profile` schema v2, the product contracts with shared suites and bad providers, `kiln.core`/`kiln.api`, `kiln.composition`, the `./kiln` bootstrap and `kiln profiles|doctor|build` on the nine buildable desktop profiles (ten declared); [L1 done](RFC/0027-progress.md#l1-desktop-cutover-done-2026-10-08) 2026-10-08: `./kiln play` and `kiln.api` replace the launchers, the staging scripts, `private_session.py` and the Linux CI wrappers, all deleted, with a root allowlist and a no-callers scan; L7 (platform scripts) next; row R102 at rank 76, R99–R101 unranked) |
-| [0028](RFC/0028-direct3d9-device-adapter.md) | Direct3D 9 adapter for `render.device.v2`: D3D9Ex/SM3 floor, `kD3d9Bytecode` artifacts via SPIRV-Cross SM30 and the pinned FXC, graphics-only capability set with named refusals, mod `ShaderDLL004` bytecode on the core through the legacy frontend, `shaderapidx9` deleted once matched; DXVK Native and Wine lanes (proposed, user direction 2026-10-07, lifting RFC 0016's exclusion; nothing implemented, no ranked row) |
+| [0028](RFC/0028-direct3d9-device-adapter.md) | Direct3D 9 adapter for `render.device.v2`: D3D9Ex/SM3 floor, `kD3d9Bytecode` artifacts via SPIRV-Cross SM30 and the pinned FXC, graphics-only capability set with named refusals (mod `ShaderDLL004` bytecode on the core withdrawn 2026-10-08 by RFC 0016's anti-corruption boundary), `shaderapidx9` deleted once matched; DXVK Native and Wine lanes (proposed, user direction 2026-10-07, lifting RFC 0016's exclusion; nothing implemented, no ranked row) |
 | [0029](RFC/0029-webassembly-and-webgpu-platform.md) | WebAssembly platform and WebGPU device adapter: Emscripten `wasm32` profile with static composition, `render.device.webgpu` over `webgpu.h` with `kWgsl` artifacts, the engine in a worker on an `OffscreenCanvas`, the job pool as preallocated Web Workers with a serial mode when not cross-origin isolated, OPFS-cached content; Node, browser and Dawn lanes (proposed, user direction 2026-10-07; [W3 done](RFC/0029-progress.md) 2026-10-08: `render.device.webgpu` passes the shared device suite (792 checks) natively on the pinned Dawn and as WebAssembly in headless Chrome on the GPU and on SwiftShader, 57 of 58 programs have WGSL artifacts, Emscripten pinned; W0–W2 and W4–W6 open; no ranked row) |
-| [0030](RFC/0030-world-pass-and-core-world-factorization.md) | Factoring `world_pass.cpp` and `core_world.cpp`, edited in place in small behavior-preserving steps: `RecordBatch`'s lambdas lifted onto one `BatchContext`, `WorldPass::State` split by owner, and pass recording (stage shadows, SSR, fog, temporal) moved out of composition into its pass modules; system-level tests, confident moves without per-piece tests, every suite green on every commit (user direction 2026-10-08; [implemented](RFC/0030-world-pass-and-core-world-factorization.md#progress-2026-10-08) 2026-10-08: `WorldPass::Batch` in ten steps, `core_world` in eleven files, no function over 400 lines; `State` sub-structs and moving pass recording out of composition not done; no ranked row) |
 
 RFC status and implementation status are separate. A proposed interface, tool,
 directory, or command is not installed infrastructure. Read the relevant RFC
@@ -247,6 +246,15 @@ platform acceptance.
     with the legacy stream in R91).
   - New render work lands on the core in its owning module and is proven
     in `render_lab` before any integration.
+  - Legacy types never leak into the core (user decision, 2026-10-08):
+    [RFC 0016's anti-corruption boundary](RFC/0016-render-core.md#the-anti-corruption-boundary-user-decision-2026-10-08).
+    The core's ports carry only core concepts; translators
+    (`render.legacy-frontend`, `render.map-media`, the planned
+    `render.vmt-translation`) convert formats and the legacy model at the
+    boundary; the game's world, props and models reach passes as
+    `render.scene` instances; composition only wires. Archlint CAP011 rules
+    8–9 and the CAP012 render ratchets enforce it. Never add a `pending`
+    entry or raise a ratchet to land a slice.
   - The old copy is deleted in the change that replaces it.
   - One owner per concept is settled before code, and each concept has one
     definition that other documents link to.
@@ -442,7 +450,18 @@ python3 tools/archlint/archlint.py check --all
 python3 tools/archlint/archlint.py baseline --verify
 python3 tools/archlint/archlint.py inventory --verify
 python3 -m unittest discover -s tools/archlint/tests -v
+python3 tools/archlint/archlint.py structure --verify   # CAP012/CAP013, also run by check --all
+python3 tools/archlint/archlint.py structure --report   # sizes and ratchet totals
 ```
+
+The structure ratchets (CAP012/CAP013, [`architecture/structure.json`](architecture/structure.json),
+user direction 2026-10-08) check what each layer contains and how large each
+area is. Identifier and platform-branch counts are exact per file and only
+fall: record a decrease with `structure --write`, never an increase. Every
+area has a code-line ceiling: `--write` lowers ceilings, and growth is a
+reviewed decision recorded with `structure --raise AREA --reason TEXT`. Never
+raise a ceiling or re-adopt a rule to get green. See the
+[direction audit](RFC/direction-audit-2026-10-08.md).
 
 Installed style commands (install the pinned formatter as described in the
 [setup instructions](tools/stylelint/README.md) first):
@@ -672,7 +691,7 @@ marks no implementation gate done.
 | 24 / R24 | Hammer tools and presenters; 0002 H4 | R23 | Normalized traces share policies across entry points; two-document and close/focus/capture tests pass; no widgets in tools/presenters | planned |
 | 25 / R25 | GTK editor workflow; 0002 H5 | R17, R22, R24 | Open/edit/undo/save/reopen/compile/run with multiple views, inspector and textures; declared fidelity and no hidden MFC runtime dependency | planned |
 | 26 / R26 | Remaining foundation providers; 0001 rank 12 | R10, R11 | Native clock/thread/memory/process/environment/paths/diagnostics suites pass for supported profiles, including failure and cleanup | done (2026-10-08, with prerequisites R10 and R11 done: contracts `platform.wall-clock.v1`, `platform.thread.v1`, `platform.virtual-memory.v1`, `platform.process-environment.v1`, `platform.diagnostics.v1` and amended `platform.paths.v1`, each with a shared suite and bad providers; POSIX and Win32 providers pass every suite plus fault, crash-handler, teardown and failure clauses on Linux x86_64 (g++, clang++, TSan, ASan/UBSan), i386 and Windows PE under Wine; `kiln` injects the process environment; Android passes on a Galaxy Tab S8 Ultra (arm64, Android 16) with its logcat records; Apple and MSVC optional and not run ([record](RFC/0001-foundation-providers-progress.md))) |
-| 27 / R103 | Tier 0 platform internals over the foundation providers; 0001 rank 12 follow-on | R26 | Tier 0's export fixture (names and frozen declarations) and a never-rebuilt mod fixture module pass; time, threads, process environment, debug output, crash reporting, memory and paths answer through R26's providers with each replaced copy deleted; the shrink-only OS-call ratchet is zero per cohort with its behavior oracle passing on Linux x86_64 and i386, Windows PE and Android arm64 ([RFC 0001](RFC/0001-capability-based-platform-architecture.md#tier-0-facade-over-the-foundation-providers-user-direction-2026-10-08)) | done (2026-10-08, [record](RFC/0001-tier0-facade-progress.md): T0–T6 with every ratchet cohort at 0; the gate passes on linux-x86_64 305/0, linux-i386 299/0, Windows PE under Wine 393/0 with the MSVC dedicated server loading `testchmb_a_00`, and Android arm64 on the Galaxy Tab S8 Ultra 312/0, each against the pre-R103 export fixture and a kept mod binary; Apple and hosted CI not run; user direction, 2026-10-08: mod compatibility kept; rank is an agent placement, movable by the user) |
+| 27 / R103 | Tier 0 platform internals over the foundation providers; 0001 rank 12 follow-on | R26 | Tier 0's export fixture (names and frozen declarations) and a never-rebuilt mod fixture module pass; time, threads, process environment, debug output, crash reporting, memory and paths answer through R26's providers with each replaced copy deleted; the shrink-only OS-call ratchet is zero per cohort with its behavior oracle passing on Linux x86_64 and i386, Windows PE and Android arm64 ([RFC 0001](RFC/0001-capability-based-platform-architecture.md#tier-0-facade-over-the-foundation-providers-user-direction-2026-10-08)) | partial (reopened 2026-10-08 by the [direction audit](RFC/direction-audit-2026-10-08.md): the OS-call cohorts are 0, but Tier 0 keeps 438 platform conditionals in 54 files, now ratcheted by CAP012 `tier0-platform-branches`, and the gate needs them in providers except where a frozen ABI declaration needs a native type; PS3/Xbox 360 code removed; before: done (2026-10-08, [record](RFC/0001-tier0-facade-progress.md): T0–T6 with every ratchet cohort at 0; the gate passes on linux-x86_64 305/0, linux-i386 299/0, Windows PE under Wine 393/0 with the MSVC dedicated server loading `testchmb_a_00`, and Android arm64 on the Galaxy Tab S8 Ultra 312/0, each against the pre-R103 export fixture and a kept mod binary; Apple and hosted CI not run; user direction, 2026-10-08: mod compatibility kept; rank is an agent placement, movable by the user)) |
 | 28 / R27 | Vulkan compatibility waypoint; 0001 rank 13 | R10, R16, R18 | Deployment, shader artifacts, profile selection and SDL3 presentation proven by a measured compatibility experiment; limitations recorded | partial ([Portal slice](RFC/0001-portal-vulkan-progress.md)) |
 | 29 / R28 | Native Vulkan bootstrap; 0001 rank 14 | R10, R16, R18 | Native adapter/device/queues and SDL3 bridge present smoke frame; required-profile failure and validation diagnostics work | partial ([native Vulkan slice](RFC/0001-native-vulkan-progress.md)) |
 | 30 / R29 | Four-platform architecture proof; 0001 rank 15 expanded to Linux/macOS/iOS/Android | R12, R18, R26, R28 | Each target passes foundation and SDL3/Vulkan native lifecycle smoke; Apple portability, iOS static composition and mobile packaging demonstrated; headless roles tested where declared | partial (children R29-IOS-STATIC, R29-ANDROID-BUILD and R29-MACOS-APP: iOS static build and iPhone runs, Android APK on the Fold7, an unsigned macOS app built on Linux; no lifecycle gate, no macOS run) |
@@ -764,6 +783,22 @@ confirm every required child and exit criterion. Reopen affected gates when a
 contract/provider/comparator/consumer changes; do not preserve stale completion.
 Keep the table concise and link details below or from the domain progress file.
 
+- Direction audit (2026-10-08, user request; [record](RFC/direction-audit-2026-10-08.md)):
+  gates had measured proxies (OS calls by name, include direction, per-term
+  game/lab pixels). The game renders through `render.pass.world`, not
+  `render.scene`; the record assigns each of its inputs an owner. Installed:
+  archlint CAP011 rules 8–9 (RFC 0016's anti-corruption boundary: only
+  translators read formats or are depended on; the core declares only its
+  own types; 8 recorded `pending` violations), CAP012 identifier/branch
+  ratchets (`render-composition-thin`, `render-pass-content-import`,
+  `render-scene-bypass`, `tier0-platform-branches`, `console-platform-code`,
+  `platform-branches-outside-providers`) and CAP013 line ceilings for all 495
+  areas. RFCs amended: 0016 (boundary section, K5 checks, VMT translation
+  leaves `render.material`), 0028 (mod bytecode withdrawn), 0027 (VMT
+  mapping owner), 0001 (Tier 0 platform branches); RFC 0030 deleted, its
+  record moved to RFC 0016's progress file. R103 reopened. Open: the
+  runtime draw-origin census, and the user's decisions on scope, the ceiling
+  policy and the render row order.
 - RFC 0027 L0 (2026-10-07, user goal "complete L0 ... on the desktop
   profiles. Nothing gets deleted until L1's equivalence check passes"):
   `./kiln profiles list|resolve|explain`, `./kiln doctor` and

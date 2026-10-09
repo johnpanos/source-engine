@@ -1,6 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: render.composition's world: the includes its files share (RFC 0030).
+// Purpose: render.composition's world: the includes its files share (the
+//			RFC 0030 split, recorded in RFC/0016-progress.md).
 //			Included only by core_world*.cpp.
 //
 //=============================================================================//

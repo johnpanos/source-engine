@@ -2926,6 +2926,83 @@
             "render.composition",
             "render.core-tests"
           ]
+        },
+        "translation": {
+          "reason": "RFC 0016 ports and adapters (user decision 2026-10-08): the core's ports are in the core's own terms; legacy types, formats and conventions never enter it. Translators are the anti-corruption layer: they read formats and the legacy engine's model and hand the core its own types. Only translators, the composition root and fixtures depend on a translator, and only translators and fixtures on a format library (CAP011 rules 8 and 9).",
+          "translators": [
+            "render.legacy-frontend",
+            "render.legacy-provider-contract",
+            "render.legacy-pass-contract",
+            "render.map-media"
+          ],
+          "formatBases": [
+            "content.keyvalues-text",
+            "content.vtf-reader",
+            "content.vtf-container",
+            "content.vtf-decompress",
+            "content.vtf-decompress-zlib",
+            "content.texture-contract",
+            "content.ktx2-reader",
+            "content.studio-model",
+            "content.studio-model-fixtures",
+            "world.map-container"
+          ],
+          "fixtures": [
+            "render.core-tests",
+            "render.lab",
+            "render.lab.app",
+            "render.lab.pica-portals"
+          ],
+          "pending": [
+            {
+              "module": "render.composition",
+              "edge": "content.studio-model",
+              "owner": "R96",
+              "reason": "the composition parses studio models for the world pass's static and posed meshes; the parse moves to a translator that publishes scene instances"
+            },
+            {
+              "module": "render.composition",
+              "edge": "content.vtf-decompress",
+              "owner": "R96",
+              "reason": "the composition decodes VTF payloads; texture reading moves to render.map-media"
+            },
+            {
+              "module": "render.composition",
+              "edge": "content.vtf-decompress-zlib",
+              "owner": "R96",
+              "reason": "as content.vtf-decompress"
+            },
+            {
+              "module": "render.composition",
+              "edge": "world.map-container",
+              "owner": "R96",
+              "reason": "the composition reads BSP2 lumps (LMAP, PRBV, RPRB, WMSH) for the world stage; they move to render.map-media, which publishes the lighting environment and scene instances"
+            },
+            {
+              "module": "render.material",
+              "edge": "content.keyvalues-text",
+              "owner": "R96",
+              "reason": "the VMT importer (render/material/vmt_import) lives in the core; it moves to the legacy frontend, and render.material takes parameter blocks"
+            },
+            {
+              "module": "render.composition",
+              "type": "ITexture",
+              "owner": "R91",
+              "reason": "render_core_world.h, render_core_luminance.h and render_core_panels.h take material-system textures; the frontend resolves them to core texture ids"
+            },
+            {
+              "module": "render.composition",
+              "type": "IMaterial",
+              "owner": "R91",
+              "reason": "render_core_world.h's NeutralMaterial returns a material-system material; the frontend owns that lookup"
+            },
+            {
+              "module": "render.device.pica",
+              "type": "ICorePassRecorder",
+              "owner": "R91",
+              "reason": "the PICA adapter's host binding names the legacy pass recorder; adapters do not know each other, and the composition root wires them"
+            }
+          ]
         }
       },
       {

@@ -32,7 +32,10 @@
   A4 (R66) owns the normal-variance roughness and alpha-coverage mip math.
   Texture lowering hosts it and adds no math of its own
 - Materials and residency: [RFC 0016](0016-render-core.md) owns the surface
-  model (`render.material`'s VMT import, mapping and families), the reduced
+  model (`render.material`'s families and parameter blocks; the VMT mapping
+  is the translator `render.vmt-translation` under RFC 0016's
+  [anti-corruption boundary](0016-render-core.md#the-anti-corruption-boundary-user-decision-2026-10-08),
+  amended 2026-10-08), the reduced
   models a device declares, `TextureCache`, `MeshCache`, mip feedback, LOD
   selection and every residency policy. This RFC supplies the data layouts
   and asynchronous reads those owners consume
@@ -392,7 +395,7 @@ violation per new rule.
 | Mesh IR | `content.mesh` | The render-geometry IR, LOD generation, attribute quantization, bone partitioning and cache optimization (pinned meshoptimizer, private) | foundation, `jobs.graph` |
 | VMT reading | `content.vmt` | The one VMT reader: patches with `include`/`insert`/`replace`, `[$SYMBOL]` tags, `cond?$key`, fallback blocks, evaluated for a `VmtProfile`. Extracted from `render/material/vmt_import` | `content.keyvalues-text` |
 | Format readers and writers | existing `content.vtf-*`, `content.ktx2-reader`, `content.studio-model`; new `content.ktx2-writer` and the upload-image writer ([decision 5](#5-device-native-layouts-go-in-upload-images-standard-formats-in-ktx2)) | One container each | texture contract, block container |
-| Importers and lowerings | `content.compile.<kind>.import`, `content.compile.<kind>.lower` | RFC 0015 compilers | the IR modules, readers and writers; `render.material` for material lowering only |
+| Importers and lowerings | `content.compile.<kind>.import`, `content.compile.<kind>.lower` | RFC 0015 compilers | the IR modules, readers and writers; `render.vmt-translation` and `render.material`'s parameter blocks for material lowering only |
 | Graph, index, resolver | RFC 0015 modules | Unchanged owners. Additions: the shared IR store region, streaming units in index entries, asynchronous ranged reads ([amendments](#amendments-to-other-rfcs)) | — |
 | Packagers | `product.package.<form>`: `linux-dir`, `android-apk`, `apple-app`, `n3ds-cxi`, `windows-dir` | Platform package assembly through the platform's own tools | `product.profile`, `content.asset-index`, `platform.tool-process` |
 | Transports | `product.deploy.<transport>`: `local`, `ssh`, `adb`, `apple-relay`, `azahar`, `n3ds-net`, `wine` | Install, content sync, launch, log and crash collection for one kind of device link | `product.profile`, `platform.tool-process` |
@@ -803,8 +806,9 @@ New or formalized sections:
   ```
 
   Numbers are set per profile, before measuring, by the profile's owner.
-  `vmt_profile` is `render.material`'s `VmtProfile`, so VMT fallback blocks
-  are evaluated for the target at build time.
+  `vmt_profile` is `content.vmt`'s `VmtProfile` (moved out of
+  `render.material` with the reader, amended 2026-10-08), so VMT fallback
+  blocks are evaluated for the target at build time.
 - `package`: the form (`linux-dir`, `android-apk`, `apple-app`,
   `n3ds-cxi`, `windows-dir`). The existing platform blocks (`android`,
   `ios`, `tvos`, `macos`) keep their names and are the form's facts.
@@ -983,7 +987,9 @@ Shared rules:
 ### Material IR
 
 - **The IR is the surface model's own import result.** That is
-  `render.material`'s VMT import result: family, parameter block values,
+  `render.vmt-translation`'s result (the translator outside the core that
+  owns the VMT mapping since 2026-10-08; `render.material` takes the
+  parameter blocks): family, parameter block values,
   texture slots (`AssetRef` plus class), the proxies block as written,
   unmapped keys and editor keys. It gets a serialized form, and there is no
   second mapping authority.

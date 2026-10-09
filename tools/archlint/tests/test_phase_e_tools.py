@@ -291,6 +291,14 @@ class PhaseEToolMigrationTests(unittest.TestCase):
         (self.root / "architecture/baseline.json").write_text(
             json.dumps({"entries": []}), encoding="utf-8"
         )
+        # check --all also runs the structure ratchets (CAP012/CAP013), which
+        # need their record: no rules, and the fixture's areas at their size.
+        structure = archlint.structure
+        document = {"schema": structure.SCHEMA, "rules": [], "lines": {"ceilings": {}}}
+        structure.write(self.root, document)
+        _, lines = structure.measure(self.root, document, None, None)
+        document["lines"]["ceilings"] = {area: {"ceiling": n} for area, n in lines.items()}
+        structure.write(self.root, document)
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(0, archlint.main(["check", "--all"], self.root))
         self.write("tools/unregistered.cpp", "ILaunchableDLL *Unregistered();\n")

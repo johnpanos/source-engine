@@ -2,6 +2,7 @@
 including the RFC 0016 layer contracts (CAP011, layer_contract_errors)."""
 import os
 import re
+import subprocess
 from pathlib import Path
 
 SOURCE = {'.h', '.cpp', '.cc', '.hpp', '.inl'}
@@ -151,8 +152,10 @@ def check(root, block, strip):
 
 LAYER_CONTRACT_KEYS = {'id', 'rfc', 'description', 'prefix', 'layers', 'externalBases', 'independent',
                        'adapters', 'adapterConsumers', 'outside', 'backendIdentity', 'planned',
-                       'edgeCeilings', 'forbiddenLiterals'}
+                       'edgeCeilings', 'forbiddenLiterals', 'translation'}
 FORBIDDEN_LITERAL_KEYS = {'modules', 'literals', 'reason'}
+TRANSLATION_KEYS = {'translators', 'formatBases', 'fixtures', 'reason', 'pending'}
+PENDING_KEYS = {'module', 'edge', 'type', 'owner', 'reason'}
 LAYER_CONTRACT_REQUIRED = ('id', 'prefix', 'layers')
 OUTSIDE_KEYS = {'modules', 'owner', 'reason'}
 BACKEND_IDENTITY_KEYS = {'identifier', 'allowedModules'}
@@ -233,6 +236,29 @@ def layer_contract_shape_errors(contract):
         else:
             errors += [f'{label}: forbiddenLiterals unknown key {key}'
                        for key in sorted(set(literals) - FORBIDDEN_LITERAL_KEYS)]
+    translation = contract.get('translation')
+    if translation is not None:
+        if not isinstance(translation, dict) or not is_string_list(translation.get('translators')) \
+                or not is_string_list(translation.get('formatBases', [])) \
+                or not is_string_list(translation.get('fixtures', [])) or not translation.get('reason') \
+                or not isinstance(translation.get('pending', []), list):
+            errors.append(f'{label}: translation needs translators, formatBases, fixtures, a reason and '
+                          f'a pending list')
+        else:
+            errors += [f'{label}: translation unknown key {key}'
+                       for key in sorted(set(translation) - TRANSLATION_KEYS)]
+            for index, entry in enumerate(translation.get('pending', [])):
+                where = f'{label} translation pending {index + 1}'
+                if not isinstance(entry, dict):
+                    errors.append(f'{where}: must be an object')
+                    continue
+                errors += [f'{where}: unknown key {key}' for key in sorted(set(entry) - PENDING_KEYS)]
+                if ('edge' in entry) == ('type' in entry):
+                    errors.append(f'{where}: names exactly one edge or one type')
+                if not ROADMAP_ROW.match(str(entry.get('owner', ''))):
+                    errors.append(f'{where}: owner must be a roadmap row')
+                if not entry.get('reason') or not entry.get('module'):
+                    errors.append(f'{where}: needs a module and a reason')
     return errors
 
 
@@ -485,6 +511,130 @@ def forbidden_literal_errors(root, block, contract):
     return errors
 
 
+# A forward declaration at any scope, and the definitions it may refer to
+# (qualified definitions such as `struct Graph::Impl {` included).
+FORWARD_DECLARATION = re.compile(r'(?<![\w:<,])\b(?:class|struct)\s+([A-Za-z_]\w*)\s*;')
+TYPE_DEFINITION = re.compile(
+    r'\b(?:class|struct|union|abstract_class|enum(?:\s+class|\s+struct)?)\s+(?:alignas\s*\([^)]*\)\s*)?'
+    r'(?:[A-Za-z_]\w*::)*([A-Za-z_]\w*)\s*(?:final\s*)?(?::(?!:)|\{)'
+    r'|\busing\s+([A-Za-z_]\w*)\s*='
+    r'|\btypedef\b[^;{}]*?\b([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*;')
+
+
+def defined_in_tree(root, names):
+    """The names a class, struct, union or enum definition anywhere in the
+    tree defines (a declaration not followed by `;` on its line). Outside a
+    git checkout every name counts as defined, so nothing is excused."""
+    if not names:
+        return set()
+    if not (root / '.git').exists():
+        return set(names)
+    pattern = (r'\b(class|struct|union|enum|abstract_class)\s+(' + '|'.join(sorted(map(re.escape, names))) +
+               r')\b\s*(final\s*)?([:{]|$)')
+    found = subprocess.run(['git', '-C', str(root), 'grep', '-hoE', pattern, '--', '*.h', '*.hpp', '*.cpp', '*.inl'],
+                           capture_output=True, text=True).stdout
+    return {match.split()[1] for match in found.splitlines() if len(match.split()) > 1}
+
+
+def translation_roles(contract):
+    translation = contract.get('translation') or {}
+    return (translation.get('translators', []), translation.get('formatBases', []),
+            translation.get('fixtures', []), translation.get('pending', []))
+
+
+def module_sources(root, block, mid, modules):
+    for prefix in modules[mid]['paths']:
+        base = root / prefix
+        for path in sorted(base.rglob('*') if base.is_dir() else [base]):
+            if path.is_file() and path.suffix in SOURCE:
+                relative = path.relative_to(root).as_posix()
+                if owner(relative, block) == mid:
+                    yield relative, path
+
+
+def translation_errors(root, block, contract, layer_of, port_of, outside, strip):
+    """Rules 8 and 9: ports and adapters with one anti-corruption layer.
+
+    The core (layered modules and device adapters that are not translators or
+    fixtures) owns its ports in its own terms. Only `translators` turn a
+    format or a legacy system's model into the core's, so:
+
+    8. a module that is not a translator or a fixture has no edge to a
+       `formatBases` module, and a module that is not a translator, an
+       adapter consumer (the composition root) or a fixture has no edge to a
+       translator: adapters depend on the core, never the reverse;
+    9. a core module forward-declares no type that the core does not define,
+       which is the one way a foreign type reaches a core declaration past
+       the include and edge rules.
+
+    Existing violations are listed in `pending`, each with its row and
+    reason; a pending entry that no longer matches a violation is stale and
+    fails, so the list only shrinks.
+    """
+    if 'translation' not in contract:
+        return []
+    translators, formats, fixtures, pending = translation_roles(contract)
+    modules = {m['id']: m for m in block['modules']}
+    consumers = contract.get('adapterConsumers', [])
+    members = sorted(mid for mid in set(layer_of) | set(port_of)
+                     if mid in modules and mid not in outside and mid.startswith(contract['prefix']))
+    edges_pending = {(e['module'], e['edge']) for e in pending if isinstance(e, dict) and 'edge' in e}
+    types_pending = {(e['module'], e['type']) for e in pending if isinstance(e, dict) and 'type' in e}
+    found_edges, found_types, errors = set(), set(), []
+    for mid in members:
+        if matching(translators, mid) or matching(fixtures, mid):
+            continue
+        for dep in sorted(modules[mid]['allowedEdges']):
+            if matching(formats, dep):
+                found_edges.add((mid, dep))
+                if (mid, dep) not in edges_pending:
+                    errors.append(f'CAP011 rule 8 {mid}: edge to format library {dep}; only a translator '
+                                  f'({", ".join(translators)}) reads formats and hands the core its own types')
+            elif matching(translators, dep) and not matching(consumers, mid):
+                found_edges.add((mid, dep))
+                if (mid, dep) not in edges_pending:
+                    errors.append(f'CAP011 rule 8 {mid}: edge to translator {dep}; adapters depend on the '
+                                  f'core, never the reverse')
+    root = Path(root).resolve()
+    core = [mid for mid in members if not matching(translators, mid) and not matching(fixtures, mid)]
+    defined, translated, texts = set(), set(), {}
+    base_members = [mid for mid in layer_of if mid in modules and mid not in outside]
+    for mid in sorted(set(core) | set(base_members)):
+        for relative, path in module_sources(root, block, mid, modules):
+            text = strip(path.read_text(encoding='utf-8', errors='replace'))
+            texts[relative] = (mid, text)
+            names = {name for groups in TYPE_DEFINITION.findall(text) for name in groups if name}
+            (translated if matching(translators, mid) else defined).update(names)
+    candidates = {}
+    for relative, (mid, text) in sorted(texts.items()):
+        if mid not in core:
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            for name in FORWARD_DECLARATION.findall(line):
+                # The composition root wires the translators and may name their types.
+                if name in defined or (name in translated and matching(consumers, mid)):
+                    continue
+                candidates.setdefault(name, []).append((relative, number, mid))
+    defined_elsewhere = defined_in_tree(root, candidates)
+    for name, sites in sorted(candidates.items()):
+        if name not in defined_elsewhere:
+            continue  # an opaque tag type (declared, defined nowhere): names nothing foreign
+        for relative, number, mid in sites:
+            found_types.add((mid, name))
+            if (mid, name) not in types_pending:
+                errors.append(f'CAP011 rule 9 {relative}:{number} ({mid}): declares {name}, which the core '
+                              f'does not define; the core names only its own types, and a translator '
+                              f'converts at the boundary')
+    for entry in sorted(edges_pending - found_edges):
+        errors.append(f'CAP011 rule 8 pending {entry[0]} -> {entry[1]}: no longer a violation; remove it')
+    scanned = {mid for mid, _ in texts.values()}
+    # A type is judged stale only where its module's sources were read (a
+    # fixture tree may hold none of them).
+    for entry in sorted(e for e in types_pending - found_types if e[0] in scanned):
+        errors.append(f'CAP011 rule 9 pending {entry[0]} {entry[1]}: no longer declared; remove it')
+    return errors
+
+
 def layer_contract_errors(root, block, strip):
     """CAP011: the declared layer contracts (RFC 0016) over the module rows.
 
@@ -498,7 +648,9 @@ def layer_contract_errors(root, block, strip):
     5. no layered module or adapter outside `backendIdentity.allowedModules`
        compares the backend identifier in its sources;
     6. a module in `edgeCeilings` declares no edge beyond its ceiling;
-    7. the `forbiddenLiterals` modules name none of the literals in a string.
+    7. the `forbiddenLiterals` modules name none of the literals in a string;
+    8-9. `translation`: only translators read formats or are depended on, and
+       the core forward-declares only its own types (translation_errors).
     """
     contracts = block.get('layerContracts')
     if not isinstance(contracts, list):
@@ -516,6 +668,7 @@ def layer_contract_errors(root, block, strip):
         errors += backend_identity_errors(root, block, contract, set(layer_of) | set(port_of), strip)
         errors += ceiling_errors(contract, modules)
         errors += forbidden_literal_errors(root, block, contract)
+        errors += translation_errors(root, block, contract, layer_of, port_of, outside, strip)
     return sorted(set(errors))
 
 

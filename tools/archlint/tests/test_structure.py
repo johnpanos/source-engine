@@ -158,7 +158,7 @@ class RepositoryStructureTest(unittest.TestCase):
         document = structure.read_structure(root)
         self.assertEqual(structure.shape_errors(document), [])
         ids = {rule['id'] for rule in document['rules']}
-        for required in ('render-core-legacy-types', 'render-composition-thin', 'render-scene-bypass',
+        for required in ('render-composition-thin', 'render-scene-bypass',
                          'render-pass-content-import', 'tier0-platform-branches'):
             self.assertIn(required, ids)
 

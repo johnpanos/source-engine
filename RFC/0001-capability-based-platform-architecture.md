@@ -443,7 +443,9 @@ ABIs do not acquire that requirement implicitly.
 
 ## Tier 0 facade over the foundation providers (user direction, 2026-10-08)
 
-Roadmap row R103 (done 2026-10-08; [record](0001-tier0-facade-progress.md)).
+Roadmap row R103 (reopened 2026-10-08 as partial by the
+[direction audit](direction-audit-2026-10-08.md); call cohorts recorded in
+the [record](0001-tier0-facade-progress.md)).
 Tier 0's exported functions are the mod-facing ABI: Source
 SDK game modules, server plug-ins and shader modules link `libtier0` and call
 its C exports directly. Replacing Tier 0 outright would break them, so
@@ -474,6 +476,15 @@ Binding rules:
 5. **Mod proof.** A mod-style fixture module, built against the frozen headers
    and never rebuilt, loads into the new Tier 0 and calls every cohort's
    exports.
+6. **Platform selection lives in the providers** (amended 2026-10-08, user
+   direction after the [direction audit](direction-audit-2026-10-08.md)).
+   Answering an export through a provider is not enough when the export still
+   branches on `_WIN32`/`POSIX` around the call, or converts a provider handle
+   back into `HANDLE` or `pthread_t` in each branch. The provider owns the
+   platform choice; a Tier 0 export calls it once, with no platform branch.
+   A branch stays only where a frozen ABI declaration itself names a native
+   type, and the export fixture is what proves that need. Dead platforms
+   (PS3, Xbox 360) are deleted, not branched around.
 
 Cohorts, in order:
 
@@ -489,9 +500,15 @@ Cohorts, in order:
 
 The ratchet counts native OS calls in Tier 0's sources per cohort (for
 example `clock_gettime`, `gettimeofday`, `QueryPerformanceCounter`, `usleep`,
-`/proc/self/*`, `sigaction`) and is shrink-only. A cohort closes when its count
-is zero and its oracle and the mod fixture pass on every required profile:
-Linux x86_64 and i386, Windows PE under Wine, and Android arm64.
+`/proc/self/*`, `sigaction`) and is shrink-only. A second ratchet (amended
+2026-10-08), archlint CAP012 `tier0-platform-branches`, counts Tier 0's
+preprocessor platform conditionals per file and is shrink-only too: counting
+calls alone let every branch survive with the call moved behind a helper. A
+cohort closes when its call count is zero, its files carry no platform branch
+beyond those the export fixture shows a frozen declaration needs, and its
+oracle and the mod fixture pass on every required profile: Linux x86_64 and
+i386, Windows PE under Wine, and Android arm64. R103 is done when the branch
+ratchet is at that floor.
 
 Out of scope: Tier 1 containers, strings, `KeyValues` and `ConVar` are not
 platform code and keep their layouts. Removing Tier 0 itself is R46's

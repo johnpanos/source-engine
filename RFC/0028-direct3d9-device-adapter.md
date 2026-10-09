@@ -5,12 +5,13 @@
 - User direction (2026-10-07): "let's unrule it out, we should have DX9 the
   same way we have the 3DS + metal ports" (the PICA adapter of RFC 0026 in
   the source-engine-3ds worktree, and RFC 0025). This lifts RFC 0016's
-  exclusion of a native D3D9 adapter and of running mod shader DLL bytecode
-  on the core.
+  exclusion of a native D3D9 adapter. Its lifting of the exclusion of mod
+  shader DLL bytecode on the core is withdrawn (user decision 2026-10-08,
+  decision 9).
 - Render architecture: [RFC 0016](0016-render-core.md) owns
   `render.device.v2`, its conventions, capability negotiation, shader
-  artifacts and the binding rules. This RFC adds an adapter, one artifact
-  format, and one legacy-frontend path for mod bytecode. It changes no port
+  artifacts and the binding rules. This RFC adds an adapter and one artifact
+  format (the legacy-frontend path for mod bytecode is withdrawn, decision 9). It changes no port
   clause.
 - Verification: [RFC 0005](0005-quality-and-correctness-harnesses.md)
   Q-PRESENTATION. The shared `render.device.v2` suite and its bad adapters
@@ -34,8 +35,9 @@ this adapter lands. Two things follow:
   have no D3D9 path at all.
 
 A D3D9 adapter makes D3D9 one more provider under the same port: the core
-draws through it, mod bytecode runs on it, and the legacy backend becomes a
-candidate for deletion once the adapter and the frontend carry its users.
+draws through it, and the legacy backend becomes a candidate for deletion
+once the adapter and the frontend carry its users. (This paragraph also said
+mod bytecode runs on it; withdrawn 2026-10-08, decision 9.)
 
 ## Decisions (agent decisions under the user's standing instruction)
 
@@ -79,12 +81,16 @@ candidate for deletion once the adapter and the frontend carry its users.
 8. **Conventions.** Clip depth 0..1 matches the port; the half-pixel offset
    and clip-space Y are applied in the generated vertex epilogue, so passes
    see the port's conventions unchanged.
-9. **Mod bytecode.** The legacy frontend gains one path, active only when
-   the selected adapter claims `kD3d9Bytecode`: a `ShaderDLL004` shader's
-   own vertex/pixel bytecode is passed through as a pipeline artifact, with
-   its D3D9 constant and sampler registers bound directly. On every other
-   adapter the missing-shader rule stays. No bytecode translation to other
-   APIs is in scope.
+9. **Mod bytecode: withdrawn** (user decision 2026-10-08, RFC 0016's
+   [anti-corruption boundary](0016-render-core.md#the-anti-corruption-boundary-user-decision-2026-10-08)).
+   This decision passed a `ShaderDLL004` shader's own bytecode through the
+   legacy frontend as a pipeline artifact, with its D3D9 constant and
+   sampler registers bound directly. That puts a legacy format and the D3D9
+   register model inside a core port. Mod bytecode does not enter the core
+   on any adapter, this one included; the missing-shader rule holds, and a
+   mod material reaches the core only through a translator that expresses
+   it as a core material. `kD3d9Bytecode` artifacts are compiled from the
+   core's own programs only (decision 4).
 10. **Legacy backend retirement.** User decision (2026-10-07): "we need to
     get rid of the legacy backends fully". `shaderapidx9`, `shaderapivulkan`,
     `shaderapiempty`, `materialsystem/stdshaders/`, ToGL and ToGLES are all
@@ -111,5 +117,5 @@ candidate for deletion once the adapter and the frontend carry its users.
 | D9-2 | `render.graph.v1` on the adapter; capability negotiation selects declared fallbacks or fails composition by name for every core pass | open |
 | D9-3 | SDL3–D3D9Ex presentation bridge passes the shared presentation suite (resize, loss, zero size) | open |
 | D9-4 | The core pixel families within recorded cross-backend tolerance of Vulkan for every family the adapter claims | open |
-| D9-5 | Legacy frontend on the adapter: material pixel families and the 268-case legacy shader set match the recorded D3D9 references (`quality/fixtures/material-pixels/*-dx9-*`, rendered by `shaderapidx9` before its deletion at `c3c4c5134`); a mod `ShaderDLL004` fixture draws through the bytecode path with a seeded register-binding defect caught | open |
+| D9-5 | Legacy frontend on the adapter: material pixel families and the 268-case legacy shader set match the recorded D3D9 references (`quality/fixtures/material-pixels/*-dx9-*`, rendered by `shaderapidx9` before its deletion at `c3c4c5134`); a mod `ShaderDLL004` material follows the missing-shader rule (the bytecode path is withdrawn, decision 9) | open |
 | D9-6 | Resolution-sweep frame times against native Vulkan on the same host | open |

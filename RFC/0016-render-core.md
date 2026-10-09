@@ -901,6 +901,71 @@ adapters that must each fail a named clause, as `platform.task-runner.v1`
 does (`public/platform/contracts/task_runner.h`,
 `unittests/platformtest/task_runner/`).
 
+### The anti-corruption boundary (user decision, 2026-10-08)
+
+User decision (2026-10-08): "Legacy types shouldn't leak into the core",
+followed by "enforce all of this". The core is the inside of a ports-and-adapters
+(hexagonal) architecture. Its ports are written in its own terms, and
+dependencies point inward. A **translator** is the anti-corruption layer
+between the core and an outside model: it reads a format or the legacy
+engine's model and hands the core the core's own types. This section binds
+every render slice and supersedes any earlier text in this RFC that places
+legacy translation inside the core.
+
+**What crosses a core port.** Only core concepts: scene change sets
+(instances, meshes, skins, transforms), materials as `render.material`
+parameter blocks and ids, views (`SceneView`), frame terms and features
+(`render.frame`), the lighting environment (baked pages, probe volume,
+reflection probes as core resources), device resources by id. Never:
+material-system types (`IMaterial`, `ITexture`, `IMesh`, ...), their integer
+handles, VMT `$key` strings or shader names used for dispatch, D3D9
+conventions (row-vector matrices, constant and sampler register numbers,
+the half-pixel offset), or the BSP, studio, VTF and WMSH layouts as the
+port's data. A translator converts each of them at the boundary.
+
+**The translators.**
+
+| Translator | Outside model | Hands the core |
+| --- | --- | --- |
+| `render.legacy-frontend` | the frozen material-system API, proxies, legacy texture and lightmap handles, immediate meshes, legacy stages | scene change sets, parameter blocks, texture ids, views |
+| `render.legacy-provider-contract`, `render.legacy-pass-contract` | the legacy backend's provider and pass ports | nothing to the core; adapter-side contracts |
+| `render.map-media` | BSP2 lumps, VTF, studio models | core resources, scene instances, the lighting environment |
+| `render.vmt-translation` (planned) | VMT definitions | `render.material` parameter blocks; shared by the frontend's runtime import and RFC 0015's `material.vmt` compiler |
+
+The core depends on no translator. Only translators and test fixtures
+depend on a format library, and only translators, the composition root and
+fixtures depend on a translator.
+
+**The game draws from the scene.** World geometry, static props, posed
+models and transient (immediate) draws reach passes as `render.scene`
+instances seen through `SceneView`s and culled by `render.culling`. A pass
+receives a draw list and the graph resources it declares; it does not own
+geometry, residency, legacy materials or other passes' resources. The
+[direction audit](direction-audit-2026-10-08.md#ownership-inventory-of-renderpassworlds-inputs)
+assigns every input of today's `render.pass.world` to its owner; that
+inventory is the migration plan. The composition root selects and wires
+providers; it records no passes and creates no resources.
+
+**Enforcement.**
+
+| Rule | Check | Record |
+| --- | --- | --- |
+| Translators alone read formats; nothing in the core depends on a translator | archlint CAP011 rule 8 | `layerContracts.render.translation` in `architecture/modules.json`; existing violations listed in `pending` with row and reason, shrink-only, stale entries fail |
+| The core declares only types the core defines | archlint CAP011 rule 9 (forward declarations of foreign types; opaque tag types defined nowhere are allowed) | same `pending` list |
+| The scene bypass, composition recording and VMT import in passes shrink to zero | archlint CAP012 `render-scene-bypass`, `render-composition-thin`, `render-pass-content-import` | `architecture/structure.json` |
+| Areas do not grow without a recorded decision | archlint CAP013 line ceilings | `architecture/structure.json` |
+| The game's draws come from the scene | proposed: a draw-origin count (scene instance or other) in the frame statistics and a Portal 2 boot suite whose non-scene count may only fall | installed with the first slice that moves geometry into the scene |
+
+**Superseded by this decision.** [The surface model](#vmt-definitions-native-interpretation-and-compatibility-points)
+said `render.material` owns the VMT translation; it moves to
+`render.vmt-translation`, and `render.material` takes parameter blocks.
+[Mod shader DLLs](#mod-shader-dlls): mod bytecode does not enter the core
+(RFC 0028 decision 9 is withdrawn). K5's world pass "at a core-pass slot of
+the legacy stream", carrying the world's geometry and legacy materials, is
+a transition state, not the design; K5 gains the checks below. RFC 0030's
+plan to refine `WorldPass` in place is withdrawn and the RFC deleted; its
+completed work is recorded in [the progress record](0016-progress.md#rfc-0030-world-pass-factoring-record-2026-10-08).
+
 ## Directory layout and modules
 
 New code follows the house layout (`public/<lib>/` for public headers,
@@ -1486,8 +1551,13 @@ shader DLL still loads through the existing extension host; its shaders
 register as `unsupported-on-profile` and their materials follow the
 missing-shader rule. Until 2026-10-07 the legacy D3D9 profiles (native D3D9
 on Windows, DXVK on Linux, ToGL/ToGLES on the SDL2 profiles) ran them; all
-were deleted that day (user decision), and mod bytecode moves to the D3D9
-device adapter ([RFC 0028](0028-direct3d9-device-adapter.md) decision 9).
+were deleted that day (user decision). Mod bytecode does not enter the core
+on any adapter (user decision 2026-10-08,
+[anti-corruption boundary](#the-anti-corruption-boundary-user-decision-2026-10-08)):
+D3D9 register binding is a legacy convention, so RFC 0028's decision 9 is
+withdrawn and the missing-shader rule holds on every core profile. A mod
+material reaches the core only through a translator that expresses it as a
+core material.
 
 ### Legacy device facade (user decision, 2026-10-07)
 
@@ -1610,8 +1680,12 @@ The world/static-prop migration and its game evidence are recorded in
 #### VMT definitions, native interpretation and compatibility points
 
 The shader name, parameters, flags and proxy results in a VMT are material
-definitions. `render.material` owns their single translation into core surface
-terms for both runtime import and RFC 0015's `material.vmt` compiler. A
+definitions. `render.vmt-translation`, a translator outside the core
+([anti-corruption boundary](#the-anti-corruption-boundary-user-decision-2026-10-08),
+amended 2026-10-08; formerly `render.material`), owns their single
+translation into core surface terms for both runtime import and RFC 0015's
+`material.vmt` compiler. `render.material` receives parameter blocks and
+never reads a VMT. A
 supported legacy VMT uses the reviewed native interpretation by default on
 core profiles: for example, `$phongexponent` informs roughness, env-map tint
 and masks inform reflectance, and `$selfillum` plus its mask, tint and fresnel
@@ -2532,6 +2606,8 @@ reviewed material improvement changes them.
 | Two scenes | `render.scene.multi` | two scenes with different content render independently in one process, and destroying one leaves the other's handles valid |
 | Submission cost (perf) | `frame_pacing.py` `render_submission` (amended below), both queued modes | on desktop, the median in `mat_queue_mode 2` at least 30 % below the K0 binaries measured interleaved in the same session (target set here, before optimizing), and mode 0 no worse than K0; within the frame allowance on the Fold7; the emit figure (`submission_*`) recorded beside it |
 | Pooled recording | the K0 views in the product, `-render-core-record serial` against pooled (proposed switch) | the core's world and prop passes recorded on the compute pool give command streams hash-equal to serial recording on every view; `render_submission` recorded at 1 and 4 workers |
+| Game draws from the scene (amended 2026-10-08) | the draw-origin count in a Portal and a Portal 2 boot (proposed with the first scene slice) | every world, static-prop and model draw comes from a `render.scene` instance seen through a `SceneView`; the non-scene count is 0, and until then it only falls |
+| Ports in core terms (amended 2026-10-08) | archlint CAP011 rules 8–9 and CAP012 `render-scene-bypass` | the `translation.pending` list and the `render-scene-bypass` ratchet are empty |
 
 Culling amendment (2026-09-28, agent decision under the user's standing
 instruction): legacy tests a BSP leaf in an area it sees through an area

@@ -3,64 +3,6 @@
   "description": "Structure ratchets checked by archlint CAP012/CAP013 (tools/archlint/structure.py). Rules state what the architecture promises; counts and ceilings only fall. Raise a line ceiling only with `archlint structure --raise AREA --reason ...`. Audit: RFC/direction-audit-2026-10-08.md.",
   "rules": [
     {
-      "id": "render-core-legacy-types",
-      "kind": "identifiers",
-      "scope": {
-        "modules": [
-          "render.*"
-        ],
-        "exceptModules": [
-          "render.legacy-provider-contract",
-          "render.legacy-backend-provider",
-          "render.legacy-pass-contract",
-          "render.legacy-frontend",
-          "render.bridge.*",
-          "render.shader-extension-contract",
-          "render.shader-extension-host",
-          "render.shader-extension-abi-test",
-          "render.conformance-tests",
-          "render.vulkan.native-tests",
-          "render.core-tests",
-          "render.indirect-light",
-          "render.dxsupport-keyvalues"
-        ]
-      },
-      "identifiers": [
-        "IMaterial",
-        "ITexture",
-        "IMatRenderContext",
-        "IShaderAPI",
-        "IShaderDevice",
-        "IShaderShadow",
-        "IMaterialVar",
-        "IMaterialSystem",
-        "IMesh",
-        "CMeshBuilder",
-        "KeyValues",
-        "studiohdr_t",
-        "model_t",
-        "CUtlVector",
-        "CUtlBuffer",
-        "CUtlString",
-        "VMatrix",
-        "matrix3x4_t",
-        "QAngle"
-      ],
-      "reason": "the render core sits beneath the frozen material API and never names its types; the legacy frontend (render.legacy-frontend) converts at the boundary (RFC 0016 layers)",
-      "owner": "R91",
-      "target": "zero",
-      "counts": {
-        "public/render/composition/render_core_luminance.h": 2,
-        "public/render/composition/render_core_panels.h": 2,
-        "public/render/composition/render_core_world.h": 5,
-        "render/composition/core_luminance.cpp": 1,
-        "render/composition/core_luminance.h": 1,
-        "render/composition/core_world.h": 2,
-        "render/composition/core_world_handoff.cpp": 1,
-        "render/composition/core_world_scene.cpp": 1
-      }
-    },
-    {
       "id": "render-composition-thin",
       "kind": "identifiers",
       "scope": {
@@ -91,7 +33,7 @@
         "CopyTexture",
         "CopyBuffer"
       ],
-      "reason": "composition selects and wires providers; graph passes, resources and commands belong to their pass modules (RFC 0030 step 'pass recording out of composition')",
+      "reason": "composition selects and wires providers; graph passes, resources and commands belong to their pass modules (RFC 0016 anti-corruption boundary, 2026-10-08)",
       "owner": "R96",
       "target": "zero",
       "counts": {

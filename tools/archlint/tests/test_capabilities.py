@@ -861,6 +861,84 @@ class LayerContractTest(unittest.TestCase):
         self.assertRule(5, 'render/device/vulkan/facts.cpp:1 (render.device.vulkan)')
 
 
+class TranslationContractTest(unittest.TestCase):
+    """CAP011 rules 8 and 9: ports and adapters with one anti-corruption layer,
+    on LayerContractTest's fixture (its helpers, not its tests)."""
+
+    EDGES = LayerContractTest.EDGES
+    module = LayerContractTest.module
+    add = LayerContractTest.add
+    write = LayerContractTest.write
+    errors = LayerContractTest.errors
+    assertRule = LayerContractTest.assertRule
+
+    def setUp(self):
+        LayerContractTest.setUp(self)
+        self.add('render.legacy-provider-contract', ['render.contracts'])
+        self.contract['layers'][1].append('render.legacy-provider-contract')
+        self.contract['translation'] = {
+            'reason': 'the core names only its own types',
+            'translators': ['render.legacy-frontend', 'render.legacy-provider-contract'],
+            'formatBases': ['content.keyvalues-text', 'content.texture-contract'],
+            'fixtures': [],
+            'pending': [
+                {'module': 'render.material', 'edge': 'content.keyvalues-text', 'owner': 'R96',
+                 'reason': 'the VMT importer moves to the frontend'},
+                {'module': 'render.resources', 'edge': 'content.texture-contract', 'owner': 'R96',
+                 'reason': 'texture reading moves to a translator'}]}
+        self.write('render/scene/scene.h', 'namespace render { struct Instance {}; }\n')
+        self.write('render/legacy_frontend/blocks.h', 'class IMaterialBlocks {};\n')
+
+    def test_recorded_contract_passes(self):
+        self.assertEqual(self.errors(), [])
+
+    def test_core_edge_to_a_format_library_fails(self):
+        self.module('render.scene')['allowedEdges'].append('content.keyvalues-text')
+        errors = self.assertRule(8, 'render.scene: edge to format library content.keyvalues-text')
+        self.assertEqual(len(errors), 1)
+
+    def test_core_edge_to_a_translator_fails(self):
+        self.module('render.material')['allowedEdges'].append('render.legacy-provider-contract')
+        self.assertRule(8, 'render.material: edge to translator render.legacy-provider-contract')
+
+    def test_translator_may_read_formats(self):
+        self.module('render.legacy-frontend')['allowedEdges'].append('content.keyvalues-text')
+        self.assertEqual(self.errors(), [])
+
+    def test_stale_pending_entry_fails(self):
+        self.module('render.material')['allowedEdges'].remove('content.keyvalues-text')
+        self.assertRule(8, 'pending render.material -> content.keyvalues-text: no longer a violation')
+
+    def test_foreign_forward_declaration_in_the_core_fails(self):
+        self.write('render/frame/frame.h', 'class ITexture;\nvoid Bind( ITexture * );\n')
+        self.assertRule(9, 'render/frame/frame.h:1 (render.frame): declares ITexture')
+
+    def test_core_and_comment_declarations_pass(self):
+        self.write('render/frame/frame.h', 'namespace render { struct Instance; }\n// class ITexture;\n')
+        self.assertEqual(self.errors(), [])
+
+    def test_composition_may_name_a_translator_type_but_a_pass_may_not(self):
+        self.write('render/composition/root.h', 'class IMaterialBlocks;\n')
+        self.assertEqual(self.errors(), [])
+        self.write('render/pass/shadows/shadows.h', 'class IMaterialBlocks;\n')
+        self.assertRule(9, '(render.pass.shadows): declares IMaterialBlocks')
+
+    def test_pending_type_passes_until_it_is_gone(self):
+        self.contract['translation']['pending'].append(
+            {'module': 'render.composition', 'type': 'ITexture', 'owner': 'R91', 'reason': 'frontend resolves'})
+        self.write('render/composition/world.h', 'class ITexture;\n')
+        self.assertEqual(self.errors(), [])
+        self.write('render/composition/world.h', '\n')
+        self.assertRule(9, 'pending render.composition ITexture: no longer declared')
+
+    def test_pending_shape(self):
+        self.contract['translation']['pending'].append(
+            {'module': 'render.scene', 'edge': 'x', 'type': 'y', 'owner': 'nobody', 'reason': ''})
+        errors = self.errors()
+        self.assertTrue(any('names exactly one edge or one type' in e for e in errors), errors)
+        self.assertTrue(any('owner must be a roadmap row' in e for e in errors), errors)
+
+
 class KilnContractTest(unittest.TestCase):
     """RFC 0027 L0: the real `product` and `kiln` layer contracts in
     architecture/modules.json catch a core that names a provider (rule 3), a

@@ -66,8 +66,12 @@ PLATFORM_BRANCH = re.compile(
 
 def listed_files(root):
     """First-party files, tracked and untracked but not ignored."""
-    out = subprocess.run(['git', '-C', str(root), 'ls-files', '--cached', '--others', '--exclude-standard'],
-                         capture_output=True, text=True, check=True).stdout.splitlines()
+    root = Path(root)
+    if (root / '.git').exists():
+        out = subprocess.run(['git', '-C', str(root), 'ls-files', '--cached', '--others', '--exclude-standard'],
+                             capture_output=True, text=True, check=True).stdout.splitlines()
+    else:  # a fixture tree
+        out = [path.relative_to(root).as_posix() for path in root.rglob('*') if path.is_file()]
     return sorted(p for p in set(out)
                   if Path(p).suffix.lower() in LINE_SUFFIXES and not p.startswith(EXCLUDED_PREFIXES)
                   and not any(part.startswith('build') for part in Path(p).parts[:-1])

@@ -1,7 +1,8 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: render.pass.world's WorldPass::Batch: one RecordBatch call's state
-//			and steps (RFC 0030). Included only by the pass's own files.
+//			and steps (the RFC 0030 split, recorded in RFC/0016-progress.md).
+//			Included only by the pass's own files.
 //
 //=============================================================================//
 
