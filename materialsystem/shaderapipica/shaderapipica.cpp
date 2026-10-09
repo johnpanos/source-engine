@@ -4330,10 +4330,11 @@ bool CEmptyMesh::EmitSurfaceToCore( int firstIndex, int indexCount, render::lega
 		FillModelLighting( draw );
 	// A lightmapped material's page is the material system's current one
 	// (the shader's dynamic state used to bind it, TEXTURE_LIGHTMAP on sampler
-	// 1): resolved here when nothing bound it, so a moving brush (glass, a
-	// door) reads its own lighting, not a full-bright page.
-	if ( g_BoundLightmap == INVALID_SHADERAPI_TEXTURE_HANDLE && lightmapUv &&
-	     g_pBoundMaterial->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_LIGHTMAP ) )
+	// 1), resolved for every draw as shaderapivulkan's PrepareDirectCoreState
+	// did: a page an earlier draw bound is another surface's (overlays and
+	// decals read black from it), and a moving brush (glass, a door) reads
+	// its own lighting, not a full-bright page.
+	if ( lightmapUv && g_pBoundMaterial->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_LIGHTMAP ) )
 		g_ShaderAPIEmpty.BindStandardTexture( SHADER_SAMPLER1,
 			g_pBoundMaterial->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_BUMPED_LIGHTMAPS )
 				? TEXTURE_LIGHTMAP_BUMPED
