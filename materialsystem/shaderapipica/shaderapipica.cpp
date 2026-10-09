@@ -344,7 +344,38 @@ struct PicaTexture
 	// may be read both ways); refreshed with each upload after that.
 	pica::Texture gpuSrgb;
 	bool wantsSrgb = false;
+	// Its source holds linear values (a 16-bit or float format: integer-HDR
+	// lightmap pages and HDR images): never read through an sRGB twin, as
+	// shaderapivulkan's 16-bit and float images are not.
+	bool linearSource = false;
+	// Its levels hold RGBA16161616 (8 bytes a texel), uploaded as kRGBA16:
+	// an unmipped integer-HDR texture (lightmap pages) off the 3DS.
+	bool wide = false;
+	// Its levels (or cube faces) hold RGBA16161616F half floats, uploaded as
+	// they are: an HDR image off the 3DS, as shaderapivulkan kept them.
+	bool half = false;
 };
+
+#if !defined( PLATFORM_3DS )
+// HDR state, owned as shaderapivulkan owned it (ported): the engine enables
+// HDR per map (SetHDREnabled) and mat_hdr_level 2 selects integer HDR (16-bit
+// lightmap pages, the tone-mapping scale in the core's output terms). The
+// cvar has the D3D9 backend's name, default and flags.
+static ConVar mat_hdr_level( "mat_hdr_level", "2", FCVAR_ARCHIVE );
+static bool g_bHDREnabled = false;
+// cLightScale.x, the linear tone-mapping scale (SetToneMappingScaleLinear).
+static Vector g_ToneMappingScale( 1.0f, 1.0f, 1.0f );
+static HDRType_t CurrentHDRType()
+{
+	return ( mat_hdr_level.GetInt() >= 2 && g_bHDREnabled ) ? HDR_TYPE_INTEGER : HDR_TYPE_NONE;
+}
+#else
+static Vector g_ToneMappingScale( 1.0f, 1.0f, 1.0f );
+static HDRType_t CurrentHDRType()
+{
+	return HDR_TYPE_NONE;
+}
+#endif
 
 enum MatrixStackId
 {
@@ -674,20 +705,21 @@ void UploadTexture( PicaTexture &texture )
 	if ( texture.cube )
 	{
 		const std::uint8_t *faces[6];
+		const int texelBytes = texture.half ? 8 : 4;
 		for ( int i = 0; i < 6; ++i )
 		{
-			if ( texture.cubeFaces[i].Count() != texture.cubeSize * texture.cubeSize * 4 )
+			if ( texture.cubeFaces[i].Count() != texture.cubeSize * texture.cubeSize * texelBytes )
 				return; // a face has not arrived
 			faces[i] = texture.cubeFaces[i].Base();
 		}
-		if ( texture.gpu.UploadCube( texture.cubeSize, faces ) )
+		if ( texture.gpu.UploadCube( texture.cubeSize, faces, false, texture.half ) )
 			++g_TextureCounters.uploads;
 		else
 			++g_TextureCounters.uploadFailed;
 #if !defined( PLATFORM_3DS )
 		// An env map read as linear values decodes through its sRGB twin, as
 		// shaderapivulkan's sRGB view of the cube does.
-		if ( texture.wantsSrgb )
+		if ( texture.wantsSrgb && !texture.half )
 			(void)texture.gpuSrgb.UploadCube( texture.cubeSize, faces, true );
 #endif
 		return;
@@ -704,6 +736,21 @@ void UploadTexture( PicaTexture &texture )
 		}
 	}
 	const bool mipped = texture.mipLevels > 1;
+#if !defined( PLATFORM_3DS )
+	if ( texture.wide )
+	{
+		const std::uint8_t *wideLevels[1] = { texture.levels[0].Base() };
+		if ( texture.gpu.Upload( pica::UploadFormat::kRGBA16, texture.baseWidth, texture.baseHeight, 1,
+		         wideLevels ) )
+		{
+			++g_TextureCounters.uploads;
+			texture.gpu.SetWrap( texture.wrapS, texture.wrapT );
+		}
+		else
+			++g_TextureCounters.uploadFailed;
+		return;
+	}
+#endif
 	bool alpha = false;
 	for ( int i = 0; i < texture.levels.Count() && !alpha; ++i )
 	{
@@ -1644,11 +1691,15 @@ public:
 	}
 	HDRType_t GetHDRType() const
 	{
-		return HDR_TYPE_NONE;
+		return CurrentHDRType();
 	}
 	HDRType_t GetHardwareHDRType() const
 	{
+#if defined( PLATFORM_3DS )
 		return HDR_TYPE_NONE;
+#else
+		return HDR_TYPE_INTEGER;
+#endif
 	}
 	virtual bool NeedsATICentroidHack() const
 	{
@@ -1819,19 +1870,29 @@ public:
 		return NULL;
 	}
 
+	// As CShaderAPIDx8::SetToneMappingScaleLinear: without HDR the output
+	// scale is 1; in integer HDR it is the engine's exposure.
 	void SetToneMappingScaleLinear( const Vector &scale )
 	{
+		g_ToneMappingScale = scale;
+		if ( CurrentHDRType() == HDR_TYPE_NONE )
+			g_ToneMappingScale.x = 1.0f;
 	}
 
 	const Vector &GetToneMappingScaleLinear( void ) const
 	{
-		static Vector dummy;
-		return dummy;
+		return g_ToneMappingScale;
 	}
 
+	// As CShaderAPIDx8::GetLightMapScaleFactor: 8-bit LDR pages at 1/2
+	// overbright in gamma space; integer-HDR pages hold linear light / 16.
 	virtual float GetLightMapScaleFactor( void ) const
 	{
-		return 1.0;
+#if defined( PLATFORM_3DS )
+		return 1.0f;
+#else
+		return CurrentHDRType() == HDR_TYPE_INTEGER ? 16.0f : powf( 2.0f, 2.2f );
+#endif
 	}
 
 
@@ -2003,7 +2064,14 @@ public:
 	virtual int  GetVertexBufferCompression( void ) const { return 0; };
 
 	virtual bool ShouldWriteDepthToDestAlpha( void ) const { return false; };
-	virtual bool SupportsHDRMode( HDRType_t nHDRMode ) const { return false; };
+	virtual bool SupportsHDRMode( HDRType_t nHDRMode ) const
+	{
+#if defined( PLATFORM_3DS )
+		return nHDRMode == HDR_TYPE_NONE;
+#else
+		return nHDRMode == HDR_TYPE_NONE || nHDRMode == HDR_TYPE_INTEGER;
+#endif
+	}
 	virtual bool IsDX10Card() const { return false; };
 
 	void PushDeformation( const DeformationBase_t *pDeformation )
@@ -2106,8 +2174,13 @@ public:
 			}
 		}
 	}
+#if defined( PLATFORM_3DS )
 	virtual bool GetHDREnabled( void ) const { return true; }
 	virtual void SetHDREnabled( bool bEnable ) {}
+#else
+	virtual bool GetHDREnabled( void ) const { return g_bHDREnabled; }
+	virtual void SetHDREnabled( bool bEnable ) { g_bHDREnabled = bEnable; }
+#endif
 
 	virtual void CopyRenderTargetToScratchTexture( ShaderAPITextureHandle_t srcRt, ShaderAPITextureHandle_t dstTex, Rect_t *pSrcRect = NULL, Rect_t *pDstRect = NULL ) 
 	{
@@ -2207,7 +2280,30 @@ public:
 		// The PICA200 decodes no sRGB: the reduced model asks for none.
 		// Elsewhere an sRGB import reads the texture's sRGB twin.
 #if !defined( PLATFORM_3DS )
-		if ( texture && srgb && !texture->renderTarget )
+		// A cube's twin is made beside it: re-uploading the cube would give it
+		// a new id while the core still samples the old one.
+		if ( texture && srgb && texture->cube && !texture->linearSource && !texture->half )
+		{
+			texture->wantsSrgb = true;
+			if ( texture->dirty )
+				UploadTexture( *texture );
+			if ( !texture->gpuSrgb.Valid() && texture->cubeSize > 0 )
+			{
+				const std::uint8_t *faces[6];
+				bool complete = true;
+				for ( int i = 0; i < 6; ++i )
+				{
+					complete = complete &&
+						texture->cubeFaces[i].Count() == texture->cubeSize * texture->cubeSize * 4;
+					faces[i] = complete ? texture->cubeFaces[i].Base() : nullptr;
+				}
+				if ( complete )
+					(void)texture->gpuSrgb.UploadCube( texture->cubeSize, faces, true );
+			}
+			if ( texture->gpuSrgb.Valid() )
+				return render::device::TextureId{ texture->gpuSrgb.Id() };
+		}
+		if ( texture && srgb && !texture->renderTarget && !texture->linearSource && !texture->cube )
 		{
 			if ( !texture->wantsSrgb )
 			{
@@ -2398,7 +2494,9 @@ static void FillCoreSlotTerms( render::legacy::CorePassTarget &target )
 			std::copy_n( g_CoreClipPlanes[plane], 4, target.clipPlanes[plane] );
 	target.ssbumpNormalized = SsbumpBasisNormalized();
 	target.time = float( Sys_FloatTime() );
-	target.waterReflectTintScale = 1.0f; // no integer HDR on this shader API
+	const bool integerHdr = CurrentHDRType() == HDR_TYPE_INTEGER;
+	// The client draws the water views at a quarter of the tone-map scale.
+	target.waterReflectTintScale = integerHdr ? 4.0f : 1.0f;
 	if ( g_CoreFog.sceneMode == MATERIAL_FOG_LINEAR ||
 	     g_CoreFog.sceneMode == MATERIAL_FOG_LINEAR_BELOW_FOG_Z )
 	{
@@ -2412,7 +2510,11 @@ static void FillCoreSlotTerms( render::legacy::CorePassTarget &target )
 		fog.params[2] = height ? 1.0f : clamp( g_CoreFog.maxDensity, 0.0f, 1.0f );
 		fog.params[3] = ooFogRange;
 		for ( int i = 0; i < 3; ++i )
+		{
 			fog.color[i] = SrgbGammaToLinear( g_CoreFog.sceneColor[i] / 255.0f );
+			if ( integerHdr )
+				fog.color[i] *= g_ToneMappingScale.x;
+		}
 		float eye[4];
 		g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
 		fog.eyeZ = eye[2];
@@ -2528,20 +2630,21 @@ public:
 		target.outputScale = 1.0f;
 		target.specular = false;
 #else
-		// The full model's LDR terms, as shaderapivulkan's LDR path passes
-		// them (this shader API reports HDR_TYPE_NONE): lightmap pages scaled
-		// by 2^2.2, no tone-mapping scale, the eye (c10), env maps at 1, and
-		// specular unless mat_fastspecular is off or mat_fullbright 2. Albedo
-		// is read through sRGB twins (CPicaCoreTextures::Import).
-		target.lightmapScale = powf( 2.0f, 2.2f );
-		target.outputScale = 1.0f;
+		// The full model's terms, as shaderapivulkan passed them: lightmap
+		// pages scaled by 16 in integer HDR (2^2.2 in LDR), the tone-mapping
+		// scale in HDR, the eye (c10), env maps at 16 in integer HDR (1 in
+		// LDR), and specular unless mat_fastspecular is off or mat_fullbright
+		// 2. Albedo is read through sRGB twins (CPicaCoreTextures::Import).
+		const bool integerHdr = CurrentHDRType() == HDR_TYPE_INTEGER;
+		target.lightmapScale = integerHdr ? 16.0f : powf( 2.0f, 2.2f );
+		target.outputScale = integerHdr ? g_ToneMappingScale.x : 1.0f;
 		{
 			float eye[4];
 			g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
 			for ( int i = 0; i < 3; ++i )
 				target.eye[i] = eye[i];
 		}
-		target.envmapScale = 1.0f;
+		target.envmapScale = integerHdr ? 16.0f : 1.0f;
 		static ConVarRef fastSpecular( "mat_fastspecular" );
 		static ConVarRef fullbright( "mat_fullbright" );
 		target.specular = ( !fastSpecular.IsValid() || fastSpecular.GetBool() ) &&
@@ -5464,7 +5567,13 @@ void CShaderAPIEmpty::SetLinearToGammaConversionTextures( ShaderAPITextureHandle
 ImageFormat CShaderAPIEmpty::GetNearestSupportedFormat( ImageFormat fmt, bool bFilteringRequired /* = true */ ) const
 {
 	// Uploads arrive as RGBA8888 (the material system decodes DXT and friends)
-	// and are encoded for the PICA here.
+	// and are encoded for the PICA here. Off the 3DS HDR images keep their
+	// half floats, as shaderapivulkan kept them (the env maps' ENV_MAP_SCALE
+	// range is lost in 8 bits).
+#if !defined( PLATFORM_3DS )
+	if ( fmt == IMAGE_FORMAT_RGBA16161616F )
+		return fmt;
+#endif
 	return IMAGE_FORMAT_RGBA8888;
 }
 
@@ -5501,11 +5610,21 @@ void CShaderAPIEmpty::ModifyTexture( ShaderAPITextureHandle_t textureHandle )
 }
 
 // Texture management methods
+// A source format whose values are linear (16-bit or float channels).
+static bool IsLinearSourceFormat( ImageFormat format )
+{
+	return format == IMAGE_FORMAT_RGBA16161616 || format == IMAGE_FORMAT_RGBA16161616F ||
+		format == IMAGE_FORMAT_RGB323232F || format == IMAGE_FORMAT_RGBA32323232F ||
+		format == IMAGE_FORMAT_R32F;
+}
+
 void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset, int width, int height, 
 						 ImageFormat srcFormat, bool bSrcIsTiled, void *imageData )
 {
 	++g_TextureCounters.images;
 	PicaTexture *texture = TextureFor( g_ModifyTexture );
+	if ( texture && level == 0 && cubeFace <= 0 )
+		texture->linearSource = IsLinearSourceFormat( srcFormat ) || IsLinearSourceFormat( dstFormat );
 	if ( texture && texture->cube )
 	{
 		// Each face's base level (smaller levels are not kept), square, at
@@ -5518,6 +5637,25 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 			++g_TextureCounters.rejected;
 			return;
 		}
+#if !defined( PLATFORM_3DS )
+		// Half-float faces are kept as they are, at their own size.
+		if ( srcFormat == IMAGE_FORMAT_RGBA16161616F )
+		{
+			if ( !texture->half || texture->cubeSize != width )
+			{
+				for ( CUtlVector<unsigned char> &face : texture->cubeFaces )
+					face.Purge();
+				texture->cubeSize = width;
+				texture->half = true;
+			}
+			CUtlVector<unsigned char> &out = texture->cubeFaces[cubeFace];
+			out.SetCount( width * height * 8 );
+			memcpy( out.Base(), imageData, out.Count() );
+			MarkTextureDirty( texture );
+			return;
+		}
+		texture->half = false;
+#endif
 		CUtlVector<unsigned char> rgba;
 		rgba.SetCount( width * height * 4 );
 		if ( !ImageLoader::ConvertImageFormat( (const unsigned char *)imageData, srcFormat,
@@ -5564,8 +5702,11 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 		texture->levelHashes.Purge();
 		texture->baseWidth = gpuW;
 		texture->baseHeight = gpuH;
+#if !defined( PLATFORM_3DS )
+		texture->wide = dstFormat == IMAGE_FORMAT_RGBA16161616;
+#endif
 		CUtlVector<unsigned char> &out = texture->levels[texture->levels.AddToTail()];
-		out.SetCount( gpuW * gpuH * 4 );
+		out.SetCount( gpuW * gpuH * ( texture->wide ? 8 : 4 ) );
 		memset( out.Base(), 0, out.Count() );
 		texture->levelHashes.AddToTail( LevelHash( out ) );
 		MarkTextureDirty( texture );
@@ -5609,6 +5750,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 		}
 		printf( "pica: dumped %s level %d %dx%d src format %d\n", texture->name, level, width, height, (int)srcFormat );
 	}
+	texture->wide = false; // levels with data are kept as RGBA8
 	if ( texture->levels.Count() == 0 || !mipped )
 	{
 		texture->levels.Purge();
@@ -5639,10 +5781,11 @@ void CShaderAPIEmpty::TexSubImage2D( int level, int cubeFace, int xOffset, int y
 		return;
 	// Unmipped textures keep their RGBA copy at the GPU size: scale the
 	// sub-rectangle into it (fonts and UI pages are usually at full size).
+	const int bpp = texture->wide ? 8 : 4;
 	CUtlVector<unsigned char> rgba;
-	rgba.SetCount( width * height * 4 );
+	rgba.SetCount( width * height * bpp );
 	if ( !ImageLoader::ConvertImageFormat( (const unsigned char *)imageData, srcFormat, rgba.Base(),
-			IMAGE_FORMAT_RGBA8888, width, height, srcStride, 0 ) )
+			texture->wide ? IMAGE_FORMAT_RGBA16161616 : IMAGE_FORMAT_RGBA8888, width, height, srcStride, 0 ) )
 		return;
 	unsigned char *dst = texture->levels[0].Base();
 	const int dw = texture->baseWidth, dh = texture->baseHeight;
@@ -5656,7 +5799,7 @@ void CShaderAPIEmpty::TexSubImage2D( int level, int cubeFace, int xOffset, int y
 			const int tx = ( xOffset + x ) * dw / texture->width;
 			if ( tx < 0 || tx >= dw )
 				continue;
-			memcpy( dst + ( ty * dw + tx ) * 4, rgba.Base() + ( y * width + x ) * 4, 4 );
+			memcpy( dst + ( ty * dw + tx ) * bpp, rgba.Base() + ( y * width + x ) * bpp, bpp );
 		}
 	}
 	if ( texture->levelHashes.Count() > 0 )
@@ -5709,6 +5852,8 @@ ShaderAPITextureHandle_t g_TexLockTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
 int g_TexLockRect[4] = {}; // x, y, width, height
 }
 
+static ImageFormat g_TexLockFormat = IMAGE_FORMAT_RGBA8888;
+
 bool CShaderAPIEmpty::TexLock( int level, int cubeFaceID, int xOffset, int yOffset, 
 								int width, int height, CPixelWriter& writer )
 {
@@ -5717,18 +5862,22 @@ bool CShaderAPIEmpty::TexLock( int level, int cubeFaceID, int xOffset, int yOffs
 		texture->mipLevels > 1 || texture->renderTarget || texture->depth )
 		return false;
 	if ( texture->levels.Count() == 0 )
-		TexImage2D( 0, 0, IMAGE_FORMAT_RGBA8888, 0, texture->width, texture->height,
-			IMAGE_FORMAT_RGBA8888, false, NULL );
+		TexImage2D( 0, 0, texture->wide ? IMAGE_FORMAT_RGBA16161616 : IMAGE_FORMAT_RGBA8888, 0,
+			texture->width, texture->height, IMAGE_FORMAT_RGBA8888, false, NULL );
 	if ( texture->levels.Count() == 0 )
 		return false;
-	g_TexLockPixels.SetCount( width * height * 4 );
+	// A 16-bit page (integer-HDR lightmaps) is written as 16-bit integers,
+	// as shaderapivulkan's TexLock did; else 8-bit colour.
+	const int bpp = texture->wide ? 8 : 4;
+	g_TexLockPixels.SetCount( width * height * bpp );
 	memset( g_TexLockPixels.Base(), 0, g_TexLockPixels.Count() );
 	g_TexLockTexture = g_ModifyTexture;
 	g_TexLockRect[0] = xOffset;
 	g_TexLockRect[1] = yOffset;
 	g_TexLockRect[2] = width;
 	g_TexLockRect[3] = height;
-	writer.SetPixelMemory( IMAGE_FORMAT_RGBA8888, g_TexLockPixels.Base(), width * 4 );
+	g_TexLockFormat = texture->wide ? IMAGE_FORMAT_RGBA16161616 : IMAGE_FORMAT_RGBA8888;
+	writer.SetPixelMemory( g_TexLockFormat, g_TexLockPixels.Base(), width * bpp );
 	return true;
 }
 
@@ -5739,7 +5888,8 @@ void CShaderAPIEmpty::TexUnlock( )
 	const ShaderAPITextureHandle_t modify = g_ModifyTexture;
 	g_ModifyTexture = g_TexLockTexture;
 	TexSubImage2D( 0, 0, g_TexLockRect[0], g_TexLockRect[1], 0, g_TexLockRect[2], g_TexLockRect[3],
-		IMAGE_FORMAT_RGBA8888, g_TexLockRect[2] * 4, false, g_TexLockPixels.Base() );
+		g_TexLockFormat, g_TexLockRect[2] * ( g_TexLockFormat == IMAGE_FORMAT_RGBA16161616 ? 8 : 4 ), false,
+		g_TexLockPixels.Base() );
 	g_ModifyTexture = modify;
 	g_TexLockTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
 }
@@ -5813,6 +5963,13 @@ void CShaderAPIEmpty::CreateTextures(
 		texture->depth = ( flags & TEXTURE_CREATE_DEPTHBUFFER ) != 0;
 		texture->lightmap =
 			pTextureGroupName && V_strcmp( pTextureGroupName, TEXTURE_GROUP_LIGHTMAP ) == 0;
+#if !defined( PLATFORM_3DS )
+		// An integer-HDR lightmap page keeps its 16-bit texels (the record
+		// format shaderapivulkan kept and locked).
+		texture->wide = texture->lightmap && dstImageFormat == IMAGE_FORMAT_RGBA16161616 &&
+			texture->mipLevels == 1;
+		texture->linearSource = texture->wide;
+#endif
 #if !defined( PLATFORM_3DS )
 		// The full model samples cube maps as cubes (the 3DS keeps face 0).
 		texture->cube = ( flags & TEXTURE_CREATE_CUBEMAP ) != 0;

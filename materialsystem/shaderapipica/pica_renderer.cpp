@@ -438,6 +438,28 @@ bool Texture::Sampleable() const
 	return this != g_state.target && ResourceUsage( m_usage ) == ResourceUsage::kSampled;
 }
 
+// A non-negative float in [0, 1] as an IEEE half (round to nearest).
+static std::uint16_t FloatToHalf( float value )
+{
+	std::uint32_t bits;
+	std::memcpy( &bits, &value, sizeof( bits ) );
+	const std::uint32_t sign = ( bits >> 16 ) & 0x8000u;
+	const int exponent = int( ( bits >> 23 ) & 0xFF ) - 127 + 15;
+	std::uint32_t mantissa = bits & 0x7FFFFFu;
+	if ( exponent <= 0 )
+	{
+		if ( exponent < -10 )
+			return std::uint16_t( sign );
+		mantissa |= 0x800000u;
+		const int shift = 14 - exponent;
+		return std::uint16_t( sign | ( ( mantissa + ( 1u << ( shift - 1 ) ) ) >> shift ) );
+	}
+	if ( exponent >= 31 )
+		return std::uint16_t( sign | 0x7C00u );
+	const std::uint32_t half = sign | ( std::uint32_t( exponent ) << 10 ) | ( mantissa >> 13 );
+	return std::uint16_t( half + ( ( mantissa >> 12 ) & 1u ) );
+}
+
 bool Texture::Upload(
     UploadFormat format, int width, int height, int levelCount, const std::uint8_t *const *levels )
 {
@@ -459,6 +481,7 @@ bool Texture::Upload(
 	              : format == UploadFormat::kETC1A4 ? Format::kETC1A4
 	              : format == UploadFormat::kRGBA4  ? Format::kRGBA4Unorm
 	              : format == UploadFormat::kRGBA8Srgb ? Format::kRGBA8Srgb
+	              : format == UploadFormat::kRGBA16 || format == UploadFormat::kRGBA16F ? Format::kRGBA16Float
 	                                                : Format::kRGBA8Unorm;
 	desc.width = std::uint32_t( width );
 	desc.height = std::uint32_t( height );
@@ -486,11 +509,22 @@ bool Texture::Upload(
 		const std::uint32_t w = std::uint32_t( width >> level ),
 		                    h = std::uint32_t( height >> level );
 		const std::size_t bytes =
-		    format == UploadFormat::kRGBA8 || format == UploadFormat::kRGBA8Srgb ? std::size_t( w ) * h * 4
+		    format == UploadFormat::kRGBA16 || format == UploadFormat::kRGBA16F ? std::size_t( w ) * h * 8
+		    : format == UploadFormat::kRGBA8 || format == UploadFormat::kRGBA8Srgb ? std::size_t( w ) * h * 4
 		    : format == UploadFormat::kRGBA4 ? std::size_t( w ) * h * 2
 		        : std::size_t( w / 4 ) * ( h / 4 ) * ( format == UploadFormat::kETC1 ? 8 : 16 );
-		auto buffer = Device().CreateUploadBuffer(
-		    { reinterpret_cast<const std::byte *>( levels[level] ), bytes } );
+		// 16-bit unorm texels become half floats of the same value.
+		std::vector<std::uint16_t> halves;
+		const std::byte *data = reinterpret_cast<const std::byte *>( levels[level] );
+		if ( format == UploadFormat::kRGBA16 )
+		{
+			const auto *in = reinterpret_cast<const std::uint16_t *>( levels[level] );
+			halves.resize( std::size_t( w ) * h * 4 );
+			for ( std::size_t i = 0; i < halves.size(); ++i )
+				halves[i] = FloatToHalf( float( in[i] ) / 65535.0f );
+			data = reinterpret_cast<const std::byte *>( halves.data() );
+		}
+		auto buffer = Device().CreateUploadBuffer( { data, bytes } );
 		if ( !buffer )
 			break;
 		staging.push_back( buffer.Value() );
@@ -524,14 +558,14 @@ bool Texture::Upload(
 	return true;
 }
 
-bool Texture::UploadCube( int size, const std::uint8_t *const *faces, bool srgb )
+bool Texture::UploadCube( int size, const std::uint8_t *const *faces, bool srgb, bool half )
 {
 	Release();
 	if ( size < 1 || !g_state.initialized )
 		return false;
 	TextureDesc desc;
 	desc.dimension = TextureDimension::kCube;
-	desc.format = srgb ? Format::kRGBA8Srgb : Format::kRGBA8Unorm;
+	desc.format = half ? Format::kRGBA16Float : srgb ? Format::kRGBA8Srgb : Format::kRGBA8Unorm;
 	desc.width = desc.height = std::uint32_t( size );
 	desc.depthOrLayers = 6;
 	desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kSampled };
@@ -547,7 +581,7 @@ bool Texture::UploadCube( int size, const std::uint8_t *const *faces, bool srgb 
 	CommandEncoder &e = encoder.Value();
 	e.TransitionTexture(
 	    texture.Value(), ResourceUsage::kUndefined, ResourceUsage::kCopyDestination );
-	const std::size_t bytes = std::size_t( size ) * size * 4;
+	const std::size_t bytes = std::size_t( size ) * size * ( half ? 8 : 4 );
 	std::vector<BufferId> staging;
 	for ( std::uint32_t face = 0; face < 6; ++face )
 	{

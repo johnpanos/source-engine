@@ -60,8 +60,14 @@ enum class UploadFormat : std::uint8_t
 	kETC1,   // render.device.v2's kETC1Rgb
 	kETC1A4, // render.device.v2's kETC1A4
 	kRGBA4,  // render.device.v2's kRGBA4Unorm: a 16-bit word per texel (D42)
-	kRGBA8Srgb // kRGBA8 decoded from sRGB when sampled (off the 3DS: D3D9's
-	           // per-sampler sRGB read, which the core asks for per import)
+	kRGBA8Srgb, // kRGBA8 decoded from sRGB when sampled (off the 3DS: D3D9's
+	            // per-sampler sRGB read, which the core asks for per import)
+	kRGBA16,    // RGBA16161616 texels (8 bytes) stored as render.device.v2's
+	            // kRGBA16Float, which WebGPU and Vulkan both sample (off the
+	            // 3DS: integer-HDR lightmap pages, the same values as
+	            // shaderapivulkan's 16-bit unorm pages)
+	kRGBA16F    // half floats (8 bytes a texel) as they are, kRGBA16Float (off
+	            // the 3DS: HDR images, IMAGE_FORMAT_RGBA16161616F)
 };
 static_assert( sizeof( Vertex ) == 24, "PICA vertex record" );
 
@@ -125,7 +131,7 @@ public:
 	// A cube map (RGBA8, one level, size x size a face): faces[i] is face i
 	// in the port's order (+X, -X, +Y, -Y, +Z, -Z). Replaces any previous image.
 	// srgb: an sRGB image, read as linear values (an env map off the 3DS).
-	bool UploadCube( int size, const std::uint8_t *const *faces, bool srgb = false );
+	bool UploadCube( int size, const std::uint8_t *const *faces, bool srgb = false, bool half = false );
 	// A render target (RGBA8, one level, sides powers of two from 8 to 512):
 	// SetTarget draws into it, later draws sample what it holds. Replaces
 	// any previous image.
