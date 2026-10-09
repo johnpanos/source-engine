@@ -1010,6 +1010,15 @@ public:
 			pica::BeginFrame();
 		const double presentStart = Plat_FloatTime();
 		pica::EndFrame();
+		// The core's readbacks (luminance and visibility counts) resolve
+		// behind the frame's submission, as shaderapivulkan's FinishFrame
+		// tells the recorder.
+		if ( g_CorePassRecorder )
+		{
+			bool submitted = false;
+			const render::device::CompletionToken token = pica::LastSubmission( &submitted );
+			g_CorePassRecorder->FrameSubmitted( token, submitted );
+		}
 		const double presentEnd = Plat_FloatTime();
 		{
 			// A slow frame, named with its system ticks: the window to read in
@@ -2303,7 +2312,10 @@ public:
 			if ( texture->gpuSrgb.Valid() )
 				return render::device::TextureId{ texture->gpuSrgb.Id() };
 		}
-		if ( texture && srgb && !texture->renderTarget && !texture->linearSource && !texture->cube )
+		// A half-float image (an HDR map's lightmap pages) holds linear values
+		// and has no sRGB encoding: it is imported as it is.
+		if ( texture && srgb && !texture->renderTarget && !texture->linearSource && !texture->cube &&
+			 !texture->half )
 		{
 			if ( !texture->wantsSrgb )
 			{

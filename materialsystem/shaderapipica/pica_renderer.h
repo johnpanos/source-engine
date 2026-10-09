@@ -24,6 +24,7 @@
 #define PICA_RENDERER_H
 
 #include "pica_texture.h"
+#include "render/device/completion.h"
 #include "render/device/resources.h"
 
 #include <cstddef>
@@ -223,6 +224,9 @@ bool Initialized();
 
 void BeginFrame();
 void EndFrame(); // presents; waits for vblank when vsync is on
+// The frame's last submission (EndFrame's): its completion token, and
+// whether the device took it.
+render::device::CompletionToken LastSubmission( bool *submitted );
 bool InFrame();
 
 // The target the frame draws into: a render target (Texture::CreateTarget),

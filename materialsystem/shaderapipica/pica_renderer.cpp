@@ -108,6 +108,7 @@ struct State
 	std::vector<ResourceId> releases; // after the recording that reads them
 	BufferId reserve; // ReserveLinear
 	CompletionToken submitted; // the last SubmitRecording's
+	bool lastSubmitTaken = false;
 #if !defined( PLATFORM_3DS )
 	Presenter presenter = nullptr;
 	void *presenterContext = nullptr;
@@ -342,6 +343,7 @@ void SubmitRecording( bool sample )
 	CommandEncoder list[] = { std::move( *g_state.encoder ) };
 	g_state.encoder.reset();
 	auto token = Device().Submit( QueueKind::kGraphics, list, {} );
+	g_state.lastSubmitTaken = bool( token );
 	if ( token )
 		g_state.submitted = token.Value();
 	else
@@ -762,6 +764,13 @@ void BeginFrame()
 	g_state.viewport = { 0, 0, float( target.width ), float( target.height ), 0, 1 };
 	OpenRecording();
 	BeginPass( false, false, 0 );
+}
+
+CompletionToken LastSubmission( bool *submitted )
+{
+	if ( submitted )
+		*submitted = g_state.lastSubmitTaken;
+	return g_state.submitted;
 }
 
 void EndFrame()
