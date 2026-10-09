@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 682,
     "totalHammerCppFiles": 334,
     "totalHammerHeaderFiles": 350,
-    "filesClassified": 468,
+    "filesClassified": 548,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'. 2026-10-03 (R08-REPLACE-TEXTURES, HAM-REPLACETEX-001): 22 reviewed records for the files that slice read or changed, and the authored totals refreshed to the live universe that 'archlint hammer --coverage' measures (hammer/ plus the strict roots)."
   },
   "files": [
@@ -6320,6 +6320,1058 @@
       "factorization": "replace-shell",
       "evidence": "observed",
       "note": "CNewKeyValue declares the MFC CDialog constructor for the new key/value dialog."
+    },
+    {
+      "path": "hammer/noise.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Procedural 2D value-noise helpers; the only reference in the tree is the file itself, so it retires."
+    },
+    {
+      "path": "hammer/objectbar.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CObjectBar toolbar places prefabs and entities into a view (CreateInBox, random yaw) through MFC controls; GTK's Entity palette replaces it."
+    },
+    {
+      "path": "hammer/objectbar.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CObjectBar and its prefab/entity placement entry points used by the MFC object bar."
+    },
+    {
+      "path": "hammer/objectpage.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "CObjectPage is the CPropertyPage base for the object property pages; it has no GTK analogue and goes with them."
+    },
+    {
+      "path": "hammer/objectproperties.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CObjectProperties property sheet edits the selected objects' pages; the GTK Object Properties window (R08-UI-PROPS) is its replacement."
+    },
+    {
+      "path": "hammer/objectproperties.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the CObjectProperties sheet and the editCMapClass/editCEditGameClass wrappers it edits through."
+    },
+    {
+      "path": "hammer/op_entity.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "4,829-line entity page writes key values to CMapEntity/CEditGameClass; the edit logic belongs in hammer.app entity ops and the page is replaced."
+    },
+    {
+      "path": "hammer/op_entity.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares COP_Entity plus its pick-target helpers and CInstanceParmData; the entity-edit model moves to hammer.app."
+    },
+    {
+      "path": "hammer/op_flags.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Spawnflags checklist page; SaveData merges flag bits into the selected entities."
+    },
+    {
+      "path": "hammer/op_flags.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares COP_Flags and its CheckListItem rows for the spawnflags page."
+    },
+    {
+      "path": "hammer/op_groups.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Group membership page; SaveData writes the group list back to the selected objects."
+    },
+    {
+      "path": "hammer/op_groups.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares COP_Groups, the MFC group membership page."
+    },
+    {
+      "path": "hammer/op_input.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Input connection page validates and removes entity I/O connections; that logic belongs in hammer.app entity ops (entity_ops.cpp)."
+    },
+    {
+      "path": "hammer/op_input.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CInputConnection and COP_Input; the connection model moves to hammer.app with the entity ops."
+    },
+    {
+      "path": "hammer/op_output.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "2,516-line output page with COutputConnection validation and add/remove of entity outputs; the connection logic moves to hammer.app."
+    },
+    {
+      "path": "hammer/op_output.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares COutputConnection, COP_Output and its pick-entity target; the connection model moves to hammer.app."
+    },
+    {
+      "path": "hammer/optbuild.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Build settings page for BSP/light/vis/game paths with SHBrowseForFolder; SaveInfo writes the selected game config."
+    },
+    {
+      "path": "hammer/optbuild.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares COPTBuild, the MFC build-settings property page."
+    },
+    {
+      "path": "hammer/optconfigs.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Game configurations page: FGD add/edit/remove, folder browsing, and the registry-stored configuration selection."
+    },
+    {
+      "path": "hammer/optconfigs.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares COPTConfigs and its inline GetCurrentConfig accessor."
+    },
+    {
+      "path": "hammer/optgeneral.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "General options page: autosave toggle and autosave directory browse; OnApply writes the global options."
+    },
+    {
+      "path": "hammer/optgeneral.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares COPTGeneral, the MFC general-options property page."
+    },
+    {
+      "path": "hammer/optionproperties.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Option property sheet container with standard init and close handling; holds no document data."
+    },
+    {
+      "path": "hammer/optionproperties.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares COptionProperties, the MFC options sheet container."
+    },
+    {
+      "path": "hammer/options.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "COptionsConfigs loads and saves game configurations as KeyValues and registry keys; a persistence owner outside any document."
+    },
+    {
+      "path": "hammer/options.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "presentation",
+      "effects": [],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares the global COptions settings struct (general, 2D/3D view, textures, colors, configs) as an app-level settings model."
+    },
+    {
+      "path": "hammer/opttextures.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "asset-service",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Texture options page: adds and removes texture packages, extracts textures and browses folders."
+    },
+    {
+      "path": "hammer/opttextures.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "asset-service",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares COPTTextures, the MFC texture-options property page."
+    },
+    {
+      "path": "hammer/optview2d.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "2D view options page; OnApply writes the 2D view settings applied by the view."
+    },
+    {
+      "path": "hammer/optview2d.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares COPTView2D, the MFC 2D-view options page."
+    },
+    {
+      "path": "hammer/optview3d.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "3D view options page with slider handling and OnApply for the 3D view settings."
+    },
+    {
+      "path": "hammer/optview3d.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares COPTView3D, the MFC 3D-view options page."
+    },
+    {
+      "path": "hammer/osver.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "platform-adapter",
+      "effects": [],
+      "state": "external-resource",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "GetVersionEx Win9x/NT detection; its only caller is the legacy processwnd.cpp, so it retires with that caller."
+    },
+    {
+      "path": "hammer/osver.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "platform-adapter",
+      "effects": [],
+      "state": "external-resource",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares the eOSVersion enum and initOSVersion/getOSVersion for the legacy Windows-only path."
+    },
+    {
+      "path": "hammer/pakdoc.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "MFC CDocument for the legacy .pak viewer; Serialize reads the archive. No GTK replacement exists, so it retires."
+    },
+    {
+      "path": "hammer/pakdoc.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares CPakDoc, the legacy .pak document class."
+    },
+    {
+      "path": "hammer/pakframe.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "MDI child frame for the legacy .pak viewer; creates its client views in OnCreateClient."
+    },
+    {
+      "path": "hammer/pakframe.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares CPakFrame, the legacy .pak MDI child frame."
+    },
+    {
+      "path": "hammer/pakviewdirec.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Tree view of the .pak directory entries in the legacy viewer; OnDraw and OnInitialUpdate."
+    },
+    {
+      "path": "hammer/pakviewdirec.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares CPakViewDirec, the legacy .pak directory tree view."
+    },
+    {
+      "path": "hammer/pakviewfiles.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "CPakViewFiles is a CListView whose OnDraw is empty and whose only content is the Name/Size/Type column setup in OnInitialUpdate."
+    },
+    {
+      "path": "hammer/pakviewfiles.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares CPakViewFiles, a CListView over CPakDoc with a Name/Size/Type column enum and no file data members."
+    },
+    {
+      "path": "hammer/pastespecialdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CPasteSpecialDlg reads copy, offset, rotate and prefix defaults from the Windows profile INI and writes them back in SaveToIni; the settings model belongs in hammer.app."
+    },
+    {
+      "path": "hammer/pastespecialdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CPasteSpecialDlg over BoundBox with copies, group, offset, rotation, centre and prefix fields and their DDX map."
+    },
+    {
+      "path": "hammer/prefab3d.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CPrefab3D::Create copies the prefab's world children into a new object or CMapGroup and CreateAtPoint moves it; hammer.formats InstantiatePrefab already does this headlessly."
+    },
+    {
+      "path": "hammer/prefab3d.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares CPrefab3D over CPrefab with its CMapWorld storage, the Create and CreateAtPoint family, and the RMF and VMF prefab subclasses."
+    },
+    {
+      "path": "hammer/prefabs.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CreatePrefabLibrary chooses a VMF or RMF library by file extension and loads it, with static PrefabList and MRU caches and the Worldcraft library header."
+    },
+    {
+      "path": "hammer/prefabs.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares CPrefab and CPrefabLibrary with the static PrefabList and MRU caches, the library type enum and the RMF/VMF file header structs."
+    },
+    {
+      "path": "hammer/prefabsdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CPrefabsDlg browses prefab libraries with CFileDialog, opens new documents from prefabs and edits libraries through MFC controls."
+    },
+    {
+      "path": "hammer/prefabsdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the CPrefabsDlg CDialog with its prefab list and library controls."
+    },
+    {
+      "path": "hammer/processwnd.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io",
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CProcessWnd starts a command line with CreateProcess, pipes its stdout and stderr and polls them; the tool-process provider in hammer.adapters.platform covers this contract."
+    },
+    {
+      "path": "hammer/processwnd.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CProcessWnd, a CWnd that owns the child process's stdin, stdout and stderr pipe handles."
+    },
+    {
+      "path": "hammer/progdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CProgressDlg is a modal progress CDialog created over a parent window and updated with percentage and status text; a GTK progress presenter replaces it."
+    },
+    {
+      "path": "hammer/progdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CProgressDlg with Create(CWnd*) and its percent and status text controls."
+    },
+    {
+      "path": "hammer/render2d.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CRender2D is the 2D orthographic view renderer over CRender; the projection and line code belongs to hammer.viewport."
+    },
+    {
+      "path": "hammer/render2d.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CRender2D over CRender for the orthographic views, the 2D counterpart of CRender3DMS."
+    },
+    {
+      "path": "hammer/render3d.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CreateRender3D is a factory that selects the material-system 3D renderer, so the choice belongs to viewport composition."
+    },
+    {
+      "path": "hammer/render3d.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares the Render3DType_t enum and the CreateRender3D factory; its only type is the material-system renderer."
+    },
+    {
+      "path": "hammer/render3dms.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CRender3DMS over CRender with IMaterial, instance and cull-tree members, the viewport's GPU-facing draw state."
+    },
+    {
+      "path": "hammer/resource.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "composition",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "resource.h is the MFC resource map of dialog, menu and string IDs (about 1,370 lines) and retires with the dialogs it names."
+    },
+    {
+      "path": "hammer/richeditctrlex.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CRichEditCtrlEx applies colour and font manipulators to a rich edit control; only the entity help dialog uses it, so a GTK text view replaces it."
+    },
+    {
+      "path": "hammer/richeditctrlex.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CRTFBuilder, the CManip family and CRichEditCtrlEx, a rich-edit control that generates RTF."
+    },
+    {
+      "path": "hammer/runcommands.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Runs the configured compile and game command sequences: it substitutes $variables from the document path and launches each command through the global CProcessWnd."
+    },
+    {
+      "path": "hammer/runcommands.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares IsRunningCommands and the free command-running functions over the global CProcessWnd; the header holds no class state."
+    },
+    {
+      "path": "hammer/runmap.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CRunMap persists its compile options (QBSP, vis, light, HDR, game parameters) in the Windows profile and writes them back on OK."
+    },
+    {
+      "path": "hammer/runmap.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CRunMap, the MFC run-map CDialog with its compile option fields."
+    },
+    {
+      "path": "hammer/runmapcfgdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CRunMapCfgDlg is an MFC configuration CDialog for run-map command settings, with DDX and message maps."
+    },
+    {
+      "path": "hammer/runmapcfgdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CRunMapCfgDlg, a CDialog with its DDX controls."
+    },
+    {
+      "path": "hammer/runmapexpertdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CRunMapExpertDlg edits named command sequences: it browses for executables with CFileDialog, stores the last sequence in the profile and inserts $parameters."
+    },
+    {
+      "path": "hammer/runmapexpertdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CRunMapExpertDlg over the RunCommands.h types, with its CDialog controls and command sequence list."
+    },
+    {
+      "path": "hammer/saveinfo.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CSaveInfo's ShouldSaveObject is a pure rule over CMapClass that decides whether a save writes an object (visibles-only mode)."
+    },
+    {
+      "path": "hammer/saveinfo.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares CSaveInfo with SetVisiblesOnly and ShouldSaveObject over CMapClass."
+    },
+    {
+      "path": "hammer/scaleverticesdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CScaleVerticesDlg edits vertex scale values through DDX and posts ID_VSCALE_CHANGED to the active document's command router."
+    },
+    {
+      "path": "hammer/scaleverticesdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CScaleVerticesDlg, a CDialog with its scale fields."
+    },
+    {
+      "path": "hammer/sculptoptions.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "native-ui",
+        "gpu-work"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Sculpt push, carve and project tools mutate displacement vertices from pointer input and draw their overlays through CRender3D."
+    },
+    {
+      "path": "hammer/sculptoptions.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CSculptTool, CSculptPainter and the CDialog option sheets for the push, carve and project tools with their overlay methods."
+    },
+    {
+      "path": "hammer/searchbox.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CSearchBox is a CComboBox subclass that intercepts keystrokes in PreTranslateMessage for the toolbar search field."
+    },
+    {
+      "path": "hammer/searchbox.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CSearchBox, a combo box with a PreTranslateMessage override, as the toolbar search field."
+    },
+    {
+      "path": "hammer/selectentitydlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CSelectEntityDlg lists the active document's entities and selects the chosen ones through CMapDoc; the selection rule belongs to hammer.app."
+    },
+    {
+      "path": "hammer/selectentitydlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CSelectEntityDlg over CMapClass, a CDialog for choosing entities from the active document."
     }
   ]
 }
