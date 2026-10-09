@@ -40,7 +40,6 @@ def build(bld):
 		'lightmappedgeneric_dx9_helper.cpp',
 		'lightmappedpaint_dx9.cpp',
 		'lightmappedreflective.cpp',
-		'modulate_dx9.cpp',
 		'MonitorScreen_dx9.cpp',
 		#'morphaccumulate_dx9.cpp',					[$WIN32]
 		#'morphweight_dx9.cpp',						[$WIN32]
@@ -62,7 +61,6 @@ def build(bld):
 		'spritecard.cpp',
 		'teeth.cpp',
 		'unlitgeneric_dx9.cpp',
-		'unlittwotexture_dx9.cpp',
 		'vertexlitgeneric_dx9.cpp',
 		'vertexlitgeneric_dx9_helper.cpp',
 		'water.cpp',

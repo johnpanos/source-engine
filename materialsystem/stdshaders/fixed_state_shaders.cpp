@@ -14,6 +14,7 @@
 //===========================================================================//
 
 #include "BaseVSShader.h"
+#include "cloak_blended_pass_helper.h"
 #include "convar.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -56,6 +57,7 @@ enum class Op
 	Pos3EyeGlint,   // VertexShaderVertexFormat( POSITION, 3, { 2, 2, 3 }, 0 )
 	FogToFogColor,  // FogToFogColor()
 	FogToWhite,     // FogToWhite()
+	FogToGrey,      // FogToGrey()
 	DefaultFog,     // DefaultFog()
 	Format,         // VertexShaderVertexFormat( a, b, 0, 0 )
 	Initial,        // SetInitialShadowState()
@@ -76,6 +78,11 @@ enum class Op
 	PolyOffset,     // EnablePolyOffset( PolygonOffsetMode_t( a ) )
 	FogToGreyRaw,   // DisableFogGammaCorrection( true ); FogToGrey()
 	DecalFormat,    // DecalModulate's format: POSITION | COMPRESSED, plus NORMAL and texcoords { 2, 0, 3 } with fast vertex textures
+	FogToOOOverbright, // FogToOOOverbright()
+	AlphaWritesFullyOpaque, // EnableAlphaWrites( opaque base texture, no alpha test, and extra a set (a < 0: always) )
+	ModulateFormat,   // Modulate's format: POSITION | COMPRESSED, COLOR with vertex colour or alpha, a texcoord with a base texture or no colour
+	TwoTextureBlend,  // UnlitTwoTexture's blend: translucent when alpha-modulating or a texture (base, extra a) is translucent
+	TwoTextureFormat, // POSITION | NORMAL | COMPRESSED, COLOR with vertex colour, one texcoord
 	LinearReadTexture, // when param b (extra, or -1 the base texture) is defined: sampler a, sRGB read unless 16-bit or extra c is set
 	ClearWrites,    // BufferClearObeyStencil: depth, colour and alpha writes from extras 2, 0 and 1
 	CullAlphaTested, // EnableCulling( $alphatest && !$nocull )
@@ -194,6 +201,13 @@ struct FixedStateRow
 	// Falls back to unlessFallback when extra unlessDefined is undefined.
 	int unlessDefined = -1;
 	const char *unlessFallback = nullptr;
+	// The cloak's second pass (cloak_blended_pass_helper): the extra index of
+	// $CLOAKPASSENABLED, followed by $CLOAKFACTOR, $CLOAKCOLORTINT and
+	// $REFRACTAMOUNT; -1 for none.
+	int cloak = -1;
+	// EvaluateBlendRequirements( BASETEXTURE ) runs each draw (the opaque test
+	// AlphaWritesFullyOpaque reads).
+	bool evaluateBlend = false;
 };
 
 constexpr int kDistortMapFlags = TEXTUREFLAGS_NOMIP | TEXTUREFLAGS_NOLOD |
@@ -357,6 +371,35 @@ const FixedStateRow kRows[] = {
 	        { Op::Blending, SHADER_BLEND_SRC_ALPHA, SHADER_BLEND_ONE_MINUS_SRC_ALPHA, When::Param, 20 },
 	        { Op::BlendEnable, 0, 0, When::Param, 30 },
 	        { Op::AlphaFunc, SHADER_ALPHAFUNC_ALWAYS, 0, When::Param, 30 } } },
+	{ "Modulate", "Modulate_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "Modulate_DX9", nullptr, 0, MATERIAL_VAR2_SUPPORTS_HW_SKINNING,
+	    { { "$WRITEZ", SHADER_PARAM_TYPE_BOOL, "0", "Forces z to be written if set" },
+	        { "$MOD2X", SHADER_PARAM_TYPE_BOOL, "0", "forces a 2x modulate so that you can brighten and darken things" },
+	        { "$CLOAKPASSENABLED", SHADER_PARAM_TYPE_BOOL, "0", "Enables cloak render in a second pass" },
+	        { "$CLOAKFACTOR", F, "0.0", "" }, { "$CLOAKCOLORTINT", SHADER_PARAM_TYPE_COLOR, "[1 1 1]", "Cloak color tint" },
+	        { "$REFRACTAMOUNT", F, "2", "" } },
+	    -1, 0, { { false, BASETEXTURE, true } },
+	    { { Op::Blending, SHADER_BLEND_DST_COLOR, SHADER_BLEND_SRC_COLOR, When::Param, 1 },
+	        { Op::Blending, SHADER_BLEND_DST_COLOR, SHADER_BLEND_ZERO, When::NotParam, 1 },
+	        { Op::DepthWrites, 1, 0, When::Param, 0 }, { Op::ModulateFormat },
+	        { Op::FogToGrey, 0, 0, When::Param, 1 }, { Op::FogToOOOverbright, 0, 0, When::NotParam, 1 },
+	        { Op::AlphaWritesFullyOpaque, 0 } },
+	    0, {}, {}, nullptr, InitHook::None, -1, nullptr, 2, true },
+	{ "UnlitTwoTexture", "UnlitTwoTexture_DX9", 0, 0, NO_PARAMS, -1, 0, NO_LOADS, {} },
+	{ "UnlitTwoTexture_DX9", nullptr, 0, MATERIAL_VAR2_SUPPORTS_HW_SKINNING,
+	    { { "$TEXTURE2", T, "shadertest/BaseTexture", "second texture" },
+	        { "$FRAME2", I, "0", "frame number for $texture2" },
+	        { "$TEXTURE2TRANSFORM", SHADER_PARAM_TYPE_MATRIX, "center .5 .5 scale 1 1 rotate 0 translate 0 0",
+	            "$texture2 texcoord transform" },
+	        { "$CLOAKPASSENABLED", SHADER_PARAM_TYPE_BOOL, "0", "Enables cloak render in a second pass" },
+	        { "$CLOAKFACTOR", F, "0.0", "" }, { "$CLOAKCOLORTINT", SHADER_PARAM_TYPE_COLOR, "[1 1 1]", "Cloak color tint" },
+	        { "$REFRACTAMOUNT", F, "2", "" } },
+	    -1, 0, { { false, BASETEXTURE, true, TEXTUREFLAGS_SRGB }, { true, 0, true, TEXTUREFLAGS_SRGB } },
+	    { { Op::Texture, SHADER_SAMPLER0 }, { Op::SrgbRead, SHADER_SAMPLER0, 1 },
+	        { Op::Texture, SHADER_SAMPLER1 }, { Op::SrgbRead, SHADER_SAMPLER1, 1 }, { Op::SrgbWrite, 1 },
+	        { Op::TwoTextureBlend, 0 }, { Op::TwoTextureFormat }, { Op::DefaultFog },
+	        { Op::AlphaWritesFullyOpaque, -1 } },
+	    0, {}, {}, nullptr, InitHook::None, -1, nullptr, 3, true },
 	{ "Downsample_nohdr", nullptr, SHADER_NOT_EDITABLE, 0,
 	    { { "$BLOOMTINTENABLE", I, "1", "" }, { "$CSTRIKE", I, "0", "" } }, 0, 1,
 	    { { false, BASETEXTURE, false } },
@@ -612,6 +655,28 @@ public:
 		return m_Row.shaderFallback;
 	}
 	int GetNumParams() const override { return CBaseVSShader::GetNumParams() + m_nParams; }
+	bool NeedsPowerOfTwoFrameBufferTexture( IMaterialVar **params, bool bCheckSpecificToThisFrame ) const override
+	{
+		if ( m_Row.cloak >= 0 && params[Extra( m_Row.cloak )]->GetIntValue() )
+		{
+			if ( !bCheckSpecificToThisFrame )
+				return true;
+			const float factor = params[Extra( m_Row.cloak + 1 )]->GetFloatValue();
+			if ( factor > 0.0f && factor < 1.0f )
+				return true;
+		}
+		return CBaseVSShader::NeedsPowerOfTwoFrameBufferTexture( params, bCheckSpecificToThisFrame );
+	}
+	bool IsTranslucent( IMaterialVar **params ) const override
+	{
+		if ( m_Row.cloak >= 0 && params[Extra( m_Row.cloak )]->GetIntValue() )
+		{
+			const float factor = params[Extra( m_Row.cloak + 1 )]->GetFloatValue();
+			if ( factor > 0.0f && factor < 1.0f )
+				return true;
+		}
+		return CBaseVSShader::IsTranslucent( params );
+	}
 	char const *GetParamName( int param ) const override
 	{
 		const Param *p = RowParam( param );
@@ -651,6 +716,18 @@ protected:
 			SET_FLAGS( MaterialVarFlags_t( m_Row.initFlags ) );
 		if ( m_Row.initFlags2 )
 			SET_FLAGS2( MaterialVarFlags2_t( m_Row.initFlags2 ) );
+		if ( m_Row.cloak >= 0 )
+		{
+			IMaterialVar *enabled = params[Extra( m_Row.cloak )];
+			if ( !enabled->IsDefined() )
+				enabled->SetIntValue( 0 );
+			else if ( enabled->GetIntValue() )
+			{
+				CloakBlendedPassVars_t cloak;
+				SetupCloak( cloak );
+				InitParamsCloakBlendedPass( this, params, pMaterialName, cloak );
+			}
+		}
 		if ( m_Row.hook == InitHook::VertexIdSkinning && g_pHardwareConfig->HasFastVertexTextures() )
 		{
 			SET_FLAGS2( MATERIAL_VAR2_USES_VERTEXID );
@@ -734,6 +811,13 @@ protected:
 				break;
 			}
 		}
+		// After the row's texture loads, as the shaders ordered it.
+		if ( m_Row.cloak >= 0 && params[Extra( m_Row.cloak )]->GetIntValue() )
+		{
+			CloakBlendedPassVars_t cloak;
+			SetupCloak( cloak );
+			InitCloakBlendedPass( this, params, cloak );
+		}
 	}
 	void OnDrawElements( IMaterialVar **params, IShaderShadow *pShaderShadow,
 	    IShaderDynamicAPI *pShaderAPI, VertexCompressionType_t vertexCompression,
@@ -741,6 +825,41 @@ protected:
 	{
 		if ( m_Row.fallback || m_Row.shaderFallback )
 			return;
+		const bool cloaking = m_Row.cloak >= 0 && params[Extra( m_Row.cloak )]->GetIntValue();
+		CloakBlendedPassVars_t cloak;
+		if ( cloaking )
+			SetupCloak( cloak );
+		// A fully opaque cloak replaces the standard pass (not while snapshotting).
+		if ( cloaking && !pShaderShadow && CloakBlendedPassIsFullyOpaque( params, cloak ) )
+			Draw( false );
+		else
+		{
+			DrawStandard( params, pShaderShadow );
+		}
+		if ( cloaking )
+		{
+			const float factor = params[Extra( m_Row.cloak + 1 )]->GetFloatValue();
+			if ( pShaderShadow || ( factor > 0.0f && factor < 1.0f ) )
+				DrawCloakBlendedPass( this, params, pShaderAPI, pShaderShadow, cloak, vertexCompression );
+			else
+				Draw( false );
+		}
+	}
+
+private:
+	void SetupCloak( CloakBlendedPassVars_t &cloak ) const
+	{
+		cloak.m_nCloakFactor = Extra( m_Row.cloak + 1 );
+		cloak.m_nCloakColorTint = Extra( m_Row.cloak + 2 );
+		cloak.m_nRefractAmount = Extra( m_Row.cloak + 3 );
+	}
+	void DrawStandard( IMaterialVar **params, IShaderShadow *pShaderShadow )
+	{
+		if ( m_Row.evaluateBlend )
+		{
+			const BlendType_t blend = EvaluateBlendRequirements( BASETEXTURE, true );
+			m_FullyOpaque = blend != BT_BLENDADD && blend != BT_BLEND && !IS_FLAG_SET( MATERIAL_VAR_ALPHATEST );
+		}
 		SHADOW_STATE
 		{
 			for ( const Step &step : m_Row.steps )
@@ -761,7 +880,6 @@ protected:
 		Draw();
 	}
 
-private:
 	int Extra( int index ) const { return CBaseVSShader::GetNumParams() + index; }
 	const Param *RowParam( int param ) const
 	{
@@ -930,6 +1048,51 @@ private:
 			    texCoordDims, 0 );
 			break;
 		}
+		case Op::FogToGrey:
+			FogToGrey();
+			break;
+		case Op::FogToOOOverbright:
+			FogToOOOverbright();
+			break;
+		case Op::AlphaWritesFullyOpaque:
+			pShaderShadow->EnableAlphaWrites(
+			    m_FullyOpaque && ( step.a < 0 || params[Extra( step.a )]->GetIntValue() != 0 ) );
+			break;
+		case Op::ModulateFormat:
+		{
+			unsigned int flags = VERTEX_POSITION;
+			int texCoords = 0;
+			if ( params[BASETEXTURE]->IsTexture() )
+			{
+				pShaderShadow->EnableTexture( SHADER_SAMPLER0, true );
+				texCoords = 1;
+			}
+			if ( IS_FLAG_SET( MATERIAL_VAR_VERTEXCOLOR ) || IS_FLAG_SET( MATERIAL_VAR_VERTEXALPHA ) )
+				flags |= VERTEX_COLOR;
+			if ( !( flags & VERTEX_COLOR ) && texCoords == 0 )
+				texCoords = 1;
+			pShaderShadow->VertexShaderVertexFormat( flags | VERTEX_FORMAT_COMPRESSED, texCoords, NULL, 0 );
+			break;
+		}
+		case Op::TwoTextureBlend:
+		{
+			const bool translucent = IsAlphaModulating() || TextureIsTranslucent( BASETEXTURE, true ) ||
+			                         TextureIsTranslucent( Extra( step.a ), true );
+			const bool additive = IS_FLAG_SET( MATERIAL_VAR_ADDITIVE );
+			if ( translucent )
+				EnableAlphaBlending( SHADER_BLEND_SRC_ALPHA,
+				    additive ? SHADER_BLEND_ONE : SHADER_BLEND_ONE_MINUS_SRC_ALPHA );
+			else if ( additive )
+				EnableAlphaBlending( SHADER_BLEND_ONE, SHADER_BLEND_ONE );
+			else
+				DisableAlphaBlending();
+			break;
+		}
+		case Op::TwoTextureFormat:
+			pShaderShadow->VertexShaderVertexFormat( VERTEX_POSITION | VERTEX_NORMAL | VERTEX_FORMAT_COMPRESSED |
+			        ( IS_FLAG_SET( MATERIAL_VAR_VERTEXCOLOR ) ? VERTEX_COLOR : 0 ),
+			    1, NULL, 0 );
+			break;
 		case Op::LinearReadTexture:
 		{
 			IMaterialVar *texture = params[step.b < 0 ? int( BASETEXTURE ) : Extra( step.b )];
@@ -1000,6 +1163,7 @@ private:
 
 	const FixedStateRow &m_Row;
 	int m_nParams = 0;
+	bool m_FullyOpaque = true; // DrawStandard's, for AlphaWritesFullyOpaque
 };
 
 // One instance per row; each registers itself with the shader DLL as it is
