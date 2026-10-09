@@ -481,15 +481,17 @@ and after a change that adds, removes, splits or moves a module, changes
 regenerate the affected family and the group overview and compare them:
 
 ```sh
-python3 tools/archlint/archlint.py graph                         # module groups
-python3 tools/archlint/archlint.py graph --family render         # or product, kiln
+python3 tools/archlint/archlint.py graph [--format F]                  # module groups
+python3 tools/archlint/archlint.py graph --family render [--format F]  # or product, kiln
 python3 tools/archlint/archlint.py graph --family render --focus <module> --depth 2
 ```
 
-Tools and agents can read the same graph as data: `--format json` (schema
+Use whichever format you read best; none is preferred, and they all carry
+the same graph: `png` or `svg` to look at, `json` (schema
 `archlint-graph/v1`: nodes with group, role and layer; edges with kind,
-`shown` and pending owner; group cycles), `graphml` (yEd, Gephi, networkx) or
-`mermaid` (Markdown). Cycles are also a check: archlint CAP014 rejects any
+`shown` and pending owner; group cycles) to read or diff as data, `dot`,
+`graphml` (yEd, Gephi, networkx) or `mermaid` (Markdown). Cycles are also a
+check: archlint CAP014 rejects any
 module cycle, and any cycle between module groups (an id's first segment,
 test modules excluded) except through the edges recorded in
 `groupCycles.pending` in `architecture/modules.json`, each with its row; the
@@ -497,14 +499,14 @@ graph draws group-cycle edges in orange.
 
 Look for:
 - an edge pointing up a layer, or a new cycle between groups;
-- a new red (pending) edge;
-- a live module landing in the "outside the contract" box;
+- a new pending edge (red in the images, `kind: pending` in the data);
+- a live module landing outside the contract (role `outside`);
 - a translator or adapter that the core depends on;
 - a pass, scene or other core module gaining format or legacy edges;
 - a module whose fan-in or fan-out jumps.
 
-Record what you saw in the change's progress entry: the images are written to
-`out/archlint/` and are not committed. Findings from the first look
+Record what you saw in the change's progress entry, whatever format you
+used: the outputs are written to `out/archlint/` and are not committed. Findings from the first look
 (2026-10-09) are in the
 [direction audit](RFC/direction-audit-2026-10-08.md#what-the-graphs-show-2026-10-09).
 
