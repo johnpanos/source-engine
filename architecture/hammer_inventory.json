@@ -5,10 +5,10 @@
   "baselineRevision": "2d7e01d5",
   "coverage": {
     "status": "partial",
-    "totalHammerSourceFiles": 684,
+    "totalHammerSourceFiles": 682,
     "totalHammerCppFiles": 334,
     "totalHammerHeaderFiles": 350,
-    "filesClassified": 68,
+    "filesClassified": 148,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'. 2026-10-03 (R08-REPLACE-TEXTURES, HAM-REPLACETEX-001): 22 reviewed records for the files that slice read or changed, and the authored totals refreshed to the live universe that 'archlint hammer --coverage' measures (hammer/ plus the strict roots)."
   },
   "files": [
@@ -1009,6 +1009,1093 @@
       "factorization": "keep",
       "evidence": "observed",
       "note": "The GTK shell's composition root and windows over EditorWorkspace: menus from the ActionCatalog, host requests (properties, replace_textures), the Texture Application window."
+    },
+    {
+      "path": "hammer/AnchorMgr.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "MFC dialog layout: CAnchorMgr resizes child HWNDs with SetWindowPos on OnSize; the GTK shell lays out its own widgets, so this retires with the dialogs."
+    },
+    {
+      "path": "hammer/AnchorMgr.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CAnchorDef/CAnchorMgr over HWND and dialog item IDs, the Win32 dialog-anchoring model that the GTK shell does not use."
+    },
+    {
+      "path": "hammer/DispShore.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "world.map-geometry",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation",
+        "gpu-work"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CDispShoreManager builds shoreline segments from displacement and face data (Shoreline_t::AddSegment) and has Draw/DebugDraw through CRender3D; the geometry is derived and can be recomputed."
+    },
+    {
+      "path": "hammer/DispShore.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "world.map-geometry",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares ShoreFaceData_t, Shoreline_t and the IDispShoreManager interface over MapHelper/MapFace/MapOverlay types, so the shoreline geometry types can be extracted once those types are split."
+    },
+    {
+      "path": "hammer/FileChangeWatcher.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Wraps Win32 CreateFile, CreateEvent and ReadDirectoryChangesW to watch directories and report changed filenames, a platform file-watch adapter."
+    },
+    {
+      "path": "hammer/FileChangeWatcher.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Declares CFileChangeWatcher with ICallbacks and AddDirectory/Update, the interface over the Win32 directory watcher."
+    },
+    {
+      "path": "hammer/FilteredComboBox.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CFilteredComboBox subclasses CComboBox with an edit-control font, colour and suggestion filtering; this is Win32 combo-box control glue that GTK entry completion replaces."
+    },
+    {
+      "path": "hammer/FilteredComboBox.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CFilteredComboBox : CComboBox with ICallbacks and suggestion methods, a Win32 control class with no domain state."
+    },
+    {
+      "path": "hammer/HammerScene.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.source",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CSceneTokenProcessor and LoadFile read choreography .vcd scene files through the scriplib tokenizer and GetFirstSoundInScene resolves a scene's sound, an asset lookup over external files."
+    },
+    {
+      "path": "hammer/HammerScene.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.source",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Declares GetFirstSoundInScene and forward-declares CChoreoScene, the scene-asset query used by the sound and scene preview paths."
+    },
+    {
+      "path": "hammer/HammerVGui.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "CHammerVGui Init(HWND) starts the VGUI/MatSystem surface on the main window and pumps Simulate; it exists only to host the MFC VGUI panels that GTK does not use."
+    },
+    {
+      "path": "hammer/HammerVGui.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares CHammerVGui with HWND-based Init/Shutdown and VGUI focus tracking, the legacy VGUI host for the MFC shell."
+    },
+    {
+      "path": "hammer/MapAxisHandle.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapAxisHandle is a map helper that draws its axis handle in Render2D/Render3D and attaches to points, so the handle geometry and draw need to be separated from its document-side attachment."
+    },
+    {
+      "path": "hammer/MapAxisHandle.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CMapAxisHandle : CMapHelper with Render2D/Render3D and the CToolAxisHandle attachment, mixing handle state with view drawing."
+    },
+    {
+      "path": "hammer/MapDiffDlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CMapDiffDlg is a modal dialog that browses for a .vmf, .rmf or .map file via CFileDialog and compares it with the open document; the comparison UI is replaced by the GTK host."
+    },
+    {
+      "path": "hammer/MapDiffDlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CMapDiffDlg : CDialog with a static MapDiff(CWnd*, CMapDoc*) entry point, the MFC dialog shell."
+    },
+    {
+      "path": "hammer/MapHelper.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapHelper is the base class for non-serialized helper objects (ShouldSerialize returns false, PrepareSelection), mixing scene-object policy with the MFC CMapClass base."
+    },
+    {
+      "path": "hammer/ModelBrowser.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CModelBrowser is a CDialog hosting a vgui EditablePanel with an MDLPicker and saves its layout to an INI section (SaveLoadSettings); the browser UI is replaced by the GTK shell."
+    },
+    {
+      "path": "hammer/ModelBrowser.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CModelBrowser : CDialog with CModelBrowserPanel and CMDLPicker forward declarations, the MFC dialog shell over the VGUI model picker."
+    },
+    {
+      "path": "hammer/NewVisGroupDlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CNewVisGroupDlg is a CDialog that asks for a visgroup name and lists groups with a registered window message; the GTK visgroups panel replaces it."
+    },
+    {
+      "path": "hammer/NewVisGroupDlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CNewVisGroupDlg : CDialog over CGroupList, the MFC new-visgroup dialog."
+    },
+    {
+      "path": "hammer/OP_Model.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "COP_Model::UpdateData reads the model's sequence names and feeds the combo suggestions, and OnSetActive/OnKillActive set the global Options.view3d.bAnimateModels, so the model editing rules need separating from the MFC page."
+    },
+    {
+      "path": "hammer/OP_Model.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares COP_Model : CObjectPage and CFilteredComboBox::ICallbacks over GDclass and CMapStudioModel, the model property page's editing contract."
+    },
+    {
+      "path": "hammer/ObjectPage.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CObjectPage is the base for MFC property pages with a static s_bRESTRUCTURING flag and UpdateData(Mode) and OnSetActive; the GTK Object Properties window (R08-UI-PROPS) replaces it."
+    },
+    {
+      "path": "hammer/PopupMenus.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "The header only defines IDM_POPUP_POINT_HANDLE 7, a Win32 popup-menu command ID; the GTK menus use ActionCatalog, so the constant retires with the MFC popups."
+    },
+    {
+      "path": "hammer/Render.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work",
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CRender holds the view's render mode, instance-rendering flag and studio render config (UpdateStudioRenderConfig) and draws through the material system, so view state and draw submission need splitting."
+    },
+    {
+      "path": "hammer/Render.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares EditorRenderMode_t and the CRender class over IMaterial, DrawModelInfo_t and CCoreDispInfo, combining the view's render settings with GPU draw calls."
+    },
+    {
+      "path": "hammer/RenderUtils.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "DrawBoundsText projects a brush's bounds through CRender2D TransformPoint and draws measurement text with SetTextColor, a pure projection mixed with 2D drawing."
+    },
+    {
+      "path": "hammer/RenderUtils.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares DrawBoundsText(CRender2D*, ...) and its flags, the 2D measurement overlay helper."
+    },
+    {
+      "path": "hammer/ScenePreviewDlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CScenePreviewDlg is a CDialog that plays a CChoreoScene on a thread (EndThread, OnIdle) and drives the sound system; the GTK host replaces this preview window."
+    },
+    {
+      "path": "hammer/ScenePreviewDlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CScenePreviewDlg : CDialog over CChoreoScene and a scene filename, the MFC scene preview shell."
+    },
+    {
+      "path": "hammer/SearchReplaceDlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation",
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Find/replace logic (MatchString, ReplaceString, FindCheck, FindReplace over CMapEntity keyvalues via SetKeyValue) is mixed with the CSearchReplaceDlg MFC dialog, so the matching rules must move to the app layer."
+    },
+    {
+      "path": "hammer/SearchReplaceDlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares FindObject_t (the search criteria) and CSearchReplaceDlg : CDialog with GetFindCriteria, so the criteria type belongs with the app-layer matcher."
+    },
+    {
+      "path": "hammer/SelectModeDlgBar.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CSelectModeDlgBar : CHammerBar is an MFC toolbar with BOOL Create(CWnd*), the select-mode bar replaced by GTK toolbar actions."
+    },
+    {
+      "path": "hammer/Selection.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "selection-policy",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CSelection holds the document's selection list with SelectObjectList flags including scSaveChanges, which commits property-dialog edits, so selection policy and document commits need separating."
+    },
+    {
+      "path": "hammer/SmoothingGroupMgr.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CSmoothingGroupMgr adds and removes faces from smoothing groups and sets angles, and its SaveVMF/LoadVMF chunk callbacks put the VMF format in the same class."
+    },
+    {
+      "path": "hammer/SmoothingGroupMgr.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares ISmoothingGroupMgr with face-group operations and SaveVMF/LoadVMF over CChunkFile and CSaveInfo, combining the group model with VMF persistence."
+    },
+    {
+      "path": "hammer/SoundBrowser.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CSoundBrowser is a CDialog that lists sounds with a filter history (m_nFilterHistory) and saves its values to an INI section; the GTK shell replaces the sound picker."
+    },
+    {
+      "path": "hammer/SoundBrowser.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CSoundBrowser : CDialog constructed from the current sound name, the MFC sound picker shell."
+    },
+    {
+      "path": "hammer/ToolAxisHandle.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CToolAxisHandle pushes TOOL_AXIS_HANDLE on ToolManager, captures the view on mouse down and updates the document's views (UpdateAllViews), so the tool state machine must be separated from the MFC view input."
+    },
+    {
+      "path": "hammer/ToolAxisHandle.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares CToolAxisHandle, an axis drag handle over CMapView2D/3D with CRender2D/3D references and no MFC message map or document write."
+    },
+    {
+      "path": "hammer/ToolBase.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CBaseTool::Init stores a CMapDoc pointer and Activate calls UpdateAllViews, so the base tool is a view-refresh shim over MFC document types."
+    },
+    {
+      "path": "hammer/ToolBlock.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CToolBlockMessageWnd is a CWnd with a message map for 2D menus, and the block tool adds objects through MarkUndoPosition, AddObjectToWorld and KeepNew."
+    },
+    {
+      "path": "hammer/ToolBlock.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CToolBlock derives from Box3D and exposes CMapView2D/3D entry points; the header holds no document writes or window code."
+    },
+    {
+      "path": "hammer/ToolCamera.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "file-io",
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Camera3D keeps the camera list that is saved with the map (SaveInfo and chunk callbacks), and its cursor and view handling use MFC view types."
+    },
+    {
+      "path": "hammer/ToolCamera.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "The header declares the camera list with CChunkFile/CSaveInfo serialization and load callbacks, so the camera chunk belongs with the format library while the tool view logic stays in hammer.tools."
+    },
+    {
+      "path": "hammer/ToolClipper.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "gpu-work",
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Clipper3D draws clip results through Render2D/Render3D, adds and deletes solids through MapDoc and History, and sets cursors on MFC views."
+    },
+    {
+      "path": "hammer/ToolClipper.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation",
+        "gpu-work"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CClipGroup and Clipper3D declare the clip-plane state machine and a DrawBrushExtents(CRender2D*) draw entry over CMapSolid pointers."
+    },
+    {
+      "path": "hammer/ToolCordon.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "The cordon tool is a 2D/3D drag tool that uses MFC cursor and view calls and makes no document writes in this file."
+    },
+    {
+      "path": "hammer/ToolCordon.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "file-io",
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Cordon3D declares CChunkFile/CSaveInfo save and load hooks, so the cordon box it edits is persisted into the map and is document data."
+    },
+    {
+      "path": "hammer/ToolDecal.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "The decal tool places decal entities through AddObjectToWorld with MarkUndoPosition and KeepNew, and uses MFC cursor and message calls."
+    },
+    {
+      "path": "hammer/ToolDecal.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CToolDecal is a base-tool declaration over CMapView2D/3D with no MFC message map or document write in the header."
+    },
+    {
+      "path": "hammer/ToolEntity.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "document-mutation",
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "The entity/prefab placement tool creates entities in the world through the document and history, draws its preview via Render2D/Render3D, and has a CWnd message window."
+    },
+    {
+      "path": "hammer/ToolEntity.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CToolEntity declares CRender2D/CRender3D draw hooks over CMapView2D/3D and no document writes in the header."
+    },
+    {
+      "path": "hammer/ToolMagnify.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "The magnify tool changes zoom through pView->SetZoom, so the zoom state lives in the view, and it issues one MFC cursor call."
+    },
+    {
+      "path": "hammer/ToolMagnify.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CToolMagnify is declared over CMapView2D entry points; the zoom factor is applied to the view rather than stored by the tool."
+    },
+    {
+      "path": "hammer/ToolManager.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CToolManager keeps the tool stack (Init, PushTool, PopTool) and registers VMF chunk load and save handlers that forward to each tool, so the chunk dispatch is a split candidate for the format owner."
+    },
+    {
+      "path": "hammer/ToolManager.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CToolManager header lists the tool classes and the tool-stack API; its only file-related declaration is the chunk load callback."
+    },
+    {
+      "path": "hammer/ToolMaterial.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "The face-material tool applies textures through MarkUndoPosition and Keep on solids and drives the MFC CFaceEditSheet property sheet."
+    },
+    {
+      "path": "hammer/ToolMaterial.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CToolMaterial is a base-tool declaration over CMapView2D/3D with no MFC message map or document write."
+    },
+    {
+      "path": "hammer/ToolMorph.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "document-mutation",
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "The 2,161-line morph tool records undo positions for its vertex edits, draws through the render views, and carries CMapView 2D/3D state."
+    },
+    {
+      "path": "hammer/ToolMorph.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Morph3D declares IMesh and CRender2D/3D draw hooks over the map views for the morph handles."
+    },
+    {
+      "path": "hammer/ToolOverlay.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "native-ui",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "The overlay tool adds the new overlay to the world with MarkUndoPosition and KeepNew, and its shoreline computation is pure geometry math."
+    },
+    {
+      "path": "hammer/ToolOverlay.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "The overlay tool header is declared over CMapDoc and CMapView3D and holds Shoreline_t records, so its MFC coupling keeps it in the adapter."
+    },
+    {
+      "path": "hammer/ToolPickAngles.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "The pick-angles tool computes an angle from a 3D view click, reports it through IPickAnglesTarget, and makes one MFC cursor call."
+    },
+    {
+      "path": "hammer/ToolPickAngles.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CToolPickAngles and IPickAnglesTarget are declared over CMapView3D with no MFC message map in the header."
+    },
+    {
+      "path": "hammer/ToolPickEntity.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "The entity picker picks entities from the map views and reports selections to its target, with one MFC cursor call."
+    },
+    {
+      "path": "hammer/ToolPickEntity.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CToolPickEntity, SelectedEntity_t and IPickEntityTarget are declared over CMapView3D and CMapViewLogical with no document writes in the header."
+    },
+    {
+      "path": "hammer/ToolPointHandle.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui",
+        "document-mutation",
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "The point-handle tool has a CWnd message window with nine native-UI matches and edits origins through MarkUndoPosition and Keep on the selection."
+    },
+    {
+      "path": "hammer/ToolPointHandle.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CToolPointHandle declares CRender2D/CRender3D draw hooks over CMapView2D and no document writes in the header."
+    },
+    {
+      "path": "hammer/ToolSelection.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "selection-policy",
+      "effects": [
+        "native-ui",
+        "document-mutation",
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "The 1,984-line Selection3D tool owns the selection list, transforms selected objects in place (TransformSelection) under the history, and draws through the render views."
+    },
+    {
+      "path": "hammer/ToolSelection.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "selection-policy",
+      "effects": [
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Selection3D declares selection over CMapView2D/3D and CMapWorld with CRender2D/3D draw hooks and no MFC message map."
+    },
+    {
+      "path": "hammer/ToolSphere.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "The sphere tool changes the radius through MarkUndoPosition and Keep on the selection, and its geometry math is pure."
+    },
+    {
+      "path": "hammer/ToolSphere.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CToolSphere over CMapSphere with CMapView2D/3D entry points and no document writes in the header."
+    },
+    {
+      "path": "hammer/TorusDlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CTorusDlg is an MFC CDialog with DDX controls and two preview controls (IDC_PREVIEW and the top-view preview), so the GTK host replaces it."
+    },
+    {
+      "path": "hammer/VGuiWnd.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CVGuiWnd and CVGuiPanelWnd host a vgui EditablePanel in an MFC CWnd, override WindowProc and DrawVGuiPanel, and are replaced by the GTK host."
+    },
+    {
+      "path": "hammer/activeitemlist.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "activeitemlist.h is a header-only generic ActiveItemList template with no MFC or Windows types."
+    },
+    {
+      "path": "hammer/adapters/mcp/mcp_server.cpp",
+      "currentOwner": "hammer.adapters.mcp",
+      "destinationModule": "hammer.adapters.mcp",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Transport-free JSON-RPC handler that forwards each tool call to the injected command layer, with no file or native UI calls in this file."
+    },
+    {
+      "path": "hammer/adapters/mcp/mcp_server.h",
+      "currentOwner": "hammer.adapters.mcp",
+      "destinationModule": "hammer.adapters.mcp",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "McpServer declares the transport-free JSON-RPC surface over an injected catalog and execute function; it is the MCP adapter, not MFC."
+    },
+    {
+      "path": "hammer/adapters/platform/disk_byte_store.cpp",
+      "currentOwner": "hammer.adapters.platform",
+      "destinationModule": "hammer.adapters.platform",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "DiskByteStore reads byte ranges with std::ifstream and std::filesystem, the disk provider for the byte-store port."
     }
   ]
 }
