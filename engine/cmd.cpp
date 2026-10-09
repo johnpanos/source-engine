@@ -734,7 +734,9 @@ void Cmd_Exec_f( const CCommand &args )
 	delete[] buf;
 
 	// force any queued convar changes to flush before reading/writing them
+#ifndef SWDS
 	UpdateMaterialSystemConfig();
+#endif
 }
 
 

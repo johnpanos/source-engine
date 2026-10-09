@@ -230,7 +230,9 @@ bool CEngine::Load( bool bDedicated, const char *rootdir )
 	{
 		success = true;
 
+#ifndef SWDS
 		UpdateMaterialSystemConfig();
+#endif
 	}
 	else
 	{

@@ -413,7 +413,9 @@ int ServerMaterial_GetStudioMaterialList(
 	return found;
 }
 
-extern IMaterial *g_materialEmpty;
+// The engine's empty material; matsys_interface.cpp defines it for products
+// with a material system.
+IMaterial *g_materialEmpty = NULL;
 
 void ServerMaterial_Init()
 {

@@ -353,22 +353,6 @@ static void R_SetNonAmbientLightingState( int numLights, dworldlight_t *locallig
 //-----------------------------------------------------------------------------
 // Computes the center of the studio model for illumination purposes
 //-----------------------------------------------------------------------------
-void R_ComputeLightingOrigin( IClientRenderable *pRenderable, studiohdr_t* pStudioHdr, const matrix3x4_t &matrix, Vector& center )
-{
-	int nAttachmentIndex = pStudioHdr->IllumPositionAttachmentIndex();
-	if ( nAttachmentIndex <= 0 )
-	{
-		VectorTransform( pStudioHdr->illumposition, matrix, center );
-	}
-	else
-	{
-		matrix3x4_t attachment;
-		pRenderable->GetAttachment( nAttachmentIndex, attachment );
-		VectorTransform( pStudioHdr->illumposition, attachment, center );
-	}
-}
-
-
 
 #if 0
 // garymct - leave this in here for now. . we might need this for bumped models

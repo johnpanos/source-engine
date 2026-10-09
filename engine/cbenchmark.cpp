@@ -115,8 +115,10 @@ void CBenchmarkResults::StopBenchmark()
 	}
 	kv->SetString( "framerates", str );
 
+#ifndef SWDS
 	// get material system info
 	GetMaterialSystemConfigForBenchmarkUpload( kv );
+#endif
 
 	// save
 	kv->SaveToFile( g_pFileSystem, szFilename, "MOD" );

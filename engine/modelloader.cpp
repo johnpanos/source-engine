@@ -4413,6 +4413,7 @@ static void MarkWaterSurfaces_ProcessLeafNode( mleaf_t *pLeaf )
 
 	// If any portion of a displacement surface hits a water surface,
 	// I'm going to mark it as being in water, and vice versa.
+#ifndef SWDS
 	for ( i = 0; i < pLeaf->dispCount; i++ )
 	{
 		IDispInfo *pDispInfo = MLeaf_Disaplcement( pLeaf, i );
@@ -4423,6 +4424,7 @@ static void MarkWaterSurfaces_ProcessLeafNode( mleaf_t *pLeaf )
 			MSurf_Flags( parentSurfID ) |= flags;
 		}
 	}
+#endif
 }
 
 
@@ -5536,10 +5538,12 @@ void CModelLoader::RecomputeSurfaceFlags( model_t *mod )
 		// Mark if brush models are in water or not; we'll use this
 		// for identity brushes. If the brush is not an identity brush,
 		// then we'll not have to worry.
+#ifndef SWDS
 		if ( i != 0 )
 		{
 			MarkBrushModelWaterSurfaces( mod, pSubModel->mins, pSubModel->maxs, pSubModel );
 		}
+#endif
 	}
 }
 
@@ -5612,11 +5616,13 @@ void CModelLoader::Map_UnloadModel( model_t *mod )
 	R_DecalTerm( &m_worldBrushData, true );
 #endif
 
+#ifndef SWDS
 	if ( m_worldBrushData.hDispInfos )
 	{
 		DispInfo_DeleteArray( m_worldBrushData.hDispInfos );
 		m_worldBrushData.hDispInfos = NULL;
 	}
+#endif
 
 	// Model loader loads world model materials, unload them here
 	for( int texinfoID = 0; texinfoID < m_worldBrushData.numtexinfo; texinfoID++ )
@@ -5631,8 +5637,8 @@ void CModelLoader::Map_UnloadModel( model_t *mod )
 		}
 	}
 
-	MaterialSystem_DestroySortinfo();
 #ifndef SWDS
+	MaterialSystem_DestroySortinfo();
 	if ( world_mesh_gpu::IWorldMeshUpload *uploader = WorldMeshUploader() )
 		uploader->Release();
 	Map_ReleaseProbeVolume();
@@ -5797,11 +5803,13 @@ void CModelLoader::Studio_ReloadModels( CModelLoader::ReloadType_t reloadType )
 	if ( serverGameDLL )
 		serverGameDLL->InvalidateMdlCache();
 
+#ifndef SWDS
 	// ensure decals have no stale references to invalid lods
 	modelrender->RemoveAllDecalsFromAllModels();
 
 	// ensure static props have no stale references to invalid lods
 	modelrender->ReleaseAllStaticPropColorData();
+#endif
 
 	// Flush out the model cache
 	// Don't flush vcollides since the vphysics system currently
@@ -6182,7 +6190,11 @@ void CModelLoader::Map_LoadDisplacements( model_t *pModel, bool bRestoring )
 	Q_FileBase( pModel->strName, m_szLoadName, sizeof( m_szLoadName ) );
 	CMapLoadHelper::Init( pModel, m_szLoadName );
 
-    DispInfo_LoadDisplacements( pModel, bRestoring );
+#ifndef SWDS
+	// The dedicated product draws no displacements; its collision comes from
+	// the collision model's own displacement trees (cmodel_disp.cpp).
+	DispInfo_LoadDisplacements( pModel, bRestoring );
+#endif
 
 	CMapLoadHelper::Shutdown();
 }

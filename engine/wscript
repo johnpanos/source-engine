@@ -57,6 +57,7 @@ def build(bld):
 			audio_provider_defines += ['AUDIO_CODEC_OPUS=1']
 
 	source = [
+		'brush_model_geometry.cpp',
 		'device_facts.cpp',
 		'socketcreator.cpp',
 		'clientframe.cpp',
@@ -253,6 +254,13 @@ def build(bld):
 		source += ['audio/snd_posix.cpp']
 
 	if bld.env.DEDICATED:
+		# RFC 0001 R12: the dedicated product builds none of the engine's render
+		# units (world and model drawing, decals, overlays, displacement meshes,
+		# occlusion, the material-system glue).
+		RENDER_ONLY = ['decal_clip.cpp', 'disp.cpp', 'disp_interface.cpp', 'disp_mapload.cpp',
+			'gl_rsurf.cpp', 'gl_shader.cpp', 'l_studio.cpp', 'matsys_interface.cpp', 'Overlay.cpp',
+			'r_decal.cpp', 'r_linefile.cpp', 'OcclusionSystem.cpp']
+		source = [ f for f in source if f not in RENDER_ONLY ]
 		# RFC 0001 R12: the dedicated server reads material facts with the
 		# material system's VMT definition rules, without a material system.
 		source += ['cl_null.cpp', 'sys_stubwind.cpp', 'server_material.cpp',

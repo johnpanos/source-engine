@@ -1396,6 +1396,36 @@
       "profile": "linux-host-corpus",
       "result_protocol": "checks-v1",
       "expect": "pass",
+      "id": "dedicated.join",
+      "description": "R12: a Portal client joins the installed dedicated server over UDP, becomes an active player on testchmb_a_01, follows an RCON changelevel to testchmb_a_02 and is active there, and the server quits with exit 0.",
+      "command": [
+        "{python}",
+        "tools/quality/dedicated_server.py",
+        "join",
+        "--runtime",
+        "out/dedicated-linux/dev/runtime",
+        "--client-runtime",
+        "out/portal-linux-native-vulkan/dev/runtime"
+      ],
+      "timeout_seconds": 600,
+      "requires": [
+        "path:out/dedicated-linux/dev/runtime/portal/maps/testchmb_a_01.bsp",
+        "path:out/portal-linux-native-vulkan/dev/runtime/portal/maps/testchmb_a_02.bsp"
+      ],
+      "sources": [
+        "tools/quality/dedicated_server.py"
+      ],
+      "min_checks": 5
+    },
+    {
+      "domain": "Q-PRODUCT",
+      "rfc": "0001",
+      "migration": "R12",
+      "contract": "RFC/0001-dedicated-composition-progress.md",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "result_protocol": "checks-v1",
+      "expect": "pass",
       "id": "dedicated.material-facts",
       "description": "R12: on every Portal map the dedicated server, with no material system, reads the same surface properties (collision surfaces and displacements), sprite sizes and frames and model materials as the listen-server reference recorded from the Portal client (quality/fixtures/dedicated-server), with the recorded deviations only.",
       "command": [

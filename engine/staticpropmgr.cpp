@@ -105,13 +105,13 @@ static const objectparams_t g_PhysDefaultObjectParams =
 // return true if the renderer should use the slow path that supports the various debug modes
 inline bool IsUsingStaticPropDebugModes()
 {
-	if ( r_drawstaticprops.GetInt() != 1 ||
-		r_DrawSpecificStaticProp.GetInt() >= 0 ||
-		r_colorstaticprops.GetBool() ||
-		r_staticpropinfo.GetInt() ||
-		mat_fullbright.GetInt() ||
-		r_drawmodellightorigin.GetBool() ||
-		r_drawmodelstatsoverlay.GetBool() )
+	if ( r_drawstaticprops.GetInt() != 1 || r_DrawSpecificStaticProp.GetInt() >= 0 ||
+	     r_colorstaticprops.GetBool() || r_staticpropinfo.GetInt() ||
+#ifndef SWDS
+	     mat_fullbright.GetInt() || r_drawmodellightorigin.GetBool() ||
+	     r_drawmodelstatsoverlay.GetBool() ||
+#endif
+	     false )
 		return true;
 	return false;
 }
@@ -508,10 +508,12 @@ CStaticProp::CStaticProp() : m_pModel(0), m_Alpha(255)
 CStaticProp::~CStaticProp()
 {
 	RemovePropFromKDTree( );
+#ifndef SWDS
 	if (m_ModelInstance != MODEL_INSTANCE_INVALID)
 	{
 		modelrender->DestroyInstance( m_ModelInstance );
 	}
+#endif
 }
 
 
@@ -1612,7 +1614,9 @@ void CStaticPropMgr::LevelShutdownClient()
 	for (int i = m_StaticProps.Count(); --i >= 0; )
 	{
 		m_StaticProps[i].CleanUpRenderHandle( );
+#ifndef SWDS
 		modelrender->SetStaticLighting( m_StaticProps[i].GetModelInstance(), NULL );
+#endif
 	}
 
 #ifndef SWDS
@@ -2009,7 +2013,9 @@ void CStaticPropMgr::DrawStaticProps_FastPipeline( IClientRenderable **pProps, i
 		propList[listCount].pLightingOrigin = &pProp->m_LightingOrigin;
 		listCount++;
 	}
+#ifndef SWDS
 	modelrender->DrawStaticPropArrayFast( propList, listCount, bShadowDepth );
+#endif
 }
 
 // NOTE: Set this to zero to revert to the previous static prop lighting behavior
@@ -2063,8 +2069,13 @@ void CStaticPropMgr::DrawStaticProps( IClientRenderable **pProps, int count, boo
 //-----------------------------------------------------------------------------
 LightCacheHandle_t CStaticPropMgr::GetLightCacheHandleForStaticProp( IHandleEntity *pHandleEntity )
 {
+#ifndef SWDS
 	int nIndex = HandleEntityToIndex(pHandleEntity);
 	return modelrender->GetStaticLighting( m_StaticProps[ nIndex ].GetModelInstance() );
+#else
+	// The dedicated product has no model renderer and so no light caches.
+	return NULL;
+#endif
 }
 
 

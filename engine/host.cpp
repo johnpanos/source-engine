@@ -2624,9 +2624,11 @@ void CheckSpecialCheatVars()
 	if ( !mat_picmip )
 		mat_picmip = g_pCVar->FindVar( "mat_picmip" );
 
+#ifndef SWDS
 	CheckVarRange_r_rootlod();
 	CheckVarRange_r_lod();
 	HandleServerAllowColorCorrection();
+#endif
 }
 
 // _Host_RunFrame_Render is in gl_screen.cpp (client builds) and cl_null.cpp.
