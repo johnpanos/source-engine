@@ -19305,6 +19305,41 @@
       "expect": "pass"
     },
     {
+      "id": "platform.sdl3.product-suites",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R18",
+      "contract": "unittests/platformtest/contracts/platform.window.v1.md",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "The product's SDL3 window/input suites on real video drivers (RFC 0001 R18): tools/quality/window_sdl3_lane.py --tree runs the portal tree's built programs with SDL_VIDEODRIVER=wayland in kiln's private session and x11 in private-x11. sdl3_launcher_conformance drives the SDL3 launcher manager (events, resize, presentation, lifecycle, failed and repeated init); input_gamepad_slots_test drives the input system's two-player gamepad slots on SDL virtual gamepads (routing, rumble per player and stop, hotplug, reconnect, state sampled at open), and its seeded slot-collapse provider must fail; sdl3_voice_record_test drives SDL3 voice capture. Requires a built portal tree (./kiln build portal).",
+      "command": [
+        "{python}",
+        "tools/quality/window_sdl3_lane.py",
+        "--tree",
+        "out/portal-linux-native-vulkan/dev",
+        "--out",
+        "/tmp/claude-1000/sdl3-product-lane"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 900,
+      "timeout_seconds": 1200,
+      "requires": [
+        "executable:mutter",
+        "executable:Xwayland",
+        "path:out/portal-linux-native-vulkan/dev/install/sdl3_launcher_conformance"
+      ],
+      "sources": [
+        "tools/quality/window_sdl3_lane.py",
+        "unittests/platformtest/sdl3/test_sdl3_launcher.cpp",
+        "unittests/platformtest/sdl3/test_gamepad_slots.cpp",
+        "appframework/sdl3mgr.cpp",
+        "inputsystem/joystick_sdl.cpp",
+        "inputsystem/inputsystem.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
       "id": "foundation.scoped-resource",
       "domain": "Q-FOUNDATION",
       "rfc": "0006",
@@ -21898,6 +21933,93 @@
       ],
       "expect": "pass",
       "min_checks": 15
+    },
+    {
+      "id": "corpus.portal2.demos.self-test",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0005",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "Portal 2 demo suite logic (tools/quality/portal2_demo_suite.py --self-test): map/chapter selection, partitioning over workers and chunks, and per-demo log evaluation, each failure mode with a negative case. No game.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_demo_suite.py",
+        "--self-test"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 22,
+      "timeout_seconds": 120,
+      "sources": [
+        "tools/quality/portal2_demo_suite.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-demos-v1/demos.json"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "corpus.portal2.demos.smoke",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0005",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "One leaderboard demo (sp_a1_intro3) played on one game instance through the demo suite. Known failure: the engine's DEMO_PROTOCOL is 3 and retail Portal 2 demos are protocol 4 ('demo file protocol 4 outdated'), so no retail demo plays. Needs a local Portal 2 install and the portal2 kiln profile.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_demo_suite.py",
+        "--map",
+        "sp_a1_intro3",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 1,
+      "timeout_seconds": 600,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_demo_suite.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-demos-v1/demos.json"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL sp_a1_intro3.plays"
+    },
+    {
+      "id": "corpus.portal2.demos.all",
+      "domain": "Q-PRESENTATION",
+      "rfc": "0005",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "Every Portal 2 leaderboard demo (81 maps) through the demo suite on 4 concurrent game instances, each playing its share back to back with startdemos. Known failure while the engine's DEMO_PROTOCOL stays 3 (retail demos are protocol 4). Needs a local Portal 2 install and the portal2 kiln profile.",
+      "command": [
+        "{python}",
+        "tools/quality/portal2_demo_suite.py",
+        "--workers",
+        "4",
+        "--out",
+        "{out}"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 81,
+      "timeout_seconds": 7200,
+      "requires": [
+        "env:SOURCE_PORTAL2_STEAM_ROOT",
+        "vulkan-device:gpu"
+      ],
+      "optional": true,
+      "sources": [
+        "tools/quality/portal2_demo_suite.py",
+        "tools/quality/portal2_scenarios.py",
+        "tools/quality/conformance_result.py",
+        "quality/workloads/portal2-demos-v1/demos.json"
+      ],
+      "expect": "fail",
+      "expected_divergence": "FAIL mp_coop_doors.plays"
     }
   ]
 }
