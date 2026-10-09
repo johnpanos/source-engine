@@ -432,28 +432,6 @@
         ]
       },
       {
-        "id": "platform.sdl3.legacy-adapter",
-        "kind": "backend",
-        "paths": [
-          "platform/sdl3/legacy_include/"
-        ],
-        "allowedEdges": [],
-        "externalHeaders": [
-          "SDL3/SDL.h",
-          "SDL3/SDL_clipboard.h",
-          "SDL3/SDL_error.h",
-          "SDL3/SDL_events.h",
-          "SDL3/SDL_gamepad.h",
-          "SDL3/SDL_haptic.h",
-          "SDL3/SDL_keycode.h",
-          "SDL3/SDL_messagebox.h",
-          "SDL3/SDL_misc.h",
-          "SDL3/SDL_scancode.h",
-          "SDL3/SDL_touch.h",
-          "SDL3/SDL_version.h"
-        ]
-      },
-      {
         "id": "platform.sdl3.launcher",
         "kind": "backend",
         "paths": [

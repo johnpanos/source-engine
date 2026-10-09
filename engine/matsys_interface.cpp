@@ -42,10 +42,8 @@
 
 #if defined( USE_SDL )
 #include "appframework/ilaunchermgr.h"
-#if defined( USE_SDL3 )
+#include "appframework/ilauncherplatformservices.h"
 #include "appframework/ilauncherwindowpresentation.h"
-#endif
-#include "SDL.h"
 #endif
 
 //X360TEMP
@@ -405,6 +403,23 @@ static T OverrideVideoConfigFromCommandLine( const char *pCVarName, T curVal )
 //-----------------------------------------------------------------------------
 // Reads convars from the registry
 //-----------------------------------------------------------------------------
+#if defined( USE_SDL ) && !defined( SWDS )
+// Limits the configured mode to the size of display 'displayIndex'.
+static void ClampVideoModeToDisplay( MaterialSystem_Config_t &config, int displayIndex )
+{
+	ILauncherPlatformServices *platform = LauncherPlatformServices( g_pLauncherMgr );
+	LauncherDisplayRect rect;
+	if ( !platform || !platform->GetDisplayBounds( displayIndex, rect ) )
+		return;
+	if ( ( config.m_VideoMode.m_Width > rect.width ) ||
+	     ( config.m_VideoMode.m_Height > rect.height ) )
+	{
+		config.m_VideoMode.m_Width = rect.width;
+		config.m_VideoMode.m_Height = rect.height;
+	}
+}
+#endif
+
 static void ReadMaterialSystemConfigFromRegistry( MaterialSystem_Config_t &config )
 {
 #ifndef SWDS
@@ -425,15 +440,7 @@ static void ReadMaterialSystemConfigFromRegistry( MaterialSystem_Config_t &confi
 		displayIndex = conVar.GetInt();
 
 		// Make sure the width / height isn't too large for this display.
-		SDL_Rect rect;
-		if ( !SDL_GetDisplayBounds( displayIndex, &rect ) )
-		{
-			if ( ( config.m_VideoMode.m_Width > rect.w ) || ( config.m_VideoMode.m_Height > rect.h ) )
-			{
-				config.m_VideoMode.m_Width = rect.w;
-				config.m_VideoMode.m_Height = rect.h;
-			}
-		}
+		ClampVideoModeToDisplay( config, displayIndex );
 	}
 #endif // USE_SDL && !SWDS
 
@@ -627,15 +634,7 @@ static void OverrideMaterialSystemConfigFromCommandLine( MaterialSystem_Config_t
 			displayIndex = conVar.GetInt();
 
 			// Make sure the width / height isn't too large for this display.
-			SDL_Rect rect;
-			if ( !SDL_GetDisplayBounds( displayIndex, &rect ) )
-			{
-				if ( ( config.m_VideoMode.m_Width > rect.w ) || ( config.m_VideoMode.m_Height > rect.h ) )
-				{
-					config.m_VideoMode.m_Width = rect.w;
-					config.m_VideoMode.m_Height = rect.h;
-				}
-			}
+			ClampVideoModeToDisplay( config, displayIndex );
 		}
 	}
 #endif // USE_SDL && !SWDS

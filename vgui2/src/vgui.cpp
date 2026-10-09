@@ -42,7 +42,7 @@
 #include "utlvector.h"
 #include "tier0/vprof.h"
 #include "tier0/icommandline.h"
-
+#include "appframework/ilauncherplatformservices.h"
 
 #undef GetCursorPos // protected_things.h defines this, and it makes it so we can't access g_pInput->GetCursorPos.
 
@@ -1114,6 +1114,8 @@ void vgui::vgui_strcpy(char* dst,int dstLen,const char* src)
 //-----------------------------------------------------------------------------
 // Here's where the app systems get to learn about each other 
 //-----------------------------------------------------------------------------
+ILauncherPlatformServices *g_pLauncherPlatform = NULL;
+
 bool CVGui::Connect( CreateInterfaceFn factory )
 {
 	if ( !BaseClass::Connect( factory ) )
@@ -1125,11 +1127,16 @@ bool CVGui::Connect( CreateInterfaceFn factory )
 		return false;
 	}
 
+#if defined( USE_SDL )
+	g_pLauncherPlatform =
+	    LauncherPlatformServices( (ILauncherMgr *)factory( SDLMGR_INTERFACE_VERSION, NULL ) );
+#endif
 	return VGui_InternalLoadInterfaces( &factory, 1 );
 }
 
 void CVGui::Disconnect()
 {
+	g_pLauncherPlatform = NULL;
 	// FIXME: Blat out interface pointers
 	BaseClass::Disconnect();
 }

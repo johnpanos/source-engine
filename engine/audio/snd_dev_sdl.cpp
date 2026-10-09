@@ -20,7 +20,7 @@
 #define _STDINT_H_ 1
 #endif
 
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 // memdbgon must be the last include file in a .cpp file!!!
 #if defined( PLATFORM_WASM )
@@ -91,12 +91,10 @@ public:
 
 private:
 	SDL_AudioDeviceID m_devId;
-#if defined( USE_SDL3 )
 	SDL_AudioStream *m_pAudioStream;
 	bool m_bAudioInitialized;
 	static void SDLCALL AudioStreamCallback(
 	    void *userdata, SDL_AudioStream *stream, int additionalAmount, int totalAmount );
-#endif
 
 	static void SDLCALL AudioCallbackEntry(void *userdata, Uint8 * stream, int len);
 	void AudioCallback(Uint8 *stream, int len);
@@ -126,10 +124,8 @@ static CAudioDeviceSDLAudio *g_wave = NULL;
 CAudioDeviceSDLAudio::CAudioDeviceSDLAudio()
 {
 	m_devId = 0;
-#if defined( USE_SDL3 )
 	m_pAudioStream = NULL;
 	m_bAudioInitialized = false;
-#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -162,11 +158,7 @@ IAudioDevice *Audio_CreateSDLAudioDevice( void )
 
 DLL_EXPORT const audio::DeviceProvider *Audio_SDLProvider()
 {
-#if defined( USE_SDL3 )
 	static const audio::DeviceProvider provider = { "sdl3", Audio_CreateSDLAudioDevice };
-#else
-	static const audio::DeviceProvider provider = { "sdl2", Audio_CreateSDLAudioDevice };
-#endif
 	return &provider;
 }
 
@@ -272,19 +264,10 @@ void CAudioDeviceSDLAudio::OpenWaveOut( void )
 	return;
 #endif
 
-#if defined( USE_SDL3 )
 	// Own one subsystem reference even when recording or another provider uses it.
 	if ( !SDL_InitSubSystem( SDL_INIT_AUDIO ) )
 		SDLAUDIO_FAIL( "SDL_InitSubSystem(SDL_INIT_AUDIO)" );
 	m_bAudioInitialized = true;
-#else
-	if (!SDL_WasInit(SDL_INIT_AUDIO))
-	{
-		if (SDL_InitSubSystem(SDL_INIT_AUDIO))
-			SDLAUDIO_FAIL("SDL_InitSubSystem(SDL_INIT_AUDIO)");
-	}
-
-#endif
 
 	debugsdl("SDLAUDIO: Using SDL audio target '%s'\n", SDL_GetCurrentAudioDriver());
 
@@ -294,9 +277,8 @@ void CAudioDeviceSDLAudio::OpenWaveOut( void )
 	SDL_AudioSpec desired, obtained;
 	memset(&desired, '\0', sizeof (desired));
 	desired.freq = SOUND_DMA_SPEED;
-	desired.format = AUDIO_S16SYS;
+	desired.format = SDL_AUDIO_S16;
 	desired.channels = 2;
-#if defined( USE_SDL3 )
 	// The stream converts the fixed engine PCM format to the actual device format.
 	// It begins paused, so the callback cannot borrow buffers before allocation.
 	m_pAudioStream = SDL_OpenAudioDeviceStream( SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &desired,
@@ -309,20 +291,6 @@ void CAudioDeviceSDLAudio::OpenWaveOut( void )
 	if ( !SDL_ResumeAudioStreamDevice( m_pAudioStream ) )
 		SDLAUDIO_FAIL( "SDL_ResumeAudioStreamDevice()" );
 	Msg( "RFC0001 provider: audio=sdl3 driver=%s\n", SDL_GetCurrentAudioDriver() );
-#else
-	desired.samples = 2048;
-	desired.callback = &CAudioDeviceSDLAudio::AudioCallbackEntry;
-	desired.userdata = this;
-	m_devId = SDL_OpenAudioDevice(NULL, 0, &desired, &obtained, SDL_AUDIO_ALLOW_ANY_CHANGE);
-
-	if (!m_devId)
-		SDLAUDIO_FAIL("SDL_OpenAudioDevice()");
-
-	// We're now ready to feed audio data to SDL!
-	AllocateOutputBuffers();
-	SDL_PauseAudioDevice(m_devId, 0);
-
-#endif
 #undef SDLAUDIO_FAIL
 
 #if defined( BINK_VIDEO ) && defined( LINUX )
@@ -353,7 +321,6 @@ void CAudioDeviceSDLAudio::CloseWaveOut( void )
 	FreeOutputBuffers();
 	return;
 #endif
-#if defined( USE_SDL3 )
 	if ( m_pAudioStream )
 	{
 		// Destruction synchronizes with the callback before freeing the PCM ring.
@@ -366,15 +333,6 @@ void CAudioDeviceSDLAudio::CloseWaveOut( void )
 		SDL_QuitSubSystem( SDL_INIT_AUDIO );
 		m_bAudioInitialized = false;
 	}
-#else
-	// none of these SDL_* functions are available to call if this is false.
-	if (m_devId)
-	{
-		SDL_CloseAudioDevice(m_devId);
-		m_devId = 0;
-	}
-	SDL_QuitSubSystem(SDL_INIT_AUDIO);
-#endif
 	FreeOutputBuffers();
 }
 
@@ -428,7 +386,6 @@ int CAudioDeviceSDLAudio::PaintBegin( float mixAheadTime, int soundtime, int pai
 	return endtime;
 }
 
-#if defined( USE_SDL3 )
 void SDLCALL CAudioDeviceSDLAudio::AudioStreamCallback(
     void *userdata, SDL_AudioStream *stream, int additionalAmount, int totalAmount )
 {
@@ -447,7 +404,6 @@ void SDLCALL CAudioDeviceSDLAudio::AudioStreamCallback(
 		additionalAmount -= bytes;
 	}
 }
-#endif
 
 void CAudioDeviceSDLAudio::AudioCallbackEntry(void *userdata, Uint8 *stream, int len)
 {
@@ -588,10 +544,8 @@ void CAudioDeviceSDLAudio::Pause( void )
 			if ( A && A.context )
 				A.context.suspend();
 		} );
-#elif defined( USE_SDL3 )
-		SDL_PauseAudioDevice( m_devId );
 #else
-		SDL_PauseAudioDevice(m_devId, 1);
+		SDL_PauseAudioDevice( m_devId );
 #endif
 	}
 }
@@ -611,10 +565,8 @@ void CAudioDeviceSDLAudio::UnPause( void )
 				if ( A && A.context )
 					A.context.resume();
 			} );
-#elif defined( USE_SDL3 )
-			SDL_ResumeAudioDevice( m_devId );
 #else
-			SDL_PauseAudioDevice(m_devId, 0);
+			SDL_ResumeAudioDevice( m_devId );
 #endif
 		}
 	}

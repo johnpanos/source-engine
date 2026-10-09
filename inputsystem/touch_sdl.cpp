@@ -8,56 +8,35 @@
 #include "inputsystem.h"
 #include "tier1/convar.h"
 #include "tier0/icommandline.h"
-#include "SDL.h"
-#include "SDL_touch.h"
+#include <SDL3/SDL.h>
 // NOTE: This has to be the last file included!
 #include "tier0/memdbgon.h"
 
 //-----------------------------------------------------------------------------
 // Handle the events coming from the Touch SDL subsystem.
 //-----------------------------------------------------------------------------
-#if defined( USE_SDL3 )
 bool SDLCALL TouchSDLWatcher( void *userInfo, SDL_Event *event )
-#else
-int SDLCALL TouchSDLWatcher( void *userInfo, SDL_Event *event )
-#endif
 {
 	CInputSystem *pInputSystem = (CInputSystem *)userInfo;
 
 	if( !event || !pInputSystem ) return 1;
 
-#if defined( USE_SDL3 )
 	switch ( event->type )
 	{
-	case SDL_FINGERDOWN:
+	case SDL_EVENT_FINGER_DOWN:
 		pInputSystem->FingerEventSDL3( IE_FingerDown, event->tfinger.fingerID, event->tfinger.x,
 		    event->tfinger.y, event->tfinger.dx, event->tfinger.dy );
 		break;
-	case SDL_FINGERUP:
+	case SDL_EVENT_FINGER_UP:
 	case SDL_EVENT_FINGER_CANCELED:
 		pInputSystem->FingerEventSDL3( IE_FingerUp, event->tfinger.fingerID, event->tfinger.x,
 		    event->tfinger.y, event->tfinger.dx, event->tfinger.dy );
 		break;
-	case SDL_FINGERMOTION:
+	case SDL_EVENT_FINGER_MOTION:
 		pInputSystem->FingerEventSDL3( IE_FingerMotion, event->tfinger.fingerID, event->tfinger.x,
 		    event->tfinger.y, event->tfinger.dx, event->tfinger.dy );
 		break;
 	}
-
-#else
-	switch ( event->type ) {
-	case SDL_FINGERDOWN:
-		pInputSystem->FingerEvent( IE_FingerDown, event->tfinger.fingerId, event->tfinger.x, event->tfinger.y, event->tfinger.dx, event->tfinger.dy );
-		break;
-	case SDL_FINGERUP:
-		pInputSystem->FingerEvent( IE_FingerUp, event->tfinger.fingerId, event->tfinger.x, event->tfinger.y, event->tfinger.dx, event->tfinger.dy );
-		break;
-	case SDL_FINGERMOTION:
-		pInputSystem->FingerEvent( IE_FingerMotion ,event->tfinger.fingerId, event->tfinger.x, event->tfinger.y, event->tfinger.dx, event->tfinger.dy );
-		break;
-	}
-
-#endif
 
 	return 1;
 }
@@ -76,17 +55,10 @@ void CInputSystem::InitializeTouch( void )
 	memset( m_touchAccumX, 0, sizeof(m_touchAccumX) );
 	memset( m_touchAccumY, 0, sizeof(m_touchAccumY) );
 
-#if defined( USE_SDL3 )
 	memset( m_touchFingerUsed, 0, sizeof( m_touchFingerUsed ) );
-#endif
-#if defined( USE_SDL3 )
 	m_bTouchInitialized = SDL_AddEventWatch( TouchSDLWatcher, this );
 	if ( !m_bTouchInitialized )
 		Warning( "Touch event watch failed: %s\n", SDL_GetError() );
-#else
-	m_bTouchInitialized = true;
-	SDL_AddEventWatch(TouchSDLWatcher, this);
-#endif
 }
 
 void CInputSystem::ShutdownTouch()
@@ -94,7 +66,7 @@ void CInputSystem::ShutdownTouch()
 	if ( !m_bTouchInitialized )
 		return;
 
-	SDL_DelEventWatch( TouchSDLWatcher, this );
+	SDL_RemoveEventWatch( TouchSDLWatcher, this );
 	m_bTouchInitialized = false;
 }
 
@@ -135,7 +107,6 @@ void CInputSystem::FingerEvent(int eventType, int fingerId, float x, float y, fl
 	PostEvent(eventType, m_nLastSampleTick, fingerId, _x, _y);
 }
 
-#if defined( USE_SDL3 )
 void CInputSystem::FingerEventSDL3(
     int eventType, uint64 fingerId, float x, float y, float dx, float dy )
 {
@@ -160,4 +131,3 @@ void CInputSystem::FingerEventSDL3(
 	if ( eventType == IE_FingerUp )
 		m_touchFingerUsed[slot] = false;
 }
-#endif

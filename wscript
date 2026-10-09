@@ -750,13 +750,12 @@ def check_deps(conf):
 		# RFC 0029: Emscripten's ports, pinned by the pinned SDK release (each
 		# port names its archive and sha512). No fontconfig, OpenAL or curl:
 		# fonts ship with the content and audio is SDL3's.
-		ports = {'SDL3': ['--use-port=sdl3'], 'SDL2': ['--use-port=sdl3'],
+		ports = {'SDL3': ['--use-port=sdl3'],
 			'FT2': ['-sUSE_FREETYPE=1'], 'JPEG': ['-sUSE_LIBJPEG=1'], 'PNG': ['-sUSE_LIBPNG=1'],
 			'ZLIB': ['-sUSE_ZLIB=1']}
 		for store, flags in ports.items():
 			for var in ('CFLAGS', 'CXXFLAGS', 'LINKFLAGS'):
 				conf.env[var + '_' + store] = list(flags)
-		conf.env.INCLUDES_SDL2 = [os.path.abspath('platform/sdl3/legacy_include')]
 		# Their headers are needed beyond their uselib's users (vgui_surfacelib).
 		for var in ('CFLAGS', 'CXXFLAGS'):
 			conf.env.append_unique(var, ['-sUSE_FREETYPE=1', '-sUSE_ZLIB=1'])
@@ -765,9 +764,7 @@ def check_deps(conf):
 	if conf.env.DEST_OS == '3ds':
 		# build-3ds.sh's PKG_CONFIG_LIBDIR names the cross-built SDL3 prefix
 		# and devkitPro's 3ds portlibs. No fontconfig, OpenAL or curl.
-		conf.check_cfg(package='sdl3', uselib_store='SDL2', args=['--cflags', '--libs', '--static'])
 		conf.check_cfg(package='sdl3', uselib_store='SDL3', args=['--cflags', '--libs', '--static'])
-		conf.env.INCLUDES_SDL2 += [os.path.abspath('platform/sdl3/legacy_include')]
 		conf.check_cfg(package='freetype2', uselib_store='FT2', args=['--cflags', '--libs', '--static'])
 		conf.check_cfg(package='libjpeg', uselib_store='JPEG', args=['--cflags', '--libs'])
 		conf.check_cfg(package='libpng', uselib_store='PNG', args=['--cflags', '--libs', '--static'])
@@ -777,9 +774,7 @@ def check_deps(conf):
 		# As on Android: PKG_CONFIG_LIBDIR names only build-apple-app.sh's
 		# cross-built prefix. No fontconfig (fonts ship with the content) and
 		# no OpenAL: audio uses SDL3. zlib is the SDK's system library.
-		conf.check_cfg(package='sdl3', uselib_store='SDL2', args=['--cflags', '--libs', '--static'])
 		conf.check_cfg(package='sdl3', uselib_store='SDL3', args=['--cflags', '--libs', '--static'])
-		conf.env.INCLUDES_SDL2 += [os.path.abspath('platform/sdl3/legacy_include')]
 		# Static archives: --static adds their private dependencies (zlib).
 		conf.check_cfg(package='freetype2', uselib_store='FT2', args=['--cflags', '--libs', '--static'])
 		conf.check_cxx(fragment=FT2_CHECK, use='FT2', msg='Checking for \'freetype2\' sanity')
@@ -790,11 +785,12 @@ def check_deps(conf):
 	elif conf.env.DEST_OS != 'android':
 		if conf.env.DEST_OS != 'win32':
 			if conf.options.SDL:
-				conf.check_cfg(package='sdl3' if conf.env.SDL3 else 'sdl2',
-					uselib_store='SDL2', args=['--cflags', '--libs'])
+				# Every SDL product is an SDL3 client (RFC 0001 R18): SDL3 is a
+				# private dependency of the window provider, the input system,
+				# the engine's audio backends and the launcher, never a generic
+				# include path.
 				if conf.env.SDL3:
 					conf.check_cfg(package='sdl3', uselib_store='SDL3', args=['--cflags', '--libs'])
-					conf.env.INCLUDES_SDL2 += [os.path.abspath('platform/sdl3/legacy_include')]
 					# Optional: the SDL3-Vulkan pair declares the output's image
 					# description on Wayland (render/bridge/sdl3-vulkan).
 					if conf.env.DEST_OS == 'linux':
@@ -817,9 +813,7 @@ def check_deps(conf):
 		# PKG_CONFIG_LIBDIR names only the cross-built prefix, so no host
 		# package can satisfy a target check. No fontconfig: Android fonts are
 		# files the app ships. Audio uses SDL3; zlib is the NDK's system library.
-		conf.check_cfg(package='sdl3', uselib_store='SDL2', args=['--cflags', '--libs'])
 		conf.check_cfg(package='sdl3', uselib_store='SDL3', args=['--cflags', '--libs'])
-		conf.env.INCLUDES_SDL2 += [os.path.abspath('platform/sdl3/legacy_include')]
 		conf.check_pkg('freetype2', 'FT2', FT2_CHECK)
 		conf.check_cfg(package='libjpeg', uselib_store='JPEG', args=['--cflags', '--libs'])
 		conf.check_cfg(package='libpng', uselib_store='PNG', args=['--cflags', '--libs'])

@@ -4,17 +4,8 @@
 //
 //===========================================================================//
 #if defined( USE_SDL )
-#undef PROTECTED_THINGS_ENABLE
-#include "SDL.h"
-#if !defined( USE_SDL3 )
-#include "SDL_syswm.h"
-#endif
-
-#if defined( OSX )
-#define DONT_DEFINE_BOOL
-#include <objc/message.h>
-#endif
-
+// Opaque: the launcher manager owns the window; the engine never includes SDL.
+typedef struct SDL_Window SDL_Window;
 #endif
 
 #if defined( WIN32 )
@@ -33,6 +24,7 @@
 	#error
 #endif
 #include "appframework/ilaunchermgr.h"
+#include "appframework/ilauncherplatformservices.h"
 
 #include "igame.h"
 #include "cl_main.h"
@@ -993,7 +985,9 @@ void CGame::SetGameWindow( void *hWnd )
 {
 	m_bExternallySuppliedWindow = true;
 #if defined( USE_SDL )
-	SDL_RaiseWindow( (SDL_Window *)hWnd );
+	// Only the MFC editor supplies a window (a native HWND), and SDL products
+	// have no MFC editor: callers pass NULL, which SDL never raised.
+	(void)hWnd;
 #else
     SetMainWindow( (HWND)hWnd );
 #endif
@@ -1425,29 +1419,10 @@ void *CGame::GetMainWindowPlatformSpecificHandle( void )
 {
 #ifdef WIN32
 	return (void*)m_hWindow;
-#elif defined( USE_SDL3 )
+#else
 	// Presentation consumes the opaque SDL window through its private bridge.
 	// Wayland does not expose a portable native window handle to engine clients.
 	return NULL;
-#else
-	SDL_SysWMinfo pInfo;
-	SDL_VERSION( &pInfo.version );
-	if ( !SDL_GetWindowWMInfo( (SDL_Window*)m_pSDLWindow, &pInfo ) )
-	{
-		Error( "Fatal Error: Unable to get window info from SDL." );
-		return NULL;
-	}
-
-#ifdef OSX
-	id nsWindow = (id)pInfo.info.cocoa.window;
-	SEL selector = sel_registerName("windowRef");
-	id windowRef = ((id(*)(id, SEL))objc_msgSend)( nsWindow, selector );
-	return windowRef;
-#else
-	// Not used on Linux.
-	return NULL;
-#endif
-
 #endif // !WIN32
 }
 
@@ -1470,16 +1445,18 @@ void CGame::GetDesktopInfo( int &width, int &height, int &refreshrate )
 	refreshrate = 0;
 
 	// Go through all the displays and return the size of the largest.
-	for( int i = 0; i < SDL_GetNumVideoDisplays(); i++ )
+	ILauncherPlatformServices *platform = LauncherPlatformServices( g_pLauncherMgr );
+	const int displays = platform ? platform->GetDisplayCount() : 0;
+	for ( int i = 0; i < displays; i++ )
 	{
-		SDL_Rect rect;
+		LauncherDisplayRect rect;
 
-		if ( !SDL_GetDisplayBounds( i, &rect ) )
+		if ( platform->GetDisplayBounds( i, rect ) )
 		{
-			if ( ( rect.w > width ) || ( ( rect.w == width ) && ( rect.h > height ) ) )
+			if ( ( rect.width > width ) || ( ( rect.width == width ) && ( rect.height > height ) ) )
 			{
-				width = rect.w;
-				height = rect.h;
+				width = rect.width;
+				height = rect.height;
 			}
 		}
 	}
@@ -1509,16 +1486,17 @@ void CGame::UpdateDesktopInformation( )
 	static ConVarRef sdl_displayindex( "sdl_displayindex" );
 	int displayIndex = sdl_displayindex.IsValid() ? sdl_displayindex.GetInt() : 0;
 
-	SDL_DisplayMode mode = {};
-	if ( SDL_GetDesktopDisplayMode( displayIndex, &mode ) != 0 )
+	ILauncherPlatformServices *platform = LauncherPlatformServices( g_pLauncherMgr );
+	LauncherDisplayMode mode;
+	if ( !platform || !platform->GetDisplayMode( displayIndex, true, mode ) )
 	{
-		Warning( "Unable to query desktop display: %s\n", SDL_GetError() );
+		Warning( "Unable to query desktop display %d.\n", displayIndex );
 		return;
 	}
 
-	m_iDesktopWidth = mode.w;
-	m_iDesktopHeight = mode.h;
-	m_iDesktopRefreshRate = mode.refresh_rate;
+	m_iDesktopWidth = mode.width;
+	m_iDesktopHeight = mode.height;
+	m_iDesktopRefreshRate = mode.refreshHz;
 #else
 	HDC dc = ::GetDC( m_hWindow );
 	m_iDesktopWidth = ::GetDeviceCaps(dc, HORZRES);
@@ -1550,21 +1528,6 @@ void CGame::SetMainWindow( HWND window )
 #else
 void CGame::SetMainWindow( SDL_Window* window )
 {
-#if defined( WIN32 )
-	// For D3D, we need to access the underlying HWND of the SDL_Window.
-	// We also can't do this in GetMainDeviceWindow and just use that, because for some reason
-	// people use GetMainWindowAddress and store that pointer to our member.
-	SDL_SysWMinfo pInfo;
-	SDL_VERSION( &pInfo.version );
-	if ( !SDL_GetWindowWMInfo( (SDL_Window*)g_pLauncherMgr->GetWindowRef(), &pInfo ) )
-	{
-		Error( "Fatal Error: Unable to get window info from SDL." );
-		return;
-	}
-
-	m_hWindow = pInfo.info.win.window;
-#endif
-
 	m_pSDLWindow = window;
 
 	// update our desktop info (since the results will change if we are going to fullscreen mode)

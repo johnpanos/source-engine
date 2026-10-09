@@ -34,7 +34,7 @@ def build(bld):
 		'../../public/tier1',
 		'../../common',
 		'../'
-	] + bld.env.INCLUDES_SDL2
+	]
 
 	# bitmap before the libraries it uses (a static link resolves left to right).
 	libs = ['tier0', 'bitmap', 'tier1', 'tier2', 'mathlib', 'render_device']

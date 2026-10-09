@@ -76,11 +76,13 @@
 
 #include "tier0/dbg.h"
 #include "engine/IEngineSound.h"
+#include "appframework/ilauncherplatformservices.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include <tier0/memdbgon.h>
 
 IGameUIFuncs *gameuifuncs = NULL;
+ILauncherPlatformServices *g_pLauncherPlatform = NULL;
 IEngineVGui *enginevguifuncs = NULL;
 IMatchmaking *matchmaking = NULL;
 IXboxSystem *xboxsystem = NULL;		// 360 only
@@ -186,6 +188,10 @@ void CGameUI::Initialize( CreateInterfaceFn factory )
 	matchmaking = (IMatchmaking *)factory( VENGINE_MATCHMAKING_VERSION, NULL );
 	xboxsystem = (IXboxSystem *)factory( XBOXSYSTEM_INTERFACE_VERSION, NULL );
 	g_pEngineClientReplay = (IEngineClientReplay *)factory( ENGINE_REPLAY_CLIENT_INTERFACE_VERSION, NULL );
+#if defined( USE_SDL )
+	g_pLauncherPlatform =
+	    LauncherPlatformServices( (ILauncherMgr *)factory( SDLMGR_INTERFACE_VERSION, NULL ) );
+#endif
 
 	if ( ModInfo().SupportsVR() && CommandLine()->CheckParm( "-vr" ) )
 	{

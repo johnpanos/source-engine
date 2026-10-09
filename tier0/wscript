@@ -79,7 +79,7 @@ def build(bld):
 		'.',
 		'../public',
 		'../public/tier0',
-	] + bld.env.INCLUDES_SDL2
+	]
 
 	# tier0/dbg.cpp stamps the engine log with the commit; only tier0 sees it.
 	defines = [ 'GIT_COMMIT_HASH="%s"' % bld.env.GIT_VERSION ] if bld.env.GIT_VERSION else []

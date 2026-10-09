@@ -26,8 +26,7 @@
 #endif
 
 #if defined( USE_SDL )
-	#include "SDL.h"
-	#include "appframework/ilaunchermgr.h"
+#include "appframework/ilaunchermgr.h"
 #endif
 
 #include "tier0/native_module_load_telemetry.h"

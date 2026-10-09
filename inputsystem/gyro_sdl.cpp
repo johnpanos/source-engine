@@ -14,13 +14,10 @@
 #include "gyro_math.h"
 #include "tier0/icommandline.h"
 #include "tier0/platform.h"
-#if defined( USE_SDL3 )
-#include "SDL.h"
-#endif
+#include <SDL3/SDL.h>
 // NOTE: This has to be the last file included!
 #include "tier0/memdbgon.h"
 
-#if defined( USE_SDL3 )
 static bool SDLCALL GyroSDLWatcher( void *userInfo, SDL_Event *event )
 {
 	CGyroSensor *pSensor = static_cast<CGyroSensor *>( userInfo );
@@ -70,7 +67,6 @@ static int GyroDisplayRotationSDL( SDL_DisplayID display )
 	return gyro::DisplayRotation( nDegreesFromPortrait,
 	    SDL_GetNaturalDisplayOrientation( display ) == SDL_ORIENTATION_LANDSCAPE );
 }
-#endif
 
 void CInputSystem::InitializeGyro()
 {
@@ -82,22 +78,18 @@ void CInputSystem::InitializeGyro()
 	if ( !m_GyroSensor.Init() )
 		return;
 
-#if defined( USE_SDL3 )
 	m_bGyroWatchInstalled = SDL_AddEventWatch( GyroSDLWatcher, &m_GyroSensor );
 	if ( !m_bGyroWatchInstalled )
 		Warning( "Gyro: lifecycle event watch failed: %s\n", SDL_GetError() );
-#endif
 	UpdateGyroSamplePeriod();
 }
 
 void CInputSystem::ShutdownGyro()
 {
-#if defined( USE_SDL3 )
 	// SDL runs watchers under its watcher lock, so none is in flight after this
 	// and the sensor thread can be joined.
 	if ( m_bGyroWatchInstalled )
 		SDL_RemoveEventWatch( GyroSDLWatcher, &m_GyroSensor );
-#endif
 	m_bGyroWatchInstalled = false;
 	m_GyroSensor.Shutdown();
 	m_bGyroEnabled = false;
@@ -114,11 +106,9 @@ void CInputSystem::UpdateGyroSamplePeriod()
 	}
 
 	float flRefreshHz = 0.f;
-#if defined( USE_SDL3 )
 	const SDL_DisplayMode *pMode = SDL_GetCurrentDisplayMode( GyroDisplay( m_pLauncherMgr ) );
 	if ( pMode )
 		flRefreshHz = pMode->refresh_rate;
-#endif
 	m_GyroSensor.SetSamplePeriod( gyro::SamplePeriodUs( flRefreshHz ) );
 }
 
@@ -137,11 +127,7 @@ bool CInputSystem::EnableGyro( bool bEnable )
 
 int CInputSystem::GyroDisplayRotation()
 {
-#if defined( USE_SDL3 )
 	return GyroDisplayRotationSDL( GyroDisplay( m_pLauncherMgr ) );
-#else
-	return 0;
-#endif
 }
 
 // A sensor that is on but silent would otherwise just look like a device held

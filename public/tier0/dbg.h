@@ -233,6 +233,17 @@ DBG_INTERFACE void CallAssertFailedNotifyFunc( const char *pchFile, int nLine, c
 /* True if -hushasserts was passed on command line. */
 DBG_INTERFACE bool HushAsserts();
 
+// A modal message box shown by the window provider: an SDL3 client's launcher
+// installs it, so tier0 never links the platform SDK. Button 0 answers Return
+// and button 1, when present, answers Escape. Returns the chosen button's index,
+// or -1 when no provider is installed or the box could not be shown. Callable
+// from any thread; the provider shows it on the calling thread.
+typedef int ( *PlatformMessageBoxFunc_t )(
+    const char *pchTitle, const char *pchText, const char *const *ppButtons, int nButtons );
+DBG_INTERFACE void SetPlatformMessageBoxFunc( PlatformMessageBoxFunc_t func );
+DBG_INTERFACE int ShowPlatformMessageBox(
+    const char *pchTitle, const char *pchText, const char *const *ppButtons, int nButtons );
+
 #if defined( USE_SDL )
 DBG_INTERFACE void SetAssertDialogParent( struct SDL_Window *window );
 DBG_INTERFACE struct SDL_Window * GetAssertDialogParent();

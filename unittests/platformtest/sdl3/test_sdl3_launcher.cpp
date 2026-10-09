@@ -10,6 +10,10 @@
 #include "appframework/ilauncherwindowpresentation.h"
 #include "appframework/window_provider.h"
 #include "tier0/icommandline.h"
+#include "tier1/convar.h"
+#include "tier1/tier1.h"
+#include "icvar.h"
+#include "vstdlib/cvar.h"
 #include <cstdio>
 #include <cstring>
 
@@ -36,6 +40,19 @@ void Push( SDL_Event &event )
 
 void DiscardPending( ILauncherMgr &manager )
 {
+	// A real window system (X11 under Xwayland) keeps delivering its own focus
+	// and expose events for a while after a window maps; wait until it has been
+	// quiet for 100 ms (at most two seconds), so the checks below see only the
+	// events they inject.
+	for ( int quiet = 0, waited = 0; quiet < 2 && waited < 2000; waited += 50 )
+	{
+		SDL_Delay( 50 );
+		SDL_PumpEvents();
+		const bool pending =
+		    SDL_PeepEvents( NULL, 0, SDL_PEEKEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST ) > 0;
+		quiet = pending ? 0 : quiet + 1;
+		SDL_FlushEvents( SDL_EVENT_FIRST, SDL_EVENT_LAST );
+	}
 	SDL_FlushEvents( SDL_EVENT_FIRST, SDL_EVENT_LAST );
 	CCocoaEvent events[128];
 	while ( manager.GetEvents( events, 128 ) )
@@ -238,6 +255,11 @@ void CheckEvents( ILauncherMgr &manager )
 int main( int argc, char **argv )
 {
 	CommandLine()->CreateCmdLine( argc, argv );
+	// The manager keeps launcher state in ConVars (sdl_displayindex*), as in the
+	// product, where the engine has connected the cvar system before it runs.
+	g_pCVar = static_cast<ICvar *>( VStdLib_GetICVarFactory()( CVAR_INTERFACE_VERSION, NULL ) );
+	CHECK( g_pCVar && g_pCVar->Init() == INIT_OK );
+	ConVar_Register( 0 );
 	const WindowProviderDescriptor *provider = WindowProvider_Describe();
 	CHECK( provider && provider->create );
 	if ( !provider || !provider->create )
@@ -253,8 +275,20 @@ int main( int argc, char **argv )
 		std::fprintf( stderr, "Native Vulkan-capable SDL3 display is required.\n" );
 		return 1;
 	}
-	CHECK( std::strcmp( SDL_GetCurrentVideoDriver(), "wayland" ) == 0 );
+	// The session's driver (SDL_VIDEODRIVER: wayland or x11); never offscreen,
+	// which has no real window manager behind the resize and focus checks.
+	const char *driverName = SDL_GetCurrentVideoDriver();
+	CHECK( driverName &&
+	       ( !std::strcmp( driverName, "wayland" ) || !std::strcmp( driverName, "x11" ) ) );
+	char driver[32] = {};
+	std::snprintf( driver, sizeof( driver ), "%s", driverName ? driverName : "" );
+#if defined( CORE_SHADER_API )
+	// The core's device takes its surface from the window (SDL_Vulkan_CreateSurface
+	// needs no window flag), so the window carries no graphics API.
+	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_VULKAN ) == 0 );
+#else
 	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_VULKAN ) != 0 );
+#endif
 	CHECK( ( SDL_GetWindowFlags( window ) & SDL_WINDOW_OPENGL ) == 0 );
 	CHECK( manager->Init() == INIT_OK );
 	CHECK( manager->GetWindowRef() == window );
@@ -285,7 +319,7 @@ int main( int argc, char **argv )
 	CHECK( manager->Init() == INIT_FAILED );
 	CHECK( manager->GetWindowRef() == NULL );
 	CHECK( ( SDL_WasInit( SDL_INIT_VIDEO ) & SDL_INIT_VIDEO ) == 0 );
-	CHECK( SDL_SetHintWithPriority( SDL_HINT_VIDEO_DRIVER, "wayland", SDL_HINT_OVERRIDE ) );
+	CHECK( SDL_SetHintWithPriority( SDL_HINT_VIDEO_DRIVER, driver, SDL_HINT_OVERRIDE ) );
 	CHECK( manager->Init() == INIT_OK );
 	CHECK( manager->GetWindowRef() != NULL );
 	manager->Shutdown();

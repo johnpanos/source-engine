@@ -15,10 +15,10 @@
 
 #if defined( USE_SDL )
 #undef M_PI
-#include "SDL.h"
+#include <SDL3/SDL.h>
 static void initKeymap(void);
 #endif
-#if defined( ANDROID ) && defined( USE_SDL3 )
+#if defined( ANDROID )
 #include <jni.h>
 #endif
 
@@ -38,13 +38,7 @@ DLL_EXPORT IInputSystem *InputSystem_Create()
 
 DLL_EXPORT const InputProviderDescriptor *InputSystem_Describe()
 {
-#if defined( USE_SDL3 )
 	static const InputProviderDescriptor provider = { "sdl3", InputSystem_Create };
-#elif defined( USE_SDL )
-	static const InputProviderDescriptor provider = { "sdl2", InputSystem_Create };
-#else
-	static const InputProviderDescriptor provider = { "native", InputSystem_Create };
-#endif
 	return &provider;
 }
 
@@ -261,10 +255,8 @@ bool CInputSystem::Connect( CreateInterfaceFn factory )
 
 void *CInputSystem::QueryInterface( const char *pInterfaceName )
 {
-#if defined( USE_SDL3 )
 	if ( !Q_strcmp( pInterfaceName, GAMEPAD_SLOTS_INTERFACE_VERSION ) )
 		return static_cast<IGamepadSlots *>( this );
-#endif
 	return BaseClass::QueryInterface( pInterfaceName );
 }
 
@@ -656,7 +648,7 @@ void CInputSystem::PollInputState_Windows()
 
 #if defined( USE_SDL )
 
-static BYTE        scantokey[SDL_NUM_SCANCODES];
+static BYTE scantokey[SDL_SCANCODE_COUNT];
 
 static void initKeymap(void)
 {
@@ -1033,6 +1025,11 @@ void CInputSystem::StopRumble( void )
 	for ( int i = 0; i < XUSER_MAX_COUNT; ++i )
 	{
 		SetRumble(0.0, 0.0, i);
+	}
+	// SetRumble reaches only the first gamepad; every player's pad stops.
+	for ( int slot = 0; slot < gamepads::kSlotCount; ++slot )
+	{
+		SetGamepadDeviceRumble( slot, 0.f, 0.f, true );
 	}
 }
 
@@ -1584,7 +1581,7 @@ ISteamController* CInputSystem::SteamControllerInterface()
 	}
 }
 
-#if defined( ANDROID ) && defined( USE_SDL3 )
+#if defined( ANDROID )
 
 // SDL's Android video driver never registers a keyboard, so SDL_HasKeyboard() is
 // always false: SDL raises the on-screen keyboard (an input view that takes the
@@ -1664,7 +1661,6 @@ void AndroidHideScreenKeyboard()
 
 void CInputSystem::StartTextInput()
 {
-#if defined( USE_SDL3 )
 	if ( m_pLauncherMgr )
 	{
 		SDL_Window *window = static_cast<SDL_Window *>( m_pLauncherMgr->GetWindowRef() );
@@ -1693,14 +1689,10 @@ void CInputSystem::StartTextInput()
 			SDL_DestroyProperties( props );
 		}
 	}
-#elif defined( USE_SDL )
-	SDL_StartTextInput();
-#endif
 }
 
 void CInputSystem::StopTextInput()
 {
-#if defined( USE_SDL3 )
 	// Desktop windows keep text input on from creation (sdl3mgr.cpp); only an
 	// on-screen keyboard is dismissed.
 	if ( m_pLauncherMgr && SDL_HasScreenKeyboardSupport() )
@@ -1714,5 +1706,4 @@ void CInputSystem::StopTextInput()
 #endif
 		}
 	}
-#endif
 }

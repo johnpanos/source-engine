@@ -18,7 +18,7 @@ def build(bld):
 		name='sdl3_launcher_conformance',
 		arch_module='platform.sdl3.native-tests',
 		features='cxx',
-		includes=['../../../public'],
+		includes=['../../../public', '../../../public/tier0', '../../../public/tier1'],
 		use=['appframework', 'tier1', 'vstdlib', 'tier0', 'SDL3'],
 		install_path=bld.env.BINDIR,
 		subsystem='CONSOLE',

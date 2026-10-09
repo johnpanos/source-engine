@@ -46,7 +46,7 @@ def build(bld):
 
 	defines = []
 
-	libs = ['tier0','tier1','tier2','vstdlib','SDL2','steam_api']
+	libs = ['tier0','tier1','tier2','vstdlib','SDL3','steam_api']
 
 	# The gyroscope reads the NDK sensor queue (gyro_sensor.cpp) on Android
 	# and Core Motion (gyro_sensor_ios.mm) on iOS. tvOS has no Core Motion.
@@ -81,7 +81,7 @@ def build(bld):
 			name = 'sdl3_voice_record_test',
 			features = 'cxx cxxprogram',
 			includes = includes + [ '../public/engine/audio' ],
-			use = [ 'tier0', 'SDL2' ],
+			use = [ 'tier0', 'SDL3' ],
 			install_path = bld.env.TESTDIR,
 			idx = bld.get_taskgen_count()
 		)
@@ -93,7 +93,7 @@ def build(bld):
 			name = 'input_gamepad_slots_test',
 			arch_module = 'platform.sdl3.native-tests',
 			features = 'cxx',
-			includes = ['../public'],
+			includes = ['../public', '../public/tier0', '../public/tier1'],
 			use = ['appframework', 'inputsystem', 'tier1', 'tier0', 'vstdlib', 'SDL3'],
 			install_path = bld.env.TESTDIR,
 			idx = bld.get_taskgen_count()

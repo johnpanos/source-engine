@@ -1,0 +1,30 @@
+{
+  "schema": "sdl-boundary/v1",
+  "description": "RFC 0001 R18: the only first-party files that include an SDL header or call an SDL function. SDL3 is a private dependency of the window provider (appframework's launcher manager), the input system, the engine's audio backends, the composition roots (launcher_main, render_lab's host), the SDL3 platform module and presentation bridges, and their native tests. Everything else asks the launcher through ILauncherPlatformServices or tier0's platform message box. Checked by tools/quality/sdl_boundary.py: shrink-only, exact (a listed file that no longer uses SDL must be removed).",
+  "excluded_prefixes": ["thirdparty/", "external/", "dependencies/", "games/csgo/", ".claude/"],
+  "allowed_prefixes": [
+    "launcher_main/",
+    "platform/sdl3/",
+    "render/bridge/sdl3-",
+    "render/lab/app/"
+  ],
+  "allowed_files": [
+    "appframework/sdl3mgr.cpp",
+    "appframework/sdl_window_provider.cpp",
+    "engine/audio/snd_dev_sdl.cpp",
+    "engine/audio/voice_record_sdl.cpp",
+    "inputsystem/gyro_sdl.cpp",
+    "inputsystem/inputsystem.cpp",
+    "inputsystem/joystick_sdl.cpp",
+    "inputsystem/touch_sdl.cpp",
+    "inputsystem/vibrator_device.cpp",
+    "inputsystem/vibrator_sdl.cpp",
+    "unittests/platformtest/sdl3/test_gamepad_slots.cpp",
+    "unittests/platformtest/sdl3/test_sdl3_launcher.cpp",
+    "unittests/platformtest/window_sdl3/test_sdl3_window.cpp",
+    "unittests/rendertest/lab/test_lab_hdr_device.cpp",
+    "unittests/rendertest/test_sdl3_d3d12_presentation.cpp",
+    "unittests/sdl3test/voice_record_test.cpp",
+    "unittests/shaderextensiontest/test_material_binding.cpp"
+  ]
+}

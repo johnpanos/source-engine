@@ -357,6 +357,9 @@ public:
 	void CloseGamepadSlot( int slot );
 	void UpdateGamepadButton( int slot, int button, bool bDown );
 	void UpdateGamepadAxis( int slot, int axis, int value );
+	// Reads the slot's pad as it is now, so a pad held while it opens reports
+	// its buttons and axes at once rather than after its next transition.
+	void SampleGamepadState( int slot );
 	void JoystickButtonPress( int joystickId, int button ); // button is a SDL_CONTROLLER_BUTTON;
 	void JoystickButtonRelease( int joystickId, int button ); // same as above.
 	void JoystickAxisMotion( int joystickId, int axis, int value );

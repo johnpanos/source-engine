@@ -36,11 +36,7 @@
 #include <sys/vfs.h>
 #endif
 
-#ifdef USE_SDL
-#include "SDL_clipboard.h"
-#include "SDL_misc.h"
-#include "SDL_error.h"
-#endif
+#include "appframework/ilauncherplatformservices.h"
 
 #define PROTECTED_THINGS_DISABLE
 // memdbgon must be the last include file in a .cpp file!!!
@@ -272,11 +268,11 @@ void CSystem::ShellExecute(const char *command, const char *file)
 		return;
 	}
 
-#if defined( OSX )
-	// Apple apps hand the URL or path to the system (iOS and tvOS do not even
-	// declare fork and exec available).
-	if ( !SDL_OpenURL( file ) )
-		Msg( "SDL_OpenURL failed: %s\n", SDL_GetError() );
+#if defined( OSX ) || defined( ANDROID )
+	// Apple and Android apps hand the URL or path to the system through the
+	// launcher (iOS and tvOS do not even declare fork and exec available).
+	if ( g_pLauncherPlatform )
+		g_pLauncherPlatform->OpenURL( file );
 #else
 	const char *szCommand = "xdg-open";
 
@@ -317,18 +313,12 @@ void CSystem::ShellExecuteEx( const char *command, const char *file, const char 
 
 void CSystem::SetClipboardText(const char *text, int textLen)
 {
-#if defined( USE_SDL )
+	if ( !g_pLauncherPlatform )
+		return;
 	if ( Q_strlen( text ) <= textLen )
 	{
-		const auto result = SDL_SetClipboardText( text );
-#if defined( USE_SDL3 )
-		if ( !result )
-#else
-		if ( result != 0 )
-#endif
-		{
-			Msg( "SDL_SetClipboardText failed: %s\n", SDL_GetError() );
-		}
+		if ( !g_pLauncherPlatform->SetClipboardText( text ) )
+			Msg( "Setting the clipboard failed.\n" );
 	}
 	else
 	{
@@ -336,19 +326,11 @@ void CSystem::SetClipboardText(const char *text, int textLen)
 		if ( ClipText )
 		{
 			Q_strncpy( ClipText, text, textLen + 1 );
-			const auto result = SDL_SetClipboardText( ClipText );
-#if defined( USE_SDL3 )
-			if ( !result )
-#else
-			if ( result != 0 )
-#endif
-			{
-				Msg( "SDL_SetClipboardText failed: %s\n", SDL_GetError() );
-			}
+			if ( !g_pLauncherPlatform->SetClipboardText( ClipText ) )
+				Msg( "Setting the clipboard failed.\n" );
 			free( ClipText );
 		}
 	}
-#endif
 }
 
 void CSystem::SetClipboardImage( void *pWnd, int x1, int y1, int x2, int y2 )
@@ -367,56 +349,31 @@ void CSystem::SetClipboardText(const wchar_t *text, int textLen)
 
 	Q_UnicodeToUTF8( text, charStr, textLen*4 );
 
-#if defined( USE_SDL )
 	SetClipboardText( charStr, Q_strlen( charStr ) );
-#endif
 
 	free( charStr );
 }
 
 int CSystem::GetClipboardTextCount()
 {
-#if defined( USE_SDL )
-	int Count = 0;
-
-	if ( SDL_HasClipboardText() )
-	{
-		char *text = SDL_GetClipboardText();
-
-		if ( text )
-		{
-			Count = Q_strlen( text ) + 1;
-			SDL_free( text );
-		}
-	}
-
-	return Count;
-#else
-	return 0;
-#endif
+	char *text = g_pLauncherPlatform ? g_pLauncherPlatform->GetClipboardText() : NULL;
+	if ( !text )
+		return 0;
+	const int count = Q_strlen( text ) + 1;
+	g_pLauncherPlatform->FreeClipboardText( text );
+	return count;
 }
 
 int CSystem::GetClipboardText(int offset, char *buf, int bufLen)
 {
 	Assert( !offset );
 
-#if defined( USE_SDL )
-	if( SDL_HasClipboardText() )
-	{
-		char *text = SDL_GetClipboardText();
-
-		if ( text )
-		{
-			Q_strncpy( buf, text, bufLen );
-			SDL_free( text );
-			return Q_strlen( buf );
-		}
-	}
-
-	return 0;
-#else
-	return 0;
-#endif
+	char *text = g_pLauncherPlatform ? g_pLauncherPlatform->GetClipboardText() : NULL;
+	if ( !text )
+		return 0;
+	Q_strncpy( buf, text, bufLen );
+	g_pLauncherPlatform->FreeClipboardText( text );
+	return Q_strlen( buf );
 }
 
 //-----------------------------------------------------------------------------

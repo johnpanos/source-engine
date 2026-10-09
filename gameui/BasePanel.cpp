@@ -84,10 +84,6 @@ using namespace vgui;
 #include "steam/steam_api.h"
 #include "game/game_platform_services.h"
 
-#ifdef ANDROID
-#include <SDL_misc.h>
-#endif
-
 #undef MessageBox	// Windows helpfully #define's this to MessageBoxA, we're using vgui::MessageBox
 
 // memdbgon must be the last include file in a .cpp file!!!
@@ -239,7 +235,8 @@ public:
 
 		m_bSelected = false;
 #ifdef ANDROID
-		if( m_szUrl ) SDL_OpenURL( m_szUrl );
+		if ( m_szUrl )
+			vgui::system()->ShellExecute( "open", m_szUrl );
 #endif
 
 		input()->SetMouseCapture(NULL);

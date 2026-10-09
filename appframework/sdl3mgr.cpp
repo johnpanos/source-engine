@@ -9,6 +9,7 @@
 #include <SDL3/SDL.h>
 
 #include "appframework/ilaunchermgr.h"
+#include "appframework/ilauncherplatformservices.h"
 #include "appframework/ilauncherwindowpresentation.h"
 #include "inputsystem/ButtonCode.h"
 #include "tier0/icommandline.h"
@@ -35,6 +36,43 @@ SDL_DisplayID GetDisplay( int index )
 	}
 	SDL_free( displays );
 	return display;
+}
+
+// The display at 'index' in SDL's order, or 0 for an index out of range.
+SDL_DisplayID DisplayAtIndex( int index )
+{
+	int count = 0;
+	SDL_DisplayID *displays = SDL_GetDisplays( &count );
+	const SDL_DisplayID display = displays && index >= 0 && index < count ? displays[index] : 0;
+	SDL_free( displays );
+	return display;
+}
+
+SDL_Window *g_MessageBoxParent = NULL;
+
+// tier0's platform message box (SetPlatformMessageBoxFunc), parented to the game
+// window while there is one.
+int ShowMessageBox( const char *title, const char *text, const char *const *labels, int count )
+{
+	SDL_MessageBoxButtonData buttons[8] = {};
+	count = count < 8 ? count : 8;
+	for ( int i = 0; i < count; ++i )
+	{
+		buttons[i].flags = i == 0   ? SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT
+		                   : i == 1 ? SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT
+		                            : 0;
+		buttons[i].buttonID = i;
+		buttons[i].text = labels[i];
+	}
+	SDL_MessageBoxData data = {};
+	data.flags = SDL_MESSAGEBOX_ERROR;
+	data.window = g_MessageBoxParent;
+	data.title = title;
+	data.message = text;
+	data.numbuttons = count;
+	data.buttons = buttons;
+	int chosen = -1;
+	return SDL_ShowMessageBox( &data, &chosen ) ? chosen : -1;
 }
 
 uint ModifierMask( SDL_Keymod modifiers )
@@ -80,7 +118,9 @@ int ModifierButton( SDL_Keycode key )
 	}
 }
 
-class CSDL3Mgr : public CBaseAppSystem<ILauncherMgr>, public ILauncherWindowPresentation
+class CSDL3Mgr : public CBaseAppSystem<ILauncherMgr>,
+                 public ILauncherWindowPresentation,
+                 public ILauncherPlatformServices
 {
 public:
 	~CSDL3Mgr() { Shutdown(); }
@@ -90,6 +130,8 @@ public:
 			return static_cast<ILauncherMgr *>( this );
 		if ( name && !Q_stricmp( name, LAUNCHER_WINDOW_PRESENTATION_INTERFACE_VERSION ) )
 			return static_cast<ILauncherWindowPresentation *>( this );
+		if ( name && !Q_stricmp( name, LAUNCHER_PLATFORM_SERVICES_INTERFACE_VERSION ) )
+			return static_cast<ILauncherPlatformServices *>( this );
 		return NULL;
 	}
 	InitReturnVal_t Init() override;
@@ -142,6 +184,27 @@ public:
 	}
 	void OnFrameRendered() override;
 	void SetGammaRamp( const uint16 *, const uint16 *, const uint16 * ) override;
+
+	// ILauncherPlatformServices
+	int GetDisplayCount() override;
+	bool GetDisplayBounds( int display, LauncherDisplayRect &out ) override;
+	bool GetDisplayMode( int display, bool desktop, LauncherDisplayMode &out ) override;
+	bool SetClipboardText( const char *utf8 ) override { return SDL_SetClipboardText( utf8 ); }
+	char *GetClipboardText() override;
+	void FreeClipboardText( char *text ) override { SDL_free( text ); }
+	bool OpenURL( const char *url ) override;
+	void ShowWindow() override
+	{
+		if ( m_Window )
+			SDL_ShowWindow( m_Window );
+	}
+	void RequestRedraw() override;
+	bool GetPointerPosition( int &x, int &y ) override;
+	bool GetWindowSize( int &width, int &height ) override
+	{
+		return m_Window && SDL_GetWindowSize( m_Window, &width, &height );
+	}
+	SDL_Cursor *GetSystemCursor( LauncherSystemCursor cursor ) override;
 	double GetPrevGLSwapWindowTime() override { return 0.0; }
 	float GetWindowDisplayScale() override
 	{
@@ -158,6 +221,7 @@ private:
 
 	SDL_Window *m_Window = NULL;
 	SDL_Cursor *m_Cursor = NULL; // Borrowed from the UI cursor owner.
+	SDL_Cursor *m_SystemCursors[LauncherCursor_Count] = {};
 	unsigned m_nWindowRefs = 0;
 	bool m_bVideoInitialized = false;
 	bool m_bHasFocus = false;
@@ -195,6 +259,7 @@ InitReturnVal_t CSDL3Mgr::Init()
 		return INIT_FAILED;
 	}
 	m_bVideoInitialized = true;
+	SetPlatformMessageBoxFunc( &ShowMessageBox );
 	m_bForbidMouseGrab =
 	    CommandLine()->FindParm( "-nomousegrab" ) || !CommandLine()->FindParm( "-mousegrab" );
 	// -nohighdpi renders at the display's size in points and lets the system
@@ -229,6 +294,7 @@ InitReturnVal_t CSDL3Mgr::Init()
 		return INIT_FAILED;
 	}
 	SetAssertDialogParent( m_Window );
+	g_MessageBoxParent = m_Window;
 	Msg( "RFC0001 window: provider=sdl3 driver=%s\n", SDL_GetCurrentVideoDriver() );
 	return INIT_OK;
 }
@@ -241,8 +307,15 @@ void CSDL3Mgr::Shutdown()
 		m_nWindowRefs = 1;
 		DecWindowRefCount();
 	}
+	for ( SDL_Cursor *&cursor : m_SystemCursors )
+	{
+		if ( cursor )
+			SDL_DestroyCursor( cursor );
+		cursor = NULL;
+	}
 	if ( m_bVideoInitialized )
 	{
+		SetPlatformMessageBoxFunc( NULL );
 		SDL_QuitSubSystem( SDL_INIT_VIDEO );
 		m_bVideoInitialized = false;
 	}
@@ -287,6 +360,7 @@ void CSDL3Mgr::DecWindowRefCount()
 	SDL_SetWindowRelativeMouseMode( m_Window, false );
 	SDL_SetWindowMouseGrab( m_Window, false );
 	SetAssertDialogParent( NULL );
+	g_MessageBoxParent = NULL;
 	SDL_DestroyWindow( m_Window );
 	m_Window = NULL;
 }
@@ -644,6 +718,98 @@ void CSDL3Mgr::HandleEvent( const SDL_Event &input )
 		return;
 	}
 	PostEvent( event );
+}
+
+int CSDL3Mgr::GetDisplayCount()
+{
+	int count = 0;
+	SDL_free( SDL_GetDisplays( &count ) );
+	return count;
+}
+
+bool CSDL3Mgr::GetDisplayBounds( int display, LauncherDisplayRect &out )
+{
+	SDL_Rect rect;
+	const SDL_DisplayID id = DisplayAtIndex( display );
+	if ( !id || !SDL_GetDisplayBounds( id, &rect ) )
+		return false;
+	out.x = rect.x;
+	out.y = rect.y;
+	out.width = rect.w;
+	out.height = rect.h;
+	return true;
+}
+
+bool CSDL3Mgr::GetDisplayMode( int display, bool desktop, LauncherDisplayMode &out )
+{
+	const SDL_DisplayID id = DisplayAtIndex( display );
+	const SDL_DisplayMode *mode = !id       ? NULL
+	                              : desktop ? SDL_GetDesktopDisplayMode( id )
+	                                        : SDL_GetCurrentDisplayMode( id );
+	if ( !mode )
+		return false;
+	out.width = mode->w;
+	out.height = mode->h;
+	out.refreshHz = static_cast<int>( mode->refresh_rate );
+	return true;
+}
+
+char *CSDL3Mgr::GetClipboardText()
+{
+	if ( !SDL_HasClipboardText() )
+		return NULL;
+	char *text = SDL_GetClipboardText();
+	if ( text && !text[0] )
+	{
+		SDL_free( text );
+		return NULL;
+	}
+	return text;
+}
+
+bool CSDL3Mgr::OpenURL( const char *url )
+{
+	if ( !url || !SDL_OpenURL( url ) )
+	{
+		Msg( "SDL_OpenURL failed: %s\n", SDL_GetError() );
+		return false;
+	}
+	return true;
+}
+
+void CSDL3Mgr::RequestRedraw()
+{
+	if ( !m_Window )
+		return;
+	SDL_Event expose = {};
+	expose.type = SDL_EVENT_WINDOW_EXPOSED;
+	expose.window.windowID = SDL_GetWindowID( m_Window );
+	SDL_PushEvent( &expose );
+}
+
+bool CSDL3Mgr::GetPointerPosition( int &x, int &y )
+{
+	if ( !m_Window )
+		return false;
+	float preciseX = 0.0f, preciseY = 0.0f;
+	SDL_GetMouseState( &preciseX, &preciseY );
+	x = static_cast<int>( preciseX );
+	y = static_cast<int>( preciseY );
+	return true;
+}
+
+SDL_Cursor *CSDL3Mgr::GetSystemCursor( LauncherSystemCursor cursor )
+{
+	static const SDL_SystemCursor kShapes[LauncherCursor_Count] = { SDL_SYSTEM_CURSOR_DEFAULT,
+	    SDL_SYSTEM_CURSOR_TEXT, SDL_SYSTEM_CURSOR_WAIT, SDL_SYSTEM_CURSOR_CROSSHAIR,
+	    SDL_SYSTEM_CURSOR_PROGRESS, SDL_SYSTEM_CURSOR_NWSE_RESIZE, SDL_SYSTEM_CURSOR_NESW_RESIZE,
+	    SDL_SYSTEM_CURSOR_EW_RESIZE, SDL_SYSTEM_CURSOR_NS_RESIZE, SDL_SYSTEM_CURSOR_MOVE,
+	    SDL_SYSTEM_CURSOR_NOT_ALLOWED, SDL_SYSTEM_CURSOR_POINTER };
+	if ( cursor < 0 || cursor >= LauncherCursor_Count )
+		return NULL;
+	if ( !m_SystemCursors[cursor] )
+		m_SystemCursors[cursor] = SDL_CreateSystemCursor( kShapes[cursor] );
+	return m_SystemCursors[cursor];
 }
 
 void CSDL3Mgr::PumpWindowsMessageLoop()

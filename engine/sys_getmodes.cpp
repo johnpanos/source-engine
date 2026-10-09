@@ -4,14 +4,6 @@
 //
 //===========================================================================//
 
-#if defined( USE_SDL )
-#undef PROTECTED_THINGS_ENABLE
-#include "SDL.h"
-#if !defined( USE_SDL3 )
-#include "SDL_syswm.h"
-#endif
-#endif
-
 #if defined( _WIN32 )
 #include "winlite.h"
 #elif defined(POSIX)
@@ -19,6 +11,7 @@ typedef void *HDC;
 #endif
 
 #include "appframework/ilaunchermgr.h"
+#include "appframework/ilauncherplatformservices.h"
 #include "appframework/ilauncherwindowpresentation.h"
 
 #include "basetypes.h"
@@ -622,13 +615,16 @@ void CVideoMode_Common::ResetCurrentModeForNewResolution( int nWidth, int nHeigh
 			m_nVROverrideX = vrBounds.nX;
 			m_nVROverrideY = vrBounds.nY;
 #elif defined( USE_SDL )
-			for ( int i = 0; i < SDL_GetNumVideoDisplays(); i++ )
+			ILauncherPlatformServices *platform = LauncherPlatformServices( g_pLauncherMgr );
+			const int displays = platform ? platform->GetDisplayCount() : 0;
+			for ( int i = 0; i < displays; i++ )
 			{
-				SDL_Rect sdlRect;
-				SDL_GetDisplayBounds( i, &sdlRect );
+				LauncherDisplayRect rect;
+				if ( !platform->GetDisplayBounds( i, rect ) )
+					continue;
 
-				if( sdlRect.x == vrBounds.nX && sdlRect.y == vrBounds.nY 
-					&& sdlRect.w == vrBounds.nWidth && sdlRect.h == vrBounds.nHeight )
+				if ( rect.x == vrBounds.nX && rect.y == vrBounds.nY &&
+				     rect.width == vrBounds.nWidth && rect.height == vrBounds.nHeight )
 				{
 					static ConVarRef sdl_displayindex( "sdl_displayindex" );
 					sdl_displayindex.SetValue( i );
@@ -1127,16 +1123,8 @@ void CVideoMode_Common::InvalidateWindow()
     if ( CommandLine()->FindParm( "-noshaderapi" ) )
     {
 #if defined( USE_SDL )
-		SDL_Event fake;
-		memset(&fake, '\0', sizeof (SDL_Event));
-#if defined( USE_SDL3 )
-		fake.type = SDL_EVENT_WINDOW_EXPOSED;
-#else
-		fake.type = SDL_WINDOWEVENT;
-		fake.window.event = SDL_WINDOWEVENT_EXPOSED;
-#endif
-		fake.window.windowID = SDL_GetWindowID( (SDL_Window *)g_pLauncherMgr->GetWindowRef() );
-		SDL_PushEvent(&fake);
+		if ( ILauncherPlatformServices *platform = LauncherPlatformServices( g_pLauncherMgr ) )
+			platform->RequestRedraw();
 #else
 		InvalidateRect( (HWND)game->GetMainWindow(), NULL, FALSE );
 #endif
@@ -1533,7 +1521,6 @@ void CVideoMode_Common::AdjustWindow( int nWidth, int nHeight, int nBPP, bool bW
 
 	g_pLauncherMgr->SizeWindow( windowWidth, windowHeight );
 
-#if defined( USE_SDL3 )
 	ILauncherWindowPresentation *presentation = static_cast<ILauncherWindowPresentation *>(
 	    g_pLauncherMgr->QueryInterface( LAUNCHER_WINDOW_PRESENTATION_INTERFACE_VERSION ) );
 	ConVarRef mat_borderless( "mat_borderless" );
@@ -1542,17 +1529,6 @@ void CVideoMode_Common::AdjustWindow( int nWidth, int nHeight, int nBPP, bool bW
 	                     ( mat_borderless.IsValid() && mat_borderless.GetBool() ) );
 	if ( presentation && !presentation->ApplyWindowPresentation( bWindowed, borderless ) )
 		Warning( "Window presentation change failed.\n" );
-#else
-	if( bWindowed )
-	{
-		SDL_Window* win = (SDL_Window*)g_pLauncherMgr->GetWindowRef();
-		if ( m_bVROverride || CommandLine()->FindParm( "-noborder" ) )
-			SDL_SetWindowBordered( win, SDL_FALSE );
-		else
-			SDL_SetWindowBordered( win, SDL_TRUE );
-			
-	}
-#endif
 #endif
 
 	game->SetWindowSize( nWidth, nHeight );
@@ -1645,15 +1621,16 @@ void CVideoMode_Common::CenterEngineWindow( void *hWndCenter, int width, int hei
 	static ConVarRef sdl_displayindex( "sdl_displayindex" );
 	int displayindex = sdl_displayindex.IsValid() ? sdl_displayindex.GetInt() : 0;
 
-	SDL_DisplayMode mode = {};
-	if ( SDL_GetCurrentDisplayMode( displayindex, &mode ) != 0 )
+	ILauncherPlatformServices *platform = LauncherPlatformServices( g_pLauncherMgr );
+	LauncherDisplayMode mode;
+	if ( !platform || !platform->GetDisplayMode( displayindex, false, mode ) )
 	{
-		Warning( "Unable to center window on display: %s\n", SDL_GetError() );
+		Warning( "Unable to center window on display %d.\n", displayindex );
 		return;
 	}
 
-	const int wide = mode.w;
-	const int tall = mode.h;
+	const int wide = mode.width;
+	const int tall = mode.height;
 
 	CenterX = (wide - width) / 2;
 	CenterY = (tall - height) / 2;
@@ -1676,8 +1653,8 @@ void CVideoMode_Common::CenterEngineWindow( void *hWndCenter, int width, int hei
 		CenterY = -negy;
 	}
 
-	SDL_Rect rect = { 0, 0, 0, 0 };
-	SDL_GetDisplayBounds( displayindex, &rect );
+	LauncherDisplayRect rect = { 0, 0, 0, 0 };
+	platform->GetDisplayBounds( displayindex, rect );
 
 	CenterX += rect.x;
 	CenterY += rect.y;
@@ -2629,8 +2606,8 @@ bool CVideoMode_MaterialSystem::UpdateWindowSize()
 		if ( CommandLine()->FindParm( "-resizetelemetry" ) )
 		{
 			int logicalWidth = 0, logicalHeight = 0;
-			SDL_GetWindowSize( static_cast<SDL_Window *>( g_pLauncherMgr->GetWindowRef() ),
-			    &logicalWidth, &logicalHeight );
+			if ( ILauncherPlatformServices *platform = LauncherPlatformServices( g_pLauncherMgr ) )
+				platform->GetWindowSize( logicalWidth, logicalHeight );
 			Msg( "RFC0001 resize observed: logical=%dx%d drawable=%ux%u\n", logicalWidth,
 			    logicalHeight, drawableWidth, drawableHeight );
 		}
@@ -2825,7 +2802,8 @@ void CVideoMode_MaterialSystem::RestoreVideo( void )
         return;
 
 #if defined( USE_SDL )
-	SDL_ShowWindow( (SDL_Window*)game->GetMainWindow() );
+	if ( ILauncherPlatformServices *platform = LauncherPlatformServices( g_pLauncherMgr ) )
+		platform->ShowWindow();
 #else
 	ShowWindow( (HWND)game->GetMainWindow(), SW_SHOWNORMAL );
 #endif

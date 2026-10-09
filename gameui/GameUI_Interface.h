@@ -152,6 +152,10 @@ private:
 // Purpose: singleton accessor
 extern CGameUI &GameUI();
 
+// The launcher's platform services (displays), or null in products without one.
+class ILauncherPlatformServices;
+extern ILauncherPlatformServices *g_pLauncherPlatform;
+
 // expose client interface
 extern IGameClientExports *GameClientExports();
 

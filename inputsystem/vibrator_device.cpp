@@ -11,8 +11,8 @@
 #include "vibrator_device.h"
 #include "tier0/dbg.h"
 
-#if defined( ANDROID ) && defined( USE_SDL3 )
-#include "SDL.h"
+#if defined( ANDROID )
+#include <SDL3/SDL.h>
 #include <jni.h>
 #include <atomic>
 #endif
@@ -20,7 +20,7 @@
 // NOTE: This has to be the last file included!
 #include "tier0/memdbgon.h"
 
-#if defined( ANDROID ) && defined( USE_SDL3 )
+#if defined( ANDROID )
 
 namespace
 {
@@ -345,7 +345,7 @@ bool CDeviceVibrator::IsSuspended() const
 	return m_pState && m_pState->m_bSuspended.load();
 }
 
-#else // !( ANDROID && USE_SDL3 )
+#else // !ANDROID
 
 // No device vibrator backend on this platform.
 struct CDeviceVibrator::State
@@ -391,4 +391,4 @@ bool CDeviceVibrator::IsSuspended() const
 	return false;
 }
 
-#endif // ANDROID && USE_SDL3
+#endif // ANDROID

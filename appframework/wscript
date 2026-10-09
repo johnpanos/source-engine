@@ -20,9 +20,11 @@ def build(bld):
 		'../public/filesystem_init.cpp',
 	]
 
+	# The window provider: the one module that links the platform SDK (RFC 0001
+	# R18). Everything else asks it through ILauncherPlatformServices.
 	if bld.env.SDL:
 		source += [
-			'sdl3mgr.cpp' if bld.env.SDL3 else 'sdlmgr.cpp',
+			'sdl3mgr.cpp',
 			'sdl_window_provider.cpp'
 		]
 
@@ -42,11 +44,11 @@ def build(bld):
 		'../public',
 		'../public/tier0',
 		'../public/tier1'
-	] + bld.env.INCLUDES_SDL2
+	]
 
 	defines = []
 
-	libs = []
+	libs = ['SDL3'] if bld.env.SDL else []
 
 	bld.stlib(
 		source   = source,

@@ -29,9 +29,7 @@
 #include "vgui_controls/Tooltip.h"
 #include "sourcevr/isourcevirtualreality.h"
 
-#if defined( USE_SDL )
-#include "SDL.h"
-#endif
+#include "appframework/ilauncherplatformservices.h"
 
 #include "inetchannelinfo.h"
 
@@ -1532,16 +1530,17 @@ void COptionsSubVideo::PrepareResolutionList()
 	gameuifuncs->GetDesktopResolution( desktopWidth, desktopHeight );
 
 #if defined( USE_SDL )
-	bool bFullScreenWithMultipleDisplays = ( !bWindowed && ( SDL_GetNumVideoDisplays() > 1 ) );
+	bool bFullScreenWithMultipleDisplays =
+	    ( !bWindowed && g_pLauncherPlatform && ( g_pLauncherPlatform->GetDisplayCount() > 1 ) );
 	if ( bFullScreenWithMultipleDisplays )
 	{
-		SDL_Rect rect;
+		LauncherDisplayRect rect;
 		int displayIndex = materials->GetCurrentAdapter();
 
-		if ( !SDL_GetDisplayBounds( displayIndex, &rect ) )
+		if ( g_pLauncherPlatform->GetDisplayBounds( displayIndex, rect ) )
 		{
-			desktopWidth = rect.w;
-			desktopHeight = rect.h;
+			desktopWidth = rect.width;
+			desktopHeight = rect.height;
 		}
 	}
 
@@ -1867,13 +1866,13 @@ void COptionsSubVideo::SetCurrentResolutionComboItem()
 		gameuifuncs->GetDesktopResolution( desktopWidth, desktopHeight );
 
 #if defined( USE_SDL )
-		SDL_Rect rect;
+		LauncherDisplayRect rect;
 		int displayIndex = materials->GetCurrentAdapter();
 
-		if ( !SDL_GetDisplayBounds( displayIndex, &rect ) )
+		if ( g_pLauncherPlatform && g_pLauncherPlatform->GetDisplayBounds( displayIndex, rect ) )
 		{
-			desktopWidth = rect.w;
-			desktopHeight = rect.h;
+			desktopWidth = rect.width;
+			desktopHeight = rect.height;
 		}
 #endif
 
@@ -1987,17 +1986,18 @@ void COptionsSubVideo::OnApplyChanges()
 #if defined( USE_SDL )
 	if ( !windowed )
 	{
-		SDL_Rect rect;
+		LauncherDisplayRect rect;
 		int displayIndexTarget = m_pWindowed->GetActiveItem();
 		desired.displayIndex = displayIndexTarget;
 
-		if ( !SDL_GetDisplayBounds( displayIndexTarget, &rect ) && rect.w > 0 )
+		if ( g_pLauncherPlatform &&
+		     g_pLauncherPlatform->GetDisplayBounds( displayIndexTarget, rect ) && rect.width > 0 )
 		{
 			// If we are going non-native fullscreen, tweak the resolution to have the same aspect ratio as the display.
-			if ( ( width != rect.w ) || ( height != rect.h ) )
+			if ( ( width != rect.width ) || ( height != rect.height ) )
 			{
 				// TODO: We may want a convar to allow folks to mess with their aspect ratio?
-				height = ( width * rect.h ) / rect.w;
+				height = ( width * rect.height ) / rect.width;
 			}
 		}
 	}

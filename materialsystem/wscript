@@ -61,7 +61,7 @@ def build(bld):
 		'../public/tier1',
 		'../common',
 		'../'
-	] + bld.env.INCLUDES_SDL2
+	]
 
 	defines = []
 

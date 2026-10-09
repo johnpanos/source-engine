@@ -10,10 +10,7 @@
 	#include "winlite.h"
 #include <appframework/ilaunchermgr.h>
 
-#if defined( USE_SDL )
-#undef M_PI
-#include "SDL.h"
-#endif
+#include "appframework/ilauncherplatformservices.h"
 
 #include "tier0/dbg.h"
 #include "tier0/vcrmode.h"
@@ -64,18 +61,20 @@ void InitCursors()
 #if defined( USE_SDL )
 
 	s_pDefaultCursor[ dc_none ]     = NULL;
-	s_pDefaultCursor[ dc_arrow ]    = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_ARROW );
-	s_pDefaultCursor[ dc_ibeam ]    = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_IBEAM );
-	s_pDefaultCursor[ dc_hourglass ]= SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_WAIT );
-	s_pDefaultCursor[ dc_crosshair ]= SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_CROSSHAIR );
-	s_pDefaultCursor[ dc_waitarrow ]= SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_WAITARROW );
-	s_pDefaultCursor[ dc_sizenwse ] = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_SIZENWSE );
-	s_pDefaultCursor[ dc_sizenesw ] = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_SIZENESW );
-	s_pDefaultCursor[ dc_sizewe ]   = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_SIZEWE );
-	s_pDefaultCursor[ dc_sizens ]   = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_SIZENS );
-	s_pDefaultCursor[ dc_sizeall ]  = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_SIZEALL );
-	s_pDefaultCursor[ dc_no ]       = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_NO );
-	s_pDefaultCursor[ dc_hand ]     = SDL_CreateSystemCursor( SDL_SYSTEM_CURSOR_HAND );
+	// The launcher owns the system cursors (until it shuts down, after us).
+	static const struct
+	{
+		int code;
+		LauncherSystemCursor shape;
+	} kCursors[] = { { dc_arrow, LauncherCursor_Arrow }, { dc_ibeam, LauncherCursor_IBeam },
+	    { dc_hourglass, LauncherCursor_Wait }, { dc_crosshair, LauncherCursor_Crosshair },
+	    { dc_waitarrow, LauncherCursor_WaitArrow }, { dc_sizenwse, LauncherCursor_SizeNWSE },
+	    { dc_sizenesw, LauncherCursor_SizeNESW }, { dc_sizewe, LauncherCursor_SizeWE },
+	    { dc_sizens, LauncherCursor_SizeNS }, { dc_sizeall, LauncherCursor_SizeAll },
+	    { dc_no, LauncherCursor_No }, { dc_hand, LauncherCursor_Hand } };
+	ILauncherPlatformServices *platform = LauncherPlatformServices( g_pLauncherMgr );
+	for ( const auto &cursor : kCursors )
+		s_pDefaultCursor[cursor.code] = platform ? platform->GetSystemCursor( cursor.shape ) : NULL;
 
 	s_hCurrentCursor = s_pDefaultCursor[ dc_arrow ];
 
@@ -484,12 +483,12 @@ void CursorGetPos(void *hwnd, int &x, int &y)
 #if defined ( USE_SDL ) && !defined( PLATFORM_WINDOWS )
 	if ( s_bCursorVisible )
 	{
-		SDL_GetMouseState( &x, &y );
-
 		int windowHeight = 0;
 		int windowWidth = 0;
-		//unsigned int ignored;
-		SDL_GetWindowSize( ( SDL_Window * )g_pLauncherMgr->GetWindowRef(), &windowWidth, &windowHeight );
+		ILauncherPlatformServices *platform = LauncherPlatformServices( g_pLauncherMgr );
+		if ( !platform || !platform->GetPointerPosition( x, y ) ||
+		     !platform->GetWindowSize( windowWidth, windowHeight ) )
+			return;
 
 		CMatRenderContextPtr pRenderContext( g_pMaterialSystem );
 		int rx, ry, width, height;

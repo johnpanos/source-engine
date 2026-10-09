@@ -128,10 +128,6 @@
 #if defined( LINUX )
 #include <locale.h>
 #include <dirent.h>
-
-#ifdef USE_SDL
-#include "SDL.h"
-#endif
 #endif
 
 #include "ixboxsystem.h"
@@ -3785,7 +3781,8 @@ void Host_PostInit()
 									 "You may have limited glyph support.\n"
 									 "Please install '%s' locale.",
 						en_US, CurrentLocale, en_US );
-		SDL_ShowSimpleMessageBox( 0, "Warning", MessageText, GetAssertDialogParent() );
+		const char *const buttons[] = { "OK" };
+		ShowPlatformMessageBox( "Warning", MessageText, buttons, 1 );
 	}
 #endif // LINUX
 

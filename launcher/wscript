@@ -24,26 +24,19 @@ def build(bld):
 		'../public/tier0/memoverride.cpp'
 	]
 
-	if bld.env.DEST_OS == 'android' and not bld.env.ANDROID_SDL3:
-		source += [
-			'android/main.cpp',
-			'android/crashhandler.cpp'
-		]
-
 	includes = [
 		'.',
-		'android/libunwind',
 		'../public',
 		'../public/tier0',
 		'../public/tier1',
 		'../common'
-	] + bld.env.INCLUDES_SDL2
+	]
 
 	defines = []
 	if bld.env.DEBUGAPI:
 		defines += ['SOURCE_DEBUGAPI']
 
-	libs = ['tier0','tier1','tier2','tier3','vstdlib','steam_api','appframework','SDL2', 'UNWIND']
+	libs = ['tier0','tier1','tier2','tier3','vstdlib','steam_api','appframework','SDL3', 'UNWIND']
 	libs += ['shaderapiempty', 'stdshader_dx9', 'vaudio_minimp3']
 	# The composition root offers every backend this product linked through
 	# -renderer. Each is built only when its SDK was configured, so guard both

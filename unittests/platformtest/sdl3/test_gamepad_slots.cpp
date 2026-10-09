@@ -9,6 +9,9 @@
 #include "inputsystem/iinputsystem.h"
 #include "inputsystem/igamepadslots.h"
 #include "tier0/icommandline.h"
+#include "tier1/convar.h"
+#include "tier1/tier1.h"
+#include "icvar.h"
 #include "vstdlib/cvar.h"
 #include <cstdio>
 #include <cstring>
@@ -18,6 +21,9 @@ namespace
 int checks = 0, failures = 0;
 ILauncherMgr *manager = nullptr;
 IInputSystem *input = nullptr;
+// The client's controller switch (game/client/in_main.cpp), on as a player who
+// uses a gamepad sets it; rumble is off without it.
+ConVar joystick( "joystick", "1" );
 struct Motors
 {
 	int calls = 0;
@@ -106,6 +112,9 @@ int main( int argc, char **argv )
 	manager = WindowProvider_Describe()->create();
 	input = InputSystem_Describe()->create();
 	CHECK( input->Connect( Factory ) );
+	// The test's own ConVars register in the cvar system the input system uses.
+	g_pCVar = static_cast<ICvar *>( Factory( CVAR_INTERFACE_VERSION, NULL ) );
+	ConVar_Register( 0 );
 	CHECK( input->Init() == INIT_OK );
 	IGamepadSlots *slots =
 	    static_cast<IGamepadSlots *>( input->QueryInterface( GAMEPAD_SLOTS_INTERFACE_VERSION ) );

@@ -13,9 +13,7 @@
 #include "tier0/icommandline.h"
 #include "tier0/platform.h"
 #include "tier1/convar.h"
-#if defined( USE_SDL3 )
-#include "SDL.h"
-#endif
+#include <SDL3/SDL.h>
 // NOTE: This has to be the last file included!
 #include "tier0/memdbgon.h"
 
@@ -23,7 +21,6 @@ static ConVar in_device_rumble( "in_device_rumble", "1", FCVAR_ARCHIVE,
     "Play rumble on the device's own vibrator when it has amplitude control and no "
     "rumble-capable gamepad is active (Android)." );
 
-#if defined( USE_SDL3 )
 static bool SDLCALL VibratorSDLWatcher( void *userInfo, SDL_Event *event )
 {
 	CDeviceVibrator *pVibrator = static_cast<CDeviceVibrator *>( userInfo );
@@ -41,7 +38,6 @@ static bool SDLCALL VibratorSDLWatcher( void *userInfo, SDL_Event *event )
 	}
 	return true;
 }
-#endif
 
 void CInputSystem::InitializeDeviceVibrator()
 {
@@ -54,20 +50,16 @@ void CInputSystem::InitializeDeviceVibrator()
 	if ( !m_DeviceVibrator.Init() )
 		return;
 
-#if defined( USE_SDL3 )
 	m_bVibratorWatchInstalled = SDL_AddEventWatch( VibratorSDLWatcher, &m_DeviceVibrator );
 	if ( !m_bVibratorWatchInstalled )
 		Warning( "Device vibrator: lifecycle event watch failed: %s\n", SDL_GetError() );
-#endif
 }
 
 void CInputSystem::ShutdownDeviceVibrator()
 {
-#if defined( USE_SDL3 )
 	// SDL runs watchers under its watcher lock, so none is in flight after this.
 	if ( m_bVibratorWatchInstalled )
 		SDL_RemoveEventWatch( VibratorSDLWatcher, &m_DeviceVibrator );
-#endif
 	m_bVibratorWatchInstalled = false;
 	m_DeviceVibrator.Shutdown();
 	m_VibratorStream.Reset();

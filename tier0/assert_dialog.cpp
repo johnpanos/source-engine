@@ -22,19 +22,7 @@
 #endif
 #include "foundation_facade.h"
 
-#if defined( USE_SDL )
-
-// We lazily load the SDL shared object, and only reference functions if it's
-// available, so this can be included on the dedicated server too.
-#include "SDL.h"
-
-#if defined( USE_SDL3 )
-typedef bool( SDLCALL FUNC_SDL_ShowMessageBox )(
-    const SDL_MessageBoxData *messageboxdata, int *buttonid );
-#else
-typedef int ( SDLCALL FUNC_SDL_ShowMessageBox )( const SDL_MessageBoxData *messageboxdata, int *buttonid );
-#endif
-#endif
+#include <atomic>
 
 class CDialogInitInfo
 {
@@ -358,8 +346,24 @@ DBG_INTERFACE void SetAllAssertsDisabled( bool bAssertsDisabled )
 	g_bAssertsEnabled = !bAssertsDisabled;
 }
 
+static std::atomic<PlatformMessageBoxFunc_t> g_PlatformMessageBox{ nullptr };
+
+DBG_INTERFACE void SetPlatformMessageBoxFunc( PlatformMessageBoxFunc_t func )
+{
+	g_PlatformMessageBox.store( func, std::memory_order_release );
+}
+
+DBG_INTERFACE int ShowPlatformMessageBox(
+    const char *pchTitle, const char *pchText, const char *const *ppButtons, int nButtons )
+{
+	const PlatformMessageBoxFunc_t func = g_PlatformMessageBox.load( std::memory_order_acquire );
+	if ( !func || !ppButtons || nButtons <= 0 )
+		return -1;
+	return func( pchTitle ? pchTitle : "", pchText ? pchText : "", ppButtons, nButtons );
+}
+
 #if defined( USE_SDL )
-SDL_Window *g_SDLWindow = NULL;
+static struct SDL_Window *g_SDLWindow = NULL;
 
 DBG_INTERFACE void SetAssertDialogParent( struct SDL_Window *window )
 {
@@ -485,59 +489,22 @@ DBG_INTERFACE bool DoNewAssertDialog( const tchar *pFilename, int line, const tc
 		DialogBox( g_hTier0Instance, MAKEINTRESOURCE( IDD_ASSERT_DIALOG ), hParentWindow, AssertDialogProc );
 	}
 
-#elif defined( POSIX ) && defined ( USE_SDL )
-#if defined( USE_SDL3 )
-	// The SDL3 client profile links its platform provider explicitly. Never load
-	// a second SDL major version to display a dialog for its window.
-	FUNC_SDL_ShowMessageBox *pfnSDLShowMessageBox = &SDL_ShowMessageBox;
-#else
-	static FUNC_SDL_ShowMessageBox *pfnSDLShowMessageBox = NULL;
-	if( !pfnSDLShowMessageBox )
+#elif defined( POSIX )
+	// The window provider shows the box (an SDL3 client's launcher installs it);
+	// without one there is no dialog and the assert breaks.
+	static const int kButtonIds[] = {
+	    IDC_BREAK, IDC_IGNORE_THIS, IDC_IGNORE_FILE, IDC_IGNORE_ALWAYS, IDC_IGNORE_ALL };
+	const char *const buttons[] = { Plat_IsInDebugSession() ? "Break" : "Corefile", "Ignore",
+	    "Ignore This File", "Always Ignore", "Ignore All Asserts" };
+	char text[4096];
+	_snprintf(
+	    text, sizeof( text ), "File: %s\nLine: %i\nExpr: %s\n", pFilename, line, pExpression );
+	text[sizeof( text ) - 1] = 0;
+	const int chosen =
+	    ShowPlatformMessageBox( "Assertion Failed", text, buttons, ARRAYSIZE( buttons ) );
+	if ( chosen >= 0 && chosen < (int)ARRAYSIZE( kButtonIds ) )
 	{
-#ifdef OSX
-		void *ret = dlopen( "libSDL2-2.0.0.dylib", RTLD_LAZY );
-#else
-		void *ret = dlopen( "libSDL2-2.0.so.0", RTLD_LAZY );
-#endif
-		if ( ret )
-			{ pfnSDLShowMessageBox = ( FUNC_SDL_ShowMessageBox * )dlsym( ret, "SDL_ShowMessageBox" ); }
-	}
-#endif
-
-	if( pfnSDLShowMessageBox )
-	{
-		int buttonid = IDC_BREAK;
-		char text[ 4096 ];
-		SDL_MessageBoxData messageboxdata = { 0 };
-		const char *DefaultAction = Plat_IsInDebugSession() ? "Break" : "Corefile";
-		SDL_MessageBoxButtonData buttondata[] =
-		{
-			{ SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT,	IDC_BREAK,			DefaultAction			},
-			{ SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT,	IDC_IGNORE_THIS,	"Ignore"				},
-			{ 0,										IDC_IGNORE_FILE,	"Ignore This File"		},
-			{ 0,										IDC_IGNORE_ALWAYS,	"Always Ignore"			},
-			{ 0,										IDC_IGNORE_ALL,		"Ignore All Asserts"	},
-		};
-
-		_snprintf( text, sizeof( text ), "File: %s\nLine: %i\nExpr: %s\n", pFilename, line, pExpression );
-		text[ sizeof( text ) - 1 ] = 0;
-
-		messageboxdata.window = g_SDLWindow;
-		messageboxdata.title = "Assertion Failed";
-		messageboxdata.message = text;
-		messageboxdata.numbuttons = ARRAYSIZE( buttondata );
-		messageboxdata.buttons = buttondata;
-
-		const auto result = ( *pfnSDLShowMessageBox )( &messageboxdata, &buttonid );
-#if defined( USE_SDL3 )
-		if ( !result )
-#else
-		if ( result == -1 )
-#endif
-		{
-			buttonid = IDC_BREAK;
-		}
-
+		const int buttonid = kButtonIds[chosen];
 		switch( buttonid )
 		{
 		default:
@@ -563,7 +530,7 @@ DBG_INTERFACE bool DoNewAssertDialog( const tchar *pFilename, int line, const tc
 	}
 	else
 	{
-		// Couldn't SDL it up
+		// No provider, or the box failed
 		g_bBreak = true;
 	}
 

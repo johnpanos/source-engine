@@ -217,3 +217,92 @@ Not done here (other rows): no product consumer composes the provider yet. The
 launcher still drives SDL3 through `appframework/sdl3mgr.cpp` and the
 `platform/sdl3/legacy_include` adapter; migrating those callers is R18. No
 Android, iOS, macOS or hosted CI run of this provider.
+
+### R18: SDL3 private to its owners (in progress, 2026-10-08)
+
+User goal "Finish R18". Done condition (AGENTS.md): the SDL3 window/input suites
+and representative behavior pass on every declared SDL3 profile; the SDK
+dependency is private and SDL is off generic include paths (the
+`platform/sdl3/legacy_include` adapter's callers migrated); supported interop
+pairs tested; the SDL2 legacy profiles still build.
+
+What changed:
+
+- The adapter is deleted. Its callers fall into two groups:
+  - SDL backends now include `<SDL3/SDL.h>` and use SDL3 names: the launcher
+    manager (`appframework/sdl3mgr.cpp`, `sdl_window_provider.cpp`), the input
+    system (`inputsystem/*_sdl.cpp`, `inputsystem.cpp`, `vibrator_device.cpp`)
+    and the engine's audio backends (`engine/audio/*_sdl.cpp`). The rename used
+    SDL3's own `SDL_oldnames.h` table, the same one `SDL_ENABLE_OLD_NAMES` used,
+    and the SDL2-only branches were resolved with `unifdef -DUSE_SDL3`. All nine
+    files compile to the same instructions and relocations as before (objdump
+    comparison against HEAD built with the adapter; only `__FILE__` strings
+    differ).
+  - Everything else no longer touches SDL. Engine (`host`, `sys_dll`,
+    `sys_getmodes`, `sys_mainwind`, `matsys_interface`), gameui, vgui2,
+    vguimatsurface and video ask the launcher through a new
+    `ILauncherPlatformServices` (`public/appframework/ilauncherplatformservices.h`,
+    `LauncherPlatformServices001`, from `ILauncherMgr::QueryInterface`): displays
+    by index, clipboard, URLs, show/redraw, pointer, window size and system
+    cursors. tier0's assert dialog and the engine's message boxes go through one
+    new tier0 hook, `SetPlatformMessageBoxFunc`/`ShowPlatformMessageBox`, which the
+    launcher installs; tier0 no longer links SDL.
+- Build: `SDL3` is a uselib of exactly the launcher manager (appframework), the
+  input system, the engine and the launcher. The `INCLUDES_SDL2` path is gone from
+  every target, and SDL3 configurations no longer alias `SDL2` to SDL3. The SDL2
+  launcher manager (`appframework/sdlmgr.cpp`) and the non-SDL3 Android launcher
+  (`launcher/android/`) were unreachable (every SDL product is an SDL3 client) and
+  are deleted.
+- Enforcement: `tools/quality/sdl_boundary.py check` (baseline `sdl.boundary`)
+  allows SDL headers and SDL calls only in the files and prefixes listed in
+  `architecture/sdl_boundary.json`. The list is exact and shrink-only. Six
+  self-tests (`tools/quality/tests/test_sdl_boundary.py`) cover a new include, a
+  new call, a stale entry, comments, strings and opaque types, and third-party
+  exclusion.
+- Product suites repaired, since they were failing before this change:
+  - `sdl3_launcher_conformance` checked for a Vulkan window flag the core render
+    backend no longer sets. SDL3 makes a Vulkan surface without it, as a probe
+    showed. The test also crashed in a ConVar write without a cvar system,
+    accepted only Wayland, and saw stray X11 focus events.
+  - `input_gamepad_slots_test` lacked the client's `joystick` ConVar, so rumble
+    was always off. It also showed two product bugs, both fixed:
+    `CInputSystem::StopRumble` never stopped player 2's pad, and a reopened pad
+    reported nothing until its next transition (`SampleGamepadState`).
+- The lane (`tools/quality/window_sdl3_lane.py --tree`) runs these on real
+  drivers (manifest `platform.sdl3.product-suites`).
+  `tools/quality/android_window.py` cross-builds the window suite for Android
+  and runs it on an attached device (baseline `android.window-build`).
+
+Evidence on Linux x86_64, SDL 3.4.18 (manifest rows):
+
+| Row | Result |
+| --- | --- |
+| `platform.window` / `.sensitivity` | 421 / 23 checks, pass |
+| `platform.window.sdl3` (offscreen, g++ and clang++) | 212, 0 failures |
+| `platform.window.sdl3.native-drivers` (Wayland and X11, private sessions) | 424, 0 failures |
+| `platform.sdl3.product-suites` (launcher 365, gamepad slots 102, voice capture 33, per driver; the seeded slot-collapse provider is caught on both) | 1,002, 0 failures |
+| X11 launcher run repeated 5 times | 5 of 5 pass |
+| `portal_boot --resize-stress`, headless | pass |
+
+Builds: portal (Linux), the WebAssembly profile and the Android arm64 APK
+(`android_apk` verifier passes) build. The 3DS build compiles every SDL-related
+target; its only failure, `platform_foundation_legacyabi` (POSIX providers using
+`sys/syscall.h`, `tm_gmtoff`, `siginfo_t`), is outside SDL. The iOS, macOS and
+tvOS apps stop before any SDL code at `render_device_metal` (TOOLCHAIN003,
+RFC 0025); Apple runners are optional.
+
+Known failures that are not this change's:
+
+- `portal_boot --resize-stress` on real Wayland fails "missing or blank resize
+  image". HEAD without this change fails it 3 of 3 runs (up to 10 sizes). The
+  core shader API's present after a resize; shared with source-engine r91.
+- `stylelint --changed` flags `engine/host.cpp:132`. clang-format's suggestion
+  re-indents the file-scope declarations after the removed include, because it
+  misreads the file's earlier structure. Not applied.
+
+Open for done:
+
+- An Android arm64 hardware run (`android_window.py check`). No device was
+  attached; the Android profile is unverified.
+- The SDL3–Vulkan presentation pair's native suite. It was deleted with
+  `shaderapivulkan` (154155845) and must be restored against the core device.

@@ -21,10 +21,6 @@
 #include <fcntl.h>
 #endif
 
-#if defined( USE_SDL )
-#include "SDL.h"
-#endif
-
 #include <atomic>
 #include <thread>
 
@@ -351,27 +347,14 @@ bool Sys_MessageBox(const char *title, const char *info, bool bShowOkAndCancel)
 	}
 	return false;
 
-#elif defined( USE_SDL )
-
-	int buttonid = 0;
-	SDL_MessageBoxData messageboxdata = { 0 };
-	SDL_MessageBoxButtonData buttondata[] =
-	{
-		{ SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT,	1,	"OK"		},
-		{ SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT,	0,	"Cancel"	},
-	};
-
-	messageboxdata.window = GetAssertDialogParent();
-	messageboxdata.title = title;
-	messageboxdata.message = info;
-	messageboxdata.numbuttons = bShowOkAndCancel ? 2 : 1;
-	messageboxdata.buttons = buttondata;
-
-	SDL_ShowMessageBox( &messageboxdata, &buttonid );
-	return ( buttonid == 1 );
-
 #elif defined( POSIX )
 
+	// The window provider's box (tier0's platform message box), parented to the
+	// game window; without a provider the text goes to the console.
+	const char *const buttons[] = { "OK", "Cancel" };
+	const int chosen = ShowPlatformMessageBox( title, info, buttons, bShowOkAndCancel ? 2 : 1 );
+	if ( chosen >= 0 )
+		return chosen == 0;
 	Warning( "%s\n", info );
 	return true;
 

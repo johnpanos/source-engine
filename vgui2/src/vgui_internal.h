@@ -44,7 +44,8 @@ extern class IPanel *g_pIPanel;
 void vgui_strcpy(char *dst, int dstLen, const char *src);
 } // namespace vgui
 
-
-
+// The launcher's platform services (clipboard, URLs), or null without a launcher.
+class ILauncherPlatformServices;
+extern ILauncherPlatformServices *g_pLauncherPlatform;
 
 #endif // VGUI_INTERNAL_H
