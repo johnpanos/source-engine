@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 682,
     "totalHammerCppFiles": 334,
     "totalHammerHeaderFiles": 350,
-    "filesClassified": 308,
+    "filesClassified": 388,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'. 2026-10-03 (R08-REPLACE-TEXTURES, HAM-REPLACETEX-001): 22 reviewed records for the files that slice read or changed, and the authored totals refreshed to the live universe that 'archlint hammer --coverage' measures (hammer/ plus the strict roots)."
   },
   "files": [
@@ -4207,6 +4207,1056 @@
       "factorization": "replace-shell",
       "evidence": "observed",
       "note": "Declares CEntityHelpDlg, the MFC dialog that shows a GDclass's help text from the FGD catalog."
+    },
+    {
+      "path": "hammer/entityreportdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "MFC CEntityReportDlg list dialog over CMapDoc entities, filter combo and timer refresh; a view, not the document."
+    },
+    {
+      "path": "hammer/entityreportdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Declares the MFC CDialog-derived entity report window and its static ShowEntityReport entry point."
+    },
+    {
+      "path": "hammer/error3d.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares the 3D object error list (Add3dError, Enum3dErrors); plain data and functions, no UI or file access."
+    },
+    {
+      "path": "hammer/events.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Global event-timestamp counters (SignalUpdate, GetUpdateCounter) with live MFC callers in lpreview_thread, mapentity and mainfrm; retire with the shell."
+    },
+    {
+      "path": "hammer/faceedit_disppage.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "MFC displacement property page (CFaceEditDispPage) that reads and writes displacement controls and calls the displacement manager with undo markers."
+    },
+    {
+      "path": "hammer/faceedit_disppage.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares the MFC CPropertyPage for displacement editing and its control message handlers."
+    },
+    {
+      "path": "hammer/faceeditsheet.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CFaceEditSheet property sheet that keeps the selected face list (per CMapDoc) and routes face clicks to the sheet pages."
+    },
+    {
+      "path": "hammer/faceeditsheet.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Declares CFaceEditSheet, its face-list entry struct, and ClickFace / ClearFaceListByMapDoc."
+    },
+    {
+      "path": "hammer/filtercontrol.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CFilterControl bar with group and visgroup filter panes and icons, bound to the active CMapDoc."
+    },
+    {
+      "path": "hammer/filtercontrol.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Declares the MFC CHammerBar-derived filter control and its activation handler."
+    },
+    {
+      "path": "hammer/gameconfig.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CGameConfig load and save of game configuration from KeyValues and binary streams, GameData file loading and Steam path lookup."
+    },
+    {
+      "path": "hammer/gameconfig.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CGameConfig with its map format, GameData file list and Load/Save overloads; no I/O in the header."
+    },
+    {
+      "path": "hammer/gamepalette.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CGamePalette reads a palette file through std::ifstream in binary mode."
+    },
+    {
+      "path": "hammer/gamepalette.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares CGamePalette, a palette loader class with no UI dependency."
+    },
+    {
+      "path": "hammer/gizmo.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "gpu-work",
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CGizmo draws axis, scale and rotate handles through CRender3D and dynamic mesh buffers and registers render hit targets."
+    },
+    {
+      "path": "hammer/gizmo.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares CGizmo (a CMapAtom) with its handle state, axis length and position setters, and the Render entry point."
+    },
+    {
+      "path": "hammer/globalfunctions.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Free functions for the active world, duplicate notification and object lists; process-wide accessors that the workspace replaces."
+    },
+    {
+      "path": "hammer/gotobrushdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CGotoBrushDlg is a small MFC dialog that takes a brush number and ends with OnOK; a candidate for a GTK entry dialog."
+    },
+    {
+      "path": "hammer/gotobrushdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the MFC CDialog-derived Go To Brush dialog and its constructor."
+    },
+    {
+      "path": "hammer/grouplist.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CGroupList is an MFC CTreeCtrl showing groups and visgroups, with a context menu and expand-state saving."
+    },
+    {
+      "path": "hammer/grouplist.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the MFC CTreeCtrl subclass CGroupList and its GroupListPair records."
+    },
+    {
+      "path": "hammer/gtk/catalog_models.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "GTK shell model catalog: opens VPK archives and scans sdk_content maps through the disk byte store."
+    },
+    {
+      "path": "hammer/gtk/catalog_models.h",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares CatalogModels, an IModelSource over VPK archives for the GTK preview, namespace hammer::gtk."
+    },
+    {
+      "path": "hammer/gtk/catalog_textures.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "GTK shell texture catalog: opens VPK texture archives through the disk byte store and the KTX2 preview."
+    },
+    {
+      "path": "hammer/gtk/catalog_textures.h",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares CatalogTextures, an IMaterialTextures source for the GTK preview."
+    },
+    {
+      "path": "hammer/gtk/entity_schema.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Loads FGD schema text from disk with std::ifstream for the GTK shell entity schema."
+    },
+    {
+      "path": "hammer/gtk/entity_schema.h",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares the GTK shell entity schema loader over fgd_entity_catalog."
+    },
+    {
+      "path": "hammer/gtk/glib_task_runner.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "GlibTaskRunner posts work onto a GLib main context (g_main_context refs) as a platform.task-runner single-thread runner."
+    },
+    {
+      "path": "hammer/gtk/glib_task_runner.h",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares GlibTaskRunner, a platform.task-runner.v1 runner bound to a GLib main context."
+    },
+    {
+      "path": "hammer/gtk/offscreen.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "gpu-work",
+        "file-io"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Headless offscreen render path for the GTK shell that renders a workspace view and writes a binary PPM file."
+    },
+    {
+      "path": "hammer/gtk/properties_dialog.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "GTK Object Properties window: widgets bound to EntityInspector rows, with edits applied through EditorWorkspace."
+    },
+    {
+      "path": "hammer/gtk/properties_dialog.h",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares the GTK Object Properties window entry point over EditorWorkspace."
+    },
+    {
+      "path": "hammer/gtk/tests/test_glib_task_runner.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "platform-adapter",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Runs the shared platform.task-runner.v1 suite against the GLib runner; a test, not shell code."
+    },
+    {
+      "path": "hammer/gtk/viewport_widget.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "GtkWidget subclass HammerViewport that shows a GdkTexture frame and reports size and scale changes."
+    },
+    {
+      "path": "hammer/gtk/viewport_widget.h",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares the HammerViewport GObject widget and its texture accessors."
+    },
+    {
+      "path": "hammer/gtk/visgroups_panel.cpp",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "GTK visgroups panel (VisgroupsView) that shows the visgroup tree and routes membership actions to EditorWorkspace."
+    },
+    {
+      "path": "hammer/gtk/visgroups_panel.h",
+      "currentOwner": "hammer.adapters.gtk",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Declares MakeVisgroupsPanel for the GTK shell over EditorWorkspace."
+    },
+    {
+      "path": "hammer/hammer.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.composition",
+      "responsibility": "composition",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CHammer (CWinApp) app object with doc templates, minidump wrapper, and tool launches via ShellExecute and _spawnl; process spawns are not an allowed effect and are recorded only in this note."
+    },
+    {
+      "path": "hammer/hammer_mathlib.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "world.map-geometry",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Pure editor math: rotation and axis-angle matrices, box normalization and intersection, plane and polygon helpers; no document or UI state."
+    },
+    {
+      "path": "hammer/hammer_mathlib.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "world.map-geometry",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares the editor math helpers (matrices, box tests, point and face utilities) over mathlib types."
+    },
+    {
+      "path": "hammer/hammerbar.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "MFC CDialogBar subclass that lays out docked toolbar controls and raises the parent window on cursor set; the GTK host toolbar replaces it."
+    },
+    {
+      "path": "hammer/hammerbar.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CHammerBar, a CDialogBar with a ControlInfo_t placement list for docked toolbar layout."
+    },
+    {
+      "path": "hammer/helperfactory.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Static name-to-factory table that instantiates map helper classes (sprite, studio, animator and others) from FGD helper info, with no I/O."
+    },
+    {
+      "path": "hammer/helperfactory.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Declares the static CHelperFactory::CreateHelper entry point over CHelperInfo and CMapEntity."
+    },
+    {
+      "path": "hammer/history.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Per-document undo/redo history: Keep, KeepNew and MarkUndoPosition record object states and Undo restores them into the map through CMapDoc."
+    },
+    {
+      "path": "hammer/history.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CTrackEntry and CHistory, the undo track types and the Keep/KeepNew/MarkUndoPosition API that every edit calls."
+    },
+    {
+      "path": "hammer/ibsplighting.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Abstract IBSPLighting interface for the in-editor vrad lighting session (Load, StartLighting, progress, Draw), superseded by the planned bake seam (R48-BAKER)."
+    },
+    {
+      "path": "hammer/ibsplightingthread.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares IBSPLightingThread, the threaded wrapper around IVRadDLL that runs a lighting pass and reports idle, lighting or finished state."
+    },
+    {
+      "path": "hammer/iconcombobox.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Owner-draw combo box that loads icons from the executable with ExtractIcon and draws them with GDI brushes and pens; replaced by GTK widgets."
+    },
+    {
+      "path": "hammer/iconcombobox.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares CIconComboBox, a CComboBox subclass with icon add, insert, select and delete plus owner-draw hooks."
+    },
+    {
+      "path": "hammer/keyboard.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Maps Win32 virtual keys and modifiers to logical keys and tracks key state with impulse flags from OnKeyDown and OnKeyUp; key routing moves to the GTK ActionCatalog (RFC 0018)."
+    },
+    {
+      "path": "hammer/keyboard.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "interaction",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares CKeyboard and KeyMap_t with the physical and logical key limits and the key binding API."
+    },
+    {
+      "path": "hammer/listboxex.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Owner-draw list box of editable property rows (bool, string, integer, choice) with inline edit and combo controls, used by the MFC properties panel."
+    },
+    {
+      "path": "hammer/listboxex.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares LBEXTITEMSTRUCT and CListBoxEx, the property-row list with per-row data type, edit type and range."
+    },
+    {
+      "path": "hammer/loadsave_map.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Legacy .MAP text reader and writer for the document tree (solids, entities, groups, visible-only save) with an MFC progress dialog and file-stream I/O."
+    },
+    {
+      "path": "hammer/loadsave_rmf.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Legacy binary RMF load and save of faces, planes, solids and visgroups, including the old visgroup reader (COldVisGroup) and corrupt-file tracking."
+    },
+    {
+      "path": "hammer/lpreview_thread.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Lighting-preview worker thread that ray-traces the scene from a message queue for incremental light results; it writes no document state."
+    },
+    {
+      "path": "hammer/lpreview_thread.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares the lighting-preview message types, queues and light description shared with the Hammer UI."
+    },
+    {
+      "path": "hammer/lprvwindow.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "CWnd window that paints the lighting-preview output bitmap and handles close and paint messages."
+    },
+    {
+      "path": "hammer/lprvwindow.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Declares CLightingPreviewResultsWindow, a CWnd host for lighting-preview output."
+    },
+    {
+      "path": "hammer/mainfrm.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CMDIFrameWnd main window that routes menu and toolbar commands, saves and loads window state, and opens the prefab and manifest tools; the GTK host shell replaces it."
+    },
+    {
+      "path": "hammer/mainfrm.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CMainFrame with its bars, the manifest filter control and LoadWindowStates."
+    },
+    {
+      "path": "hammer/makeprefablibrary.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Builds a prefab library file by scanning a directory for RMF and VMF prefabs and loading each with prefab caching disabled."
+    },
+    {
+      "path": "hammer/manifest.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "composition",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CManifest document over CMapDoc that saves and loads the manifest and its map instances through the save-as command and manifest dialogs."
+    },
+    {
+      "path": "hammer/manifest.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "composition",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CManifestMap and CManifestInstance (a CMapEntity that references a manifest map) and the manifest load-preference struct."
+    },
+    {
+      "path": "hammer/manifestdialog.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CManifestMove dialog and manifest list handling for moving or referencing map instances, with Perforce checks; the GTK dialog replaces it."
+    },
+    {
+      "path": "hammer/manifestdialog.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CManifestMove and CManifestListBox, the manifest dialog controls and their menus."
+    },
+    {
+      "path": "hammer/mapalignedbox.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapAlignedBox helper that computes its bounds and implements Copy and CopyFrom, with Render2D and Render3D hooks."
+    },
+    {
+      "path": "hammer/mapalignedbox.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CMapAlignedBox with RMF and MAP serialization and its Render2D and Render3D hooks."
+    },
+    {
+      "path": "hammer/mapanimationdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CHammerBar animation toolbar with a time slider that plays the animation and creates keyframes in the document."
+    },
+    {
+      "path": "hammer/mapanimationdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CMapAnimationDlg with its duration, start and time state and the animation tick hooks."
+    },
+    {
+      "path": "hammer/mapanimator.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapAnimator keyframe helper that builds and copies animator state and evaluates the transform at an animation time."
+    },
+    {
+      "path": "hammer/mapanimator.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CMapAnimator over CMapKeyFrame with UpdateAnimation and GetTransformMatrix."
+    },
+    {
+      "path": "hammer/mapcheckdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation",
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Map check that scans solids, faces and textures for duplicate planes, invalid structure and texture axes, and applies fixes through history from a dialog."
+    },
+    {
+      "path": "hammer/mapcheckdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.gtk",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CMapCheckDlg and its CheckForProblems entry point with fix controls."
+    },
+    {
+      "path": "hammer/mapclass.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapClass base of the document object tree: object IDs, dependency and copy machinery, the class registry and ChunkFile save hooks."
+    },
+    {
+      "path": "hammer/mapcylinder.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapCylinder helper that builds cylinder geometry, bounds and copies, and calls Render2D and Render3D through the texture system."
+    },
+    {
+      "path": "hammer/mapcylinder.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CMapCylinder with RMF and MAP serialization, BuildCylinder and its 2D and 3D render hooks."
+    },
+    {
+      "path": "hammer/mapdecal.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CMapDecal helper that attaches decal faces to solids (CanDecalSolid, AddSolid) and resolves its IEditorTexture."
+    },
+    {
+      "path": "hammer/mapdecal.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CMapDecal and DecalFace_t with RMF and MAP serialization and its Render3D hook."
     }
   ]
 }
