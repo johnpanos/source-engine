@@ -201,6 +201,9 @@ constexpr int kScreenHeight = 240;
 inline int kScreenWidth = 1280;
 inline int kScreenHeight = 720;
 void SetScreenSize( int width, int height );
+// The engine's video mode changed: the screen's targets are made again at
+// the new size between frames (false while a frame is open or on failure).
+bool ResizeScreen( int width, int height );
 
 // Shows the frame's colour target (RGBA8, width x height) on the screen, after
 // the frame's work on the same queue; the composition root binds the one its

@@ -1192,6 +1192,10 @@ public:
 	// manager's SetMode, which the D3D9 composition uses, does the same).
 	bool SetMode( void* hwnd, int nAdapter, const ShaderDeviceInfo_t &info )
 	{
+#if !defined( PLATFORM_3DS )
+		// The mode the engine asked for (it fits the desktop), not -w/-h.
+		pica::ResizeScreen( info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight );
+#endif
 		if ( pica::Initialized() )
 			return true;
 		g_TextureSizeCap = CommandLine()->ParmValue( "-pica_texture_size", g_TextureSizeCap );
@@ -1209,6 +1213,11 @@ public:
 
 	void ChangeVideoMode( const ShaderDeviceInfo_t &info )
 	{
+#if !defined( PLATFORM_3DS )
+		if ( !pica::ResizeScreen( info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight ) )
+			Warning( "pica: the screen's targets were not resized to %dx%d\n",
+				info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight );
+#endif
 	}
 
 	// Called when the dx support level has changed

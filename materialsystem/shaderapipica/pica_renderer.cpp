@@ -636,6 +636,48 @@ void SetScreenSize( int width, int height )
 	}
 }
 
+bool ResizeScreen( int width, int height )
+{
+	if ( width <= 0 || height <= 0 )
+		return false;
+	if ( !g_state.initialized )
+	{
+		SetScreenSize( width, height );
+		return true;
+	}
+	if ( width == kScreenWidth && height == kScreenHeight )
+		return true;
+	if ( g_state.inFrame )
+		return false;
+	TextureDesc desc;
+	desc.format = Format::kRGBA8Unorm;
+	desc.width = std::uint32_t( width );
+	desc.height = std::uint32_t( height );
+	desc.usages = {
+	    ResourceUsage::kColorAttachment, ResourceUsage::kSampled, ResourceUsage::kCopySource };
+	auto color = Device().CreateTexture( desc );
+	desc.format = kDepthFormat;
+	desc.usages = { ResourceUsage::kDepthWrite, ResourceUsage::kSampled };
+	auto depth = Device().CreateTexture( desc );
+	if ( !color || !depth )
+	{
+		if ( color )
+			(void)Device().Release( color.Value(), {} );
+		if ( depth )
+			(void)Device().Release( depth.Value(), {} );
+		return false;
+	}
+	// The old targets go behind the last submission that drew them.
+	(void)Device().Release( g_state.color, g_state.submitted );
+	(void)Device().Release( g_state.depth, g_state.submitted );
+	g_state.color = color.Value();
+	g_state.depth = depth.Value();
+	g_state.colorUsage = State().colorUsage;
+	kScreenWidth = width;
+	kScreenHeight = height;
+	return true;
+}
+
 void BindPresenter( Presenter presenter, void *context )
 {
 	g_state.presenter = presenter;
