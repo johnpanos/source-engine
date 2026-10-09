@@ -8,7 +8,7 @@
     "totalHammerSourceFiles": 682,
     "totalHammerCppFiles": 334,
     "totalHammerHeaderFiles": 350,
-    "filesClassified": 228,
+    "filesClassified": 308,
     "note": "Seeded from the RFC 0002 observed-evidence table, the first geometry extraction candidate, and the extracted strict geometry module (now the world.map-geometry library, public/mapgeometry and mapgeometry, R08-LIBS). filesClassified counts authored records, which now include new strict-module files in addition to legacy hammer/ files. Exhaustive per-file/per-symbol classification is the H0 exit condition and is tracked as HAM-INVENTORY-001; validator enforces full coverage only when status is 'complete'. 2026-10-03 (R08-REPLACE-TEXTURES, HAM-REPLACETEX-001): 22 reviewed records for the files that slice read or changed, and the authored totals refreshed to the live universe that 'archlint hammer --coverage' measures (hammer/ plus the strict roots)."
   },
   "files": [
@@ -3137,6 +3137,1076 @@
       "factorization": "extract",
       "evidence": "observed",
       "note": "InstantiatePrefab copies a prefab document into world solids and entities under a placement rotation; pure transform."
+    },
+    {
+      "path": "hammer/core/formats/search_path_assets.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Ordered search over IAssetSource providers, keeping the first occurrence of each listed path."
+    },
+    {
+      "path": "hammer/core/formats/visgroups.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Parses visgroup KeyValues blocks and object memberships, and computes the hidden set for visibility filtering."
+    },
+    {
+      "path": "hammer/core/formats/vmf_map_codec.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "persistence",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Strict VMF codec mapping every block and key to typed scene fields, with CodecError diagnostics for unrepresentable content."
+    },
+    {
+      "path": "hammer/core/formats/vpk_archive.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "file-io"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Opens a VPK directory through an IByteStore and forwards Find, Read and List to content.vpk."
+    },
+    {
+      "path": "hammer/core/formats/vtf_image.cpp",
+      "currentOwner": "hammer.formats",
+      "destinationModule": "hammer.formats",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Decodes VTF headers and mip data (DXT, RGB/A and Strata BC7 formats) into an RGBA image without file access."
+    },
+    {
+      "path": "hammer/core/ports/entity_catalog.cpp",
+      "currentOwner": "hammer.ports",
+      "destinationModule": "hammer.ports",
+      "responsibility": "asset-service",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Maps FGD key type names to KeyType and implements case-insensitive entity class input/output lookups."
+    },
+    {
+      "path": "hammer/core/presenters/class_palette.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Builds the entity class palette from search, kind and category filters and the active class selection."
+    },
+    {
+      "path": "hammer/core/presenters/entity_inspector.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Validates key/value drafts by key type and applies the entity inspector edits through the session."
+    },
+    {
+      "path": "hammer/core/presenters/face_inspector.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Folds face texture values across the selection into mixed/single fields and applies shift, justify, align and material edits."
+    },
+    {
+      "path": "hammer/core/presenters/history_panel.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Lists undo history entries from the session and routes jump, undo and redo to the change history."
+    },
+    {
+      "path": "hammer/core/presenters/material_browser.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Counts material face uses and builds the filtered, recent-limited material list from the material catalog."
+    },
+    {
+      "path": "hammer/core/presenters/object_label.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Formats display labels for entities, solids and groups and tests whether an entity target is procedural."
+    },
+    {
+      "path": "hammer/core/presenters/outliner.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Builds the expandable object tree rows and filter, and routes selection and visibility toggles to the session."
+    },
+    {
+      "path": "hammer/core/presenters/presenter_text.h",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Header-only ASCII case-folding, word splitting and counted-text helpers shared by the presenters."
+    },
+    {
+      "path": "hammer/core/presenters/problems_panel.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Scans the document for problems cached against the session revision and applies Fix and FixAll through the commands."
+    },
+    {
+      "path": "hammer/core/presenters/status_bar.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Formats selection summaries, pointer coordinates, grid and snap text, and the message line."
+    },
+    {
+      "path": "hammer/core/presenters/visgroup_panel.cpp",
+      "currentOwner": "hammer.presenters",
+      "destinationModule": "hammer.presenters",
+      "responsibility": "presentation",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Builds the visgroup tree rows and routes create, rename, delete, move and membership actions through the commands."
+    },
+    {
+      "path": "hammer/core/scene/change_set.cpp",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "editing",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Applies or reverts a ChangeSet of created, removed and modified map objects to the document in either direction."
+    },
+    {
+      "path": "hammer/core/scene/displacement_geometry.cpp",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Builds the displacement surface of a solid side from its power and displacement data, validating power 2 to 4."
+    },
+    {
+      "path": "hammer/core/scene/document_index.cpp",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Indexes document entities by name, with case-insensitive pattern matching for lookups."
+    },
+    {
+      "path": "hammer/core/scene/map_document.cpp",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Owns document settings, the typed object maps, id allocation and the visgroup tree lookup."
+    },
+    {
+      "path": "hammer/core/scene/map_objects.cpp",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Parses and formats side planes, connections and entity key values, and sets or removes entity keys in place."
+    },
+    {
+      "path": "hammer/core/scene/map_queries.cpp",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Answers document queries for group members, entity solids, expansion to leaves, containers and visibility."
+    },
+    {
+      "path": "hammer/core/scene/solid_geometry.cpp",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Implements the axis-aligned Box operations and builds solid geometry from scene data."
+    },
+    {
+      "path": "hammer/core/tools/block_tool.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Drags a block on a viewport plane with axis-constrained extents and commits the resulting box through the session."
+    },
+    {
+      "path": "hammer/core/tools/box_handles.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Computes box handle positions, hit tests, cursors and resized rectangles in screen space."
+    },
+    {
+      "path": "hammer/core/tools/camera_controller.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Maps pointer, wheel and key events to 2D and 3D camera pan, zoom and fly movement."
+    },
+    {
+      "path": "hammer/core/tools/clip_tool.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Places clip lines on a view, keeps the chosen side and applies the clip through the session."
+    },
+    {
+      "path": "hammer/core/tools/entity_tool.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Computes entity placement on surfaces or the grid, shows the marker overlay and creates the entity through the session."
+    },
+    {
+      "path": "hammer/core/tools/face_tool.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Picks a 3D face under the pointer and applies face click and key actions through the session."
+    },
+    {
+      "path": "hammer/core/tools/input.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Defines key and pointer event values and the overlay list builders for lines, boxes, polygons, rectangles and handles."
+    },
+    {
+      "path": "hammer/core/tools/interaction_policy.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Holds drag-threshold, handle-radius, snap and dominant-axis constraint rules shared by the tools."
+    },
+    {
+      "path": "hammer/core/tools/preview.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Appends solid edges and object outlines, and staged previews, to a tool overlay list."
+    },
+    {
+      "path": "hammer/core/tools/selection_tool.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Handles select-mode pointer gestures and box handle drags, applying transforms through the session."
+    },
+    {
+      "path": "hammer/core/tools/tool_manager.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Registers tools by name, activates one at a time and routes pointer, key and wheel events to the active tool."
+    },
+    {
+      "path": "hammer/core/tools/vertex_tool.cpp",
+      "currentOwner": "hammer.tools",
+      "destinationModule": "hammer.tools",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Collects solid vertex handles, tracks the selected handles and drags them, applying the move through the session."
+    },
+    {
+      "path": "hammer/core/viewport/camera.cpp",
+      "currentOwner": "hammer.viewport",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Implements the 2D and 3D camera state: view kind, axes, yaw and pitch clamping, and finite-value checks."
+    },
+    {
+      "path": "hammer/core/viewport/extraction.cpp",
+      "currentOwner": "hammer.viewport",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Extracts a render snapshot of solids and entities from the document, with entity draw data and instance-class detection."
+    },
+    {
+      "path": "hammer/core/viewport/grid.cpp",
+      "currentOwner": "hammer.viewport",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Implements the grid policy: size steps, line classification and rounding for grid lines."
+    },
+    {
+      "path": "hammer/core/viewport/picking.cpp",
+      "currentOwner": "hammer.viewport",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "interaction",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Picks document objects under a screen point or rectangle in 2D and 3D, with distance-to-rect and segment tests."
+    },
+    {
+      "path": "hammer/core/viewport/view_policy.cpp",
+      "currentOwner": "hammer.viewport",
+      "destinationModule": "hammer.viewport",
+      "responsibility": "presentation",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-view-state",
+      "factorization": "keep",
+      "evidence": "observed",
+      "note": "Headless view policy (IsShown, studio-model path test, unique polygon edge extraction) over hammer/scene map queries; no MFC or GDI."
+    },
+    {
+      "path": "hammer/createarch.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Legacy arch generator: builds CMapSolid segments and arc points from float arrays with no document writes; belongs with hammer.app create ops."
+    },
+    {
+      "path": "hammer/culltreenode.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CCullTreeNode is a bounding-box spatial index over CMapClass objects; it caches membership and is rebuilt from the document, so it is derived."
+    },
+    {
+      "path": "hammer/culltreenode.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares the CCullTreeNode bounding-box spatial index; a derived cache over legacy CMapClass objects, not authoritative data."
+    },
+    {
+      "path": "hammer/custommessages.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "retire",
+      "evidence": "observed",
+      "note": "Enum of WM_USER window message IDs (MAPDOC_CHANGED, GAME_CHANGED, ABN_CHANGED, TWN_*); MFC message plumbing retired with the GTK shell."
+    },
+    {
+      "path": "hammer/detailobjects.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "file-io",
+        "gpu-work",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "DetailObjects loads detail prototype KeyValues and studio models from disk, places detail models and sprites on faces, and draws them in Render3D; placement must extract, Render3D stays in the MFC adapter."
+    },
+    {
+      "path": "hammer/detailobjects.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "file-io",
+        "gpu-work"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares DetailObjects (a CMapPoint): detail dictionary loading, face placement, studio-model loading and Render3D; the placement API moves with the cpp split."
+    },
+    {
+      "path": "hammer/dispdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "MFC dialogs for displacement create, noise and paint-distance settings; the settings model belongs in hammer.app displacement ops and the GTK host replaces the dialogs."
+    },
+    {
+      "path": "hammer/dispdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the MFC displacement dialogs (CDispCreateDlg, CDispNoiseDlg, CDispPaintDistDlg) with their DDX members; replaced by the GTK host."
+    },
+    {
+      "path": "hammer/dispmanager.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CEditDispMgr and CWorldEditDispMgr track displacement handles, world membership and select sets, and create or destroy CMapDisp objects; the registry is editing-session state."
+    },
+    {
+      "path": "hammer/dispmanager.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares the IEditDispMgr and IWorldEditDispMgr interfaces for displacement create, destroy, world and select sets; the registry moves to hammer.app."
+    },
+    {
+      "path": "hammer/dispmapimagefilter.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "geometry",
+      "effects": [
+        "file-io",
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Loads displacement image-filter definitions from chunk files and applies them to CMapDisp height values; the filter-file reader is a format and the apply step is geometry."
+    },
+    {
+      "path": "hammer/dispmapimagefilter.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.formats",
+      "responsibility": "geometry",
+      "effects": [
+        "file-io",
+        "pure-computation"
+      ],
+      "state": "external-resource",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CDispMapImageFilter and its manager: chunk-file loading callbacks and height/width validation; the format part moves to hammer.formats."
+    },
+    {
+      "path": "hammer/disppaint.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CDispPaintMgr applies brush strokes (add, equal, smooth, one-over-r) to displacement vertices with undo capture; a geometry edit owned by hammer.app displacement ops."
+    },
+    {
+      "path": "hammer/disppaint.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares CDispPaintMgr and SpatialPaintData_t: brush paint modes and sphere overlap tests over displacement data."
+    },
+    {
+      "path": "hammer/dispsew.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Displacement edge, corner and T-junction sewing (Build, Resolve, Destroy) over face lists; mutates displacement vertices; a hammer.app displacement operation."
+    },
+    {
+      "path": "hammer/dispsew.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares FaceListSewEdges, the entry point that sews displacement edges across a face list."
+    },
+    {
+      "path": "hammer/dispsubdiv.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CEditDispSubdivMesh runs Catmull-Clark subdivision on displacement meshes, adding and reading CMapDisp data; pure mesh math with document writes at the ends."
+    },
+    {
+      "path": "hammer/dispsubdiv.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "geometry",
+      "effects": [
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares IEditDispSubdivMesh (Init, AddDispTo, GetDispFrom, DoCatmullClarkSubdivision) and its destroy helper."
+    },
+    {
+      "path": "hammer/dispview.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui",
+        "gpu-work"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CDispView is the MFC view for displacement editing: rendering, camera mode, key maps and input; the GTK viewports replace it."
+    },
+    {
+      "path": "hammer/dummytexture.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "asset-service",
+      "effects": [
+        "native-ui",
+        "pure-computation"
+      ],
+      "state": "derived-cache",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "CDummyTexture is the IEditorTexture placeholder for missing textures; it generates RGB and RGBA pixels and draws through CDC."
+    },
+    {
+      "path": "hammer/dummytexture.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "asset-service",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "derived-cache",
+      "factorization": "adapt-legacy",
+      "evidence": "observed",
+      "note": "Declares CDummyTexture, the IEditorTexture placeholder for missing textures; its CDC draw path stays in the MFC adapter."
+    },
+    {
+      "path": "hammer/dynamicdialogwnd.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CDynamicDialogWnd is an MFC CWnd host that embeds a CDialog for dynamic dialog switching; it has no headless behavior."
+    },
+    {
+      "path": "hammer/dynamicdialogwnd.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-view-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CDynamicDialogWnd, the CWnd container that swaps the CDialog it hosts."
+    },
+    {
+      "path": "hammer/editgameclass.cpp",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "document-mutation",
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CEditGameClass holds an entity class's connections and upstream links and saves or loads them via CChunkFile; connection data belongs in hammer.scene, the VMF codec in hammer.formats."
+    },
+    {
+      "path": "hammer/editgameclass.h",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "document-mutation",
+        "file-io"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CEditGameClass, the entity class with connection and upstream lists and VMF Save/Load callbacks; the connection model moves to hammer.scene."
+    },
+    {
+      "path": "hammer/editgameconfigs.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CEditGameConfigs is the MFC dialog for adding, copying and removing game configs in Options.configs; config storage is app-level, not document state."
+    },
+    {
+      "path": "hammer/editgameconfigs.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the CEditGameConfigs dialog and its list and edit controls over the game-config store."
+    },
+    {
+      "path": "hammer/editgroups.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui",
+        "document-mutation"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "CEditGroups dialog renames visgroups and recolors objects via UpdateObjectColor; the rename and colour edits belong in hammer.app visgroup ops, the dialog is replaced."
+    },
+    {
+      "path": "hammer/editgroups.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.app",
+      "responsibility": "editing",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "split",
+      "evidence": "observed",
+      "note": "Declares CEditGroups and the CColorBox static control; the visgroup edit model moves to hammer.app and the widgets stay in MFC."
+    },
+    {
+      "path": "hammer/editpathdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CEditPathDlg is the MFC dialog for path entity properties (name, class, GameData); it edits values through DDX and the GTK inspector replaces it."
+    },
+    {
+      "path": "hammer/editpathdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the CEditPathDlg MFC dialog and its edit controls for path entities."
+    },
+    {
+      "path": "hammer/editpathnodedlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CEditPathNodeDlg is the MFC dialog for path node properties through DDX; the GTK inspector replaces it."
+    },
+    {
+      "path": "hammer/editpathnodedlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the CEditPathNodeDlg MFC dialog and its edit controls for path nodes."
+    },
+    {
+      "path": "hammer/editprefabdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CEditPrefabDlg is the MFC prefab dialog (description, name, library enable and ranges); the GTK host and headless prefab ops replace it."
+    },
+    {
+      "path": "hammer/editprefabdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "per-document-session-state",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares the CEditPrefabDlg MFC dialog and its prefab description and name controls."
+    },
+    {
+      "path": "hammer/entityconnection.cpp",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "document-mutation",
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "CEntityConnection holds a source/target output connection, relinks source entities and compares connections; it is authoritative entity I/O data."
+    },
+    {
+      "path": "hammer/entityconnection.h",
+      "currentOwner": "hammer.scene",
+      "destinationModule": "hammer.scene",
+      "responsibility": "scene",
+      "effects": [
+        "pure-computation"
+      ],
+      "state": "authoritative-document-data",
+      "factorization": "extract",
+      "evidence": "observed",
+      "note": "Declares CEntityConnection (source and target names, output, delay and fire-count) and CompareConnection; the scene owns this entity I/O model."
+    },
+    {
+      "path": "hammer/entityhelpdlg.cpp",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "CEntityHelpDlg is the MFC help dialog that renders FGD class help text with CDC; the class help is external FGD data and the GTK host replaces the dialog."
+    },
+    {
+      "path": "hammer/entityhelpdlg.h",
+      "currentOwner": "hammer.adapters.mfc",
+      "destinationModule": "hammer.adapters.mfc",
+      "responsibility": "presentation",
+      "effects": [
+        "native-ui"
+      ],
+      "state": "external-resource",
+      "factorization": "replace-shell",
+      "evidence": "observed",
+      "note": "Declares CEntityHelpDlg, the MFC dialog that shows a GDclass's help text from the FGD catalog."
     }
   ]
 }
