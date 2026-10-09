@@ -53,3 +53,22 @@ def build(bld):
 			defines = bridge_defines,
 			use = bridge_libs + ['render_device_vulkan', 'render_device'],
 			install_path = None)
+
+		# render.presentation.v1's shared suite on this pair (RFC 0001 R16, R18):
+		# real SDL3 windows, a real swapchain and GPU completion held by a
+		# timeline semaphore, then presented pixels in two windows. Opens
+		# windows: run it only in a private compositor (window_sdl3_lane.py
+		# --tree). Exits 77 without a display or Vulkan device.
+		bld.program(
+			features = 'c cxx',
+			source = ['../../../unittests/rendertest/test_sdl3_vulkan_presentation.cpp',
+				'../../../unittests/rendertest/conformance/render_backend_conformance.cpp',
+				'../../../unittests/rendertest/conformance/render_presentation_conformance.cpp'],
+			target = 'render_presentation_sdl3_vulkan_conformance',
+			name = 'render_presentation_sdl3_vulkan_conformance',
+			arch_module = 'render.bridge.sdl3-vulkan.native-tests',
+			includes = [ '.', '../../../public', '../../../unittests/rendertest' ] +
+				bld.env.INCLUDES_SDL3 + bld.env.INCLUDES_VULKAN,
+			defines = bridge_defines,
+			use = ['render_bridge_sdl3_vulkan_core', 'render_device_vulkan', 'render_device'] + bridge_libs,
+			install_path = bld.env.TESTDIR)

@@ -716,6 +716,33 @@
         ]
       },
       {
+        "id": "render.bridge.sdl3-vulkan.native-tests",
+        "kind": "native-test",
+        "paths": [
+          "unittests/rendertest/test_sdl3_vulkan_presentation.cpp"
+        ],
+        "allowedEdges": [
+          "platform.sdl3.render-surface",
+          "render.bridge.sdl3-vulkan",
+          "render.conformance-tests",
+          "render.contracts",
+          "render.device",
+          "render.device.vulkan",
+          "testing.contracts"
+        ],
+        "externalHeaders": [
+          "SDL3/SDL.h",
+          "vulkan/vulkan.h",
+          "csignal",
+          "unistd.h"
+        ],
+        "uselib": [
+          "SDL3",
+          "VULKAN",
+          "WAYLAND_CLIENT"
+        ]
+      },
+      {
         "id": "render.bridge.sdl3-d3d12.native-tests",
         "kind": "native-test",
         "paths": [
@@ -2884,6 +2911,7 @@
               "render.bridge.sdl3-vulkan",
               "render.bridge.sdl3-d3d12",
               "render.bridge.sdl3-d3d12.native-tests",
+              "render.bridge.sdl3-vulkan.native-tests",
               "render.vulkan.native-tests",
               "render.shader-extension-contract",
               "render.shader-extension-host",

@@ -6,8 +6,10 @@ row's sources and flags (the SDL3 window provider against the shared
 platform.window.v1 suite). With --tree <profile tree>, it runs the product's SDL3
 suites built in that tree instead: the launcher manager (sdl3_launcher_conformance),
 the input system's gamepad slots (input_gamepad_slots_test, plus its seeded
-slot-collapse provider, which must fail) and SDL3 voice capture
-(sdl3_voice_record_test).
+slot-collapse provider, which must fail), SDL3 voice capture
+(sdl3_voice_record_test) and the SDL3-Vulkan presentation pair
+(render_presentation_sdl3_vulkan_conformance: render.presentation.v1's shared
+suite and native pixels).
 
 Each program runs with SDL_VIDEODRIVER=wayland inside kiln's "private" session and
 with SDL_VIDEODRIVER=x11 inside "private-x11" (a private compositor with Xwayland
@@ -29,6 +31,10 @@ ROW = "platform.window.sdl3"
 DRIVERS = (("wayland", "private"), ("x11", "private-x11"))
 RESULT = re.compile(r"^CONFORMANCE (\d+) (\d+)$", re.M)
 VOICE_RESULT = re.compile(r"^SDL3 voice recording: (\d+) checks, pass$", re.M)
+PRESENT_SUITE = re.compile(
+    r"^render\.presentation\.sdl3_vulkan: shared suite (\d+) check\(s\), (\d+) failure", re.M)
+PRESENT_PIXELS = re.compile(
+    r"^render\.presentation\.sdl3_vulkan: native pixel checks (\d+), failure\(s\) (\d+)", re.M)
 
 # (program relative to the tree's install directory, extra arguments, must pass)
 PRODUCT_PROGRAMS = (
@@ -36,6 +42,7 @@ PRODUCT_PROGRAMS = (
     ("tests/input_gamepad_slots_test", (), True),
     ("tests/input_gamepad_slots_test", ("-seed-slot-collapse",), False),
     ("tests/sdl3_voice_record_test", (), True),
+    ("tests/render_presentation_sdl3_vulkan_conformance", (), True),
 )
 
 
@@ -73,9 +80,12 @@ def run(out, argv, driver, display_name, environment, label):
     log.write_text(result.stdout + result.stderr)
     for line in result.stdout.splitlines():
         if line.startswith(("ok ", "FAIL", "  FAIL", "  recorded skip", "SDL ", "CONFORMANCE",
-                            "SDL3 voice")):
+                            "SDL3 voice", "SKIP", "render.presentation")):
             print("[%s %s] %s" % (driver, label, line))
     found = RESULT.findall(result.stdout)
+    present = PRESENT_SUITE.findall(result.stdout) + PRESENT_PIXELS.findall(result.stdout)
+    if not found and len(present) == 2:
+        found = [(str(sum(int(c) for c, _ in present)), str(sum(int(f) for _, f in present)))]
     if not found:
         voice = VOICE_RESULT.findall(result.stdout)
         found = [(voice[0], "0")] if voice and result.returncode == 0 else []

@@ -304,5 +304,21 @@ Open for done:
 
 - An Android arm64 hardware run (`android_window.py check`). No device was
   attached; the Android profile is unverified.
-- The SDL3–Vulkan presentation pair's native suite. It was deleted with
-  `shaderapivulkan` (154155845) and must be restored against the core device.
+
+Since then (2026-10-08):
+
+- The SDL3–Vulkan pair's native suite, deleted with `shaderapivulkan`
+  (154155845), is restored as `unittests/rendertest/test_sdl3_vulkan_presentation.cpp`.
+  It is built beside the core presenter (`render/bridge/sdl3-vulkan/wscript`)
+  and run by the product lane: render.presentation.v1's shared suite passes on
+  Wayland (49 checks, with two recorded skips: Wayland cannot restore a window)
+  and on X11, and 5 pixel checks pass on each. The SDL3–D3D12 pair keeps its
+  own lane (`render.presentation.sdl3-d3d12`).
+- The launcher window is shown at the mode's size (de3e3dca8). On the core
+  backend the window was created visible at 1280x720, and the engine's mode
+  reached it as an asynchronous resize. The UI then laid out at the old size:
+  r91 saw the menu background drawn at 1280x683 of a 1920x1080 frame. The
+  window is now hidden until the mode switch, and its first show syncs and
+  reapplies the size. `sdl3_launcher_conformance` checks the drawable right
+  after the first show; seeding the visible window back fails it on X11.
+- `platform.sdl3.product-suites`: 1,114 checks, 0 failures, on Wayland and X11.
