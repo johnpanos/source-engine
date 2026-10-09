@@ -19199,7 +19199,7 @@
       "domain": "Q-FOUNDATION",
       "rfc": "0001",
       "migration": "R14",
-      "contract": "RFC/0001-capability-based-platform-architecture.md",
+      "contract": "unittests/platformtest/contracts/platform.window.v1.md",
       "kind": "positive",
       "profile": "linux-headless-core",
       "extra_flags": [
@@ -19223,7 +19223,7 @@
       "domain": "Q-FOUNDATION",
       "rfc": "0001",
       "migration": "R14",
-      "contract": "RFC/0001-capability-based-platform-architecture.md",
+      "contract": "unittests/platformtest/contracts/platform.window.v1.md",
       "kind": "sensitivity",
       "profile": "linux-headless-core",
       "extra_flags": [
@@ -19239,6 +19239,68 @@
         "platform/composition.cpp",
         "platform/window/input_normalizer.cpp",
         "platform/window/window_surfaces.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.window.sdl3",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R14",
+      "contract": "unittests/platformtest/contracts/platform.window.v1.md",
+      "kind": "positive",
+      "profile": "linux-headless-core",
+      "description": "platform.window.v1 against the SDL3 window/input provider (platform/sdl3/window_system): the SAME shared window/input suite as the headless provider, with native input pushed as SDL3 events through the provider's real decoding path, SDL virtual gamepads on SDL's device path, and real windows, sizes, surfaces, cursor and clipboard from the video driver (offscreen by default; set SDL_VIDEODRIVER=wayland or x11 only inside an isolated compositor). Composed through the R06 kernel twice (repeat instance) with the one-connected-instance rule, then the SDL3 launcher's product behavior (appframework/sdl3mgr.cpp): a flipped wheel reads unflipped, fractional relative motion is carried, and the SDL3 bridges' surface endpoint keeps a destroyed window's surface while a presentation holds it and reclaims it after.",
+      "extra_flags": [
+        "-DNDEBUG",
+        "-pthread"
+      ],
+      "link_flags": [
+        "-pthread",
+        "-lSDL3"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 150,
+      "requires": [
+        "path:/usr/include/SDL3/SDL.h"
+      ],
+      "sources": [
+        "unittests/platformtest/window_sdl3/test_sdl3_window.cpp",
+        "platform/composition.cpp",
+        "platform/window/input_normalizer.cpp",
+        "platform/sdl3/window_system/sdl3_window_system.cpp",
+        "platform/sdl3/render_surface/sdl3_render_surfaces.cpp"
+      ],
+      "expect": "pass"
+    },
+    {
+      "id": "platform.window.sdl3.native-drivers",
+      "domain": "Q-FOUNDATION",
+      "rfc": "0001",
+      "migration": "R14",
+      "contract": "unittests/platformtest/contracts/platform.window.v1.md",
+      "kind": "positive",
+      "profile": "linux-host-corpus",
+      "description": "platform.window.sdl3 on real video drivers: tools/quality/window_sdl3_lane.py builds the row's program from its sources and runs it with SDL_VIDEODRIVER=wayland inside kiln's private session and SDL_VIDEODRIVER=x11 inside private-x11 (a private compositor with Xwayland and its own D-Bus session), never on the user's display. Real compositor resizes, window state, surfaces, cursor, relative mode, clipboard and virtual gamepads; the counts of both drivers are combined.",
+      "command": [
+        "{python}",
+        "tools/quality/window_sdl3_lane.py",
+        "--out",
+        "/tmp/claude-1000/window-sdl3-lane"
+      ],
+      "result_protocol": "checks-v1",
+      "min_checks": 400,
+      "timeout_seconds": 900,
+      "requires": [
+        "executable:mutter",
+        "executable:Xwayland",
+        "path:/usr/include/SDL3/SDL.h"
+      ],
+      "sources": [
+        "tools/quality/window_sdl3_lane.py",
+        "unittests/platformtest/window_sdl3/test_sdl3_window.cpp",
+        "platform/sdl3/window_system/sdl3_window_system.cpp",
+        "platform/sdl3/render_surface/sdl3_render_surfaces.cpp"
       ],
       "expect": "pass"
     },

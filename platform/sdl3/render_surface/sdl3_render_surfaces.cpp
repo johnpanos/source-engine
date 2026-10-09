@@ -24,7 +24,8 @@ public:
 		RenderExtent extent;
 		if ( GetStatus() != RenderSurfaceStatus::kAvailable )
 			return extent;
-		if ( SDL_GetWindowFlags( m_Window ) & ( SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED ) )
+		if ( !m_Visible ||
+		     ( SDL_GetWindowFlags( m_Window ) & ( SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED ) ) )
 			return extent;
 		int width = 0, height = 0;
 		if ( !SDL_GetWindowSizeInPixels( m_Window, &width, &height ) || width <= 0 || height <= 0 )
@@ -101,6 +102,8 @@ public:
 	}
 
 	SDL_Window *Window() const { return m_Window; }
+	bool HasListener() const { return m_Listener != nullptr; }
+	void SetVisible( bool visible ) { m_Visible = visible; }
 
 private:
 	// The platform surface the window presents to. Android replaces its
@@ -119,6 +122,7 @@ private:
 
 	SDL_Window *m_Window;
 	RenderSurfaceStatus m_Status = RenderSurfaceStatus::kAvailable;
+	bool m_Visible = true; // as last reported by the window's owner
 	mutable const void *m_LastNative = nullptr;
 	mutable uint64_t m_Generation = 0;
 	IRenderSurfaceListener *m_Listener = nullptr;
@@ -199,6 +203,27 @@ void Sdl3RenderSurfaces::Destroy( IRenderSurface *surface )
 			m_Surfaces.erase( m_Surfaces.begin() + static_cast<std::ptrdiff_t>( i ) );
 			return;
 		}
+	}
+}
+
+void Sdl3RenderSurfaces::SetVisible( IRenderSurface &surface, bool visible )
+{
+	if ( Sdl3RenderSurface *s = Find( surface ) )
+		s->SetVisible( visible );
+}
+
+void Sdl3RenderSurfaces::Collect()
+{
+	for ( size_t i = 0; i < m_Surfaces.size(); )
+	{
+		Sdl3RenderSurface *s = m_Surfaces[i];
+		if ( s->GetStatus() == RenderSurfaceStatus::kDestroyed && !s->HasListener() )
+		{
+			delete s;
+			m_Surfaces.erase( m_Surfaces.begin() + static_cast<std::ptrdiff_t>( i ) );
+			continue;
+		}
+		++i;
 	}
 }
 

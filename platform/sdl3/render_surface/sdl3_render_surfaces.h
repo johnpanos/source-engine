@@ -49,6 +49,14 @@ public:
 	void InvalidateWindow( render::IRenderSurface &surface );
 	void Destroy( render::IRenderSurface *surface );
 
+	// The owner's view of the window: false while hidden or minimized, as its
+	// events reported; the drawable extent is zero until it is true again.
+	void SetVisible( render::IRenderSurface &surface, bool visible );
+
+	// Frees invalidated surfaces that no presentation is attached to any longer.
+	void Collect();
+	size_t AllocatedCount() const { return m_Surfaces.size(); }
+
 	// -- Private endpoint for SDL3 presentation bridges --
 	bool Owns( const render::IRenderSurface &surface ) const;
 	// The window behind a surface, or nullptr for a foreign, destroyed or

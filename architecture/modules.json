@@ -1620,37 +1620,39 @@
         ]
       },
       {
-        "id": "platform.sdl2.window",
+        "id": "platform.sdl3.window",
         "kind": "backend",
         "paths": [
-          "platform/sdl2/"
+          "platform/sdl3/window_system/"
         ],
         "externalHeaders": [
-          "SDL.h"
+          "SDL3/SDL.h"
         ],
         "allowedEdges": [
           "foundation",
           "platform.window-contracts",
           "render.contracts",
           "platform.composition",
-          "platform.window-support"
+          "platform.window-support",
+          "platform.sdl3.render-surface"
         ],
         "uselib": [
-          "SDL2"
+          "SDL3"
         ]
       },
       {
-        "id": "platform.sdl2.window.native-tests",
+        "id": "platform.sdl3.window.native-tests",
         "kind": "native-test",
         "paths": [
-          "unittests/platformtest/window_sdl2/"
+          "unittests/platformtest/window_sdl3/"
         ],
         "externalHeaders": [
-          "SDL.h"
+          "SDL3/SDL.h"
         ],
         "allowedEdges": [
           "foundation",
-          "platform.sdl2.window",
+          "platform.sdl3.window",
+          "platform.sdl3.render-surface",
           "platform.window-contracts",
           "platform.tests",
           "render.contracts",
@@ -1659,7 +1661,7 @@
           "platform.window-support"
         ],
         "uselib": [
-          "SDL2"
+          "SDL3"
         ]
       },
       {

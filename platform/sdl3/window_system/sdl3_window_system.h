@@ -1,21 +1,23 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// Purpose: SDL2 window/input provider (RFC 0001 rank 7, roadmap R14). Exports
-//			the platform.window.v1 capabilities over SDL2: IWindowSystem,
+// Purpose: SDL3 window/input provider (RFC 0001 rank 7, roadmap R14). Exports
+//			the platform.window.v1 capabilities over SDL3: IWindowSystem,
 //			IEventSource, ICursor, IClipboard, IMessageBox and IGamepads.
 //			Native events are decoded here and normalized by the shared
 //			platform/window InputNormalizer, so this provider and the headless
-//			one apply the same rules; surfaces come from the shared registry.
+//			one apply the same rules. Surfaces are platform/sdl3/render_surface
+//			objects, so the SDL3 presentation bridges (sdl3-vulkan, sdl3-d3d12)
+//			present to this provider's windows through RenderSurfaces().
 //
 //			SDL keeps process-global state, so at most one instance may be
 //			connected at a time; a second Connect fails structurally. No SDL
-//			type appears in this header. NativeWindowId is the private endpoint
-//			for this provider's native tests and future SDL2 bridges.
+//			type appears in this header. NativeWindowId and RenderSurfaces are
+//			the private endpoints for native tests and SDL3 bridges.
 //
 //=============================================================================//
 
-#ifndef PLATFORM_SDL2_WINDOW_SYSTEM_H
-#define PLATFORM_SDL2_WINDOW_SYSTEM_H
+#ifndef PLATFORM_SDL3_WINDOW_SYSTEM_H
+#define PLATFORM_SDL3_WINDOW_SYSTEM_H
 
 #include "../../window/input_normalizer.h"
 #include "platform/composition.h"
@@ -24,16 +26,22 @@
 #include <cstdint>
 #include <memory>
 
-namespace platform_sdl2
+namespace platform_sdl3
 {
 
-struct Sdl2WindowSystemConfig
+class Sdl3RenderSurfaces;
+
+struct Sdl3WindowSystemConfig
 {
 	platform::window::NormalizerPolicy policy;
 	bool gamepads = true; // initialize SDL's game-controller subsystem
+	// Gamepad input while none of the process's windows has focus. Off is the
+	// SDL3 launcher's behavior (SDL's default): a game ignores the pad while
+	// the user is in another application.
+	bool gamepadsWithoutFocus = false;
 };
 
-class Sdl2WindowSystem final : public platform::IProviderLifecycle,
+class Sdl3WindowSystem final : public platform::IProviderLifecycle,
                                public platform::window::IWindowSystem,
                                public platform::window::IEventSource,
                                public platform::window::ICursor,
@@ -42,11 +50,11 @@ class Sdl2WindowSystem final : public platform::IProviderLifecycle,
                                public platform::window::IGamepads
 {
 public:
-	explicit Sdl2WindowSystem( Sdl2WindowSystemConfig config = Sdl2WindowSystemConfig{} );
-	~Sdl2WindowSystem() override;
+	explicit Sdl3WindowSystem( Sdl3WindowSystemConfig config = Sdl3WindowSystemConfig{} );
+	~Sdl3WindowSystem() override;
 
-	Sdl2WindowSystem( const Sdl2WindowSystem & ) = delete;
-	Sdl2WindowSystem &operator=( const Sdl2WindowSystem & ) = delete;
+	Sdl3WindowSystem( const Sdl3WindowSystem & ) = delete;
+	Sdl3WindowSystem &operator=( const Sdl3WindowSystem & ) = delete;
 
 	// IProviderLifecycle
 	foundation::Expected<void, platform::ProviderError> Connect() override;
@@ -100,11 +108,15 @@ public:
 	// Private endpoint: the SDL window ID behind a live window, or 0.
 	std::uint32_t NativeWindowId( platform::window::WindowId window ) const;
 
+	// Private endpoint for SDL3 presentation bridges: the registry that owns this
+	// provider's surfaces. Valid for the provider's lifetime.
+	Sdl3RenderSurfaces &RenderSurfaces();
+
 private:
 	struct State;
 	std::unique_ptr<State> m_State;
 };
 
-} // namespace platform_sdl2
+} // namespace platform_sdl3
 
-#endif // PLATFORM_SDL2_WINDOW_SYSTEM_H
+#endif // PLATFORM_SDL3_WINDOW_SYSTEM_H

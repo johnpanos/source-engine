@@ -731,19 +731,23 @@ private:
 		m_Driver.PadAxis( pad, GamepadAxis::LeftY, 32767 );
 		m_Driver.PadAxis( pad, GamepadAxis::RightX, 16384 );
 		m_Driver.PadAxis( pad, GamepadAxis::RightTrigger, 32767 );
-		m_Driver.PadAxis( pad, GamepadAxis::LeftTrigger, -100 );
+		// Out-of-range values clamp; each is a transition from the axis's last
+		// value, since a platform need not report an unchanged axis.
+		m_Driver.PadAxis( pad, GamepadAxis::LeftTrigger, 40000 );
+		m_Driver.PadAxis( pad, GamepadAxis::RightTrigger, -100 );
 		const std::vector<Event> axes = Transitions( Input() );
 		const auto near = []( float a, float b ) { return a - b < 1e-4f && b - a < 1e-4f; };
-		Check( "gamepad.axes", axes.size() == 5 && axes[0].gamepad.axis == GamepadAxis::LeftX &&
-		                           axes[0].gamepad.value == -1.0f && axes[0].gamepad.instance == pad &&
-		                           axes[1].gamepad.axis == GamepadAxis::LeftY &&
-		                           axes[1].gamepad.value == 1.0f &&
-		                           axes[2].gamepad.axis == GamepadAxis::RightX &&
-		                           near( axes[2].gamepad.value, 16384.0f / 32767.0f ) &&
-		                           axes[3].gamepad.axis == GamepadAxis::RightTrigger &&
-		                           axes[3].gamepad.value == 1.0f &&
-		                           axes[4].gamepad.axis == GamepadAxis::LeftTrigger &&
-		                           axes[4].gamepad.value == 0.0f );
+		Check( "gamepad.axes",
+		    axes.size() == 6 && axes[0].gamepad.axis == GamepadAxis::LeftX &&
+		        axes[0].gamepad.value == -1.0f && axes[0].gamepad.instance == pad &&
+		        axes[1].gamepad.axis == GamepadAxis::LeftY && axes[1].gamepad.value == 1.0f &&
+		        axes[2].gamepad.axis == GamepadAxis::RightX &&
+		        near( axes[2].gamepad.value, 16384.0f / 32767.0f ) &&
+		        axes[3].gamepad.axis == GamepadAxis::RightTrigger &&
+		        axes[3].gamepad.value == 1.0f && axes[4].gamepad.axis == GamepadAxis::LeftTrigger &&
+		        axes[4].gamepad.value == 1.0f &&
+		        axes[5].gamepad.axis == GamepadAxis::RightTrigger &&
+		        axes[5].gamepad.value == 0.0f );
 
 		if ( m_Caps.gamepads )
 		{

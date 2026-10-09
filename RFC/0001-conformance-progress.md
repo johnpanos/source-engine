@@ -139,9 +139,81 @@ sensitivity row, plus `render.profile` (R15 and R16; see the
 [render seam](0001-render-seam-progress.md) and
 [presentation bridge](0001-presentation-bridge-progress.md) records).
 
-Window and input contracts (`public/platform/window/`, `platform/window/`, and
-an SDL2 window system under `platform/sdl2/window_system/`) have fake and SDL2
-tests in `unittests/platformtest/window*`. Since `73b28db3` the manifest runs
-the fake-backend suite as `platform.window` and `platform.window.sensitivity`
-(migration R14), so R14 is `partial`. No row runs the SDL2 window tests
-(`unittests/platformtest/window_sdl2`) yet.
+Window and input contracts (`public/platform/window/`, `platform/window/`) have
+a fake provider and the SDL3 provider (`platform/sdl3/window_system/`), both run
+by the manifest. R14 is `done` (2026-10-08); see the
+[R14 closure](#r14-closure-the-sdl3-windowinput-provider-done-2026-10-08).
+
+### R14 closure: the SDL3 window/input provider (done 2026-10-08)
+
+User goal "complete R14". The done condition (AGENTS.md, after the 2026-09-26
+SDL3 retarget): the shared window/input suite passes against an SDL3 provider
+and the fake backend; current product behavior captured and preserved;
+normalized events, optional behavior, surface ownership and input lifecycle
+conformance pass.
+
+What changed:
+
+- `platform_sdl3::Sdl3WindowSystem` (`platform/sdl3/window_system/`, module
+  `platform.sdl3.window`) exports all six capabilities over SDL3. Native events
+  are decoded there and normalized by the one `InputNormalizer`, the same owner
+  the fake uses. One connected instance per process (SDL is process-global).
+- Its surfaces are `platform/sdl3/render_surface` objects, so the SDL3
+  presentation bridges (sdl3-vulkan, sdl3-d3d12) present to its windows through
+  the private endpoint `RenderSurfaces()`. `Sdl3RenderSurfaces` gained the
+  owner-reported visibility (`SetVisible`: zero extent while hidden or
+  minimized, as the events said) and deferred reclamation (`Collect`: an
+  invalidated surface is freed only after its presentation detaches), which the
+  contract requires and the old immediate `Destroy` did not give.
+- Product behavior kept from the SDL3 launcher (`appframework/sdl3mgr.cpp`),
+  checked by `sdl3.product.*` clauses in the native suite: a flipped wheel
+  reads unflipped; positions truncate like the launcher's while fractional
+  relative motion carries instead of being lost; text input starts per window
+  except where it raises an on-screen keyboard; gamepad input is withheld
+  without focus (`gamepadsWithoutFocus`, default off, is the root's explicit
+  opt-out).
+- The contract document
+  [`platform.window.v1`](../unittests/platformtest/contracts/platform.window.v1.md),
+  cited by the headers but never written, records every obligation by its
+  check name.
+- Shared suite fix: `gamepad.axes` drove a trigger already at rest to "-100
+  clamps to 0", which is no transition on a real device (SDL drops unchanged
+  axis values). It now checks the high clamp on the left trigger and the low
+  clamp on the right trigger, each a transition; the fake and sensitivity rows
+  still pass.
+- Deleted: the SDL2 window provider (`platform/sdl2/window_system/`) and its
+  test (`unittests/platformtest/window_sdl2/`), which no build or manifest row
+  used; SDL2 gets no further work (2026-09-26 decision). Module entries
+  `platform.sdl2.window*` are replaced by `platform.sdl3.window*`.
+
+Evidence (rows in `quality/conformance.manifest.json`, at `94d243c5` plus this
+change, SDL 3.4.18, the profile's pinned version):
+
+| Row | Driver | Result |
+| --- | --- | --- |
+| `platform.window` | fake, composition | 421 checks, 0 failures |
+| `platform.window.sensitivity` | broken fakes | 23 checks, every seed caught |
+| `platform.window.sdl3` | SDL3 offscreen, g++ and clang++ | 212 checks, 0 failures |
+| `platform.window.sdl3.native-drivers` | SDL3 Wayland in kiln `private`, X11 in `private-x11` | 424 checks (212 each), 0 failures |
+
+Each SDL3 run composes the provider through the R06 kernel twice (repeat
+instance), checks the one-connected-instance rule and reconnects after
+teardown. One recorded skip per run: `message.shown`, a modal box needs a user
+to dismiss it. Two SDL device-path facts are handled in the test driver, not
+the provider: SDL holds a released Guide button for 250 ms, and a virtual
+trigger rests at half travel.
+
+Reproduce:
+
+```sh
+python3 tools/quality/conformance.py check --suite platform.window \
+    --suite platform.window.sensitivity --suite platform.window.sdl3 \
+    --suite platform.window.sdl3.native-drivers --out /tmp/claude-1000/r14/ev.json
+python3 tools/quality/conformance.py check --cxx clang++ --suite platform.window.sdl3 \
+    --out /tmp/claude-1000/r14/ev-clang.json
+```
+
+Not done here (other rows): no product consumer composes the provider yet. The
+launcher still drives SDL3 through `appframework/sdl3mgr.cpp` and the
+`platform/sdl3/legacy_include` adapter; migrating those callers is R18. No
+Android, iOS, macOS or hosted CI run of this provider.
