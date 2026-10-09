@@ -410,11 +410,17 @@ const Group *WorldPass::Batch::viewGroupReady( const Resources::Material &m )
 		note( "a transmitting program has no scene-color snapshot" );
 		return nullptr;
 	}
+	// A dynamic draw (water, glass drawn as a mesh) may be the view's only
+	// reader of its planar reflection: imported at its first use here.
+	if ( m.viewInput != 0 && !viewReflection.IsValid() )
+		viewReflection = textures.Import( m.viewInput, true );
 	if ( m.viewInput != 0 && !viewReflection.IsValid() )
 	{
 		note( "a program reads the view's planar reflection, which did not import" );
 		return nullptr;
 	}
+	if ( m.refractInput != 0 && !viewRefraction.IsValid() )
+		viewRefraction = textures.Import( m.refractInput, true );
 	if ( m.refractInput != 0 && !viewRefraction.IsValid() )
 	{
 		note( "a program reads the view's water refraction, which did not import" );
