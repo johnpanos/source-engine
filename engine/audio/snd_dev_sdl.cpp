@@ -583,7 +583,11 @@ void CAudioDeviceSDLAudio::Pause( void )
 	{
 		debugsdl("SDLAUDIO: PAUSE\n");
 #if defined( PLATFORM_WASM )
-		MAIN_THREAD_EM_ASM( { var A = Module.sourceAudio; if (A && A.context) A.context.suspend(); } );
+		MAIN_THREAD_EM_ASM( {
+			var A = Module.sourceAudio;
+			if ( A && A.context )
+				A.context.suspend();
+		} );
 #elif defined( USE_SDL3 )
 		SDL_PauseAudioDevice( m_devId );
 #else
@@ -602,7 +606,11 @@ void CAudioDeviceSDLAudio::UnPause( void )
 		{
 			debugsdl("SDLAUDIO: UNPAUSE\n");
 #if defined( PLATFORM_WASM )
-			MAIN_THREAD_EM_ASM( { var A = Module.sourceAudio; if (A && A.context) A.context.resume(); } );
+			MAIN_THREAD_EM_ASM( {
+				var A = Module.sourceAudio;
+				if ( A && A.context )
+					A.context.resume();
+			} );
 #elif defined( USE_SDL3 )
 			SDL_ResumeAudioDevice( m_devId );
 #else
