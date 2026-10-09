@@ -287,6 +287,13 @@ the same image as the native Dawn lane (`portal-webgpu-core`). Commits
   core world pass's, on every device; handed to the R91 session
   (2026-10-08). Without `r_core_world` the world draws black.
 
-Open: level transitions with the core's world pass (above); audio in a page without a user gesture;
+  Fixed (2026-10-08): the core shader API cleared its bound-texture slots on
+  deletion but not its bound lightmap, so the first meshes drawn after the
+  transition named a freed page; and the R91 session's 948ba5d09 re-resolves
+  the world's page handles every frame. Natively `changelevel` passes; in the
+  browser a `changelevel` to `testchmb_a_05` (12 reflection probes, as
+  natively) and a death's autosave reload both continue into play, 0 errors.
+
+Open: audio in a page without a user gesture;
 load time (map in 14 s, about 2,400 lazily read files) and frame time; the
 Node lane and W1/W4/W6.
