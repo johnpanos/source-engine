@@ -41,7 +41,7 @@ COHORTS = {
                    # mutexes with it, which are synchronization, not thread mechanism.
                    r"\bpthread_kill\s*\(", r"\bpthread_self\s*\(", r"\bpthread_attr_\w+\s*\(",
                    r"\bpthread_detach\s*\(", r"\bpthread_cancel\s*\(", r"\bpthread_setaffinity_np\s*\(",
-                   r"\bn3ds_pthread_create\s*\(", r"\bOpenThread\s*\(", r"\bGetCurrentThread\s*\(",
+                   r"\bOpenThread\s*\(", r"\bGetCurrentThread\s*\(",
                    r"\bSetThreadAffinityMask\s*\(",
                    r"\bGetThreadPriority\s*\(", r"\bResumeThread\s*\(", r"\bTerminateThread\s*\(",
                    r"\bGetExitCodeThread\s*\(", r"\bSetThreadDescription\s*\("],

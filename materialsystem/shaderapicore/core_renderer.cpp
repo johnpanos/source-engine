@@ -316,7 +316,7 @@ void SubmitRecording( bool sample )
 		++g_state.stats.submitFailures;
 		static unsigned s_reported = 0;
 		if ( s_reported++ < 4 )
-			std::printf( "pica: the frame's submission was refused: %s (%s)\n",
+			std::printf( "core shader API: the frame's submission was refused: %s (%s)\n",
 				DescribeStatus( token.Error().status ), DescribeOperation( token.Error().operation ) );
 	}
 	++g_state.stats.submits;
@@ -650,7 +650,7 @@ bool Init()
 		return true;
 	if ( !g_bound )
 	{
-		std::printf( "pica: no render core device was handed to the shader API\n" );
+		std::printf( "core shader API: no render core device was handed to the shader API\n" );
 		return false;
 	}
 	g_state.device = g_bound;
@@ -668,7 +668,7 @@ bool Init()
 	if ( !color || !depth )
 	{
 		const DeviceError error = color ? depth.Error() : color.Error();
-		std::printf( "pica: the frame's %s target (%ux%u) was refused: %s (%s)\n",
+		std::printf( "core shader API: the frame's %s target (%ux%u) was refused: %s (%s)\n",
 		    color ? "depth" : "colour", TargetWidth(), TargetHeight(),
 		    DescribeStatus( error.status ), DescribeOperation( error.operation ) );
 		const Presenter presenter = g_state.presenter;
@@ -783,7 +783,7 @@ void EndFrame()
 	g_state.inFrame = false;
 	if ( g_state.pendingWidth > 0 && g_state.pendingHeight > 0 &&
 	     !ResizeScreen( g_state.pendingWidth, g_state.pendingHeight ) )
-		std::printf( "pica: the screen's targets were not resized to %dx%d\n", g_state.pendingWidth,
+		std::printf( "core shader API: the screen's targets were not resized to %dx%d\n", g_state.pendingWidth,
 		    g_state.pendingHeight );
 	g_state.pendingWidth = g_state.pendingHeight = 0;
 }

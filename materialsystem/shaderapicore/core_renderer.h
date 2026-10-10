@@ -275,4 +275,24 @@ const Stats &FrameStats();
 
 } // namespace corefacade
 
+// The host binding of the core shader API (RFC 0016): how the composition
+// root hands the render core's device, pass recorder and presenter to it. The
+// launcher's render core owns the device; the shader API borrows it, so there
+// is one device and one owner. The root binds the device before the material
+// system initializes the shader API and keeps it alive until the material
+// system has shut down; without one, Init fails with a named error. Names no
+// native type (CAP007).
+namespace render::legacy
+{
+class ICorePassRecorder;
+}
+extern "C" void CoreShaderBackend_BindDevice( render::device::IRenderDevice2 *device );
+// The core's passes record at the stream's slots, into the frame's encoder on
+// the shared device. Without a recorder the shader API marks no slot.
+extern "C" void CoreShaderBackend_BindCorePassRecorder(
+    render::legacy::ICorePassRecorder *recorder );
+// The presenter that shows each frame's colour target: the root's, for its
+// device's presentation. Without one frames are drawn and not shown.
+extern "C" void CoreShaderBackend_BindPresenter( corefacade::Presenter presenter, void *context );
+
 #endif // CORE_RENDERER_H

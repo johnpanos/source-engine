@@ -39,7 +39,6 @@
 #include "bitmap/imageformat.h"
 #include "tier0/icommandline.h"
 #include "core_copies.h"
-#include "core_shader_backend.h"
 #include "core_renderer.h"
 #include "renderparm.h"
 #include "pixelwriter.h"
@@ -3717,7 +3716,7 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 
 	// The material's variables, as the core's claim reads them. GetStringValue
 	// formats float and vector values with snprintf, which over dozens of
-	// parameters per draw was a tenth of the frame (tools/n3ds/guest_profile.py);
+	// parameters per draw was a tenth of the frame;
 	// so each material keeps its text form, rebuilt only when a raw signature
 	// of its values (types, bits, texture and string pointers, flags) changes.
 	const MaterialVariables &material = VariablesFor( g_pBoundMaterial );

@@ -134,13 +134,14 @@ failure recorded in `quality/baseline.json`.
 Short corrections to entries the archive carries; details in the records.
 
 - shaderapivulkan is deleted (`154155845`); desktop clients draw through
-  `materialsystem/shaderapicore`, the core shader API, which shares one file
-  with the 3DS client (`PLATFORM_3DS` blocks) and still carries its 3DS
-  header comment and the `CShaderAPIEmpty` class name.
+  `materialsystem/shaderapicore`, the core shader API (`CCoreShaderAPI`).
+  The Direct3D 12, WebGPU, Metal and PICA adapters, the 3DS client and the
+  WebAssembly products are deleted (2026-10-10); the adapters are Vulkan,
+  GL/GLES and null.
 - `r_core_world` defaults to 1 (`engine/render_core_world_draw.cpp`).
-- CAP012 totals (target zero): platform branches 2,493; console code 1,778;
-  format shapes 1,601; OS calls 1,340; adapter code outside adapters 525;
-  scene bypass 345. Jobs: legacy job API 297 sites, thread creation 36.
+- CAP012 totals (target zero): platform branches 2,382; console code 1,778;
+  format shapes 1,601; OS calls 1,334; adapter code outside adapters 525;
+  scene bypass 344. Jobs: legacy job API 297 sites, thread creation 36.
 - Unranked children and side programs (R70–R80, R91-PANELS, R50-CUBE,
   Portal 2 split-screen, TVOS-PROFILE and the rest) keep their state in
   their records; the archive lists them.
