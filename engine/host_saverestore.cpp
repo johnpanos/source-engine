@@ -743,6 +743,8 @@ int CSaveRestore::SaveGameSlot( const char *pSaveName, const char *pSaveComment,
 	int				tag, i, tokenSize;
 	CSaveRestoreData	*pSaveData;
 	GAME_HEADER		gameHeader;
+	memset( &gameHeader, 0,
+	    sizeof( gameHeader ) ); // whole char arrays are written: no stack bytes in a save
 
 #if defined( _MEMTEST )
 	Cbuf_AddText( "mem_dump\n" );
@@ -1384,6 +1386,7 @@ struct SaveFileSections_t
 void CSaveRestore::SaveGameStateGlobals( CSaveRestoreData *pSaveData )
 {
 	SAVE_HEADER header;
+	memset( &header, 0, sizeof( header ) );
 
 	INetworkStringTable * table = sv.GetLightStyleTable();
 
