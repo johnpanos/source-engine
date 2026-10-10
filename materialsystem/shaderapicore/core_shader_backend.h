@@ -8,8 +8,8 @@
 //
 //=============================================================================//
 
-#ifndef RENDER_LEGACY_CORE_SHADER_BACKEND_H
-#define RENDER_LEGACY_CORE_SHADER_BACKEND_H
+#ifndef SHADERAPICORE_CORE_SHADER_BACKEND_H
+#define SHADERAPICORE_CORE_SHADER_BACKEND_H
 
 #include <cstdint>
 
@@ -42,4 +42,4 @@ using CoreShaderBackendPresenter = bool ( * )( void *context,
     unsigned int height );
 extern "C" void CoreShaderBackend_BindPresenter( CoreShaderBackendPresenter presenter, void *context );
 
-#endif // RENDER_LEGACY_CORE_SHADER_BACKEND_H
+#endif // SHADERAPICORE_CORE_SHADER_BACKEND_H

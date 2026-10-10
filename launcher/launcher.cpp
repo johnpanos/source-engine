@@ -95,7 +95,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #include "render/composition/render_core.h"
 #include "render/composition/render_device_setting.h"
 #if defined( LINKED_CORE_SHADER_API )
-#include "render/legacy/core_shader_backend.h"
+#include "../materialsystem/shaderapicore/core_shader_backend.h"
 #endif
 #if defined( LINKED_CORE_PRESENTER )
 #include "../render/bridge/sdl3-vulkan/core_presenter.h"

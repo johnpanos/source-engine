@@ -39,6 +39,7 @@
 #include "bitmap/imageformat.h"
 #include "tier0/icommandline.h"
 #include "core_copies.h"
+#include "core_shader_backend.h"
 #include "core_renderer.h"
 #include "renderparm.h"
 #include "pixelwriter.h"
