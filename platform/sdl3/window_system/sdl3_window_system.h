@@ -6,7 +6,7 @@
 //			Native events are decoded here and normalized by the shared
 //			platform/window InputNormalizer, so this provider and the headless
 //			one apply the same rules. Surfaces are platform/sdl3/render_surface
-//			objects, so the SDL3 presentation bridges (sdl3-vulkan, sdl3-d3d12)
+//			objects, so the SDL3 presentation bridges (sdl3-vulkan)
 //			present to this provider's windows through RenderSurfaces().
 //
 //			SDL keeps process-global state, so at most one instance may be

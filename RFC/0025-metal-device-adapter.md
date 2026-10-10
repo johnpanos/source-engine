@@ -1,6 +1,7 @@
 # RFC 0025: Metal Device Adapter for the Render Core
 
-- Status: Proposed (2026-10-07); first slice implemented, no gate passed.
+- Status: **Withdrawn (2026-10-10): the Metal adapter was deleted by user direction (Apple targets run Vulkan through MoltenVK); see [RFC 0016, Adapter freeze and scene first](0016-render-core.md#adapter-freeze-and-scene-first-user-direction-2026-10-10).** The text below is the record of the design as it stood.
+- Previous status: Proposed (2026-10-07); first slice implemented, no gate passed.
 - Date: 2026-10-07
 - User direction (2026-10-07): "add a metal device adapter and rendercore
   backend".

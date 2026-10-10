@@ -1223,7 +1223,7 @@ FORCEINLINE int RoundFloatToInt(float f)
 	return _mm_cvtss_si32(_mm_load_ss(&f));
 #elif defined (__aarch64__)
 	return vcvtns_s32_f32(f);
-#elif (defined(__arm__) || defined(__wasm__))
+#elif defined(__arm__)
 	return (int)lrintf(f);
 #else
 #error Unknown architecture
@@ -1244,7 +1244,7 @@ FORCEINLINE unsigned long RoundFloatToUnsignedLong(float f)
 {
 #if defined(__aarch64__)
 	return (unsigned long)vcvtns_u32_f32( f );
-#elif (defined(__arm__) || defined(__wasm__))
+#elif defined(__arm__)
 	return (unsigned long)llrintf(f);
 #elif defined(__x86_64__) && !defined( PLATFORM_WINDOWS_PC64 )
 	// 64-bit conversion: the x87 fistpl below stores only 32 of the 64 bits

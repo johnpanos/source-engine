@@ -271,8 +271,8 @@ private:
 	void RenderPortalEffects( IMatRenderContext *pRenderContext, IMesh *pPortalQuadMesh, const CUtlVector< CPortalRenderable* > &actualActivePortals,
 		const CUtlVector< int > &actualActivePortalQuadVBIndex ) const;
 
-	// Texture portals (r_portal_texture: devices without a stencil buffer, the
-	// 3DS). Each open, linked portal shows a texture holding its view with the
+	// Texture portals (r_portal_texture: devices without a stencil buffer).
+	// Each open, linked portal shows a texture holding its view with the
 	// portal as the image plane (an off-axis projection from the transferred
 	// eye): it depends on the eye's position only, so it is kept while the eye
 	// moves less than a texel (turning costs nothing), and a portal seen

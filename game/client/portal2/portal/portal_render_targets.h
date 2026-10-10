@@ -35,7 +35,7 @@ public:
 	ITexture* GetPortal2Texture( void );
 	ITexture* GetDepthDoublerTexture( void );
 
-	// Texture portals (devices without a stencil buffer, the 3DS): each
+	// Texture portals (devices without a stencil buffer): each
 	// portal's view rendered with the portal as its image plane, two
 	// textures per portal (the one shown and the one drawn next, so a portal
 	// seen through a portal shows the previous view). Null when not made.

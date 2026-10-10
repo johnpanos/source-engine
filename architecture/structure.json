@@ -121,7 +121,7 @@
         "render/composition/core_world.cpp": 15,
         "render/composition/core_world.h": 11,
         "render/composition/core_world_diagnostics.cpp": 3,
-        "render/composition/core_world_handoff.cpp": 6,
+        "render/composition/core_world_handoff.cpp": 5,
         "render/composition/core_world_scene.cpp": 25,
         "render/composition/core_world_temporal.cpp": 2,
         "render/lab/blob_shadow_suite.cpp": 4,
@@ -181,7 +181,7 @@
         "public/tier0/platform.h": 44,
         "public/tier0/stacktools.h": 1,
         "public/tier0/systeminformation.h": 1,
-        "public/tier0/threadtools.h": 45,
+        "public/tier0/threadtools.h": 44,
         "public/tier0/threadtools.inl": 32,
         "public/tier0/tslist.h": 11,
         "public/tier0/valve_minmax_on.h": 1,
@@ -191,7 +191,7 @@
         "tier0/assert_dialog.cpp": 12,
         "tier0/commandline.cpp": 1,
         "tier0/cpu.cpp": 14,
-        "tier0/cpu_posix.cpp": 5,
+        "tier0/cpu_posix.cpp": 4,
         "tier0/cpu_usage.cpp": 3,
         "tier0/cpumonitoring.cpp": 1,
         "tier0/dbg.cpp": 6,
@@ -200,11 +200,11 @@
         "tier0/extendedtrace.h": 1,
         "tier0/foundation_facade.cpp": 9,
         "tier0/foundation_facade.h": 3,
-        "tier0/mem.cpp": 4,
+        "tier0/mem.cpp": 2,
         "tier0/mem_helpers.cpp": 2,
         "tier0/mem_impl_type.h": 1,
         "tier0/memdbg.cpp": 33,
-        "tier0/memstd.cpp": 16,
+        "tier0/memstd.cpp": 15,
         "tier0/memstd.h": 3,
         "tier0/memvalidate.cpp": 2,
         "tier0/minidump.cpp": 3,
@@ -536,7 +536,7 @@
       "counts": {
         "appframework/VguiMatSysApp.cpp": 2,
         "appframework/WinApp.cpp": 2,
-        "appframework/sdl3mgr.cpp": 4,
+        "appframework/sdl3mgr.cpp": 2,
         "bitmap/ImageByteSwap.cpp": 2,
         "bitmap/colorconversion.cpp": 2,
         "bitmap/imageformat.cpp": 1,
@@ -572,8 +572,8 @@
         "common/xbox/xbox_core.h": 1,
         "common/xbox/xbox_launch.h": 1,
         "common/xbox/xboxstubs.h": 2,
-        "datacache/datacache.cpp": 2,
-        "datacache/mdlcache.cpp": 4,
+        "datacache/datacache.cpp": 1,
+        "datacache/mdlcache.cpp": 3,
         "datamodel/clipboardmanager.cpp": 1,
         "datamodel/datamodel.cpp": 1,
         "dedicated/console/TextConsoleUnix.cpp": 4,
@@ -584,16 +584,14 @@
         "dedicated/sys_common.cpp": 6,
         "dedicated/sys_ded.cpp": 11,
         "dmxloader/dmxattribute.cpp": 1,
-        "dmxloader/dmxloader.cpp": 3,
+        "dmxloader/dmxloader.cpp": 1,
         "engine/Session.cpp": 2,
         "engine/audio/MPAFile.cpp": 2,
         "engine/audio/MPAHeader.cpp": 1,
         "engine/audio/audio_pch.h": 2,
-        "engine/audio/snd_dev_n3ds.cpp": 1,
-        "engine/audio/snd_dev_sdl.cpp": 10,
+        "engine/audio/snd_dev_sdl.cpp": 4,
         "engine/audio/snd_mix.cpp": 3,
         "engine/audio/snd_stubs.cpp": 2,
-        "engine/audio/snd_wave_data.cpp": 2,
         "engine/audio/snd_wave_mixer.cpp": 1,
         "engine/audio/snd_win.cpp": 1,
         "engine/audio/voice.cpp": 1,
@@ -604,7 +602,6 @@
         "engine/cdll_engine_int.cpp": 1,
         "engine/cl_check_process.cpp": 3,
         "engine/cl_demoaction.cpp": 1,
-        "engine/cl_main.cpp": 1,
         "engine/cl_rcon.cpp": 1,
         "engine/cl_steamauth.cpp": 2,
         "engine/cl_texturelistpanel.cpp": 7,
@@ -622,7 +619,7 @@
         "engine/gl_matsysiface.cpp": 1,
         "engine/hltvclient.cpp": 1,
         "engine/hltvserver.cpp": 3,
-        "engine/host.cpp": 21,
+        "engine/host.cpp": 18,
         "engine/host_cmd.cpp": 2,
         "engine/host_frame_phases.h": 1,
         "engine/host_phonehome.cpp": 4,
@@ -632,11 +629,10 @@
         "engine/keys.cpp": 1,
         "engine/l_studio.cpp": 2,
         "engine/matchmaking.h": 1,
-        "engine/matsys_interface.cpp": 6,
+        "engine/matsys_interface.cpp": 4,
         "engine/modelloader.cpp": 2,
-        "engine/n3ds_platform_defaults.cpp": 1,
         "engine/net.h": 1,
-        "engine/net_ws.cpp": 9,
+        "engine/net_ws.cpp": 8,
         "engine/net_ws_headers.h": 3,
         "engine/net_ws_queued_packet_sender.cpp": 3,
         "engine/packed_entity.cpp": 1,
@@ -653,11 +649,11 @@
         "engine/sv_steamauth.cpp": 2,
         "engine/sv_uploaddata.cpp": 2,
         "engine/sv_uploadgamestats.cpp": 11,
-        "engine/sys_dll.cpp": 39,
-        "engine/sys_dll2.cpp": 29,
+        "engine/sys_dll.cpp": 32,
+        "engine/sys_dll2.cpp": 27,
         "engine/sys_engine.cpp": 3,
         "engine/sys_getmodes.cpp": 13,
-        "engine/sys_mainwind.cpp": 39,
+        "engine/sys_mainwind.cpp": 38,
         "engine/vengineserver_impl.cpp": 1,
         "engine/vgui_baseui_interface.cpp": 2,
         "engine/voice_codecs/celt/opus/opus_defines.h": 1,
@@ -667,13 +663,12 @@
         "engine/voice_codecs/speex/speex/speex.h": 1,
         "engine/voice_codecs/speex/speex/speex_types.h": 2,
         "engine/voice_codecs/speex/speex/speexdsp_types.h": 2,
-        "engine/zone.cpp": 3,
+        "engine/zone.cpp": 1,
         "filesystem/basefilesystem.cpp": 33,
         "filesystem/basefilesystem.h": 6,
         "filesystem/filesystem_async.cpp": 2,
         "filesystem/filesystem_stdio.cpp": 19,
         "filesystem/filesystem_steam.cpp": 43,
-        "filesystem/linux_support.cpp": 1,
         "filesystem/linux_support.h": 1,
         "filesystem/packfile.cpp": 4,
         "game/client/c_baseentity.cpp": 1,
@@ -941,15 +936,11 @@
         "materialsystem/CColorCorrection.cpp": 2,
         "materialsystem/cmaterial.cpp": 5,
         "materialsystem/cmaterialsystem.cpp": 9,
-        "materialsystem/cmatqueuedrendercontext.cpp": 6,
-        "materialsystem/ctexture.cpp": 8,
+        "materialsystem/cmatqueuedrendercontext.cpp": 5,
+        "materialsystem/ctexture.cpp": 7,
         "materialsystem/ctexturecompositor.cpp": 2,
         "materialsystem/dxsupport_keyvalues.cpp": 2,
-        "materialsystem/imaterialsysteminternal.h": 1,
         "materialsystem/pch_materialsystem.h": 2,
-        "materialsystem/shaderapicore/core_renderer.cpp": 17,
-        "materialsystem/shaderapicore/core_renderer.h": 2,
-        "materialsystem/shaderapicore/shaderapicore.cpp": 44,
         "materialsystem/shadersystem.cpp": 1,
         "materialsystem/texturemanager.cpp": 1,
         "materialsystem/wireframe.cpp": 1,
@@ -1045,7 +1036,7 @@
         "public/vgui/VGUI.h": 2,
         "public/vgui_controls/MessageMap.h": 1,
         "public/video/ivideoservices.h": 1,
-        "public/vpklib/packedstore.h": 2,
+        "public/vpklib/packedstore.h": 1,
         "public/vscript/ivscript.h": 2,
         "public/vscript/vscript_templates.h": 5,
         "public/vstdlib/pch_vstdlib.h": 2,
@@ -1056,9 +1047,6 @@
         "public/zip/XZip.h": 1,
         "public/zip_utils.cpp": 10,
         "public/zlib/zconf.h": 7,
-        "render/material/surface_reduced.cpp": 2,
-        "render/pass/world/world_materials.cpp": 1,
-        "render/shaderlib/core_artifacts.cpp": 1,
         "replay/cl_downloader.cpp": 1,
         "replay/replaysystem.cpp": 1,
         "replay/sv_filepublish.cpp": 1,
@@ -1082,7 +1070,7 @@
         "tier1/interface.cpp": 28,
         "tier1/lzmaDecoder.cpp": 1,
         "tier1/mempool.cpp": 2,
-        "tier1/memstack.cpp": 10,
+        "tier1/memstack.cpp": 9,
         "tier1/pathmatch.cpp": 4,
         "tier1/processor_detect.cpp": 3,
         "tier1/processor_detect_linux.cpp": 1,
@@ -1090,7 +1078,7 @@
         "tier1/snappy-stubs-internal.cpp": 1,
         "tier1/snappy-stubs-internal.h": 1,
         "tier1/snappy.cpp": 2,
-        "tier1/strtools.cpp": 36,
+        "tier1/strtools.cpp": 35,
         "tier1/tier1.cpp": 1,
         "tier1/uniqueid.cpp": 5,
         "tier1/utlbuffer.cpp": 4,
@@ -1103,7 +1091,7 @@
         "vgui2/matsys_controls/gamefiletreeview.cpp": 1,
         "vgui2/src/InputWin32.cpp": 3,
         "vgui2/src/LocalizedStringTable.cpp": 2,
-        "vgui2/src/system_posix.cpp": 6,
+        "vgui2/src/system_posix.cpp": 5,
         "vgui2/src/vgui.cpp": 5,
         "vgui2/src/vgui_key_translation.cpp": 2,
         "vgui2/vgui_controls/ComboBox.cpp": 1,
@@ -1133,7 +1121,7 @@
         "vphysics/physics_object.cpp": 3,
         "vphysics/physics_vehicle.cpp": 1,
         "vphysics/trace.cpp": 1,
-        "vpklib/packedstore.cpp": 12,
+        "vpklib/packedstore.cpp": 11,
         "vscript/languages/squirrel/include/sqdbgserver.h": 3,
         "vscript/languages/squirrel/include/sqrdbg.h": 1,
         "vscript/languages/squirrel/include/squirrel.h": 1,
@@ -1233,8 +1221,7 @@
         "dedicated/sys_linux.cpp": 5,
         "dedicated/sys_windows.cpp": 1,
         "engine/audio/audio_pch.h": 2,
-        "engine/audio/snd_dev_n3ds.cpp": 1,
-        "engine/audio/snd_dev_sdl.cpp": 2,
+        "engine/audio/snd_dev_sdl.cpp": 1,
         "engine/audio/voice_record_sdl.cpp": 1,
         "engine/baseserver.cpp": 2,
         "engine/bugreporter.cpp": 9,
@@ -1253,8 +1240,8 @@
         "engine/sv_steamauth.cpp": 2,
         "engine/sv_uploaddata.cpp": 3,
         "engine/sv_uploadgamestats.cpp": 5,
-        "engine/sys_dll.cpp": 7,
-        "engine/sys_dll2.cpp": 5,
+        "engine/sys_dll.cpp": 6,
+        "engine/sys_dll2.cpp": 4,
         "engine/sys_engine.cpp": 1,
         "engine/sys_mainwind.cpp": 1,
         "engine/voice_codecs/celt/opus/opus_types.h": 2,
@@ -1362,7 +1349,6 @@
         "public/zip_utils.cpp": 1,
         "public/zlib/zconf.h": 3,
         "render/lab/app/lab_app.cpp": 1,
-        "render/lab/pica_portals/portal_lab.cpp": 2,
         "replay/replaysystem.cpp": 1,
         "serverbrowser/ServerBrowserDialog.cpp": 2,
         "serverbrowser/pch_serverbrowser.h": 4,
@@ -1440,7 +1426,7 @@
       "counts": {
         "app/legion/gamemanager.cpp": 1,
         "app/legion/legion.cpp": 1,
-        "appframework/sdl3mgr.cpp": 182,
+        "appframework/sdl3mgr.cpp": 179,
         "appframework/sdl_window_provider.cpp": 6,
         "common/ConfigManager.cpp": 2,
         "common/SteamAppStartup.cpp": 7,
@@ -1464,7 +1450,7 @@
         "dedicated/sys_windows.cpp": 10,
         "engine/Session.cpp": 1,
         "engine/audio/snd_dev_direct.cpp": 3,
-        "engine/audio/snd_dev_sdl.cpp": 25,
+        "engine/audio/snd_dev_sdl.cpp": 24,
         "engine/audio/snd_dev_wave.cpp": 1,
         "engine/audio/snd_dev_xaudio.cpp": 2,
         "engine/audio/voice_record_dsound.cpp": 3,
@@ -1481,8 +1467,8 @@
         "engine/socketcreator.cpp": 24,
         "engine/sv_rcon.cpp": 3,
         "engine/sv_uploadgamestats.cpp": 2,
-        "engine/sys_dll.cpp": 8,
-        "engine/sys_dll2.cpp": 9,
+        "engine/sys_dll.cpp": 7,
+        "engine/sys_dll2.cpp": 8,
         "engine/sys_engine.cpp": 1,
         "engine/sys_mainwind.cpp": 16,
         "filesystem/basefilesystem.cpp": 9,
@@ -2541,7 +2527,7 @@
         "ceiling": 102
       },
       "datacache/": {
-        "ceiling": 3816
+        "ceiling": 3806
       },
       "datamodel/": {
         "ceiling": 8901
@@ -2592,16 +2578,16 @@
         "ceiling": 2539
       },
       "dmxloader/": {
-        "ceiling": 2540
+        "ceiling": 2524
       },
       "dx9sdk/": {
         "ceiling": 146333
       },
       "engine/": {
-        "ceiling": 170953
+        "ceiling": 170670
       },
       "engine/audio/": {
-        "ceiling": 40371
+        "ceiling": 39742
       },
       "engine/voice_codecs/": {
         "ceiling": 3192
@@ -2622,7 +2608,7 @@
         "ceiling": 1892
       },
       "filesystem/": {
-        "ceiling": 11118
+        "ceiling": 11115
       },
       "foundation": {
         "ceiling": 357
@@ -2679,7 +2665,7 @@
         "ceiling": 289
       },
       "kiln.composition": {
-        "ceiling": 142
+        "ceiling": 130
       },
       "kiln.core": {
         "ceiling": 1609
@@ -2705,10 +2691,10 @@
         ]
       },
       "launcher/": {
-        "ceiling": 1899
+        "ceiling": 1870
       },
       "launcher_main/": {
-        "ceiling": 1064
+        "ceiling": 896
       },
       "matchmaking/": {
         "ceiling": 11493
@@ -2720,10 +2706,10 @@
         "ceiling": 69
       },
       "materialsystem/": {
-        "ceiling": 32820
+        "ceiling": 32771
       },
       "materialsystem/shaderapicore/": {
-        "ceiling": 6642
+        "ceiling": 5928
       },
       "materialsystem/shaderapiempty/": {
         "ceiling": 2053
@@ -2773,22 +2759,11 @@
       "platform.input-gamepad-contract": {
         "ceiling": 49
       },
-      "platform.n3ds.compat": {
-        "ceiling": 275,
-        "raised": [
-          {
-            "date": "2026-10-09",
-            "from": null,
-            "to": 275,
-            "reason": "3DS guest shims existed untracked by any area before; registering the existing 275 lines, no new code"
-          }
-        ]
-      },
       "platform.native-path": {
         "ceiling": 35
       },
       "platform.posix": {
-        "ceiling": 2791,
+        "ceiling": 2772,
         "raised": [
           {
             "date": "2026-10-09",
@@ -2820,7 +2795,7 @@
         "ceiling": 1120
       },
       "platform.sdl3.launcher": {
-        "ceiling": 771
+        "ceiling": 767
       },
       "platform.sdl3.native-tests": {
         "ceiling": 511
@@ -2839,17 +2814,6 @@
       },
       "platform.tool-process": {
         "ceiling": 54
-      },
-      "platform.wasm.compat": {
-        "ceiling": 34,
-        "raised": [
-          {
-            "date": "2026-10-09",
-            "from": null,
-            "to": 34,
-            "reason": "Emscripten guest shims existed unregistered; registering the existing 34 lines, no new code"
-          }
-        ]
       },
       "platform.win32": {
         "ceiling": 1656
@@ -2907,17 +2871,11 @@
       "product.stage.waf": {
         "ceiling": 330
       },
-      "product.toolchain.emscripten": {
-        "ceiling": 163
-      },
       "product.toolchain.linux": {
         "ceiling": 180
       },
       "product.toolchain.msvc-wine": {
         "ceiling": 211
-      },
-      "product.toolchain.n3ds": {
-        "ceiling": 324
       },
       "public/": {
         "ceiling": 53943
@@ -3085,7 +3043,7 @@
         "ceiling": 566
       },
       "public/tier0/": {
-        "ceiling": 13926
+        "ceiling": 13924
       },
       "public/tier1/": {
         "ceiling": 22136
@@ -3130,7 +3088,7 @@
         "ceiling": 721
       },
       "public/vpklib/": {
-        "ceiling": 322
+        "ceiling": 318
       },
       "public/vscript/": {
         "ceiling": 1511
@@ -3156,12 +3114,6 @@
       "raytrace/": {
         "ceiling": 1037
       },
-      "render.bridge.sdl3-d3d12": {
-        "ceiling": 649
-      },
-      "render.bridge.sdl3-d3d12.native-tests": {
-        "ceiling": 453
-      },
       "render.bridge.sdl3-vulkan": {
         "ceiling": 3407
       },
@@ -3169,7 +3121,7 @@
         "ceiling": 344
       },
       "render.composition": {
-        "ceiling": 7199
+        "ceiling": 7116
       },
       "render.conformance-tests": {
         "ceiling": 8143
@@ -3178,34 +3130,22 @@
         "ceiling": 9599
       },
       "render.core-tests": {
-        "ceiling": 27462
+        "ceiling": 25047
       },
       "render.culling": {
         "ceiling": 1152
       },
       "render.device": {
-        "ceiling": 3537
-      },
-      "render.device.d3d12": {
-        "ceiling": 3601
+        "ceiling": 2809
       },
       "render.device.gl": {
         "ceiling": 4098
       },
-      "render.device.metal": {
-        "ceiling": 2035
-      },
       "render.device.null": {
         "ceiling": 1667
       },
-      "render.device.pica": {
-        "ceiling": 2526
-      },
       "render.device.vulkan": {
         "ceiling": 8424
-      },
-      "render.device.webgpu": {
-        "ceiling": 3391
       },
       "render.dxsupport-keyvalues": {
         "ceiling": 292
@@ -3225,17 +3165,14 @@
       "render.lab.app": {
         "ceiling": 589
       },
-      "render.lab.pica-portals": {
-        "ceiling": 2435
-      },
       "render.legacy-backend-provider": {
         "ceiling": 319
       },
       "render.legacy-frontend": {
-        "ceiling": 1467
+        "ceiling": 1463
       },
       "render.legacy-pass-contract": {
-        "ceiling": 224
+        "ceiling": 209
       },
       "render.legacy-provider-contract": {
         "ceiling": 156
@@ -3244,7 +3181,7 @@
         "ceiling": 358
       },
       "render.material": {
-        "ceiling": 12030
+        "ceiling": 11512
       },
       "render.math": {
         "ceiling": 439
@@ -3304,7 +3241,7 @@
         "ceiling": 1029
       },
       "render.pass.world": {
-        "ceiling": 6505
+        "ceiling": 6428
       },
       "render.renderer": {
         "ceiling": 227
@@ -3325,7 +3262,7 @@
         "ceiling": 50
       },
       "render.shader-library": {
-        "ceiling": 550
+        "ceiling": 546
       },
       "render.vulkan.native-tests": {
         "ceiling": 39
@@ -3379,10 +3316,10 @@
         "ceiling": 41
       },
       "tier0/": {
-        "ceiling": 16422
+        "ceiling": 16299
       },
       "tier1/": {
-        "ceiling": 21725
+        "ceiling": 21711
       },
       "tier2/": {
         "ceiling": 2654
@@ -3901,7 +3838,7 @@
         "ceiling": 201
       },
       "vgui2/": {
-        "ceiling": 86999
+        "ceiling": 86996
       },
       "vguimatsurface/": {
         "ceiling": 7214
@@ -3916,7 +3853,7 @@
         "ceiling": 10209
       },
       "vpklib/": {
-        "ceiling": 1626
+        "ceiling": 1622
       },
       "vscript/": {
         "ceiling": 19657

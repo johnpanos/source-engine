@@ -105,7 +105,7 @@ inline ScriptFunctionBindingStorageType_t ScriptConvertFreeFuncPtrToVoid( FUNCPT
 		FuncPtrConvertMI convert;
 		convert.fn8.iToc = 0;
 		convert.pFunc = pFunc;
-#if defined( __aarch64__ ) || (defined(__arm__) || defined(__wasm__))
+#if defined( __aarch64__ ) || defined(__arm__)
 #if defined( __thumb__ )
 #error the member-pointer fold below needs ARM-mode code (Thumb addresses use bit 0)
 #endif
@@ -162,7 +162,7 @@ inline FUNCPTR_TYPE ScriptConvertFreeFuncPtrFromVoid( ScriptFunctionBindingStora
 
 		FuncPtrConvertMI convert;
 		convert.pFunc = 0;
-#if defined( __aarch64__ ) || (defined(__arm__) || defined(__wasm__))
+#if defined( __aarch64__ ) || defined(__arm__)
 		convert.fn8.stype = (ScriptFunctionBindingStorageType_t)( (uintptr_t)p & ~(uintptr_t)1 );
 		convert.fn8.iToc = (uintptr_t)p & 1;
 #else

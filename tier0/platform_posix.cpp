@@ -180,8 +180,7 @@ bool vtune( bool resume )
 
 
 // The live debugger state from Tier 0's process environment (R103): TracerPid
-// on Linux and Android, P_TRACED on Apple and FreeBSD, unknown (false) on the
-// 3DS, whose debugger attaches through the emulator's GDB stub.
+// on Linux and Android, P_TRACED on Apple and FreeBSD.
 bool Plat_IsInDebugSession()
 {
 	return tier0_facade::ProcessEnvironment().GetDebuggerState() == platform::DebuggerState::kAttached;

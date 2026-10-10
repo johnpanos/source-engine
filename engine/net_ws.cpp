@@ -18,8 +18,7 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
-// The 3DS's sockets (libctru soc:U) refuse buffer sizes and broadcast; the
-// sockets work without them. Elsewhere a refused option fails the socket.
+// A refused socket option fails the socket.
 #define NET_SOCKOPT_FAILED() return 0
 
 #define NET_COMPRESSION_STACKBUF_SIZE 4096 

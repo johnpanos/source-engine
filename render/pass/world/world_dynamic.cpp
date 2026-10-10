@@ -12,8 +12,8 @@ namespace render::pass::world
 bool WorldPass::Batch::PrepareDynamicDraws()
 {
 	// Every dynamic draw's geometry in one vertex and one index buffer for the
-	// batch, sliced by offset (a buffer pair per draw fragmented the PICA200's
-	// linear memory until allocations failed with megabytes free).
+	// batch, sliced by offset (a buffer pair per draw fragmented the device's
+	// memory until allocations failed with megabytes free).
 	std::vector<WorldVertex> batchVertices;
 	std::vector<std::uint32_t> batchIndices;
 	std::size_t batchVertexCount = 0, batchIndexCount = 0;

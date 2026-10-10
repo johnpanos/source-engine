@@ -83,7 +83,7 @@ ConVar r_portal_fastpath( "r_portal_fastpath", "1", 0 );
 ConVar r_portal_fastpath_max_ghost_recursion( "r_portal_fastpath_max_ghost_recursion", "2", 0 );
 ConVar r_portal_earlyz( "r_portal_earlyz", "1", 0 );
 ConVar r_portalscissor( "r_portalscissor", "0", 0 );
-ConVar r_portal_texture( "r_portal_texture", "1", FCVAR_CLIENTDLL, "Without a stencil buffer (the 3DS), draw portals through portal-plane textures: each view rendered with the portal as its image plane" );
+ConVar r_portal_texture( "r_portal_texture", "1", FCVAR_CLIENTDLL, "Without a stencil buffer, draw portals through portal-plane textures: each view rendered with the portal as its image plane" );
 ConVar r_portal_texture_reuse( "r_portal_texture_reuse", "1", FCVAR_CLIENTDLL, "Texture portals: keep a portal's texture while the eye has moved less than this many texels (0: render every frame)" );
 ConVar r_portal_texture_maxage( "r_portal_texture_maxage", "4", FCVAR_CLIENTDLL, "Texture portals: render a kept texture again after this many frames (moving objects behind the portal)" );
 

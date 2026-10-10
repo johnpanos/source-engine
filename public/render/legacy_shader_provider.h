@@ -203,7 +203,7 @@ extern "C" bool NativeVulkanShaderBackend_Create( render::LegacyShaderServices *
 
 extern "C" LEGACY_SHADER_PROVIDER_EXPORT const render::LegacyShaderProvider *
 NullShaderBackend_Describe();
-// The Nintendo 3DS fullbright backend (materialsystem/shaderapicore).
+// The core shader API (materialsystem/shaderapicore).
 extern "C" LEGACY_SHADER_PROVIDER_EXPORT const render::LegacyShaderProvider *
 CoreShaderBackend_Describe();
 extern "C" LEGACY_SHADER_PROVIDER_EXPORT bool MaterialSystem_BindShaderProvider(

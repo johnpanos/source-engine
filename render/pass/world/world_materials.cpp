@@ -222,9 +222,7 @@ std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
 {
 	// Bounded: snapshot values that change every frame would otherwise grow it.
 	// Each entry holds a parsed material description (tens of KB with its
-	// variables); on the 3DS (a ~95 MB heap) the desktop's 4096 ran the
-	// intro4 demo out of memory, and 256 still grew ~1.7 MB a few hundred
-	// frames in, so the bound is 64 there (RFC 0026 memory audit).
+	// variables).
 	constexpr std::size_t kMaxMapped = 4096;
 	// A revisioned material's key is built once (MaterialSnapshotKey formats
 	// every variable, which per dynamic draw was a measured share of the frame).

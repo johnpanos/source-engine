@@ -1,6 +1,7 @@
 # RFC 0026: PICA200 Device Adapter for the Render Core
 
-- Status: Proposed (2026-10-07); P0 to P2 and P6 done in Azahar, P4
+- Status: **Withdrawn (2026-10-10): the PICA200 adapter and the 3DS client were deleted by user direction; see [RFC 0016, Adapter freeze and scene first](0016-render-core.md#adapter-freeze-and-scene-first-user-direction-2026-10-10).** The text below is the record of the design as it stood.
+- Previous status: Proposed (2026-10-07); P0 to P2 and P6 done in Azahar, P4
   partial; P3 and P5 open. The 3DS client draws only through this adapter.
 - Date: 2026-10-07
 - User direction (2026-10-07): "start implementing the pica rendercore

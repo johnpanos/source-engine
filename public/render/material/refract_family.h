@@ -32,7 +32,7 @@ struct RefractClaim
 	bool local = false;
 	bool translucent = false;
 	bool ignoreDepth = false; // $ignorez
-	// No scene colour to read (a program without one, the reduced 3DS model):
+	// No scene colour to read (a program without one):
 	// the pane at zero warp and the normal map unread. A screen-space pane is
 	// the background times its tint (the transmission term); a $localrefract
 	// pane its base texture unwarped (the base point, no transmission term).

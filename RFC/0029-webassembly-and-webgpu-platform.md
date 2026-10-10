@@ -1,6 +1,7 @@
 # RFC 0029: WebAssembly Platform and WebGPU Device Adapter
 
-- Status: Proposed (2026-10-07). W3 done 2026-10-08
+- Status: **Withdrawn (2026-10-10): the WebGPU adapter and the WebAssembly products were deleted by user direction; see [RFC 0016, Adapter freeze and scene first](0016-render-core.md#adapter-freeze-and-scene-first-user-direction-2026-10-10).** The text below is the record of the design as it stood.
+- Previous status: Proposed (2026-10-07). W3 done 2026-10-08
   ([progress](0029-progress.md)): the WebGPU adapter passes the shared
   device suite natively on the pinned Dawn and as WebAssembly in headless
   Chrome; Emscripten is pinned. W0–W2 and W4–W6 are open.

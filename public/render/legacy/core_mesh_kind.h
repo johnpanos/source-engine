@@ -2,8 +2,7 @@
 //
 // Purpose: the render core point a legacy frontend hands a bound material's
 //			draws to (CoreMeshDraw::kind), from its shader and flags: one
-//			classifier for every frontend (the native Vulkan shader API and
-//			the 3DS one, RFC 0016 K8 and RFC 0026). A legacy-interop header:
+//			classifier for every frontend (the core shader API, RFC 0016 K8). A legacy-interop header:
 //			only the frontends, which see the material system, include it.
 //
 //=============================================================================//

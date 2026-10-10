@@ -1,8 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// The render core's shader API's renderer (see core_renderer.h): on the 3DS
-// on render.device.pica, elsewhere on any render.device.v2 device (RFC 0029:
-// the browser's WebGPU adapter).
+// The render core's shader API's renderer (see core_renderer.h), on any
+// render.device.v2 device.
 //
 //=============================================================================//
 
@@ -47,8 +46,8 @@ std::uint32_t TargetHeight()
 struct Allocation
 {
 	BufferId buffer;
-	// The device buffer's mapped bytes (the 3DS); elsewhere the CPU copy the
-	// mesh writes, which FlushLinear copies into the device buffer.
+	// The CPU copy the mesh writes, which FlushLinear copies into the device
+	// buffer.
 	std::byte *resident = nullptr;
 	std::size_t bytes = 0;
 	Memory kind = Memory::kVertices;
@@ -193,7 +192,7 @@ std::byte *CreateLinear( Memory kind, std::size_t bytes, BufferId &out )
 {
 	BufferDesc desc;
 	desc.size = bytes;
-	// WebGPU sizes copies in whole words.
+	// Copies are sized in whole words.
 	desc.size = ( bytes + 3 ) & ~std::size_t( 3 );
 	desc.memory = MemoryKind::kDeviceLocal;
 	desc.usages = { UsageOf( kind ), ResourceUsage::kCopyDestination };

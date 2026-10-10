@@ -94,7 +94,7 @@ enum class Format : std::uint8_t
 	// B 10-bit (5-bit mantissa); half of kRGBA16Float's bytes, no alpha.
 	kRG11B10Float,
 	// ETC1 (RGB, 4x4 blocks of 8 bytes, each its specification's 64-bit word
-	// in Khronos byte order) and the 3DS's ETC1A4 (16-byte blocks: a 64-bit
+	// in Khronos byte order) and ETC1A4 (16-byte blocks: a 64-bit
 	// little-endian word of 4-bit alpha, texel (x, y) at bit 4 * (4x + y),
 	// then the ETC1 word little-endian), on a device that claims
 	// Capability::kTextureCompressionETC1 (clause D40). Blocks follow each

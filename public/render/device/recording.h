@@ -1,8 +1,7 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose: Recorded command lists for adapters that replay them (RFC 0025
-//			decision 9): render.device.gl, render.device.metal and
-//			render.device.d3d12 record every encoder as a CPU command list,
+//			decision 9): render.device.gl records every encoder as a CPU command list,
 //			validate it at Submit against the usage state the previous
 //			accepted submission left, and replay it on their API. This header
 //			owns the parts they share: the command list, the recording

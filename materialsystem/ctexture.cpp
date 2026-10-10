@@ -179,8 +179,7 @@ static int  ComputeActualMipCount( const TexDimensions_t& actualDims, unsigned i
 static int  ComputeMipSkipCount( const char* pName, const TexDimensions_t& mappingDims, bool bIgnorePicmip, IVTFTexture *pOptVTFTexture, unsigned int nFlags, int nDesiredDimensionLimit, unsigned short* pOutStreamedMips, TextureLODControlSettings_t* pInOutCachedFileLodSettings, TexDimensions_t* pOptOutActualDims, TexDimensions_t* pOptOutAllocatedDims, unsigned int* pOptOutStripFlags  );
 static int  GetOptimalReadBuffer( CUtlBuffer *pOutOptimalBuffer, FileHandle_t hFile, int nFileSize );
 static void FreeOptimalReadBuffer( int nMaxSize );
-// The texture read buffer kept between loads (up to this size): none on the
-// 3DS, whose heap cannot spare a cached 2 MB block.
+// The texture read buffer kept between loads (up to this size).
 static constexpr int kKeptReadBufferBytes = 6 * 1024 * 1024;
 
 //-----------------------------------------------------------------------------

@@ -2941,7 +2941,7 @@ inline void ComparisonSampling( Suite &s )
 // (row 0 at the top for textures and framebuffers alike).
 inline void SampledClauses( Suite &s, IRenderDevice2 &device )
 {
-	// 8x8: the smallest texture every adapter samples (the PICA200's tiles).
+	// 8x8: the smallest texture every adapter samples.
 	const std::vector<std::byte> texels = Pattern( 8 * 8 * 4, 5 );
 	(void)SampleTexture( s, device, Format::kRGBA8Unorm, texels, texels,
 	    "texels sampled at their centers land on the same pixels (row 0 on top)", {},

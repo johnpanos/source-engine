@@ -592,8 +592,8 @@ struct WorldView
 		WorldMaterial material;
 		// In place of `material` when set: a frontend producer's cached
 		// material of the same revision, shared by its draws instead of
-		// copied per draw (RFC 0026: the copies of its string pairs were a
-		// fifth of the 3DS frame). Read both through Material().
+		// copied per draw (the copies of its string pairs were a
+		// fifth of a frame). Read both through Material().
 		std::shared_ptr<const WorldMaterial> sharedMaterial;
 		const WorldMaterial &Material() const { return sharedMaterial ? *sharedMaterial : material; }
 		float modelToWorld[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };

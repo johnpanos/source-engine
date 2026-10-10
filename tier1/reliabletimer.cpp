@@ -77,7 +77,7 @@ int64 CReliableTimer::GetPerformanceCountNow()
 		CycleCount.Sample();
 		return CycleCount.GetLongCycles();
 	}
-#elif ((defined(__arm__) || defined(__wasm__)) || defined( __aarch64__ )) && defined (POSIX)
+#elif (defined(__arm__) || defined( __aarch64__ )) && defined (POSIX)
 	struct timespec ts;
 	clock_gettime(CLOCK_REALTIME, &ts);
 	return ts.tv_sec * 1000000000ULL + ts.tv_nsec;

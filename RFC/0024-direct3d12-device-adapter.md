@@ -1,6 +1,7 @@
 # RFC 0024: Direct3D 12 Device Adapter for the Render Core
 
-- Status: Proposed (2026-10-07); X0–X5 implemented (see [Progress](#progress)).
+- Status: **Withdrawn (2026-10-10): the Direct3D 12 adapter and the render-d3d12-windows profile were deleted by user direction; see [RFC 0016, Adapter freeze and scene first](0016-render-core.md#adapter-freeze-and-scene-first-user-direction-2026-10-10).** The text below is the record of the design as it stood.
+- Previous status: Proposed (2026-10-07); X0–X5 implemented (see [Progress](#progress)).
 - Date: 2026-10-07
 - User direction (2026-10-07): "add a DX12 device adapter and backend".
   This is the separate decision RFC 0016's non-goals require for a native

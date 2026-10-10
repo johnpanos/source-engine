@@ -159,7 +159,7 @@ void CPortalRenderTargets::InitClientRenderTargets( IMaterialSystem* pMaterialSy
 	m_DepthDoublerTexture.Init( InitDepthDoublerTexture( pMaterialSystem ) );
 
 	// Texture portals, only where stencil portals cannot draw (no stencil
-	// bits): RGBA8 with power-of-two sides, which the 3DS samples.
+	// bits): RGBA8 with power-of-two sides.
 	if ( pMaterialSystem->StencilBufferBits() == 0 )
 	{
 		for ( int nPortal = 0; nPortal < 2; ++nPortal )

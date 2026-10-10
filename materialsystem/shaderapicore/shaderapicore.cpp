@@ -213,7 +213,7 @@ private:
 	// Skinning inputs (CPU memory), when the format has bone weights.
 	float *m_pBoneWeights;     // 2 per vertex
 	// Normals of a format with VERTEX_NORMAL (3 per vertex, CPU memory): the
-	// PICA record holds none, and the core's model lighting reads them.
+	// vertex record holds none, and the core's model lighting reads them.
 	float *m_pNormals = nullptr;
 	int m_nNormalCapacity = 0;
 	// Before the vertex streams are rewritten: a new content revision, and a
@@ -262,7 +262,7 @@ private:
 extern render::legacy::ICorePassRecorder *g_CorePassRecorder;
 
 //-----------------------------------------------------------------------------
-// PICA state shared by the mesh, shadow and dynamic APIs.
+// Draw state shared by the mesh, shadow and dynamic APIs.
 //-----------------------------------------------------------------------------
 namespace
 {
@@ -307,13 +307,13 @@ struct FacadeTexture
 	int baseWidth = 0;
 	int baseHeight = 0;
 	char name[48] = ""; // CreateTextures' debug name (-core_dump_draws)
-	// A cube map (off the 3DS): each face's base level, RGBA8 at cubeSize.
+	// A cube map: each face's base level, RGBA8 at cubeSize.
 	bool cube = false;
 	int cubeSize = 0;
 	CUtlVector<unsigned char> cubeFaces[6];
 	bool dirty = false;
 	corefacade::Texture gpu;
-	// Off the 3DS: the same levels decoded from sRGB when sampled, made on
+	// the same levels decoded from sRGB when sampled, made on
 	// the core's first sRGB import (D3D9 reads sRGB per sampler, so a texture
 	// may be read both ways); refreshed with each upload after that.
 	corefacade::Texture gpuSrgb;
@@ -323,10 +323,10 @@ struct FacadeTexture
 	// shaderapivulkan's 16-bit and float images are not.
 	bool linearSource = false;
 	// Its levels hold RGBA16161616 (8 bytes a texel), uploaded as kRGBA16:
-	// an unmipped integer-HDR texture (lightmap pages) off the 3DS.
+	// an unmipped integer-HDR texture (lightmap pages).
 	bool wide = false;
 	// Its levels (or cube faces) hold RGBA16161616F half floats, uploaded as
-	// they are: an HDR image off the 3DS, as shaderapivulkan kept them.
+	// they are: an HDR image, as shaderapivulkan kept them.
 	bool half = false;
 };
 
@@ -481,7 +481,7 @@ bool CoreCacheRoom( std::size_t bytes )
 	return false;
 }
 float g_Modulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-// Elsewhere the content's own sizes (RFC 0029: the browser's WebGPU limit).
+// The cap on a mipped texture's size (-core_texture_size).
 int g_TextureSizeCap = 4096;
 // Per-present counters of the draw path (printed with the frame stats).
 struct DrawPathCounters
@@ -566,7 +566,7 @@ FacadeTexture *TextureFor( ShaderAPITextureHandle_t handle )
 	return g_Textures[index];
 }
 
-// The render targets the 3DS draws into (RFC 0026): the portal-plane targets
+// The render targets drawn into: the portal-plane targets
 // of the client's texture portals (`_rt_PortalPlane*`, which the client makes
 // only when the device has no stencil), RGBA8 with power-of-two sides. Other
 // targets keep being skipped until their own cohort is brought over.
@@ -880,7 +880,7 @@ public:
 	bool m_IsAlphaTested;
 	bool m_bIsDepthWriteEnabled;
 	bool m_bUsesVertexAndPixelShaders;
-	// The PICA state and vertex format the next snapshot records.
+	// The draw state and vertex format the next snapshot records.
 	corefacade::DrawState m_State;
 	int m_PolyOffset = SHADER_POLYOFFSET_DISABLE; // EnablePolyOffset's mode
 	VertexFormat_t m_VertexFormat;
@@ -1063,7 +1063,7 @@ public:
 	void ClearSnapshots();
 
 	// Sets the mode...
-	// The material system's mode set: bring up the PICA renderer (the device
+	// The material system's mode set: bring up the core renderer (the device
 	// manager's SetMode, which the D3D9 composition uses, does the same).
 	bool SetMode( void* hwnd, int nAdapter, const ShaderDeviceInfo_t &info )
 	{
@@ -2204,7 +2204,7 @@ public:
 		if ( texture && texture->dirty )
 			UploadTexture( *texture );
 		// A render target the core samples before anything drew into it: its
-		// image is made now (WebGPU and Vulkan clear it to zero).
+		// image is made now (Vulkan clears it to zero).
 		if ( texture && texture->renderTarget && !texture->gpu.Valid() )
 			(void)DrawableTarget( *texture );
 		if ( !texture->gpu.Valid() )
@@ -2316,8 +2316,7 @@ static render::device::StencilOp CoreStencilOp( StencilOperation_t op )
 // snapshot's raster state (depth test, write and compare, cull, colour and
 // alpha writes), the dynamic stencil state and the poly-offset depth bias,
 // as shaderapivulkan's slots do (its ApplyDepthBiasState: the material
-// system's decal and normal biases, or the shadow bias factors). The 3DS
-// keeps the defaults it draws with.
+// system's decal and normal biases, or the shadow bias factors). 
 // Portal 2's shaders scale every ssbump's basis weights by 1/sqrt(3); this
 // SDK's do not (ported from shaderapivulkan, whose copy goes with it).
 // mat_ssbump_normalize -1 follows the running game, 0 and 1 force either.
@@ -2475,7 +2474,7 @@ public:
 		// it): a new epoch per recording lets the core release what it kept of
 		// the last (a constant epoch kept every recorded view, up to 8192 with
 		// their geometry, and a present-counted frame let retired geometry
-		// pile up between presents: the 3DS ran out of memory).
+		// pile up between presents: the heap grew without bound).
 		// Narrower still: a slot is recorded once and never replayed, so its
 		// stream is discarded as soon as it records. A new epoch per slot lets
 		// the core drop each recorded view (a model draw's whole geometry)
@@ -2610,8 +2609,8 @@ static void* ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCod
 
 
 //-----------------------------------------------------------------------------
-// The backend's app-system lifecycle and its presentation (the 3DS top
-// screen), which the material system's IShaderDeviceMgr and IShaderDevice
+// The backend's app-system lifecycle and its presentation
+// (the screen), which the material system's IShaderDeviceMgr and IShaderDevice
 // facades forward and answer from (RFC 0016 legacy device facade F4).
 //-----------------------------------------------------------------------------
 static void FillLifecycle( render::LegacyShaderServices *services )
@@ -3196,11 +3195,9 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 		m_pNormals = normals;
 		m_nNormalCapacity = capacity;
 	}
-	// The lightmap coordinates. On the 3DS, dynamic meshes only (decals,
-	// overlays): the static world meshes' copy would be megabytes the core
-	// never reads (it draws the world from the map's own data). Elsewhere
-	// static meshes keep them too: brush entities (windows, doors) are static
-	// meshes the core draws through this path, lit by their own pages.
+	// The lightmap coordinates: static meshes keep them too: brush entities
+	// (windows, doors) are static meshes the core draws through this path, lit
+	// by their own pages.
 	(void)EnsureTexCoord1();
 	return true;
 }
@@ -3432,16 +3429,16 @@ const MaterialVariables &VariablesFor( IMaterialInternal *material )
 } // namespace
 
 // The range's triangles for the render core: counterclockwise (legacy
-// meshes face clockwise) and 16-bit (meshes are at most 65535 vertices, and
-// the PICA200 reads 16-bit indices as they are). A static mesh's come from its
+// meshes face clockwise) and 16-bit (meshes are at most 65535 vertices;
+// CoreMeshDraw::indices16). A static mesh's come from its
 // cache (CoreCache); else they are built into `triangles`. Null for a range
 // with no valid triangle.
 const std::vector<std::uint16_t> *CEmptyMesh::CoreTriangleList( const CEmptyMesh &src, int firstIndex,
 	int indexCount, bool cacheable, std::vector<std::uint16_t> &triangles )
 {
 	// Triangles, counterclockwise for the core (legacy meshes face clockwise).
-	// 16-bit: the mesh is at most 65535 vertices (checked above), and the
-	// PICA200 reads 16-bit indices as they are (CoreMeshDraw::indices16).
+	// 16-bit: the mesh is at most 65535 vertices (checked above;
+	// CoreMeshDraw::indices16).
 	const std::vector<std::uint16_t> *drawTriangles = nullptr;
 	if ( cacheable )
 	{
@@ -3596,8 +3593,8 @@ static void FillCoreView( render::legacy::CoreMeshDraw &draw, const float *model
 
 // Queues a core draw at this point of the stream (its slot). The core holds
 // each draw's geometry until the recording that reads it is submitted: past
-// 1.5 MB or 64 draws, submit and go on, so a frame of draws never holds the
-// 3DS's memory at once. False when the core refused it.
+// 1.5 MB or 64 draws, submit and go on, so a frame of draws never holds all of
+// its geometry at once. False when the core refused it.
 static bool QueueCore( const render::legacy::CoreMeshDraw &draw, std::size_t geometryBytes )
 {
 	const std::uint32_t tag = g_CorePassRecorder->QueueMesh( draw );
@@ -3642,8 +3639,8 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	if ( !src.m_pVertices || !src.m_pNormals || src.m_nVertices <= 0 ||
 		src.m_nVertices > src.m_nNormalCapacity )
 		return skip( 2, "the mesh has no normals" );
-	// The memory audit: the PICA's indices are 16-bit, so a larger mesh is
-	// not a model draw this backend can hand over.
+	// The indices are 16-bit, so a larger mesh is not a model draw this
+	// backend can hand over.
 	static int s_largest = 0;
 	if ( src.m_nVertices > 0xFFFF || indexCount > 3 * 0xFFFF )
 		return skip( 8, "the mesh is larger than 16-bit indices address" );
@@ -4319,7 +4316,7 @@ bool CCoreShaderAPI::DoRenderTargetsNeedSeparateDepthBuffer() const
 // Can we download textures?
 bool CCoreShaderAPI::CanDownloadTextures() const
 {
-	// TexImageFromVTF/TexImage2D convert and upload to PICA textures.
+	// TexImageFromVTF/TexImage2D convert and upload to device textures.
 	return true;
 }
 
@@ -4334,7 +4331,7 @@ bool CCoreShaderAPI::HasDestAlphaBuffer() const
 	return false;
 }
 
-// Off the 3DS the frame's depth is D32F with 8 stencil bits (kDepthFormat),
+// The frame's depth is D32F with 8 stencil bits (kDepthFormat),
 // as shaderapivulkan's was; Portal 2 draws its portals' views through the
 // stencil only when the shader API reports one (without it an open portal
 // showed the wall behind it).
@@ -5238,7 +5235,7 @@ void CCoreShaderAPI::SetLinearToGammaConversionTextures( ShaderAPITextureHandle_
 ImageFormat CCoreShaderAPI::GetNearestSupportedFormat( ImageFormat fmt, bool bFilteringRequired /* = true */ ) const
 {
 	// Uploads arrive as RGBA8888 (the material system decodes DXT and friends)
-	// and are encoded for the PICA here. Off the 3DS HDR images keep their
+	// and are uploaded as they are. HDR images keep their
 	// half floats, as shaderapivulkan kept them (the env maps' ENV_MAP_SCALE
 	// range is lost in 8 bits).
 	if ( fmt == IMAGE_FORMAT_RGBA16161616F )
@@ -5476,7 +5473,7 @@ void CCoreShaderAPI::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 {
 	// The material system's texture upload: every mip of the frame (face 0;
 	// cube and volume textures keep their first face/slice) through TexImage2D,
-	// which keeps the levels that fit the PICA and encodes them.
+	// which keeps the levels that fit the size cap.
 	if ( !pVTF )
 		return;
 	// The full model's cube maps: each face's base level (TexImage2D's cube path).
@@ -5648,7 +5645,7 @@ void CCoreShaderAPI::CreateTextures(
 		texture->wide = texture->lightmap && dstImageFormat == IMAGE_FORMAT_RGBA16161616 &&
 			texture->mipLevels == 1;
 		texture->linearSource = texture->wide;
-		// The full model samples cube maps as cubes (the 3DS keeps face 0).
+		// The full model samples cube maps as cubes (this API keeps every face).
 		texture->cube = ( flags & TEXTURE_CREATE_CUBEMAP ) != 0;
 		V_strncpy( texture->name, pDebugName ? pDebugName : "", sizeof( texture->name ) );
 		pHandles[k] = ShaderAPITextureHandle_t( g_Textures.AddToTail( texture ) + 1 );

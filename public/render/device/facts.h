@@ -43,7 +43,7 @@ enum class Capability : std::uint8_t
 	// Colour targets of the float formats (kRG16Float, kRGBA16Float, kR32Float,
 	// kRGBA32Float, kRG11B10Float) and float depth (kD32Float, kD32FloatS8),
 	// as attachments and sampled (clause D39). A device without it refuses
-	// those formats with kUnsupported (RFC 0026: the PICA200 has none).
+	// those formats with kUnsupported.
 	kFloatTargets,
 	kTextureCompressionETC1, // the kETC1* formats (clause D40)
 	kPackedRGBA4,            // kRGBA4Unorm, sampled and copied (clause D42)

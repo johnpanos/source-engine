@@ -31,7 +31,7 @@ class CorePanels final : public IRenderCorePanels
 public:
 	// compute: whether the device has compute, which the pass needs for each
 	// panel image's mip chain; without it every panel is refused (the
-	// caller draws it) rather than taken and failed (RFC 0026: the PICA200).
+	// caller draws it) rather than taken and failed.
 	CorePanels(
 	    legacy::ILegacyFrontend &frontend, const frame::IRenderer &renderer, bool compute )
 	    : m_Frontend( frontend ), m_Renderer( renderer ), m_Compute( compute )
