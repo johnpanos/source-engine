@@ -1,6 +1,6 @@
 {
   "schema": "source-baseline/v1",
-  "description": "R01 / RFC 0005 Q0 reproducible baseline and profile inventory. Declares the host tools, content corpora, support matrix, installed checks with their recorded outcome at this revision, and the identified baseline captures and budgets per harness domain. Run tools/quality/baseline.py audit; see RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory. Profile facts stay in the linked profile files; module dependency permissions stay in architecture/modules.json; roadmap state stays in AGENTS.md.",
+  "description": "R01 / RFC 0005 Q0 reproducible baseline and profile inventory. Declares the host tools, content corpora, support matrix, installed checks with their recorded outcome at this revision, and the identified baseline captures and budgets per harness domain. Run tools/quality/baseline.py audit; see RFC/0005-progress.md#q0--r01-baseline-and-profile-inventory. Profile facts stay in the linked profile files; module dependency permissions stay in architecture/modules.json; roadmap state stays in docs/agents/roadmap.md.",
   "tools": [
     {"id": "gcc", "kind": "command", "argv": ["g++", "--version"]},
     {"id": "clang", "kind": "command", "argv": ["clang++", "--version"]},

@@ -102,7 +102,7 @@ profiles are not removed by defining the new north star.
 - Establish SDL3 and Vulkan contracts, including Apple portability and mobile lifecycle.
 - Pass each platform's native correctness, performance, packaging, and store-compatibility checks.
 
-The [ranked roadmap](AGENTS.md#unified-ranked-roadmap) is authoritative. Legacy
+The [ranked roadmap](docs/agents/roadmap.md#unified-ranked-roadmap) is authoritative. Legacy
 OpenGL adapters and DXVK experiments are migration tools, not the final render
 architecture; auxiliary features do not displace the platform infrastructure.
 

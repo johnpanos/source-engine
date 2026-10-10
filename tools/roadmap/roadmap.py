@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Roadmap navigator and consistency gate for the AGENTS.md work order.
+"""Roadmap navigator and consistency gate for the work order.
 
-The unified ranked roadmap in ``AGENTS.md`` is the single authoritative
+The unified ranked roadmap in ``docs/agents/roadmap.md`` (indexed from
+``AGENTS.md``) is the single authoritative
 representation of portfolio priority, task state, and hard-gate prerequisites.
 The working protocol's first step is to "choose the highest-ranked
 dependency-ready bounded task"; doing that by hand means reading a 46-row table,
@@ -183,8 +184,13 @@ def parse_roadmap(markdown: str) -> Roadmap:
     return Roadmap.build(tasks)
 
 
+# The roadmap document, relative to the repository root. Its links are
+# relative to the document, as Markdown renders them.
+ROADMAP_FILE = Path("docs/agents/roadmap.md")
+
+
 def load_roadmap(root: Path) -> Roadmap:
-    return parse_roadmap((root / "AGENTS.md").read_text(encoding="utf-8"))
+    return parse_roadmap((root / ROADMAP_FILE).read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -225,7 +231,7 @@ def validate(roadmap: Roadmap, root: Path | None = None) -> tuple[list[str], lis
     """Return (errors, notes).  Errors mean the roadmap is inconsistent.
 
     With ``root``, every progress record linked from a State cell must exist
-    relative to it (the roadmap lives in the repository-root AGENTS.md).
+    relative to it: the directory the roadmap document sits in.
     """
     errors: list[str] = []
     notes: list[str] = []
@@ -360,7 +366,7 @@ def task_summary(roadmap: Roadmap, task: Task) -> dict:
 
 
 def check_command(roadmap: Roadmap, root: Path) -> int:
-    errors, notes = validate(roadmap, root)
+    errors, notes = validate(roadmap, (root / ROADMAP_FILE).parent)
     for note in notes:
         print(f"roadmap: note: {note}")
     for error in errors:

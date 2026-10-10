@@ -1,9 +1,9 @@
 # roadmap
 
-Navigator and consistency gate for the unified ranked roadmap in `AGENTS.md`.
+Navigator and consistency gate for the unified ranked roadmap in `docs/agents/roadmap.md`.
 
 The working protocol's first step is to *"choose the highest-ranked
-dependency-ready bounded task."* This tool reads the roadmap table in `AGENTS.md`
+dependency-ready bounded task."* This tool reads the roadmap table in `docs/agents/roadmap.md`
 (the single authority — it never mutates it or copies its facts) and answers that
 question directly, while guarding against a mistyped prerequisite id, a
 dependency cycle, or a `done` row that depends on unfinished work.
