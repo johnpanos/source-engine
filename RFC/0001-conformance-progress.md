@@ -322,3 +322,23 @@ Since then (2026-10-08):
   reapplies the size. `sdl3_launcher_conformance` checks the drawable right
   after the first show; seeding the visible window back fails it on X11.
 - `platform.sdl3.product-suites`: 1,114 checks, 0 failures, on Wayland and X11.
+
+## M7 slice 1: Android arm64 device lifecycle on the Galaxy Tab S8 Ultra (2026-10-10)
+
+Status: **unverified, tablet unreachable.** Assigned by the project manager
+(source-engine-17): build portal2's Android profile through `./kiln`, install
+with the adb transport, and drive rotation/surface recreation,
+background/foreground, process kill/relaunch and low-memory trim, each judged
+from logcat plus a frame captured after resume.
+
+- Observed 2026-10-10 on the dev host: `adb devices -l` lists no device (also
+  after `adb start-server`); `adb mdns services` is empty; no Samsung device on
+  USB; the tailscale list shows no Tab S8 Ultra (only a Fold8, which is not the
+  declared device); `adb connect 192.168.0.66:5555` was refused. Earlier
+  Tab S8 Ultra runs used wireless adb, whose pairing port is not discoverable
+  from here.
+- Not done: the Android build, install and every lifecycle case. No product
+  code was changed. Nothing here is evidence for or against R29's Android
+  lifecycle obligations.
+- To proceed: enable wireless debugging on the tablet (or attach it by USB)
+  and give the session its serial; the build can start earlier without it.
