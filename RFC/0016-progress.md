@@ -13866,3 +13866,30 @@ stats sink on the core shader API; MangoHud wrote no log), and HEAD after
 
 Reproduce: `bazzite:~/bisect/run_prof.sh stats|perf N` (results under
 `~/bisect/res/`), `run_ab.sh N` for the timedemo A/B.
+
+### HEAD's hitches at 1080p, frame by frame (M1, 2026-10-10, source-engine-3a)
+
+Same build (`6ed908187`), workload and box as above, 1920×1080. `perf record
+-F 999 --call-graph dwarf,8192` over the whole run, with MangoHud logging every
+presented frame. The two clocks are aligned with the main thread's
+`CMaterialSystem::SwapBuffers` samples, which occur only at frame end: 1,341 of
+1,350 land in the 2 ms before a MangoHud present at one fixed offset. Each
+playback frame (2,091 after the load settles; 453 over 33 ms, max 291 ms) then
+owns the main-thread samples between its two presents, at about one sample per ms.
+
+| Frames | Count | Main-thread share by cause |
+| --- | --- | --- |
+| > 100 ms | 4 | three of them (291, 284, 205 ms) are 52–79 % **first-use texture import**: `WorldPass::Batch::buildGroup` → `CFacadeCoreTextures::Import` → `UploadTexture`, 85–175 ms each; the fourth (105 ms) is per-slot refill and lightmaps |
+| 33–100 ms | 449 | lightmap rebuild and upload 32 %, per-slot texture refill 31 %, other 34 % (ordinary frame work: `CEmptyMesh::EmitSurfaceToCore`, the device's upload staging and barrier translation, material mapping) |
+| 20 slowest | 20 (2,019 ms) | first-use import 27 %, other 25 %, lightmaps 24 %, per-slot refill 20 %, file I/O and residency 3 %, allocation and locking 1 %, pipeline or shader creation 0 % |
+| Whole playback | 2,091 | other 41 %, lightmaps 28 %, per-slot refill 27 %, first-use import 1 % |
+
+The 33–100 ms hitches are a burst pattern of fixes (a) and (b): runs of
+consecutive frames (frames 839–846, 723–728) where both the lightmap rebuild
+and the per-slot refill double at the same time. The p99.9 spikes are a
+different cause: the core imports and uploads a material's textures
+synchronously on the main thread the first time a world batch uses them, which
+none of fixes (a)–(c) addresses. `615223388` has no such frames (p99.9
+37.6 ms at 1080p). Pipeline creation never landed in the playback window
+(one 83 ms burst of `SurfaceProgram` pipeline creation came after it, during
+the quit), and no allocator or GC-like stall shows.
