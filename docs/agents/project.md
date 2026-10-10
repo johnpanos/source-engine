@@ -45,9 +45,45 @@ not from guesses.
 
 Per-frame milliseconds on bazzite (RTX 3070), High, intro4 relit, p50 / p99, at 2560×1440 and each sweep point.
 
+Measured 2026-10-10 by source-engine-3a at `6ed908187` (HEAD before the M1b
+fixes) against `615223388` (before the R91 cutover); evidence and method in
+[RFC 0016 progress](../../RFC/0016-progress.md#where-the-r91-cutovers-91-ms-goes-m1-part-1-2026-10-10-source-engine-3a).
+`+timedemoquit` of `sp_a1_intro4_relit.dem`, fullscreen, `mat_vsync 0`, the
+kiln `portal2` profile's arguments; frame times per frame from MangoHud over the
+playback window, two interleaved rounds.
+
+Whole frame:
+
+| Build | Point | Mean | p50 | p99 | p99.9 | Frames > 33 ms (of 1,991) | GPU busy | Main thread | Render thread |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| HEAD `6ed908187` | 1280×720 | 22.9 | 21.4 | 66.2 | 205 | 446 | 31 % | 98 % | none |
+| HEAD | 1920×1080 | 23.1 | 21.8 | 65.7 | 207 | 455 | 28 % | 98 % | none |
+| HEAD | 2560×1440 | 23.2 | 21.7 | 66.6 | 203–264 | 459 | 30 % | 99 % | none |
+| HEAD | 3840×2160 | not measured | | | | | | | |
+| `615223388` | 1280×720 | 11.3 | 9.6 | 31.1 | 37.0 | 5 | 53 % | 33 % | 72 % |
+| `615223388` | 1920×1080 | 12.4 | 10.4 | 31.1 | 37.6 | 7 | 60 % | 30 % | 66 % |
+| `615223388` | 2560×1440 | 13.8 (timedemo mean, 5 runs) | | | | | 65 % | 30 % | 64 % |
+
+HEAD is CPU-bound and flat across resolution: everything runs on the main
+thread (the core shader API runs the material system single-threaded), and
+about 23 % of frames hitch past 33 ms. The 4K point and `615223388`'s 1440p
+distribution are open: bazzite's gnome-shell holds 5.8 of the 3070's 8 GB, and
+`615223388` now fails its shadow-atlas and scene-color allocations at 1440p
+(it passed five times earlier the same day); a GNOME session restart needs
+the user's OK.
+
+Per owner, HEAD at 2560×1440 (ms per frame, means from `perf` DWARF stacks;
+no per-owner p99 source exists on the core shader API):
+
 | Owner | CPU (main) | CPU (render) | GPU | Target |
 | --- | --- | --- | --- | --- |
-| (to be measured) | | | | 8.33 total |
+| Core shader API: imported-texture refill per pass slot (`CFacadeCorePassSlots::MarkSlot` → `UploadTexture`), M1b (a) | 6.3 | — | — | 0 |
+| Core shader API + engine lightmaps: per-frame rebuild and lock/upload (`EndUpdateLightmaps` → `R_BuildLightMap` → `TexLock`/`TexSubImage2D`), M1b (b); 0.08 before the cutover | 6.5 | — | — | ≤ 0.1 |
+| Studio model draws through `EmitSurfaceToCore` | 4.9 | — | — | |
+| Portal early-Z and stencil views (overlaps the two rows above) | 7.1 | — | — | |
+| Core world view (`cl_render_debug_gpu_timers`) | — | — | 0.46 (4.7 before the cutover) | |
+| Job system (J8) | ≤ 0.02 | — | — | |
+| Whole frame | 22.9 | none (single-threaded, M1b (c)) | 30 % busy | 8.33 total |
 
 ## Workstreams and owners
 
