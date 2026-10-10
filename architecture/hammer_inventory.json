@@ -1151,7 +1151,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CHammerVGui Init(HWND) starts the VGUI/MatSystem surface on the main window and pumps Simulate; it exists only to host the MFC VGUI panels that GTK does not use."
     },
     {
@@ -1164,7 +1164,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CHammerVGui with HWND-based Init/Shutdown and VGUI focus tracking, the legacy VGUI host for the MFC shell."
     },
     {
@@ -1334,7 +1334,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The header only defines IDM_POPUP_POINT_HANDLE 7, a Win32 popup-menu command ID; the GTK menus use ActionCatalog, so the constant retires with the MFC popups."
     },
     {
@@ -2396,7 +2396,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "A second copy of the BlockArray template that includes windows.h; blockarray.h holds the definition, so this copy has no unique logic."
     },
     {
@@ -2500,7 +2500,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CBSPLightingThread runs in-process vrad lighting through IVRadDLL on a worker thread; the one lighting back end is map_lighting.py via light_baker.py."
     },
     {
@@ -2513,7 +2513,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CBSPLightingThread (IBSPLightingThread) for the in-process vrad bake that the lighting back end replaces."
     },
     {
@@ -2552,7 +2552,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CCamera implements the legacy 3D view camera (movement, angles, viewport, frustum); hammer/viewport/camera.h is the headless replacement scene_geometry.h already uses."
     },
     {
@@ -2565,7 +2565,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the legacy CCamera with octant and visibility constants; the headless viewport camera supersedes it."
     },
     {
@@ -2666,7 +2666,7 @@
       "effects": [],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Enum of MFC control-bar resource IDs (IDCB_*) used only by the legacy MFC toolbars; retires with the MFC shell."
     },
     {
@@ -3739,7 +3739,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Enum of WM_USER window message IDs (MAPDOC_CHANGED, GAME_CHANGED, ABN_CHANGED, TWN_*); MFC message plumbing retired with the GTK shell."
     },
     {
@@ -4262,7 +4262,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Global event-timestamp counters (SignalUpdate, GetUpdateCounter) with live MFC callers in lpreview_thread, mapentity and mainfrm; retire with the shell."
     },
     {
@@ -4433,7 +4433,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Free functions for the active world, duplicate notification and object lists; process-wide accessors that the workspace replaces."
     },
     {
@@ -4827,7 +4827,7 @@
       ],
       "state": "external-resource",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Abstract IBSPLighting interface for the in-editor vrad lighting session (Load, StartLighting, progress, Draw), superseded by the planned bake seam (R48-BAKER)."
     },
     {
@@ -4840,7 +4840,7 @@
       ],
       "state": "external-resource",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares IBSPLightingThread, the threaded wrapper around IVRadDLL that runs a lighting pass and reports idle, lighting or finished state."
     },
     {
@@ -4853,7 +4853,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Owner-draw combo box that loads icons from the executable with ExtractIcon and draws them with GDI brushes and pens; replaced by GTK widgets."
     },
     {
@@ -4866,7 +4866,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CIconComboBox, a CComboBox subclass with icon add, insert, select and delete plus owner-draw hooks."
     },
     {
@@ -4879,7 +4879,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Maps Win32 virtual keys and modifiers to logical keys and tracks key state with impulse flags from OnKeyDown and OnKeyUp; key routing moves to the GTK ActionCatalog (RFC 0018)."
     },
     {
@@ -4892,7 +4892,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CKeyboard and KeyMap_t with the physical and logical key limits and the key binding API."
     },
     {
@@ -4905,7 +4905,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Owner-draw list box of editable property rows (bool, string, integer, choice) with inline edit and combo controls, used by the MFC properties panel."
     },
     {
@@ -4918,7 +4918,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares LBEXTITEMSTRUCT and CListBoxEx, the property-row list with per-row data type, edit type and range."
     },
     {
@@ -4957,7 +4957,7 @@
       ],
       "state": "derived-cache",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Lighting-preview worker thread that ray-traces the scene from a message queue for incremental light results; it writes no document state."
     },
     {
@@ -4970,7 +4970,7 @@
       ],
       "state": "derived-cache",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the lighting-preview message types, queues and light description shared with the Hammer UI."
     },
     {
@@ -4983,7 +4983,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CWnd window that paints the lighting-preview output bitmap and handles close and paint messages."
     },
     {
@@ -4996,7 +4996,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CLightingPreviewResultsWindow, a CWnd host for lighting-preview output."
     },
     {
@@ -6180,7 +6180,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMDIClientWnd is the MFC MDI client window whose erase-background handler paints the workspace; the GTK host replaces it."
     },
     {
@@ -6193,7 +6193,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMDIClientWnd derives from CWnd and exists only to host MDI child windows."
     },
     {
@@ -6336,7 +6336,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Procedural 2D value-noise helpers; the only reference in the tree is the file itself, so it retires."
     },
     {
@@ -6375,7 +6375,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CObjectPage is the CPropertyPage base for the object property pages; it has no GTK analogue and goes with them."
     },
     {
@@ -6757,7 +6757,7 @@
       "effects": [],
       "state": "external-resource",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "GetVersionEx Win9x/NT detection; its only caller is the legacy processwnd.cpp, so it retires with that caller."
     },
     {
@@ -6768,7 +6768,7 @@
       "effects": [],
       "state": "external-resource",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the eOSVersion enum and initOSVersion/getOSVersion for the legacy Windows-only path."
     },
     {
@@ -6781,7 +6781,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MFC CDocument for the legacy .pak viewer; Serialize reads the archive. No GTK replacement exists, so it retires."
     },
     {
@@ -6794,7 +6794,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CPakDoc, the legacy .pak document class."
     },
     {
@@ -6807,7 +6807,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MDI child frame for the legacy .pak viewer; creates its client views in OnCreateClient."
     },
     {
@@ -6820,7 +6820,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CPakFrame, the legacy .pak MDI child frame."
     },
     {
@@ -6833,7 +6833,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Tree view of the .pak directory entries in the legacy viewer; OnDraw and OnInitialUpdate."
     },
     {
@@ -6846,7 +6846,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CPakViewDirec, the legacy .pak directory tree view."
     },
     {
@@ -6859,7 +6859,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CPakViewFiles is a CListView whose OnDraw is empty and whose only content is the Name/Size/Type column setup in OnInitialUpdate."
     },
     {
@@ -6872,7 +6872,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CPakViewFiles, a CListView over CPakDoc with a Name/Size/Type column enum and no file data members."
     },
     {
@@ -7109,7 +7109,7 @@
       ],
       "state": "external-resource",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "resource.h is the MFC resource map of dialog, menu and string IDs (about 1,370 lines) and retires with the dialogs it names."
     },
     {
@@ -7483,7 +7483,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Startup CSplashWnd with a bitmap and MIDI playback that also writes a hamrtime.mid file; a startup-only MFC window."
     },
     {
@@ -7496,7 +7496,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CSplashWnd with static Show/Hide/Enable entry points and a PreTranslateAppMessage hook."
     },
     {
@@ -7841,7 +7841,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CTitleWnd is a custom owner-drawn view title bar with mouse hit handling, a font and a popup menu."
     },
     {
@@ -7854,7 +7854,7 @@
       ],
       "state": "per-view-state",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CTitleWnd with CreateTitleWnd, SetTitle, OnMouseButton and static normal/active fonts."
     },
     {
@@ -8051,7 +8051,7 @@
       ],
       "state": "external-resource",
       "factorization": "retire",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Re-defines the Win32 PostMessage/GetClassName/SendMessage macros after VGUI undefs them, and no file in the tree includes it, so it can be deleted."
     },
     {
