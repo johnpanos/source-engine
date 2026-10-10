@@ -1047,7 +1047,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CDispShoreManager builds shoreline segments from displacement and face data (Shoreline_t::AddSegment) and has Draw/DebugDraw through CRender3D; the geometry is derived and can be recomputed."
     },
     {
@@ -1060,7 +1060,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares ShoreFaceData_t, Shoreline_t and the IDispShoreManager interface over MapHelper/MapFace/MapOverlay types, so the shoreline geometry types can be extracted once those types are split."
     },
     {
@@ -1545,7 +1545,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CToolAxisHandle, an axis drag handle over CMapView2D/3D with CRender2D/3D references and no MFC message map or document write."
     },
     {
@@ -1558,7 +1558,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CBaseTool::Init stores a CMapDoc pointer and Activate calls UpdateAllViews, so the base tool is a view-refresh shim over MFC document types."
     },
     {
@@ -1586,7 +1586,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolBlock derives from Box3D and exposes CMapView2D/3D entry points; the header holds no document writes or window code."
     },
     {
@@ -1645,7 +1645,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CClipGroup and Clipper3D declare the clip-plane state machine and a DrawBrushExtents(CRender2D*) draw entry over CMapSolid pointers."
     },
     {
@@ -1673,7 +1673,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Cordon3D declares CChunkFile/CSaveInfo save and load hooks, so the cordon box it edits is persisted into the map and is document data."
     },
     {
@@ -1701,7 +1701,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolDecal is a base-tool declaration over CMapView2D/3D with no MFC message map or document write in the header."
     },
     {
@@ -1731,7 +1731,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolEntity declares CRender2D/CRender3D draw hooks over CMapView2D/3D and no document writes in the header."
     },
     {
@@ -1745,7 +1745,7 @@
       ],
       "state": "per-view-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The magnify tool changes zoom through pView->SetZoom, so the zoom state lives in the view, and it issues one MFC cursor call."
     },
     {
@@ -1758,7 +1758,7 @@
       ],
       "state": "per-view-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolMagnify is declared over CMapView2D entry points; the zoom factor is applied to the view rather than stored by the tool."
     },
     {
@@ -1785,7 +1785,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolManager header lists the tool classes and the tool-stack API; its only file-related declaration is the chunk load callback."
     },
     {
@@ -1813,7 +1813,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolMaterial is a base-tool declaration over CMapView2D/3D with no MFC message map or document write."
     },
     {
@@ -1843,7 +1843,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Morph3D declares IMesh and CRender2D/3D draw hooks over the map views for the morph handles."
     },
     {
@@ -1858,7 +1858,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The overlay tool adds the new overlay to the world with MarkUndoPosition and KeepNew, and its shoreline computation is pure geometry math."
     },
     {
@@ -1886,7 +1886,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The pick-angles tool computes an angle from a 3D view click, reports it through IPickAnglesTarget, and makes one MFC cursor call."
     },
     {
@@ -1899,7 +1899,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolPickAngles and IPickAnglesTarget are declared over CMapView3D with no MFC message map in the header."
     },
     {
@@ -1913,7 +1913,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The entity picker picks entities from the map views and reports selections to its target, with one MFC cursor call."
     },
     {
@@ -1926,7 +1926,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolPickEntity, SelectedEntity_t and IPickEntityTarget are declared over CMapView3D and CMapViewLogical with no document writes in the header."
     },
     {
@@ -1956,7 +1956,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolPointHandle declares CRender2D/CRender3D draw hooks over CMapView2D and no document writes in the header."
     },
     {
@@ -1986,7 +1986,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Selection3D declares selection over CMapView2D/3D and CMapWorld with CRender2D/3D draw hooks and no MFC message map."
     },
     {
@@ -2000,7 +2000,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The sphere tool changes the radius through MarkUndoPosition and Keep on the selection, and its geometry math is pure."
     },
     {
@@ -2013,7 +2013,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolSphere over CMapSphere with CMapView2D/3D entry points and no document writes in the header."
     },
     {
@@ -2055,7 +2055,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "activeitemlist.h is a header-only generic ActiveItemList template with no MFC or Windows types."
     },
     {
@@ -2370,7 +2370,7 @@
       ],
       "state": "per-view-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Axes2::SetAxes maps horizontal, vertical and third axes with inversion flags for orthographic views; it has no UI calls."
     },
     {
@@ -2383,7 +2383,7 @@
       ],
       "state": "per-view-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Axes2 is the base set of orthographic axis services used by the 2D view and its tools, with no native types."
     },
     {
@@ -2409,7 +2409,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Template BlockArray<T, block, max> is a generic block-allocated array with no document or UI types."
     },
     {
@@ -2448,7 +2448,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Winding helpers (NewWinding, ClipWinding, CopyWinding, RemoveDuplicateWindingPoints) with epsilon-based geometry and no UI calls."
     },
     {
@@ -2461,7 +2461,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the winding primitives and ON_PLANE/MIN_EDGE/ROUND_VERTEX epsilons used by brush operations."
     },
     {
@@ -2526,7 +2526,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "build_number() derives a build number from the __DATE__ string for the legacy About box; it does no I/O."
     },
     {
@@ -2539,7 +2539,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares int build_number(void), a build-identity helper for the product root."
     },
     {
@@ -3700,7 +3700,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Legacy arch generator: builds CMapSolid segments and arc points from float arrays with no document writes; belongs with hammer.app create ops."
     },
     {
@@ -3713,7 +3713,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CCullTreeNode is a bounding-box spatial index over CMapClass objects; it caches membership and is rebuilt from the document, so it is derived."
     },
     {
@@ -3726,7 +3726,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the CCullTreeNode bounding-box spatial index; a derived cache over legacy CMapClass objects, not authoritative data."
     },
     {
@@ -3807,7 +3807,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CEditDispMgr and CWorldEditDispMgr track displacement handles, world membership and select sets, and create or destroy CMapDisp objects; the registry is editing-session state."
     },
     {
@@ -3820,7 +3820,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the IEditDispMgr and IWorldEditDispMgr interfaces for displacement create, destroy, world and select sets; the registry moves to hammer.app."
     },
     {
@@ -3863,7 +3863,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CDispPaintMgr applies brush strokes (add, equal, smooth, one-over-r) to displacement vertices with undo capture; a geometry edit owned by hammer.app displacement ops."
     },
     {
@@ -3877,7 +3877,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CDispPaintMgr and SpatialPaintData_t: brush paint modes and sphere overlap tests over displacement data."
     },
     {
@@ -3891,7 +3891,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Displacement edge, corner and T-junction sewing (Build, Resolve, Destroy) over face lists; mutates displacement vertices; a hammer.app displacement operation."
     },
     {
@@ -3904,7 +3904,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares FaceListSewEdges, the entry point that sews displacement edges across a face list."
     },
     {
@@ -3918,7 +3918,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CEditDispSubdivMesh runs Catmull-Clark subdivision on displacement meshes, adding and reading CMapDisp data; pure mesh math with document writes at the ends."
     },
     {
@@ -3931,7 +3931,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares IEditDispSubdivMesh (Init, AddDispTo, GetDispFrom, DoCatmullClarkSubdivision) and its destroy helper."
     },
     {
@@ -4171,7 +4171,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CEntityConnection holds a source/target output connection, relinks source entities and compares connections; it is authoritative entity I/O data."
     },
     {
@@ -4184,7 +4184,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CEntityConnection (source and target names, output, delay and fire-count) and CompareConnection; the scene owns this entity I/O model."
     },
     {
@@ -4249,7 +4249,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the 3D object error list (Add3dError, Enum3dErrors); plain data and functions, no UI or file access."
     },
     {
@@ -4276,7 +4276,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MFC displacement property page (CFaceEditDispPage) that reads and writes displacement controls and calls the displacement manager with undo markers."
     },
     {
@@ -4289,7 +4289,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the MFC CPropertyPage for displacement editing and its control message handlers."
     },
     {
@@ -4380,7 +4380,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CGamePalette reads a palette file through std::ifstream in binary mode."
     },
     {
@@ -4393,7 +4393,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CGamePalette, a palette loader class with no UI dependency."
     },
     {
@@ -4407,7 +4407,7 @@
       ],
       "state": "per-view-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CGizmo draws axis, scale and rotate handles through CRender3D and dynamic mesh buffers and registers render hit targets."
     },
     {
@@ -4420,7 +4420,7 @@
       ],
       "state": "per-view-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CGizmo (a CMapAtom) with its handle state, axis length and position setters, and the Render entry point."
     },
     {
@@ -4723,7 +4723,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Pure editor math: rotation and axis-angle matrices, box normalization and intersection, plane and polygon helpers; no document or UI state."
     },
     {
@@ -4736,7 +4736,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the editor math helpers (matrices, box tests, point and face utilities) over mathlib types."
     },
     {
@@ -5037,7 +5037,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Builds a prefab library file by scanning a directory for RMF and VMF prefabs and loading each with prefab caching disabled."
     },
     {
@@ -5273,7 +5273,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Only defines the COORD_NOTINIT sentinel and includes WorldSize.h; no state or behaviour."
     },
     {
@@ -5383,7 +5383,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapFrustum rebuilds spotlight cone faces (BuildFrustumFaces, RenderUnlit) from entity keys, a derived helper for the viewport."
     },
     {
@@ -5396,7 +5396,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapFrustum header declares Render3D and ShouldRenderLast for the spotlight frustum helper over CMapHelper."
     },
     {
@@ -5436,7 +5436,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapHelper::PrepareSelection decides which helper object a selection mode picks, so it is selection policy."
     },
     {
@@ -5476,7 +5476,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapInstance resolves instance file paths and opens the instanced map through APP()->OpenDocumentFile, which reads an external document."
     },
     {
@@ -5489,7 +5489,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapInstance header declares path resolution, the instanced CMapDoc accessor and Render2D/Render3D over CMapHelper."
     },
     {
@@ -5503,7 +5503,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapKeyFrame computes bounds, copy/clone and quaternion angles and draws through Render3D for the animator path."
     },
     {
@@ -5516,7 +5516,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapKeyFrame header declares the keyframe helper over CMapHelper with Render3D and clone hooks."
     },
     {
@@ -5529,7 +5529,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapLight is a light helper whose creation, copy, selection and key changes follow entity keyvalues."
     },
     {
@@ -5542,7 +5542,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapLight header declares the light helper over CMapHelper with copy, PrepareSelection and OnParentKeyChanged."
     },
     {
@@ -5555,7 +5555,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapLightCone rebuilds the spotlight cone zones and per-face colour and alpha (BuildCone) as a viewport helper."
     },
     {
@@ -5568,7 +5568,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapLightCone header declares the cone helper with Render3D and ShouldRenderLast over CMapHelper."
     },
     {
@@ -5581,7 +5581,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapLine draws its helper line with DrawLine in Render2D and a CMeshBuilder/IMesh path in Render3D."
     },
     {
@@ -5594,7 +5594,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapLine header declares Render3D over CMapHelper for the line helper."
     },
     {
@@ -5676,7 +5676,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapPath header declares path node and path classes; its VMF load/save declarations are commented out and the header does not run file I/O."
     },
     {
@@ -5690,7 +5690,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapPlayerHullHandle is a draggable player-hull handle created from helper info, drawn with Render2D/Render3D and used for interactive edits."
     },
     {
@@ -5703,7 +5703,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapPlayerHullHandle header declares the handle over CMapHelper with Render2D/Render3D and friend access to CMapAxisHandle."
     },
     {
@@ -5716,7 +5716,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapPoint stores an origin vector with Get/SetOrigin accessors."
     },
     {
@@ -5729,7 +5729,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapPoint header declares a CMapAtom subclass holding m_Origin with Get/SetOrigin virtuals."
     },
     {
@@ -5743,7 +5743,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapPointHandle is a draggable point handle that draws its line to the parent and is used by ToolPointHandle for interactive edits."
     },
     {
@@ -5756,7 +5756,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapPointHandle header declares the handle over CMapHelper with friends CToolPointHandle and CMapAxisHandle."
     },
     {
@@ -5770,7 +5770,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapQuadBounds computes the four corner positions of a quad helper and draws it through the Render3D mesh path."
     },
     {
@@ -5783,7 +5783,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapQuadBounds header declares the quad-bounds helper with four corner vectors over CMapHelper."
     },
     {
@@ -6154,7 +6154,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMaterialProxyFactory resolves material proxies by name from the client module's factory via Sys_GetFactoryThis."
     },
     {
@@ -6167,7 +6167,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "GetHammerMaterialProxyFactory is the single accessor that returns the proxy factory for the material system."
     },
     {
@@ -6245,7 +6245,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CModelFactory::CreateModel maps a ModelType_t and model data string to a CMapClass object."
     },
     {
@@ -6258,7 +6258,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CModelFactory declares the CreateModel factory method over CMapClass and ModelType_t."
     },
     {
@@ -6656,7 +6656,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "COptionsConfigs loads and saves game configurations as KeyValues and registry keys; a persistence owner outside any document."
     },
     {
@@ -6667,7 +6667,7 @@
       "effects": [],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the global COptions settings struct (general, 2D/3D view, textures, colors, configs) as an app-level settings model."
     },
     {
@@ -6912,7 +6912,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CPrefab3D::Create copies the prefab's world children into a new object or CMapGroup and CreateAtPoint moves it; hammer.formats InstantiatePrefab already does this headlessly."
     },
     {
@@ -6925,7 +6925,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CPrefab3D over CPrefab with its CMapWorld storage, the Create and CreateAtPoint family, and the RMF and VMF prefab subclasses."
     },
     {
@@ -6938,7 +6938,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CreatePrefabLibrary chooses a VMF or RMF library by file extension and loads it, with static PrefabList and MRU caches and the Worldcraft library header."
     },
     {
@@ -6951,7 +6951,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CPrefab and CPrefabLibrary with the static PrefabList and MRU caches, the library type enum and the RMF/VMF file header structs."
     },
     {
@@ -7254,7 +7254,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSaveInfo's ShouldSaveObject is a pure rule over CMapClass that decides whether a save writes an object (visibles-only mode)."
     },
     {
@@ -7267,7 +7267,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CSaveInfo with SetVisiblesOnly and ShouldSaveObject over CMapClass."
     },
     {
@@ -7456,7 +7456,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Builds raw, gamesound and scene sound lists by scanning the game file system and plays previews through the Win32 PlaySound API."
     },
     {
@@ -7469,7 +7469,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CSoundSystem with SoundType_t lists, StringCache_t and the game-sound file parsing methods."
     },
     {
@@ -7523,7 +7523,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CSpriteModel with orientation type constants, render mode and GetSpriteAxes billboard math."
     },
     {
@@ -7536,7 +7536,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSSolid edits a solid's handles, edges and faces (GetEdgeIndex, CalcEdgeCenter, CheckFace) with no UI calls."
     },
     {
@@ -7549,7 +7549,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares C2DHandle, CSSFace, CSSEdge and CSSolid with MAX_FACES/MAX_EDGES limits for the sculpted-solid editor."
     },
     {
@@ -7589,7 +7589,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "StockSolid and StockBlock/StockWedge hold field data, Serialize to std::fstream and build CMapSolid geometry from a box."
     },
     {
@@ -7603,7 +7603,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares StockSolid with field get/set, origin and centre offset, and Serialize(std::fstream&) for stock solid data."
     },
     {
@@ -7669,7 +7669,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Catmull-Clark style subdivision of CSubdivPoint, CSubdivEdge and CSubdivQuad normals and points, with no UI calls."
     },
     {
@@ -7682,7 +7682,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CSubdivPoint, CSubdivEdge and CSubdivQuad with CalcNewVertexPoint/CalcNewEdgePoint for subdivision surfaces."
     },
     {
@@ -7722,7 +7722,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CTexture loads image data (RGB/RGBA) from texture files and draws its name and icon into a CDC for the browser."
     },
     {
@@ -7735,7 +7735,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CTexture implementing IEditorTexture with Allocate, Load, Draw and its image data pointer."
     },
     {
@@ -7868,7 +7868,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Tool3D base class runs translation drags in 3D views (StartTranslation, UpdateTranslation, FinishTranslation) with GetKeyState snapping."
     },
     {
@@ -7881,7 +7881,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares Tool3D (derived from CBaseTool) with HitRect, ProjectTranslation and SetTransformationPlane."
     },
     {
@@ -7894,7 +7894,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Small header of tool definitions shared by the tool classes."
     },
     {
@@ -7908,7 +7908,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolDisplace handles mouse down/up/move in 3D views and edits displacement vertices via GetDisp and the world edit disp manager."
     },
     {
@@ -7921,7 +7921,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolDisplace is a CBaseTool (MFC view input) that paints, selects and tags CMapDisp data through CMapView3D, so it is interaction that mutates displacements."
     },
     {
@@ -7934,7 +7934,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolPickFace::OnLMouseDown3D/OnLMouseUp3D pick and toggle faces through SelectFace/CycleSelectFace against the 3D view."
     },
     {
@@ -7947,7 +7947,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolPickFace is a CBaseTool that picks faces in CMapView3D and reports them via IPickFaceTarget, with selection state held in the tool."
     },
     {
@@ -7960,7 +7960,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "OnLMouseDown2D marks an undo position and Keep()s the swept hull, then SetEndPoint moves it during mouse move, all through MFC views and History."
     },
     {
@@ -7973,7 +7973,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolSweptPlayerHull is a CBaseTool that drags swept-hull endpoints in a 2D view via point handles."
     },
     {
@@ -8090,7 +8090,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CVisGroup::LoadVMF and LoadVisGroupsCallback restore visgroups into CMapDoc, and MoveUp reorders the list, which the headless visgroup ops now own."
     },
     {
@@ -8103,7 +8103,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CVisGroup and CVisGroupList hold the visgroup tree and membership of CMapDoc, which the headless hammer.app visgroup ops and hammer.formats loader already cover."
     },
     {
