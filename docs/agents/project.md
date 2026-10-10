@@ -29,7 +29,7 @@ In order; a milestone closes only when its exit criterion is measured.
 | ID | Milestone | Exit criterion | Status |
 | --- | --- | --- | --- |
 | M0 | Reset | Adapters cut to three; AGENTS.md split; no orphaned work in the tree | finishing (adapter deletion, fb) |
-| M1 | Measured baseline | Frame floor and sweep at HEAD on the 8060S and 3070, with per-thread CPU and per-pass GPU time, recorded below as the budget table | not started |
+| M1 | Measured baseline | Frame floor and resolution sweep at HEAD on bazzite (RTX 3070, fullscreen 2560×1440 plus the sweep points), with per-thread CPU and per-pass GPU time, recorded below as the budget table | assigned (f1) |
 | M2 | Scene authority (R89) | `render-scene-bypass` 0, in slices: S1 static props, S2 BSP world, S3 posed models (feeds GPU skinning), S4 view and frame terms, S5 baked lighting environment, S6 dynamic draws | S1 next |
 | M3 | Frame off the main thread (R94, K9) | Render recording off the main thread, scaling with workers; `legacy-job-api` falling every week | not started |
 | M4 | Lighting complete in game (R96, R90, R65/R66) | Every declared term matched game/lab | partial |
@@ -42,7 +42,7 @@ not from guesses.
 
 ## Budget table (filled by M1)
 
-Per-frame milliseconds at 1080p High on the 8060S, intro4 relit, p50 / p99.
+Per-frame milliseconds on bazzite (RTX 3070), High, intro4 relit, p50 / p99, at 2560×1440 and each sweep point.
 
 | Owner | CPU (main) | CPU (render) | GPU | Target |
 | --- | --- | --- | --- | --- |
@@ -56,7 +56,7 @@ One active task per session. Change a row only through the project manager.
 | --- | --- | --- | --- |
 | source-engine-17 | Project management | Reviews, assignments, orphan cleanup, this page | `docs/agents/*` |
 | source-engine-fb | Render core | M0 adapter deletion, then M2 S1 (static props through `render.scene`) | render/, materialsystem/shaderapicore, deletion files |
-| source-engine-f1 | Performance | M1 baseline on the 8060S (bazzite) and 3070 | its progress entry only |
+| source-engine-f1 | Performance | M1 baseline on bazzite (RTX 3070) | its progress entry only |
 | source-engine-7b | Jobs | M3: first `legacy-job-api` cohort onto the job system | jobsystem/, the cohort's call sites |
 | source-engine-3a | Performance (bisect) | Performance bisect in detached worktrees | `../source-engine-bisect-*` |
 
@@ -67,7 +67,7 @@ One active task per session. Change a row only through the project manager.
 | The frame-time gap (D1) is 2–4.5× and has no owner today | The deliverable fails at its hardest gate | M1 now; every render slice records its frame cost |
 | Main-thread and render-thread CPU (p50 9–14 ms render thread at 1080p) | CPU-bound frames even with a fast GPU | M2 S3 (GPU skinning), M3 |
 | Shared working tree with several sessions | Lost or tangled work | File ownership above; `tools/agent/commit_paths.py`; orphan review every 30 min |
-| Hardware access (bazzite, 3070, Tab S8) | Gates can't be measured | Measurement sessions book the device; unavailable runs are recorded, not skipped |
+| Hardware access (bazzite is the only benchmark box; Tab S8) | Gates can't be measured | Measurement sessions book the device; unavailable runs are recorded, not skipped |
 | Mod shaders no longer render (stdshader passes removed) | Compatibility claim narrower than RFC 0001 says | User decision needed |
 
 ## Decisions needed from the user
@@ -77,3 +77,8 @@ One active task per session. Change a row only through the project manager.
 2. Mod-shader compatibility: declare it unsupported, or keep a narrow
    bytecode path behind the frontend?
 3. Keep tvOS and the MSVC/Wine dedicated server as extra scope?
+4. D1's binding row (`linux-desktop-high-120`) names the Radeon 8060S, which
+   is the dev host, but benchmarks may not run on the host (user direction,
+   2026-10-06; they run on bazzite, an RTX 3070). Which machine certifies the
+   120 FPS floor: allow certification runs on the 8060S, or re-target the
+   row to bazzite?
