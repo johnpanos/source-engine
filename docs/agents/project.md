@@ -18,7 +18,7 @@ Linux, Android and Apple. It is done when every line below holds, measured:
 | D3 | Source 2 lighting parity: game frames match `render_lab` frames of the same scenes, FSR on and off | game/lab captures, visual review | partial (R95/R96) |
 | D4 | The game draws from `render.scene` | CAP012 `render-scene-bypass` = 0 | 345 → 340 in S1's working tree (2026-10-10 05:09) |
 | D5 | Legacy stream retired; three device adapters (Vulkan, GL/GLES, null) | K9 ratchet; CAP011 rule 10 | 3 adapters (2026-10-10); legacy stream open |
-| D6 | One task API; render off the main thread; recording scales with workers | `jobs_ratchet.py` `legacy-job-api` = 0; K9 checks | 279 sites |
+| D6 | One task API; render off the main thread; recording scales with workers | `jobs_ratchet.py` `legacy-job-api` = 0; K9 checks | 279 sites (2026-10-10, from 297) |
 | D7 | Android arm64 device lifecycle and package; Apple builds and runs | R29 / R36 device runs | builds only |
 | D8 | Hammer always builds and plays a map | `corpus.hammer.loop`, `corpus.hammer.ui` | passing |
 
@@ -94,7 +94,7 @@ One active task per session. Change a row only through the project manager.
 | source-engine-17 | Project management | Reviews, assignments, orphan cleanup, this page | `docs/agents/*` |
 | source-engine-fb | Render core | M2 S1 (static props through `render.scene`, the user's goal for this session, mid-flight), then M1b fixes in order (a), (d), (b), (c) | render/, materialsystem/shaderapicore, deletion files |
 | source-engine-f1 | Platforms | M7: lifecycle lane and fake-adb self-test landed (6204ca560, 13 seeded faults); **device run blocked: Tab S8 Ultra not reachable** | product/android, tools/quality/android_*, its progress entry |
-| source-engine-7b | Jobs | M3 slice 1: `engine/host_saverestore.cpp` (14 sites: the save thread and deferred writes) onto an injected blocking runner; oracle: byte-identical saves with `save_async` 1 and 0 | `engine/host_saverestore.cpp`, the root's runner wiring |
+| source-engine-7b | Jobs | M3 slice 1 done (67782a798: save/restore off the legacy pool; `legacy-job-api` 297 → 279). Now: deterministic save files (uninitialised padding), then the HEAD byte comparison | `engine/saverestore*`, `engine/host_saverestore.*`, `tools/quality/save_async_oracle.py` |
 | source-engine-3a | Performance | M1 done (043566cd6, spikes f96005255); measures each M1b fix on bazzite (sole user) | `../source-engine-bisect-{pre,head}`, its progress entry |
 
 ## Risks
