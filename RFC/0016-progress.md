@@ -13801,3 +13801,68 @@ they served. Commits `99cb37a04`, `bf7b5d6bf`, `0010233b7`, `862cb1d26`,
   keeps the code.
 - Render-graph, material and Hammer suites that need `render_lab` or Steam
   content were not run (see above).
+
+## Where the R91 cutover's 9.1 ms goes (M1 part 1, 2026-10-10, source-engine-3a)
+
+Measurement only; no engine change. Builds: `615223388` (the last commit on
+`shaderapivulkan`) and `d4aec0e0a` (HEAD when measured, core shader API),
+built with `./kiln build portal2` in detached worktrees
+`../source-engine-bisect-{pre,head}` and packaged into private runtimes with
+`sp_a1_intro4_relit` mounted. Workload: `quality/fixtures/demos/sp_a1_intro4_relit.dem`
+under `+timedemoquit` on bazzite (RTX 3070, Ryzen 7 3700X), fullscreen
+2560×1440, `+mat_vsync 0`, the kiln profile's own arguments (both pass
+`+mat_queue_mode 2 +r_core_world 1`). Builds interleaved, first run of each
+discarded as cold.
+
+| Build | Frame (timedemo mean) | Runs |
+| --- | --- | --- |
+| `615223388` | 13.8 ms (72.3 fps) | 5 within 1 % |
+| `154155845` (the deletion) | crashes every run (SIGSEGV; `free(): invalid size`), the defects fixed in `fbc3dcaf7` | 2 |
+| `d4aec0e0a` | 22.9 ms (43.6 fps) | 5 within 2 % |
+
+GPU-bound share (`nvidia-smi` utilization at 4 Hz over the playback):
+`615223388` 65 % mean, `d4aec0e0a` 31 %. HEAD is CPU-bound.
+
+Threads (`perf record -F 249 --call-graph dwarf,8192`, 20 s of playback, ms
+per frame scaled to the busiest thread):
+
+- `615223388`: the main thread 9.0 ms and `MatQueue0` 13.8 ms run in
+  parallel (queued material system). `MatQueue0` is the frame: present 6.2,
+  device submit 4.8, world batch recording 3.4.
+- `d4aec0e0a`: **no `MatQueue0` thread.** The main thread does everything,
+  22.9 ms. The core shader API registers `supportsQueuedRendering = false`
+  (`materialsystem/shaderapicore/shaderapicore.cpp:2758`), so
+  `CMaterialSystem` forces `MATERIAL_SINGLE_THREADED` whatever
+  `mat_queue_mode` says (`cmaterialsystem.cpp`, the
+  `m_SelectedShaderProvider.supportsQueuedRendering` test). The profile's
+  `+mat_queue_mode 2` is silently ignored.
+
+Where HEAD's main thread goes (inclusive ms per 22.9 ms frame):
+
+| Cost | HEAD | `615223388` | What |
+| --- | --- | --- | --- |
+| Per-slot texture refill | 6.3 | 0 | `CFacadeCorePassSlots::MarkSlot` → `UploadTexture` → `corefacade::Texture::Upload`, from `QueueCore` on every mesh draw (render-to-texture shadows, early-Z portals, portal views), and from `CoreWorld::DrawView` |
+| Lightmap rebuild and upload | 6.5 | 0.08 | `CRender::EndUpdateLightmaps` → `R_BuildLightMap` → `CMatLightmaps::LockLightmap` → `CShaderAPIEmpty::TexLock`/`TexUnlock` → `TexSubImage2D`, every frame; the old build shows no `R_BuildLightMap` samples on any thread |
+| Studio model draws | 4.9 | 0.9 (render thread) | `R_StudioDrawPoints` through `CEmptyMesh::EmitSurfaceToCore` |
+| Portal early-Z and stencil views | 7.1 | 0.3 | includes texture refill and lightmap work above |
+| Job system (scheduling leaf frames) | ≤ 0.02 | ≤ 0.05 | `e3ed8cd95` (J8) costs nothing measurable; no revert build was needed |
+
+Core GPU passes (`cl_render_debug_gpu_timers`, timers on): the core world
+view is 4.7 ms on `615223388` and 0.46 ms on HEAD, so the GPU is not where
+the time went; HEAD's core world draws little (the parity gap recorded
+earlier the same day).
+
+Attribution of the +9.1 ms: losing the queued render thread serializes about
+9 ms of main-thread work in front of the render work, and the core shader API
+adds about 12.8 ms of per-frame CPU texture traffic (6.3 per-slot refill, 6.5
+lightmaps) that the old backend did not do; HEAD's remaining render work is
+smaller than the old backend's, which is why the net is +9.1 rather than
++22. Fixes belong to the core shader API's owner: queued-rendering support
+(or moving its work off the main thread), uploading imported textures only
+when their contents change, and keeping lightmap pages off the per-frame
+lock/upload path. Not measured here: per-frame p50/p99 on HEAD (no frame
+stats sink on the core shader API; MangoHud wrote no log), and HEAD after
+`8d665920e`'s adapter deletion.
+
+Reproduce: `bazzite:~/bisect/run_prof.sh stats|perf N` (results under
+`~/bisect/res/`), `run_ab.sh N` for the timedemo A/B.
