@@ -62,7 +62,7 @@ def load_temporal(prefix):
 def boot(args, name, out):
     flavor = "release" if name == "release" else "dev"
     command = [sys.executable, str(views.PORTAL_BOOT), "--profile", args.profile, "--flavor", flavor,
-               "--out", str(out), "--headless", "--map", args.map, "--renderer", "native-vulkan", "--physics", "vphysics_box3d",
+               "--out", str(out), "--headless", "--map", args.map, "--renderer", "core", "--physics", "vphysics_box3d",
                "--require-vulkan", "--width", str(views.WIDTH), "--height", str(views.HEIGHT),
                "--capture-wait", str(views.capture_frames()), "--timeout", str(args.timeout),
                ]

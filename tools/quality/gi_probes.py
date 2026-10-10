@@ -365,7 +365,7 @@ def cmd_malformed(args):
         result = subprocess.run(
             [sys.executable, HERE / "portal_boot.py", *boot_target(profile),
              "--content-root", directory / "content",
-             "--renderer", "native-vulkan", "--headless", "--map", source.stem,
+             "--renderer", "core", "--headless", "--map", source.stem,
              "--console-command", "r_drawvgui 0; r_worldmesh_draw 2", "--out", boot],
             cwd=ROOT, capture_output=True, text=True)
         evidence = json.loads((boot / "evidence.json").read_text()) \

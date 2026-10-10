@@ -294,7 +294,7 @@ def finish(out, record):
     return record
 
 
-def boot(record, out, profile="portal", flavor="dev", renderer="native-vulkan", timeout=240):
+def boot(record, out, profile="portal", flavor="dev", renderer="core", timeout=240):
     """Boot a kiln profile headless on the built map (portal_boot.py --profile)."""
     boot_out = out / "boot"
     command = [sys.executable, str(HERE / "portal_boot.py"), "--profile", profile,

@@ -122,7 +122,7 @@ def capture(args, fixture_name):
         stats = boot / "runtime/portal2/legacy-stream.jsonl"
         command = [sys.executable, str(lf.ROOT / "tools/quality/portal_boot.py"),
                    *sepipe_loader.boot_arguments(args), "--content-root", str(content),
-                   "--renderer", "native-vulkan", "--headless", "--view-oracle",
+                   "--renderer", "core", "--headless", "--view-oracle",
                    "--startup-command", "r_core_world 1",
                    "--engine-arg=-vkframestats",
                    "--engine-arg=portal2/legacy-stream.jsonl",

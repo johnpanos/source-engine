@@ -134,7 +134,7 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--physics", action="append", choices=PHYSICS,
                         help="physics provider (repeatable; default: both)")
-    parser.add_argument("--renderer", default="native-vulkan")
+    parser.add_argument("--renderer", default="core")
     parser.add_argument("--timeout", type=float, default=180)
     args = parser.parse_args(argv)
 

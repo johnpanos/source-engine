@@ -57,7 +57,7 @@ def main():
                                   "wait 10"]
     command = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
                *sepipe_loader.boot_arguments(args), "--map", name,
-               "--content-root", str(content), "--renderer", "native-vulkan", "--require-vulkan",
+               "--content-root", str(content), "--renderer", "core", "--require-vulkan",
                "--require-sdl3", "--headless", "--width", "640", "--height", "480",
                "--out", str(out / "capture"), "--capture-wait", "900", "--timeout", "180",
                "--startup-command", "r_core_world 1"]

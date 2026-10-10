@@ -277,7 +277,7 @@ def run(scenario, runtime, out, sandbox, flavor="dev"):
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("DISPLAY", None)
     arguments = ["-game", str(game), "-windowed", "-w", "1024", "-h", "640",
-               "-renderer", "native-vulkan", "-physics", "vphysics_box3d", "-multirun",
+               "-renderer", "core", "-physics", "vphysics_box3d", "-multirun",
                "-novid", "-insecure", "-condebug", "-dev", "+developer", "2", "+sv_cheats", "1",
                "+volume", "0", "+mat_vsync", "0", "+map", MAP] + command_line
     code, timed_out, _, error = sepipe_loader.run_test(

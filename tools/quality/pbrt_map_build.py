@@ -1597,14 +1597,14 @@ class Pipeline:
                       lambda: self.run("boot", [sys.executable, HERE / "portal_boot.py",
                                                 *self.boot_target(),
                                                 "--content-root", p["content"],
-                                                "--renderer", "native-vulkan", "--headless",
+                                                "--renderer", "core", "--headless",
                                                 "--map", self.map, "--console-command",
                                                 "r_worldmesh_draw 2", "--out", p["boot"]]))
         runtime_gate = self.runtime_gate
         if self.boot and reference:
             commands, _ = reference_compare.camera_commands(self.scene)
             boot_args = [*self.boot_target(), "--content-root", p["content"],
-                         "--renderer", "native-vulkan", "--headless", "--map", self.map,
+                         "--renderer", "core", "--headless", "--map", self.map,
                          "--out", p["camera_boot"]]
             for command in commands:
                 boot_args += ["--console-command", command]
@@ -1636,7 +1636,7 @@ class Pipeline:
                       ["portal_boot.py", "pbrt_traversal.py"], [p["traversal_boot"]],
                       lambda: self.run("traversal-boot", [
                           sys.executable, HERE / "portal_boot.py", *self.boot_target(),
-                          "--content-root", p["content"], "--renderer", "native-vulkan",
+                          "--content-root", p["content"], "--renderer", "core",
                           "--headless", "--map", self.map, "--console-command",
                           probe_commands[0], "--out", p["traversal_boot"]]))
             self.step("traversal", [p["traversal_boot"] / "evidence.json", receipt_path], {},

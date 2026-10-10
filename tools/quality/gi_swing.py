@@ -299,7 +299,7 @@ def cost(args):
     frames = WARM_FRAMES + CHANGE_FRAMES + 5 * (COST_PHASE_FRAMES + 30) + 150 + 60
     run = [sys.executable, HERE / "portal_boot.py", *pbrt_map_toolchain.boot_target(toolchain, args),
            "--content-root", map_build / "content",
-           "--renderer", "native-vulkan", "--headless", "--map", "gi_swing",
+           "--renderer", "core", "--headless", "--map", "gi_swing",
            "--width", "1920", "--height", "1080",
            "--capture-wait", str(gi_runtime.PLACEMENT_FRAMES + frames),
            "--engine-arg=-vkframestats", "--engine-arg=%s" % stats_name,

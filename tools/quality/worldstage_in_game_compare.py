@@ -39,7 +39,7 @@ def compare(baseline_bsp, preview_bsp, baseline_evidence, preview_evidence):
     if a["map"] != b["map"] or a["executables"] != b["executables"]:
         raise ValueError("Portal map or executable differs between runs")
     if (a["command"][1:] != b["command"][1:] or
-            a["command"][1:3] != ["-renderer", "native-vulkan"]):
+            a["command"][1:3] != ["-renderer", "core"]):
         raise ValueError("native Vulkan launch settings differ between runs")
     for evidence, expected in ((a, before), (b, after)):
         map_path = "maps/" + evidence["map"] + ".bsp"

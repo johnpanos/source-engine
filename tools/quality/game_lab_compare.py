@@ -167,7 +167,7 @@ def compare(fixture_name, camera, lab_path, content_root, evidence_path, state=N
     scale = output_scale(evidence)
     command = evidence.get("command", [])
     if "-renderer" not in command or command[-1] == "-renderer" or \
-            command[command.index("-renderer") + 1] != "native-vulkan":
+            command[command.index("-renderer") + 1] != "core":
         raise ValueError("the product capture is not native Vulkan")
     screenshots = evidence.get("screenshots", [])
     oracles = evidence.get("view_oracle_captures", [])

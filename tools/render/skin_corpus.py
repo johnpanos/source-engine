@@ -105,7 +105,7 @@ def capture(args):
         env = dict(os.environ, SOURCE_SKIN_CAPTURE=str(out / (name + ".skcap")),
                    SOURCE_SKIN_CAPTURE_MESHES=str(args.meshes))
         command = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
-                   *sepipe_loader.boot_arguments(args), "--renderer", "native-vulkan", "--headless",
+                   *sepipe_loader.boot_arguments(args), "--renderer", "core", "--headless",
                    "--map", name, "--startup-command", "mat_softwareskin 1", "--out", str(out / ("boot-" + name))]
         result = subprocess.run(command, env=env, capture_output=True, text=True)
         ok = result.returncode == 0 and (out / (name + ".skcap")).exists()

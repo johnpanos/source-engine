@@ -329,7 +329,7 @@ def main(argv=None):
     run = sub.add_parser("run", help="boot spark_lab and judge its log")
     run.add_argument("--out", type=Path, required=True)
     sepipe_loader.add_arguments(run, "portal")
-    run.add_argument("--renderer", default="native-vulkan")
+    run.add_argument("--renderer", default="core")
     run.add_argument("--physics", default="vphysics_box3d")
     run.add_argument("--frames", type=int, default=None,
                      help="frames logged after the map settles (60 fps: 30 s, three cycles)")

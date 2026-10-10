@@ -207,7 +207,7 @@ def check(args):
     game = args.game
     frames = 200 + len(states(game)) * (30 + len(VIEWS) * (SETTLE + AFTER + 10))
     command = [sys.executable, str(HERE / "portal_boot.py"), *sepipe_loader.boot_arguments(args),
-               "--renderer", "native-vulkan", "--headless", "--map", NAME, "--width", "1280", "--height", "720",
+               "--renderer", "core", "--headless", "--map", NAME, "--width", "1280", "--height", "720",
                "--capture-wait", str(frames), "--startup-command", "sv_cheats 1",
                "--startup-command", "r_portal_dlights_report 1",
                # Fixed 15 ms frames, so each wait is game time the server

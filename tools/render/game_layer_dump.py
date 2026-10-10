@@ -239,7 +239,7 @@ def main():
     content = content_overlay(args.content_root.resolve(), out)
     command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
                "--content-root", str(content),
-               "--renderer", "native-vulkan", "--require-vulkan", "--headless",
+               "--renderer", "core", "--require-vulkan", "--headless",
                "--map", args.map, "--out", str(boot), "--timeout", str(args.timeout),
                "--capture-wait", str(120 + len(shots) * (args.settle + 8) + 80),
                "--startup-command", "sv_cheats 1",

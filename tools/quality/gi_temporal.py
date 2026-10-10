@@ -106,7 +106,7 @@ def capture_burst(args, producer, target):
               args.frames * (args.stride + SHOT_FRAMES) + 30)
     result = subprocess.run(
         [sys.executable, HERE / "portal_boot.py", *pbrt_map_toolchain.boot_target(toolchain, args),
-         "--content-root", map_build / "content", "--renderer", "native-vulkan", "--headless",
+         "--content-root", map_build / "content", "--renderer", "core", "--headless",
          "--map", manifest["map"], "--width", str(args.width), "--height", str(args.height),
          "--capture-wait", str(frames)] +
         [item for command in aliases + [line] for item in ("--console-command", command)] +

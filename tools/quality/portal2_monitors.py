@@ -208,7 +208,7 @@ def boot(args, scenario, facts, control, out):
     line = console_line(scenario, facts, control)
     command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
                "--out", str(out), "--headless", "--map", scenario["map"],
-               "--renderer", "native-vulkan", "--require-vulkan", "--physics", "vphysics_box3d",
+               "--renderer", "core", "--require-vulkan", "--physics", "vphysics_box3d",
                "--width", str(WIDTH), "--height", str(HEIGHT), "--capture-wait", "1400",
                "--timeout", str(args.timeout), "--console-command", line]
     for startup in STARTUP + list((control or {}).get("startup", [])):

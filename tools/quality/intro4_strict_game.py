@@ -45,7 +45,7 @@ def main():
         boot = [sys.executable, str(root / 'tools/quality/portal_boot.py'),
                 *sepipe_loader.boot_arguments(args),
                 '--out', str(capture.resolve()),
-                '--renderer', 'native-vulkan', '--require-vulkan',
+                '--renderer', "core", '--require-vulkan',
                 '--map', 'sp_a1_intro4_relit', '--timeout', str(args.timeout),
                 '--map-after-start',
                 '--capture-wait', '120', '--allow-user-display', '--no-mouse',

@@ -155,7 +155,7 @@ def judge_filter(counts, total):
 def boot_desktop(args, out):
     """Portal on native Vulkan, headless; returns (console text, screenshots)."""
     command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
-               "--renderer", "native-vulkan", "--headless",
+               "--renderer", "core", "--headless",
                "--map", args.map, "--out", str(out / "boot"),
                "--capture-wait", str(len(SHOTS) * 60 + 200), "--timeout", "600",
                "--startup-command", "sv_cheats 1", "--startup-command", "r_core_world 1",

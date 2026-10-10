@@ -69,7 +69,7 @@ def run(args):
                  "r_core_world_stats"]
     boot = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
             *sepipe_loader.boot_arguments(args), "--out", str(out),
-            "--renderer", "native-vulkan", "--require-vulkan",
+            "--renderer", "core", "--require-vulkan",
             "--headless", "--map", args.map, "--timeout", str(args.timeout),
             "--capture-wait", "60", "--no-mouse", "--physics", "vphysics_box3d"]
     for setting in ("sv_cheats 1", "mat_queue_mode 2", "r_core_world 1",

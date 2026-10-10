@@ -321,7 +321,7 @@ def boot(args, workload, scenario, facts, path, control_name, out):
     game = scenario["game"]
     command = [sys.executable, str(PORTAL_BOOT), "--profile", game_profile(args, game),
                "--flavor", args.flavor, "--out", str(out), "--headless",
-               "--map", scenario["map"], "--renderer", "native-vulkan", "--require-vulkan",
+               "--map", scenario["map"], "--renderer", "core", "--require-vulkan",
                "--physics", "vphysics_box3d",
                "--width", str(workload["width"]), "--height", str(workload["height"]),
                "--capture-wait", str(capture_frames(workload, shots)),

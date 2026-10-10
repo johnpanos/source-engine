@@ -239,7 +239,7 @@ def compare_runtime(args):
     if boot.get("schema") != "portal-boot-evidence/v1" or boot.get("status") != "pass":
         raise ValueError("runtime boot did not pass")
     command = boot.get("command", [])
-    if "-renderer" not in command or command[command.index("-renderer") + 1] != "native-vulkan":
+    if "-renderer" not in command or command[command.index("-renderer") + 1] != "core":
         raise ValueError("runtime capture did not use native Vulkan")
     config = args.boot_evidence.parent / "runtime/portal/cfg/portal_boot_commands.cfg"
     if config.read_text().splitlines() != commands:

@@ -140,7 +140,7 @@ def console_lines(path):
 def boot(args, path, out):
     command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
                "--out", str(out),
-               "--headless", "--map", MAP, "--renderer", "native-vulkan", "--require-vulkan",
+               "--headless", "--map", MAP, "--renderer", "core", "--require-vulkan",
                "--physics", "vphysics_box3d", "--width", str(WIDTH), "--height", str(HEIGHT),
                "--capture-wait", "1500", "--timeout", str(args.timeout)]
     for line in console_lines(path):

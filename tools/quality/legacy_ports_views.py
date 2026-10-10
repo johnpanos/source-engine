@@ -83,7 +83,7 @@ def capture_frames():
 def boot(args, name, extra, out):
     command = [sys.executable, str(PORTAL_BOOT), *sepipe_loader.boot_arguments(args),
                "--out", str(out), "--headless", "--map", MAP,
-               "--renderer", "native-vulkan", "--physics", "vphysics_box3d", "--require-vulkan",
+               "--renderer", "core", "--physics", "vphysics_box3d", "--require-vulkan",
                "--width", str(WIDTH), "--height", str(HEIGHT),
                "--capture-wait", str(capture_frames()), "--timeout", str(args.timeout),
                "--console-command", capture_script()]

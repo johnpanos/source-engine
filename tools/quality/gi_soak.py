@@ -367,7 +367,7 @@ def main():
     command = [sys.executable, str(HERE / "portal_boot.py"),
                *pbrt_map_toolchain.boot_target(toolchain, args), "--content-root", str(content),
                "--renderer",
-               "native-vulkan", "--headless", "--map", args.maps[0], "--capture-wait",
+               "core", "--headless", "--map", args.maps[0], "--capture-wait",
                str(frames), "--timeout", str(args.minutes * 60 * 3 + 600), "--out", str(boot)]
     for line in aliases + [start]:
         command += ["--console-command", line]

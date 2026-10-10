@@ -630,7 +630,7 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--content-root", type=Path,
                         help="extra game content (maps/, materials/) installed into the stage")
-    parser.add_argument("--renderer", default="native-vulkan")
+    parser.add_argument("--renderer", default="core")
     parser.add_argument("--physics", default="vphysics")
     parser.add_argument("--passes", type=int, help="override the scenario's pass count")
     parser.add_argument("--width", type=int, default=1280)

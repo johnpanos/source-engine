@@ -204,7 +204,7 @@ def capture(fixture, content, cameras, mode, out, client, setup=(), warm=0):
     out.mkdir(parents=True, exist_ok=True)
     result = subprocess.run(
         [sys.executable, HERE / "portal_boot.py", *client,
-         "--content-root", content, "--renderer", "native-vulkan", "--headless",
+         "--content-root", content, "--renderer", "core", "--headless",
          "--map", manifest["map"], "--width", str(CAPTURE_WIDTH),
          "--height", str(CAPTURE_HEIGHT), "--capture-wait", str(frames)] +
         [item for command in aliases + [line] for item in ("--console-command", command)] +
@@ -472,7 +472,7 @@ def cmd_relight_cost(args):
                      ["wait %d" % RELIGHT_WARM_FRAMES, "rrc0"])
     frames = RELIGHT_WARM_FRAMES + len(marks) * (RELIGHT_COST_FRAMES + 30) + 60
     run = [sys.executable, HERE / "portal_boot.py", *client,
-           "--content-root", map_build / "content", "--renderer", "native-vulkan", "--headless",
+           "--content-root", map_build / "content", "--renderer", "core", "--headless",
            "--map", manifest["map"], "--width", "1920", "--height", "1080",
            "--capture-wait", str(gi_runtime.PLACEMENT_FRAMES + frames),
            "--engine-arg=-vkframestats", "--engine-arg=%s" % stats_name, "--out", out / "boot"]

@@ -169,7 +169,7 @@ def capture(map_name, side, content, args, out, poses=None):
     startup_commands, engine_args = side_settings(side, args)
     boot = out / (side + "-boot")
     command = [sys.executable, str(BOOT), *sepipe_loader.boot_arguments(args),
-               "--renderer", "native-vulkan", "--require-vulkan", "--require-wayland",
+               "--renderer", "core", "--require-vulkan", "--require-wayland",
                "--view-oracle", "--map", map_name, "--out", str(boot),
                "--width", str(args.width), "--height", str(args.height),
                "--timeout", str(args.timeout), "--capture-wait", "120",

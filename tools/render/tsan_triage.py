@@ -197,7 +197,7 @@ def run(args):
             "history_size=4", "second_deadlock_stack=1", "exitcode=0"])
         command = [sys.executable, str(ROOT / "tools" / "quality" / "portal_boot.py"),
                    *sepipe_loader.boot_arguments(args),
-                   "--renderer", "native-vulkan", "--headless", "--map", args.map,
+                   "--renderer", "core", "--headless", "--map", args.map,
                    "--timeout", str(args.timeout),
                    "--engine-arg=+mat_queue_mode", "--engine-arg=%d" % mode,
                    "--out", str(out / "boot")]

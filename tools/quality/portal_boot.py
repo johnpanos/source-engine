@@ -877,7 +877,7 @@ def main(argv=None):
                 trace_records = [json.loads(line) for line in trace.read_text().splitlines() if line]
             evidence["resize"] = inspect_resize(
                 log, screenshots, trace_records=trace_records, mode=args.resize_mode,
-                require_unscaled=args.renderer == "native-vulkan", sweep=RESIZE_SETTLE_SWEEP)
+                require_unscaled=args.renderer == "core", sweep=RESIZE_SETTLE_SWEEP)
             failures.extend(evidence["resize"]["failures"])
         if args.require_provider_catalog:
             evidence["provider_catalog"] = inspect_provider_catalog(log)

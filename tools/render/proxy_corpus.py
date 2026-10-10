@@ -576,7 +576,7 @@ def run_capture(game, out, profile=None, flavor="dev", timeout=900):
     commands = ["mat_proxy_capture proxy_capture_0.jsonl %s; wait 40; "
                 "mat_proxy_capture proxy_capture_1.jsonl %s" % (PATTERN, PATTERN)]
     argv = [sys.executable, str(ROOT / "tools" / "quality" / "portal_boot.py"),
-            "--profile", profile or game, "--flavor", flavor, "--map", MAPS[game], "--headless", "--renderer", "native-vulkan",
+            "--profile", profile or game, "--flavor", flavor, "--map", MAPS[game], "--headless", "--renderer", "core",
             "--material-root", str(content), "--out", str(boot), "--capture-wait", "120",
             "--timeout", str(timeout), "--startup-command", "host_framerate 0.015",
             "--engine-arg=-deterministicrender", "--engine-arg=-nosound"]

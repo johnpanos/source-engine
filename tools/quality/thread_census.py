@@ -137,7 +137,7 @@ def run(args, checks):
     out = Path(args.out)
     command = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"),
                "--profile", args.profile, "--flavor", args.flavor, "--out", str(out),
-               "--headless", "--renderer", "native-vulkan", "--map", args.map,
+               "--headless", "--renderer", "core", "--map", args.map,
                "--console-command", "thread_census"]
     if args.compute_workers is not None:
         command += ["--engine-arg=-compute_workers", "--engine-arg=%d" % args.compute_workers]

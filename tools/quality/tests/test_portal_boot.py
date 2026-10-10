@@ -106,10 +106,10 @@ class AcceptanceTests(unittest.TestCase):
                   "[NativeVulkan] IShaderAPI::SetMode: device 'GPU' up (back buffer 1024x768)\n")
         loaded = ("/usr/lib/libvulkan.so.1", "/usr/lib/libSDL3.so.0")
         self.assertEqual([], self.evaluate(log=native, requirements=("vulkan", "sdl3"),
-                                          loaded=loaded, renderer="native-vulkan"))
+                                          loaded=loaded, renderer="core"))
         self.assertTrue(self.evaluate(log=STATUS + "RFC0001 window: provider=sdl3 driver=wayland\n",
                                       requirements=("vulkan", "sdl3"), loaded=loaded,
-                                      renderer="native-vulkan"))
+                                      renderer="core"))
 
     def test_unrelated_library_paths_cannot_attest_native_providers(self):
         self.assertTrue(self.evaluate(log=STATUS + PROVIDERS,

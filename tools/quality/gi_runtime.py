@@ -195,7 +195,7 @@ def capture(args):
             MAP_CHANGE_FRAMES if boot_map else 0)
         result = subprocess.run(
             [sys.executable, HERE / "portal_boot.py", *boot_target,
-             "--content-root", content, "--renderer", "native-vulkan", "--headless",
+             "--content-root", content, "--renderer", "core", "--headless",
              "--map", boot_map or manifest["map"], "--width", str(CAPTURE_WIDTH),
              "--height", str(CAPTURE_HEIGHT),
              "--capture-wait", str(wait),

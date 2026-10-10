@@ -225,7 +225,7 @@ def capture(forwarded):
     boot = [sys.executable, str(ROOT / "tools/quality/portal_boot.py"), "--renderdoc",
             "--headless"] + ([] if release else ["--shader-debug"]) + forwarded
     if "--renderer" not in forwarded:
-        boot += ["--renderer", "native-vulkan"]
+        boot += ["--renderer", "core"]
     if "--profile" not in forwarded and "--runtime" not in forwarded:
         boot += ["--profile", "portal"]
     code = subprocess.run(boot, cwd=ROOT).returncode

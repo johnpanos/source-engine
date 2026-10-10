@@ -147,7 +147,7 @@ def main(argv=None):
     sepipe_loader.add_arguments(parser, "portal")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--map", default="testchmb_a_00")
-    parser.add_argument("--renderer", default="native-vulkan")
+    parser.add_argument("--renderer", default="core")
     parser.add_argument("--physics", default="vphysics")
     parser.add_argument("--load-timeout", type=float, default=180)
     parser.add_argument("--settle-frames", type=int, default=600,
