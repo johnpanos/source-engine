@@ -32,7 +32,7 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		return 0;
 	const bool cards = draw.kind == legacy::CoreMeshKind::kParticle && draw.cards;
 	if ( !draw.name || !draw.shader || !( draw.indices || draw.indices16 ) || !draw.indexCount ||
-	     ( cards ? !draw.cardCount : ( !draw.vertices && !draw.streams ) || !draw.vertexCount ) ||
+	     ( cards ? !draw.cardCount : !draw.vertices || !draw.vertexCount ) ||
 	     ( draw.variableCount && !draw.variables ) )
 		return 0;
 	// A static prop's baked vertex lighting reaches the core in its

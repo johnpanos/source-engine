@@ -34,10 +34,6 @@ def build(bld):
 	if not bld.env.DEDICATED:
 		audio_provider_sources = ['audio/device_selection.cpp', 'audio/media_providers.cpp']
 		audio_provider_defines = ['AUDIO_PROVIDER_NULL=1']
-		if bld.env.N3DS:
-			# The DSP's hardware voices (NDSP), ahead of SDL3's software stream.
-			audio_provider_sources += ['audio/snd_dev_n3ds.cpp']
-			audio_provider_defines += ['AUDIO_PROVIDER_N3DS=1']
 		if bld.env.SDL:
 			audio_provider_sources += ['audio/snd_dev_sdl.cpp']
 			audio_provider_defines += ['AUDIO_PROVIDER_SDL=1']
@@ -164,7 +160,6 @@ def build(bld):
 		'hltvserver.cpp',
 		'hltvtest.cpp',
 		'host.cpp',
-		'n3ds_platform_defaults.cpp',
 		'host_frame_graph.cpp',
 		'host_cmd.cpp',
 		'host_listmaps.cpp',

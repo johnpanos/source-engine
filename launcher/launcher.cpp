@@ -95,7 +95,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #include "render/composition/render_core.h"
 #include "render/composition/render_device_setting.h"
 #if defined( LINKED_CORE_SHADER_API )
-#include "render/device/pica/host_binding.h"
+#include "render/legacy/core_shader_backend.h"
 #endif
 #if defined( LINKED_CORE_PRESENTER )
 #include "../render/bridge/sdl3-vulkan/core_presenter.h"
@@ -900,7 +900,7 @@ bool CSourceAppSystemGroup::Create()
 	// default when -renderer is absent.
 	const render::LegacyShaderProvider *catalog[] = {
 #if defined( LINKED_CORE_SHADER_API )
-	    // The 3DS client's only drawing backend.
+	    // The clients' drawing backend: the core shader API.
 	    CoreShaderBackend_Describe(),
 #endif
 	    NullShaderBackend_Describe() };
@@ -1010,8 +1010,7 @@ bool CSourceAppSystemGroup::Create()
 		// system's render call queue (render/legacy/capabilities.h).
 		RenderCore_BindRenderCallQueue( m_pRenderCore, MaterialSystem_RenderCallQueueHost() );
 #if defined( LINKED_CORE_SHADER_API )
-		// RFC 0026: the 3DS has one device, the core's; the shader API
-		// borrows it.
+		// The render core owns the device; the shader API borrows it.
 		CoreShaderBackend_BindDevice( binding->device );
 		CoreShaderBackend_BindCorePassRecorder( binding->corePasses );
 #endif
@@ -1233,8 +1232,7 @@ void CSourceAppSystemGroup::Destroy()
 
 #if defined( LINKED_RENDER_CORE )
 	// Every system and module that borrowed the core is gone.
-#if defined( LINKED_CORE_SHADER_API ) &&                                                              \
-    ( defined( LINKED_WEBGPU_DEVICE ) || defined( LINKED_CORE_PRESENTER ) )
+#if defined( LINKED_CORE_PRESENTER )
 	CoreShaderBackend_BindPresenter( nullptr, nullptr );
 #endif
 #if defined( LINKED_CORE_SHADER_API )
@@ -1338,7 +1336,7 @@ bool GrabSourceMutex()
 
 #if defined( ANDROID ) || defined( OSX )
 	// The system runs one instance of an app; an Apple app also cannot lock
-	// files in /tmp, which is outside its sandbox, and the 3DS has no /tmp.
+	// files in /tmp, which is outside its sandbox.
 	return true;
 #elif defined (LINUX) || defined(PLATFORM_BSD)
 	/*

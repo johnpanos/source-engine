@@ -70,10 +70,6 @@ def build(bld):
 			'pme_posix.cpp',
 			'vcrmode_posix.cpp'
 		]
-		if bld.env.DEST_OS == '3ds':
-			source += ['../platform/n3ds/compat/n3ds_compat.cpp']
-		elif bld.env.DEST_OS == 'emscripten':
-			source += ['../platform/wasm/compat/wasm_compat.cpp']
 
 	includes = [
 		'.',
@@ -97,7 +93,7 @@ def build(bld):
 	# nothing from their archive joins the export list mods link against,
 	# std template instantiations included.
 	linkflags = []
-	if bld.env.DEST_OS not in ( 'win32', 'darwin', 'ios', '3ds' ) and not bld.env.APPLE:
+	if bld.env.DEST_OS not in ( 'win32', 'darwin', 'ios' ) and not bld.env.APPLE:
 		linkflags = [ '-Wl,--exclude-libs,libplatform_foundation_legacyabi.a' ]
 
 	bld.shlib(

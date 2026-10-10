@@ -293,23 +293,6 @@ def resolve_render_backend(conf):
 	# 'legacy' (no client renderer) remains only for server, test and tool
 	# products; a client that cannot build native Vulkan fails configure.
 	client = not (conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS)
-	if conf.env.DEST_OS == '3ds':
-		# The 3DS client: the PICA200 shader API on render.device.pica (RFC 0026).
-		if conf.options.RENDER_BACKEND not in ('auto', 'pica'):
-			conf.fatal('The 3DS client requires --render-backend=pica')
-		conf.options.RENDER_BACKEND = 'pica'
-		conf.msg('Render backend', conf.options.RENDER_BACKEND)
-		return
-	if conf.env.DEST_OS == 'emscripten':
-		# The browser client (RFC 0029): the render core draws everything
-		# through the core shader API (materialsystem/shaderapicore, as on the
-		# 3DS) on the core's WebGPU device; legacy links the null shader API.
-		if conf.options.RENDER_BACKEND not in ('auto', 'legacy', 'core'):
-			conf.fatal('The WebAssembly client requires --render-backend=core or legacy')
-		if conf.options.RENDER_BACKEND == 'auto':
-			conf.options.RENDER_BACKEND = 'core'
-		conf.msg('Render backend', conf.options.RENDER_BACKEND)
-		return
 	# The clients render through the core shader API (materialsystem/
 	# shaderapicore) on the render core's device (R91, 2026-10-08: the native
 	# Vulkan backend, shaderapivulkan, is deleted); 'native-vulkan' names the
@@ -332,7 +315,7 @@ def resolve_platform_provider(conf):
 	# provider actually linked; stored options keep 'auto' and resolve again.
 	if conf.options.PLATFORM_PROVIDER == 'auto':
 		vulkan = conf.options.RENDER_BACKEND in ('native-vulkan', 'core')
-		conf.options.PLATFORM_PROVIDER = 'sdl3' if vulkan or conf.env.APPLE or conf.env.DEST_OS in ('3ds', 'emscripten') else 'sdl2'
+		conf.options.PLATFORM_PROVIDER = 'sdl3' if vulkan or conf.env.APPLE else 'sdl2'
 	conf.msg('Window/input provider', conf.options.PLATFORM_PROVIDER)
 
 def define_platform(conf):
@@ -349,36 +332,16 @@ def define_platform(conf):
 	# device (the loader is checked below).
 	conf.env.CLIENT_VULKAN = conf.options.RENDER_BACKEND == 'core' and \
 		conf.env.DEST_OS in ('linux', 'android', 'darwin', 'ios')
-	conf.env.PICA = conf.options.RENDER_BACKEND == 'pica'
-	# The core shader API (materialsystem/shaderapicore): the 3DS's, and the
-	# same shader API on another render core device (core).
-	conf.env.CORE_SHADER_API = conf.options.RENDER_BACKEND in ('pica', 'core')
+	# The core shader API (materialsystem/shaderapicore) on the render core's device.
+	conf.env.CORE_SHADER_API = conf.options.RENDER_BACKEND == 'core'
 	if conf.options.RENDER_BACKEND == 'core':
 		conf.define('CORE_SHADER_API', 1)
-	if conf.env.DEST_OS == 'emscripten':
-		if conf.options.TOOLS:
-			conf.fatal('The WebAssembly target builds the client, dedicated and test products')
-		if not conf.env.SDL3:
-			conf.fatal('The WebAssembly client requires --platform-provider=sdl3')
-		if not conf.options.STATIC_COMPOSITION:
-			conf.fatal('The WebAssembly target is statically composed: --static-composition')
-		conf.options.SDL = 1
-		conf.options.GL = 0
-		conf.define('USE_SDL3', 1)
-	elif conf.env.DEST_OS == '3ds':
-		if conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
-			conf.fatal('The 3DS target builds only the client')
-		if not conf.env.SDL3:
-			conf.fatal('The 3DS client requires --platform-provider=sdl3')
-		conf.options.SDL = 1
-		conf.options.GL = 0
-		conf.define('USE_SDL3', 1)
-	elif conf.env.SDL3 or conf.env.CLIENT_VULKAN:
+	if conf.env.SDL3 or conf.env.CLIENT_VULKAN:
 		if conf.env.DEST_OS not in ['linux', 'android', 'darwin', 'ios'] or conf.options.DEDICATED or conf.options.TESTS or conf.options.TOOLS:
 			conf.fatal('The SDL3/Vulkan profiles currently target the Linux, Android and Apple clients')
 	if conf.env.APPLE and not (conf.env.CLIENT_VULKAN and conf.env.SDL3):
 		conf.fatal('The Apple clients require --platform-provider=sdl3 --render-backend=core')
-	if conf.env.DEST_OS not in ('3ds', 'emscripten') and (conf.env.SDL3 or conf.env.CLIENT_VULKAN):
+	if conf.env.SDL3 or conf.env.CLIENT_VULKAN:
 		if not (conf.env.SDL3 and conf.env.CLIENT_VULKAN):
 			conf.fatal('SDL3 and the Vulkan client require each other')
 		conf.options.SDL = 1
@@ -387,9 +350,9 @@ def define_platform(conf):
 	# dependencies come from the profile's cross-built prefix through
 	# pkg-config, not from the legacy prebuilt lib/android tree.
 	conf.env.ANDROID_SDL3 = conf.env.DEST_OS == 'android' and conf.env.SDL3
-	# Products that package only runtime modules and build bzip2 in-tree:
-	# the SDL3 Android client and the WebAssembly target (RFC 0029).
-	conf.env.WEB_OR_MOBILE = conf.env.ANDROID_SDL3 or conf.env.DEST_OS == 'emscripten'
+	# Products that package only runtime modules and build bzip2 in-tree: the
+	# SDL3 Android client.
+	conf.env.WEB_OR_MOBILE = conf.env.ANDROID_SDL3
 	conf.env.DEDICATED = conf.options.DEDICATED
 	conf.env.TESTS = conf.options.TESTS
 	conf.env.TOOLS = conf.options.TOOLS
@@ -493,27 +456,6 @@ def define_platform(conf):
 			# tvOS: PLATFORM_IOS code that assumes a phone or tablet (touch,
 			# Core Motion, Documents) checks this too.
 			conf.env.append_unique('DEFINES', ['PLATFORM_TVOS=1'])
-	elif conf.env.DEST_OS == 'emscripten':
-		# WebAssembly (RFC 0029): a POSIX-like target (musl) with no dynamic
-		# loader, statically composed, threads as Web Workers.
-		conf.env.append_unique('DEFINES', [
-			'LINUX=1', '_LINUX=1', 'POSIX=1', '_POSIX=1', 'PLATFORM_POSIX=1', 'PLATFORM_WASM=1',
-			'_GNU_SOURCE', 'GNUC', 'NO_HOOK_MALLOC', '_DLL_EXT=.so'
-		])
-	elif conf.env.DEST_OS == '3ds':
-		# Nintendo 3DS (devkitARM, newlib + libctru): a POSIX-like target with
-		# no dynamic loader, statically composed.
-		conf.env.append_unique('DEFINES', [
-			'LINUX=1', '_LINUX=1', 'POSIX=1', '_POSIX=1', 'PLATFORM_POSIX=1', 'PLATFORM_3DS=1', '_GNU_SOURCE',
-			'GNUC',
-			'NO_HOOK_MALLOC',
-			'_DLL_EXT=.so'
-		])
-		compat = os.path.abspath('platform/n3ds/compat/include')
-		conf.env.append_unique('INCLUDES', [compat])
-		for flags in ('CFLAGS', 'CXXFLAGS'):
-			conf.env.append_unique(flags, ['-I' + compat, '-include', os.path.join(compat, 'n3ds_compat.h'),
-				'-Wno-error=array-bounds'])
 	elif conf.env.DEST_OS in ['freebsd', 'openbsd', 'netbsd', 'dragonflybsd']: # Tested only in freebsd
 		conf.env.append_unique('DEFINES', [
 			'POSIX=1', '_POSIX=1', 'PLATFORM_POSIX=1',
@@ -572,16 +514,15 @@ def options(opt):
 		dest='PLATFORM_PROVIDER',
 		help='linked window/input provider; auto selects sdl3 for Vulkan and iOS clients, '
 			'sdl2 for legacy-renderer products [default: %default]')
-	grp.add_option('--render-backend', choices=['auto', 'legacy', 'native-vulkan', 'pica', 'core'], default='auto',
+	grp.add_option('--render-backend', choices=['auto', 'legacy', 'native-vulkan', 'core'], default='auto',
 		dest='RENDER_BACKEND',
 		help='linked renderer; clients render through the core shader API on the render core\'s '
 			'device (core; native-vulkan is a name for it), server, test and tool products link '
-			'none (legacy); the 3DS client links pica [default: %default]')
-	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles', 'metal', 'd3d12', 'webgpu', 'pica'], default='null',
+			'none (legacy) [default: %default]')
+	grp.add_option('--render-core-device', choices=['null', 'vulkan', 'gl', 'gles'], default='null',
 		dest='RENDER_CORE_DEVICE',
 		help='RFC 0016 render core: the device adapter a client composes unless -render-device '
-			'names another; vulkan needs the native Vulkan backend, gl and gles need --render-core-gl, '
-			'metal an Apple target, d3d12 a Windows target, webgpu --render-core-webgpu '
+			'names another; vulkan needs the native Vulkan backend, gl and gles need --render-core-gl '
 			'[default: %default]')
 	grp.add_option('--render-core-features', default='legacy-stream,present',
 		dest='RENDER_CORE_FEATURES',
@@ -594,9 +535,6 @@ def options(opt):
 			'(render::device::CapabilityName), e.g. compute,storage-buffers [default: none]')
 	grp.add_option('--render-core-gl', action='store_true', default=False, dest='RENDER_CORE_GL',
 		help='build the OpenGL 4.5 device adapter of the render core (RFC 0016 K10; needs EGL) [default: %default]')
-	grp.add_option('--render-core-webgpu', action='store_true', default=False, dest='RENDER_CORE_WEBGPU',
-		help='build the WebGPU device adapter of the render core (RFC 0029), linked natively '
-			'against the pinned Dawn release (quality/toolchain/webgpu.json) [default: %default]')
 	grp.add_option('--render-fsr411', action='store_true', default=False, dest='RENDER_FSR411',
 		help='Build the experimental pinned FSR 4.1.1 Vulkan provider (lab only)')
 	grp.add_option('--sepipe-python', dest='sepipe_python', default='', metavar='MAJOR.MINOR',
@@ -746,30 +684,6 @@ def check_deps(conf):
 			conf.check(lib='libpng', uselib_store='PNG', define_name='HAVE_PNG')
 		return
 
-	if conf.env.DEST_OS == 'emscripten':
-		# RFC 0029: Emscripten's ports, pinned by the pinned SDK release (each
-		# port names its archive and sha512). No fontconfig, OpenAL or curl:
-		# fonts ship with the content and audio is SDL3's.
-		ports = {'SDL3': ['--use-port=sdl3'],
-			'FT2': ['-sUSE_FREETYPE=1'], 'JPEG': ['-sUSE_LIBJPEG=1'], 'PNG': ['-sUSE_LIBPNG=1'],
-			'ZLIB': ['-sUSE_ZLIB=1']}
-		for store, flags in ports.items():
-			for var in ('CFLAGS', 'CXXFLAGS', 'LINKFLAGS'):
-				conf.env[var + '_' + store] = list(flags)
-		# Their headers are needed beyond their uselib's users (vgui_surfacelib).
-		for var in ('CFLAGS', 'CXXFLAGS'):
-			conf.env.append_unique(var, ['-sUSE_FREETYPE=1', '-sUSE_ZLIB=1'])
-		return
-
-	if conf.env.DEST_OS == '3ds':
-		# build-3ds.sh's PKG_CONFIG_LIBDIR names the cross-built SDL3 prefix
-		# and devkitPro's 3ds portlibs. No fontconfig, OpenAL or curl.
-		conf.check_cfg(package='sdl3', uselib_store='SDL3', args=['--cflags', '--libs', '--static'])
-		conf.check_cfg(package='freetype2', uselib_store='FT2', args=['--cflags', '--libs', '--static'])
-		conf.check_cfg(package='libjpeg', uselib_store='JPEG', args=['--cflags', '--libs'])
-		conf.check_cfg(package='libpng', uselib_store='PNG', args=['--cflags', '--libs', '--static'])
-		conf.check_cc(lib='z', uselib_store='ZLIB')
-		return
 	if conf.env.APPLE:
 		# As on Android: PKG_CONFIG_LIBDIR names only build-apple-app.sh's
 		# cross-built prefix. No fontconfig (fonts ship with the content) and
@@ -898,8 +812,6 @@ def configure(conf):
 		projects['game'] += ['engine/voice_codecs/opus']
 	if conf.env.WEB_OR_MOBILE:
 		projects['game'] += ['utils/bzip2']
-	if conf.env.DEST_OS == 'emscripten':
-		projects['dedicated'] += ['utils/bzip2']
 
 	if conf.options.DISABLE_WARNS:
 		compiler_optional_flags = ['-w']
@@ -965,9 +877,7 @@ def configure(conf):
 	elif conf.env.DEST_CPU in ['arm', 'aarch64']:
 		flags += ['-fsigned-char']
 
-	# The 3DS's ARM11 is ARMv6K with VFPv2 (xcompile.py's N3DS_ARCH): no NEON,
-	# no VFPv4, no movw/movt; this line would override its -march.
-	if conf.env.DEST_CPU == 'arm' and conf.env.DEST_OS != '3ds':
+	if conf.env.DEST_CPU == 'arm':
 		flags += ['-march=armv7-a', '-mfpu=neon-vfpv4']
 
 	if conf.env.DEST_OS == 'freebsd':
@@ -1219,7 +1129,7 @@ def configure(conf):
 		conf.add_subproject(projects['dedicated'])
 	else:
 		# Desktop conformance harnesses; the Android product packages only runtime modules.
-		if conf.env.SDL3 and not conf.env.WEB_OR_MOBILE and conf.env.DEST_OS != '3ds':
+		if conf.env.SDL3 and not conf.env.WEB_OR_MOBILE:
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest']
 			# Loader fixtures are shared libraries by definition.
 			if not conf.env.STATIC_COMPOSITION:
@@ -1235,7 +1145,7 @@ def configure(conf):
 		if conf.env.CLIENT_VULKAN and not conf.env.ANDROID_SDL3:
 			# Its KTX2 suites are gated inside; the VTF 7.6 suite needs no KTX.
 			projects['game'] += ['unittests/texturecontainertest']
-		if not conf.env.WEB_OR_MOBILE and conf.env.DEST_OS != '3ds':
+		if not conf.env.WEB_OR_MOBILE:
 			projects['game'] += ['unittests/physicstest']
 		if conf.env.VIDEO_FFMPEG:
 			projects['game'] += ['video/video_bink']
@@ -1271,59 +1181,13 @@ def configure_render_core(conf):
 	# The tools product has no engine renderer, so the editor's viewports take
 	# the Vulkan adapter on their own (RFC 0016 "Editor viewports").
 	# The core shader API on the Linux desktop (render backend core) takes it
-	# too: the same frames on Vulkan, as the reference the WebGPU lane meets.
+	# too: the same frames on Vulkan.
 	core_desktop = conf.options.RENDER_BACKEND == 'core' and conf.env.DEST_OS == 'linux'
 	if conf.env.RENDER_CORE and ( conf.options.TOOLS or core_desktop ) and conf.options.RENDER_CORE_VULKAN != 'off':
 		conf.env.RENDER_CORE_VULKAN = bool(conf.check_cfg(package='vulkan', uselib_store='VULKAN',
 			args=['--cflags', '--libs'], msg='Checking for the Vulkan loader (render core)',
 			mandatory=conf.options.RENDER_CORE_VULKAN == 'on'))
 	conf.env.RENDER_CORE_GL = bool(conf.env.RENDER_CORE and conf.options.RENDER_CORE_GL)
-	# The Metal adapter (RFC 0025) builds on every Apple target: Metal is a
-	# system framework there, and the adapter is Objective-C++.
-	conf.env.RENDER_CORE_METAL = bool(conf.env.RENDER_CORE and conf.env.APPLE)
-	if conf.env.RENDER_CORE_METAL:
-		conf.env.FRAMEWORK_METAL = ['Metal', 'Foundation']
-	if conf.options.RENDER_CORE_DEVICE == 'metal' and not conf.env.RENDER_CORE_METAL:
-		conf.fatal('--render-core-device=metal needs an Apple target (--apple-sdk)')
-	# The Direct3D 12 adapter (RFC 0024) builds on every Windows target. It
-	# imports the pinned DXC (dxcompiler.dll, installed beside the executable;
-	# tools/render/d3d12_lane.py fetches and verifies the pin).
-	conf.env.RENDER_CORE_D3D12 = bool(conf.env.RENDER_CORE and conf.env.DEST_OS == 'win32')
-	if conf.env.RENDER_CORE_D3D12:
-		dxc = os.path.join(conf.path.abspath(), 'dependencies', 'shader-toolchain', 'dxc-windows',
-			'lib', 'x64')
-		if not os.path.isfile(os.path.join(dxc, 'dxcompiler.lib')):
-			conf.fatal('the D3D12 adapter needs the pinned DXC: python3 tools/render/d3d12_lane.py build')
-		conf.env.LIB_D3D12 = ['dxcompiler', 'd3d12', 'dxgi', 'dxguid']
-		conf.env.LIBPATH_D3D12 = [dxc]
-	if conf.options.RENDER_CORE_DEVICE == 'd3d12' and not conf.env.RENDER_CORE_D3D12:
-		conf.fatal('--render-core-device=d3d12 needs a Windows target')
-	# The WebGPU adapter (RFC 0029) links the pinned Dawn release natively
-	# (tools/render/shader_toolchain.py webgpu_release fetches and verifies it).
-	conf.env.RENDER_CORE_WEBGPU = bool(conf.env.RENDER_CORE and conf.options.RENDER_CORE_WEBGPU)
-	if conf.env.RENDER_CORE_WEBGPU and conf.env.DEST_OS == 'emscripten':
-		# The browser's webgpu.h: the pinned Dawn release's emdawnwebgpu
-		# package, an Emscripten port (tools/render/webgpu_lane.py fetches it).
-		port = os.path.join(conf.path.abspath(), 'dependencies', 'webgpu', 'emdawnwebgpu_pkg',
-			'emdawnwebgpu.port.py')
-		if not os.path.isfile(port):
-			conf.fatal('the WebGPU adapter needs the pinned emdawnwebgpu package: '
-				'python3 tools/render/webgpu_lane.py fetch')
-		for var in ('CFLAGS', 'CXXFLAGS', 'LINKFLAGS'):
-			conf.env[var + '_WEBGPU'] = ['--use-port=' + port]
-	elif conf.env.RENDER_CORE_WEBGPU:
-		import json
-		pin = json.load(open(os.path.join(conf.path.abspath(), 'quality', 'toolchain', 'webgpu.json')))
-		dawn = os.path.join(conf.path.abspath(), 'dependencies', 'webgpu',
-			pin['archives']['linux']['directory'])
-		if not os.path.isfile(os.path.join(dawn, 'lib64', 'libwebgpu_dawn.a')):
-			conf.fatal('the WebGPU adapter needs the pinned Dawn: python3 tools/render/webgpu_lane.py fetch')
-		conf.env.INCLUDES_WEBGPU = [os.path.join(dawn, 'include')]
-		conf.env.STLIBPATH_WEBGPU = [os.path.join(dawn, 'lib64')]
-		conf.env.STLIB_WEBGPU = ['webgpu_dawn']
-		conf.env.LIB_WEBGPU = ['dl']
-	if conf.options.RENDER_CORE_DEVICE == 'webgpu' and not conf.env.RENDER_CORE_WEBGPU:
-		conf.fatal('--render-core-device=webgpu needs --render-core-webgpu')
 	conf.env.RENDER_CORE_DEVICE = conf.options.RENDER_CORE_DEVICE
 	conf.env.RENDER_CORE_FEATURES = conf.options.RENDER_CORE_FEATURES
 	conf.env.RENDER_CORE_FALLBACKS = conf.options.RENDER_CORE_FALLBACKS
@@ -1337,22 +1201,10 @@ def configure_render_core(conf):
 		conf.fatal('--render-core-device=vulkan needs the Vulkan loader (a core client or the tools product)')
 	if conf.options.RENDER_CORE_DEVICE in ('gl', 'gles') and not conf.env.RENDER_CORE_GL:
 		conf.fatal('--render-core-device=%s needs --render-core-gl' % conf.options.RENDER_CORE_DEVICE)
-	if conf.options.RENDER_CORE_DEVICE == 'pica' and not conf.env.N3DS:
-		conf.fatal('--render-core-device=pica needs the 3DS build (--n3ds)')
-	# RFC 0026: the 3DS has one device, the PICA200's, which the launcher's
-	# render core owns and hands to the shader API; it links no null adapter.
-	if conf.env.N3DS:
-		if conf.options.RENDER_CORE_DEVICE not in ('null', 'pica'):
-			conf.fatal('The 3DS build has one render core device: --render-core-device=pica')
-		conf.env.RENDER_CORE_DEVICE = 'pica'
 	if conf.env.RENDER_CORE:
-		conf.msg('Render core device adapters', ', '.join(([] if conf.env.N3DS else ['null']) +
+		conf.msg('Render core device adapters', ', '.join(['null'] +
 			(['vulkan'] if conf.env.RENDER_CORE_VULKAN else []) +
-			(['gl'] if conf.env.RENDER_CORE_GL else []) +
-			(['metal'] if conf.env.RENDER_CORE_METAL else []) +
-			(['d3d12'] if conf.env.RENDER_CORE_D3D12 else []) +
-			(['webgpu'] if conf.env.RENDER_CORE_WEBGPU else []) +
-			(['pica'] if conf.env.N3DS else [])))
+			(['gl'] if conf.env.RENDER_CORE_GL else [])))
 		# In the root environment, before any subproject derives its own:
 		# the generated SPIR-V headers' tools must exist before any project builds.
 		conf.recurse('render/shaders')
@@ -1375,8 +1227,6 @@ def build(bld):
 		projects['game'] += ['engine/voice_codecs/opus']
 	if bld.env.WEB_OR_MOBILE:
 		projects['game'] += ['utils/bzip2']
-	if bld.env.DEST_OS == 'emscripten':
-		projects['dedicated'] += ['utils/bzip2']
 
 	# RFC 0016 K4: the generated SPIR-V headers, in a build group of their own
 	# ahead of every project. gccdeps learns header dependencies from the
@@ -1404,7 +1254,7 @@ def build(bld):
 		bld.add_subproject(projects['dedicated'])
 	else:
 		# Desktop conformance harnesses; the Android product packages only runtime modules.
-		if bld.env.SDL3 and not bld.env.WEB_OR_MOBILE and bld.env.DEST_OS != '3ds':
+		if bld.env.SDL3 and not bld.env.WEB_OR_MOBILE:
 			projects['game'] += ['unittests/platformtest/sdl3', 'unittests/shaderextensiontest', 'unittests/audioprovidertest']
 			# Loader fixtures are shared libraries by definition.
 			if not bld.env.STATIC_COMPOSITION:
@@ -1420,7 +1270,7 @@ def build(bld):
 		if bld.env.CLIENT_VULKAN and not bld.env.ANDROID_SDL3:
 			# Its KTX2 suites are gated inside; the VTF 7.6 suite needs no KTX.
 			projects['game'] += ['unittests/texturecontainertest']
-		if not bld.env.WEB_OR_MOBILE and bld.env.DEST_OS != '3ds':
+		if not bld.env.WEB_OR_MOBILE:
 			projects['game'] += ['unittests/physicstest']
 		if bld.env.VIDEO_FFMPEG:
 			projects['game'] += ['video/video_bink']

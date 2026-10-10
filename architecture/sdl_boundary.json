@@ -29,7 +29,6 @@
     "unittests/platformtest/sdl3/test_sdl3_launcher.cpp",
     "unittests/platformtest/window_sdl3/test_sdl3_window.cpp",
     "unittests/rendertest/lab/test_lab_hdr_device.cpp",
-    "unittests/rendertest/test_sdl3_d3d12_presentation.cpp",
     "unittests/rendertest/test_sdl3_vulkan_presentation.cpp",
     "unittests/sdl3test/voice_record_test.cpp",
     "unittests/shaderextensiontest/test_material_binding.cpp"

@@ -162,8 +162,6 @@
     "product_profile": {"dialect": "cxx20", "rfc": "0027"},
     "product_contracts": {"dialect": "cxx20", "rfc": "0027"},
     "product_toolchain_linux": {"dialect": "cxx20", "rfc": "0027"},
-    "product_toolchain_n3ds": {"dialect": "cxx20", "rfc": "0027"},
-    "product_toolchain_emscripten": {"dialect": "cxx20", "rfc": "0029"},
     "product_toolchain_msvc_wine": {"dialect": "cxx20", "rfc": "0027"},
     "product_stage_waf": {"dialect": "cxx20", "rfc": "0027"},
     "kiln_core": {"dialect": "cxx20", "rfc": "0027"},
@@ -504,14 +502,6 @@
     "render_device_gl": {
       "dialect": "cxx20",
       "rfc": "0016"
-    },
-    "render_device_pica": {
-      "dialect": "cxx20",
-      "rfc": "0026"
-    },
-    "render_device_webgpu": {
-      "dialect": "cxx20",
-      "rfc": "0029"
     },
     "render_graph": {
       "dialect": "cxx20",

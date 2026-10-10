@@ -49,7 +49,7 @@ CODE_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.inl', '.mm'
 INCLUDE_LINE = re.compile(r'^[ \t]*#[ \t]*include\b[ \t]*[<"]([^>"\n]+)[>"]', re.M)
 # Shaders are code too; the render core's size includes them.
 LINE_SUFFIXES = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.inl', '.mm',
-                 '.glsl', '.vert', '.frag', '.comp', '.hlsl', '.wgsl', '.metal'}
+                 '.glsl', '.vert', '.frag', '.comp', '.hlsl'}
 # Legacy directories this deep get one area per subdirectory.
 DEEP_LEGACY = {'game', 'materialsystem', 'utils', 'public', 'tools', 'platform', 'render', 'hammer',
                'engine', 'common', 'unittests', 'external', 'devtools', 'games'}
@@ -58,7 +58,7 @@ EXCLUDED_PREFIXES = ('thirdparty/', 'dependencies/', 'lib/', 'box3d/', 'ivp/', '
 
 PLATFORM_MACRO = (r'_WIN32|WIN32|_WIN64|WIN64|POSIX|_POSIX|LINUX|_LINUX|OSX|_OSX|__linux__|__APPLE__|'
                   r'__ANDROID__|ANDROID|__FreeBSD__|_PS3|PS3|_X360|X360|_GAMECONSOLE|IS_WINDOWS_PC|'
-                  r'PLATFORM_\w+|__EMSCRIPTEN__|_3DS|__3DS__')
+                  r'PLATFORM_\w+')
 # Valve's header idiom `#ifdef _WIN32 / #pragma once / #endif` is not a
 # platform branch of behavior.
 PRAGMA_ONCE_GUARD = re.compile(

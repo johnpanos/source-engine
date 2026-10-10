@@ -59,12 +59,6 @@ def build(bld):
 		# link.
 		libs += ['render_composition', 'mdl', 'jobsystem', 'mapcontainer', 'render_device',
 			'vtf_texture_reader']
-		# The WebGPU adapter's pinned Dawn archive (RFC 0029) reaches this
-		# link only when named.
-		if bld.env.RENDER_CORE_WEBGPU:
-			libs += ['WEBGPU']
-			if bld.env.CORE_SHADER_API:
-				defines += ['LINKED_WEBGPU_DEVICE']
 		defines += ['LINKED_RENDER_CORE',
 			'RENDER_CORE_DEFAULT_DEVICE="%s"' % bld.env.RENDER_CORE_DEVICE,
 			'RENDER_CORE_FEATURES="%s"' % bld.env.RENDER_CORE_FEATURES,

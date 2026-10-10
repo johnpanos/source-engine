@@ -16,22 +16,12 @@
 //			included) the run must report no message; without the layer that
 //			clause prints SKIP and certifies nothing.
 //
-//			Built with RENDERTEST_GRAPH_D3D12 it is render.graph.v1.d3d12 (RFC
-//			0024 X3): the same graphs on render.device.d3d12 under Wine with
-//			vkd3d-proton (tools/render/d3d12_lane.py), with the D3D12 debug
-//			layer in place of the Khronos layer.
-//
 //=============================================================================//
 
 #include "graph_fixtures.h"
 #include "jobsystem/parallel_executor.h"
-#if defined( RENDERTEST_GRAPH_D3D12 )
-#include "render/device/d3d12/provider.h"
-#define RG_ADAPTER "d3d12"
-#else
 #include "render/device/vulkan/provider.h"
 #define RG_ADAPTER "vulkan"
-#endif
 #include "render/graph/scene_color.h"
 #include "render/graph/validate.h"
 #include "testing/checks.h"
@@ -51,11 +41,7 @@ using namespace render;
 using namespace render::graph;
 using device::ResourceUsage;
 namespace fixtures = rendertest::graph;
-#if defined( RENDERTEST_GRAPH_D3D12 )
-namespace d3d12 = render::device::d3d12;
-#else
 namespace vulkan = render::device::vulkan;
-#endif
 
 bool Wait( device::IRenderDevice2 &device, device::CompletionToken token )
 {
@@ -197,27 +183,16 @@ int main()
 {
 	testing::Checks checks;
 	std::atomic<std::uint64_t> messages{ 0 };
-#if defined( RENDERTEST_GRAPH_D3D12 )
-	const bool layer = true; // the debug layer counts its own messages
-	d3d12::D3d12AdapterOptions options;
-	options.validation = true;
-	options.validationCounter = &messages;
-#else
 	const bool layer = vulkan::ValidationLayerAvailable();
 	vulkan::VulkanAdapterOptions options;
 	options.validation = layer;
 	options.validationCounter = &messages;
 	if ( const char *adapter = std::getenv( "RENDER_VK_ADAPTER" ) )
 		options.adapterIndex = std::atoi( adapter );
-#endif
 	int compiled = 0, clean = 0, serialRan = 0, pooledRan = 0;
 	std::uint64_t reused = 0, encoders = 0;
 	{
-#if defined( RENDERTEST_GRAPH_D3D12 )
-		auto created = d3d12::Create( options );
-#else
 		auto created = vulkan::Create( options );
-#endif
 		if ( !checks.That( created.HasValue(), "device.a-" RG_ADAPTER "-device-is-created" ) )
 			return checks.Report();
 		std::unique_ptr<device::IRenderDevice2> device = std::move( created ).Value();

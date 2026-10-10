@@ -610,11 +610,6 @@ NATIVE_TELEMETRY_PROVIDERS = {
     # bridge adapts that observer to the Tier 0 stream.
     "platform/posix/dynamic_library_provider.cpp": "platform-loader-observer",
     "external/vpc/public/tier0/native_module_load_telemetry.h": "vpc-provider-boundary",
-    # The 3DS product is statically composed: its dlfcn shim declares and
-    # defines dlopen/dlsym/dlclose that never load anything (dlopen returns
-    # null), so there is no load to report.
-    "platform/n3ds/compat/include/dlfcn.h": "static-composition-no-loader-shim",
-    "platform/n3ds/compat/n3ds_compat.cpp": "static-composition-no-loader-shim",
 }
 
 

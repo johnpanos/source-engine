@@ -146,7 +146,7 @@ def selftest():
         "AGENTS.md": "The user played `./play` on 2026-09-26.\n",
         "RFC/0027-progress.md": "`./play_p2` was deleted.\n",
         "tools/quality/unrelated.py": "player = playback_window(rows)  # ./kiln play portal2\n",
-        "tools/render/d3d12_lane.py": '(bundle / "run.sh").write_text(script)\n',
+        "tools/render/lane.py": '(bundle / "run.sh").write_text(script)\n',
         "tools/quality/x.py": 'kiln("play", "portal2", "--dry-run")\n',
     }
     record.check(not callers(history), "history, documentation and unrelated names pass",

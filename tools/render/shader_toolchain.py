@@ -607,37 +607,6 @@ GLES_GENERATED = {
     _name.replace("_glsl.h", "_gles.h"): (_spec[0].replace("::glsl", "::gles"),) + _spec[1:]
     for _name, _spec in GLSL_GENERATED.items()}
 
-# Metal Shading Language headers (render.device.metal): every GLSL_GENERATED
-# header's twin for the Metal adapter, <stem>_msl.h in the namespace's ::msl
-# sibling, with the same array names. A row that does not translate (the
-# adapter supplies no SPIRV-Cross buffer-size buffer, for one) is left out of
-# the header and the store (named in a comment); its pipelines are refused
-# on a Metal device by name.
-MSL_GENERATED = {
-    _name.replace("_glsl.h", "_msl.h"): (_spec[0].replace("::glsl", "::msl"),) + _spec[1:]
-    for _name, _spec in GLSL_GENERATED.items()}
-
-# HLSL headers (render.device.d3d12, RFC 0024): every GLSL_GENERATED header's
-# twin for the Direct3D 12 adapter, <stem>_hlsl.h in the namespace's ::hlsl
-# sibling, with the same array names. shader_artifacts.hlsl_compile owns the
-# artifacts' form; a row that does not translate or compile with the pinned
-# DXC is left out of the header and the store (named in a comment), and its
-# pipelines are refused on a Direct3D 12 device by name.
-HLSL_GENERATED = {
-    _name.replace("_glsl.h", "_hlsl.h"): (_spec[0].replace("::glsl", "::hlsl"),) + _spec[1:]
-    for _name, _spec in GLSL_GENERATED.items()}
-
-# WGSL headers (render.device.webgpu, RFC 0029): every GLSL_GENERATED
-# header's twin for the WebGPU adapter, <stem>_wgsl.h in the namespace's
-# ::wgsl sibling, with the same array names, translated by the pinned tint
-# (quality/toolchain/webgpu.json). shader_artifacts.wgsl_compile owns the
-# artifacts' form; a row tint does not accept is left out of the header and
-# the store (named in a comment), and its pipelines are refused on a WebGPU
-# device by name.
-WGSL_GENERATED = {
-    _name.replace("_glsl.h", "_wgsl.h"): (_spec[0].replace("::glsl", "::wgsl"),) + _spec[1:]
-    for _name, _spec in GLSL_GENERATED.items()}
-
 # The core artifact store's table (public/render/shaderlib/core_artifacts.h):
 # every CORE_PROGRAM_HEADERS row in both formats with its reflection, written
 # by tools/render/shader_artifacts.py store_header.
@@ -647,7 +616,6 @@ STORE_HEADER = "core_artifact_table.h"
 # GLSL_GENERATED's and the store's).
 GENERATED_NAMES = tuple(sorted({n for _, _, names in REGENERATORS for n in names} |
                                set(GENERATED) | set(GLSL_GENERATED) | set(GLES_GENERATED) |
-                               set(MSL_GENERATED) | set(HLSL_GENERATED) | set(WGSL_GENERATED) |
                                {STORE_HEADER}))
 
 
@@ -713,23 +681,15 @@ def char_array(array, text, delimiter):
 
 
 def render_glsl(header, text_of):
-    """The text of a GLSL_GENERATED, GLES_GENERATED, MSL_GENERATED,
-    HLSL_GENERATED or WGSL_GENERATED header; text_of(array) gives each array's
-    GLSL 4.50 (GLSL ES 3.10, MSL, HLSL, WGSL), or None for a row left out."""
+    """The text of a GLSL_GENERATED or GLES_GENERATED header; text_of(array)
+    gives each array's GLSL 4.50 (GLSL ES 3.10), or None for a row left out."""
     es = header in GLES_GENERATED
-    msl = header in MSL_GENERATED
-    hlsl = header in HLSL_GENERATED
-    wgsl = header in WGSL_GENERATED
-    table = (GLES_GENERATED if es else MSL_GENERATED if msl else HLSL_GENERATED if hlsl
-             else WGSL_GENERATED if wgsl else GLSL_GENERATED)
+    table = GLES_GENERATED if es else GLSL_GENERATED
     namespace, purpose, rows = table[header]
-    language = ("GLSL ES 3.10" if es else "MSL 3.0" if msl else "HLSL 6.6" if hlsl
-                else "WGSL" if wgsl else "GLSL 4.50")
-    missing = ("(RFC 0022)" if es else "(render.device.d3d12)" if hlsl
-               else "(render.device.webgpu)" if wgsl else "(render.device.metal)")
-    delimiter = "msl" if msl else "hlsl" if hlsl else "wgsl" if wgsl else "glsl"
-    translator = ("tint (quality/toolchain/webgpu.json)" if wgsl else
-                  "SPIRV-Cross (quality/toolchain/shader-compiler.json)")
+    language = "GLSL ES 3.10" if es else "GLSL 4.50"
+    missing = "(RFC 0022)"
+    delimiter = "glsl"
+    translator = "SPIRV-Cross (quality/toolchain/shader-compiler.json)"
     guard = "GENERATED_GLSL_" + re.sub(r"[^A-Z0-9]", "_", header.upper())
     out = ["//========= Copyright Valve Corporation, All rights reserved. ============//\n",
            "//\n",
@@ -858,118 +818,6 @@ def debug_identity_problem(path, pin):
     if actual == expected:
         return None
     return "%s reports %r; the pin is %r" % (path, actual, expected)
-
-
-@functools.lru_cache(maxsize=None)
-def dxc_release(kind):
-    """The extracted pinned DXC release of kind ("linux" or "windows",
-    quality/toolchain/dxc.json), fetched and verified on first use."""
-    pin = json.loads((ROOT / "quality" / "toolchain" / "dxc.json").read_text())
-    entry = pin["archives"][kind]
-    toolchain = ROOT / "dependencies" / "shader-toolchain"
-    archive = toolchain / "archives" / entry["archive"]
-    if not archive.exists():
-        # The public release asset over HTTPS, bounded by the pinned size; the
-        # sha256 below is the authority, so no client tool (gh) is needed.
-        archive.parent.mkdir(parents=True, exist_ok=True)
-        url = "https://github.com/%s/releases/download/%s/%s" % (
-            pin["repository"], pin["release"], entry["archive"])
-        partial = archive.with_name(archive.name + ".partial")
-        try:
-            with urllib.request.urlopen(url, timeout=120) as response, open(partial, "wb") as out:
-                count = 0
-                while block := response.read(1 << 20):
-                    count += len(block)
-                    if count > entry["bytes"]:
-                        raise ToolchainError("download %s exceeded the pinned %d bytes"
-                                             % (entry["archive"], entry["bytes"]))
-                    out.write(block)
-        except OSError as error:
-            partial.unlink(missing_ok=True)
-            raise ToolchainError("download %s: %s" % (url, error)) from error
-        partial.rename(archive)
-    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    if digest != entry["sha256"]:
-        raise ToolchainError("%s: sha256 %s is not the pin %s" % (archive, digest, entry["sha256"]))
-    target = toolchain / entry["directory"]
-    stamp = target / ".pin"
-    if not stamp.is_file() or stamp.read_text() != digest:
-        shutil.rmtree(target, ignore_errors=True)
-        target.mkdir(parents=True)
-        if entry["archive"].endswith(".zip"):
-            import zipfile
-            with zipfile.ZipFile(archive) as z:
-                for info in z.infolist():
-                    name = info.filename.replace("\\", "/")  # the release zip uses backslashes
-                    if name.endswith("/"):
-                        continue
-                    out = target / name
-                    out.parent.mkdir(parents=True, exist_ok=True)
-                    out.write_bytes(z.read(info))
-        else:
-            subprocess.run(["tar", "-xzf", str(archive), "-C", str(target)], check=True)
-        stamp.write_text(digest)
-    return target
-
-
-def dxc():
-    """The pinned Linux DXC executable (it finds its libdxcompiler.so through
-    LD_LIBRARY_PATH, which run_dxc sets)."""
-    return dxc_release("linux") / "bin" / "dxc"
-
-
-def run_dxc(arguments):
-    """Runs the pinned Linux DXC; the CompletedProcess."""
-    env = dict(os.environ, LD_LIBRARY_PATH=str(dxc_release("linux") / "lib"))
-    return subprocess.run([str(dxc()), *arguments], capture_output=True, text=True, env=env)
-
-
-WEBGPU_PIN = ROOT / "quality" / "toolchain" / "webgpu.json"
-
-
-@functools.lru_cache(maxsize=None)
-def webgpu_release(kind):
-    """The extracted pinned Dawn release archive of kind ("linux" or
-    "emscripten", quality/toolchain/webgpu.json), fetched and verified on
-    first use, under dependencies/webgpu."""
-    pin = json.loads(WEBGPU_PIN.read_text())
-    entry = pin["archives"][kind]
-    base = ROOT / "dependencies" / "webgpu"
-    archive = ROOT / "dependencies" / "archives" / entry["archive"]
-    if not archive.exists():
-        archive.parent.mkdir(parents=True, exist_ok=True)
-        partial = archive.with_suffix(archive.suffix + ".partial")
-        try:
-            with urllib.request.urlopen(entry["url"]) as response, open(partial, "wb") as out:
-                shutil.copyfileobj(response, out)
-        except OSError as error:
-            raise ToolchainError("download %s: %s" % (entry["url"], error))
-        partial.rename(archive)
-    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    if digest != entry["sha256"]:
-        raise ToolchainError("%s: sha256 %s is not the pin %s" % (archive, digest, entry["sha256"]))
-    target = base / entry["directory"]
-    stamp = base / (entry["directory"] + ".pin")
-    if not stamp.is_file() or stamp.read_text() != digest:
-        shutil.rmtree(target, ignore_errors=True)
-        base.mkdir(parents=True, exist_ok=True)
-        if entry["archive"].endswith(".zip"):
-            import zipfile
-            with zipfile.ZipFile(archive) as z:
-                z.extractall(base)
-        else:
-            subprocess.run(["tar", "-xzf", str(archive), "-C", str(base)], check=True)
-        if not target.is_dir():
-            raise ToolchainError("%s did not extract to %s" % (archive, target))
-        stamp.write_text(digest)
-    return target
-
-
-def tint():
-    """The pinned WGSL translator (Dawn's tint, RFC 0029 decision 5)."""
-    path = webgpu_release("linux") / "bin" / "tint"
-    path.chmod(path.stat().st_mode | 0o111)
-    return path
 
 
 @functools.lru_cache(maxsize=None)
@@ -1229,9 +1077,7 @@ def seed_copies(seeded_root, generated_dir, root=ROOT):
         # The GLSL headers and the store's table hold no SPIR-V: the GL suites
         # compile the former, the store's users read the latter.
         if not name.endswith("_index.h") and name not in GLSL_GENERATED and \
-                name not in GLES_GENERATED and name not in MSL_GENERATED and \
-                name not in HLSL_GENERATED and name not in WGSL_GENERATED and \
-                name != STORE_HEADER:
+                name not in GLES_GENERATED and name != STORE_HEADER:
             seeded[name] = flip_one_byte(Path(generated_dir) / name)
     return seeded
 
@@ -1612,13 +1458,6 @@ def command_build(args):
     status = build(pin, args.jobs, args.fetch_only)
     if status == 0 and "cross_compiler" in pin:
         status = build_cross(pin, args.jobs, args.fetch_only)
-    if status == 0:
-        # The build checks every HLSL artifact with the pinned Linux DXC.
-        try:
-            dxc_release("linux")
-        except ToolchainError as error:
-            print("shader_toolchain: %s" % error, file=sys.stderr)
-            return 1
     return status
 
 

@@ -66,9 +66,6 @@ def configure(conf):
 		conf.find_program(['ld64', 'aarch64-apple-darwin-ld'], var='LD64')
 		conf.env.LD64_ARCH = {'aarch64': 'arm64', 'arm64': 'arm64',
 			'x86_64': 'x86_64', 'amd64': 'x86_64'}.get(conf.env.DEST_CPU, conf.env.DEST_CPU)
-	elif conf.env.DEST_BINFMT == 'wasm':
-		# wasm-ld --relocatable, then wasm_localize.py for --localize-hidden.
-		pass
 	else:
 		conf.find_program('objcopy', var='OBJCOPY')
 	conf.env.append_unique('DEFINES', ['SOURCE_STATIC_COMPOSITION=1'])
@@ -99,8 +96,6 @@ class cxxmodule(ccroot.link_task):
 		env = self.env
 		if env.DEST_BINFMT == 'mac-o':
 			return self.run_macho()
-		if env.DEST_BINFMT == 'wasm':
-			return self.run_wasm()
 		output = self.outputs[0].abspath()
 		partial = output + '.partial'
 		cmd = Utils.to_list(env.LINK_CXX) + ['-r', '-nostdlib', '-Wl,--force-group-allocation']
@@ -119,37 +114,6 @@ class cxxmodule(ccroot.link_task):
 		except OSError:
 			pass
 		return ret
-
-	def run_wasm(self):
-		# wasm-ld has no group allocation flag; wasm_localize drops the COMDAT
-		# groups instead, along with making hidden symbols local.
-		import wasm_localize
-		env = self.env
-		output = self.outputs[0].abspath()
-		partial = output + '.partial'
-		cmd = Utils.to_list(env.LINK_CXX) + ['-r', '-nostdlib']
-		cmd += [node.abspath() for node in self.inputs]
-		for path in self.private_stlib_paths:
-			cmd += ['-L' + path]
-		cmd += ['-Wl,--start-group'] + ['-l' + name for name in self.private_stlibs]
-		cmd += ['-Wl,--end-group', '-o', partial]
-		ret = self.exec_command(cmd)
-		if ret:
-			return ret
-		try:
-			with open(partial, 'rb') as source:
-				data, _ = wasm_localize.localize_hidden(source.read())
-			with open(output, 'wb') as target:
-				target.write(data)
-		except (OSError, wasm_localize.WasmError) as error:
-			Logs.error('%s: %s' % (output, error))
-			return 1
-		finally:
-			try:
-				os.remove(partial)
-			except OSError:
-				pass
-		return 0
 
 	def run_macho(self):
 		# ld64 searches archives until no undefined symbol can be resolved, so

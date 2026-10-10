@@ -44,9 +44,8 @@ def build(bld):
 		idx       = bld.get_taskgen_count()
 	)
 	# RFC 0001 rank 4 native loader provider (R07). POSIX hosts only; roots
-	# and the Tier 1 Sys_* bridge select it explicitly. The 3DS has neither a
-	# dynamic loader nor process spawning (statically composed, RFC 0026).
-	if bld.env.DEST_OS not in ('win32', '3ds'):
+	# and the Tier 1 Sys_* bridge select it explicitly.
+	if bld.env.DEST_OS != 'win32':
 		bld.stlib(
 			env       = bld.strict_cpp20_env(),
 			source    = [ 'posix/dynamic_library_provider.cpp', 'posix/tool_process_provider.cpp',
@@ -121,8 +120,7 @@ def build(bld):
 			idx       = bld.get_taskgen_count()
 		)
 	# Module resolution (RFC 0001 rank 5, R11): the portable resolver, and the
-	# POSIX file probe on its own so products without a dynamic loader (the
-	# 3DS) still get it. Tier 1's Sys_LoadModule search uses the _legacyabi
+	# POSIX file probe on its own. Tier 1's Sys_LoadModule search uses the _legacyabi
 	# builds; see platform_composition_legacyabi.
 	for target, defines in ( ( 'platform_resolver', [] ),
 	                         ( 'platform_resolver_legacyabi', legacy_abi ) ):
