@@ -56,7 +56,7 @@ One active task per session. Change a row only through the project manager.
 | --- | --- | --- | --- |
 | source-engine-17 | Project management | Reviews, assignments, orphan cleanup, this page | `docs/agents/*` |
 | source-engine-fb | Render core | M0 adapter deletion, then M2 S1 (static props through `render.scene`) | render/, materialsystem/shaderapicore, deletion files |
-| source-engine-f1 | Platforms | M7: Android arm64 device lifecycle (surface recreation, background/foreground, process death) on the Tab S8 Ultra | product/android, tools/quality/android_*, its progress entry |
+| source-engine-f1 | Platforms | M7: Android lifecycle harness and APK build ready to run; **device run blocked: Tab S8 Ultra not reachable** (b151c1c9c) | product/android, tools/quality/android_*, its progress entry |
 | source-engine-7b | Jobs | M3 slice 1: `engine/host_saverestore.cpp` (14 sites: the save thread and deferred writes) onto an injected blocking runner; oracle: byte-identical saves with `save_async` 1 and 0 | `engine/host_saverestore.cpp`, the root's runner wiring |
 | source-engine-3a | Performance | M1: baseline and attribution of the R91 regression on bazzite (sole user of bazzite) | `../source-engine-bisect-{pre,head}`, its progress entry |
 
@@ -73,6 +73,8 @@ One active task per session. Change a row only through the project manager.
 
 ## Decisions needed from the user
 
+0. **Action:** attach the Galaxy Tab S8 Ultra by USB, or enable wireless
+   debugging and give its ip:port. M7 is blocked on it.
 1. Recover the R91 regression forward on the core (the plan's default), or
    temporarily restore shaderapivulkan as the default until the core matches
    it? Restoring reverses the 2026-10-07 deletion decision.
