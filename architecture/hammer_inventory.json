@@ -1177,7 +1177,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapAxisHandle is a map helper that draws its axis handle in Render2D/Render3D and attaches to points, so the handle geometry and draw need to be separated from its document-side attachment."
     },
     {
@@ -1190,7 +1190,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CMapAxisHandle : CMapHelper with Render2D/Render3D and the CToolAxisHandle attachment, mixing handle state with view drawing."
     },
     {
@@ -1230,7 +1230,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapHelper is the base class for non-serialized helper objects (ShouldSerialize returns false, PrepareSelection), mixing scene-object policy with the MFC CMapClass base."
     },
     {
@@ -1295,7 +1295,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "COP_Model::UpdateData reads the model's sequence names and feeds the combo suggestions, and OnSetActive/OnKillActive set the global Options.view3d.bAnimateModels, so the model editing rules need separating from the MFC page."
     },
     {
@@ -1308,7 +1308,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COP_Model : CObjectPage and CFilteredComboBox::ICallbacks over GDclass and CMapStudioModel, the model property page's editing contract."
     },
     {
@@ -1348,7 +1348,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CRender holds the view's render mode, instance-rendering flag and studio render config (UpdateStudioRenderConfig) and draws through the material system, so view state and draw submission need splitting."
     },
     {
@@ -1361,7 +1361,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares EditorRenderMode_t and the CRender class over IMaterial, DrawModelInfo_t and CCoreDispInfo, combining the view's render settings with GPU draw calls."
     },
     {
@@ -1374,7 +1374,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "DrawBoundsText projects a brush's bounds through CRender2D TransformPoint and draws measurement text with SetTextColor, a pure projection mixed with 2D drawing."
     },
     {
@@ -1387,7 +1387,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares DrawBoundsText(CRender2D*, ...) and its flags, the 2D measurement overlay helper."
     },
     {
@@ -1427,7 +1427,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Find/replace logic (MatchString, ReplaceString, FindCheck, FindReplace over CMapEntity keyvalues via SetKeyValue) is mixed with the CSearchReplaceDlg MFC dialog, so the matching rules must move to the app layer."
     },
     {
@@ -1440,7 +1440,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares FindObject_t (the search criteria) and CSearchReplaceDlg : CDialog with GetFindCriteria, so the criteria type belongs with the app-layer matcher."
     },
     {
@@ -1466,7 +1466,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSelection holds the document's selection list with SelectObjectList flags including scSaveChanges, which commits property-dialog edits, so selection policy and document commits need separating."
     },
     {
@@ -1479,7 +1479,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSmoothingGroupMgr adds and removes faces from smoothing groups and sets angles, and its SaveVMF/LoadVMF chunk callbacks put the VMF format in the same class."
     },
     {
@@ -1492,7 +1492,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares ISmoothingGroupMgr with face-group operations and SaveVMF/LoadVMF over CChunkFile and CSaveInfo, combining the group model with VMF persistence."
     },
     {
@@ -1532,7 +1532,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolAxisHandle pushes TOOL_AXIS_HANDLE on ToolManager, captures the view on mouse down and updates the document's views (UpdateAllViews), so the tool state machine must be separated from the MFC view input."
     },
     {
@@ -1615,7 +1615,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The header declares the camera list with CChunkFile/CSaveInfo serialization and load callbacks, so the camera chunk belongs with the format library while the tool view logic stays in hammer.tools."
     },
     {
@@ -1772,7 +1772,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolManager keeps the tool stack (Init, PushTool, PopTool) and registers VMF chunk load and save handlers that forward to each tool, so the chunk dispatch is a split candidate for the format owner."
     },
     {
@@ -2422,7 +2422,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Box3D tool: hit-tests and drags box handles, updates the status bar and renders handles through CRender2D/CRender3D over CMapView."
     },
     {
@@ -2435,7 +2435,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares Box3D (Tool3D, BoundBox) with handle, translation and CMapView2D/CRender3D render members."
     },
     {
@@ -3754,7 +3754,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "DetailObjects loads detail prototype KeyValues and studio models from disk, places detail models and sprites on faces, and draws them in Render3D; placement must extract, Render3D stays in the MFC adapter."
     },
     {
@@ -3768,7 +3768,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares DetailObjects (a CMapPoint): detail dictionary loading, face placement, studio-model loading and Render3D; the placement API moves with the cpp split."
     },
     {
@@ -3835,7 +3835,7 @@
       ],
       "state": "external-resource",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Loads displacement image-filter definitions from chunk files and applies them to CMapDisp height values; the filter-file reader is a format and the apply step is geometry."
     },
     {
@@ -3849,7 +3849,7 @@
       ],
       "state": "external-resource",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CDispMapImageFilter and its manager: chunk-file loading callbacks and height/width validation; the format part moves to hammer.formats."
     },
     {
@@ -4012,7 +4012,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CEditGameClass holds an entity class's connections and upstream links and saves or loads them via CChunkFile; connection data belongs in hammer.scene, the VMF codec in hammer.formats."
     },
     {
@@ -4026,7 +4026,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CEditGameClass, the entity class with connection and upstream lists and VMF Save/Load callbacks; the connection model moves to hammer.scene."
     },
     {
@@ -4066,7 +4066,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CEditGroups dialog renames visgroups and recolors objects via UpdateObjectColor; the rename and colour edits belong in hammer.app visgroup ops, the dialog is replaced."
     },
     {
@@ -4079,7 +4079,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CEditGroups and the CColorBox static control; the visgroup edit model moves to hammer.app and the widgets stay in MFC."
     },
     {
@@ -4354,7 +4354,7 @@
       ],
       "state": "external-resource",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CGameConfig load and save of game configuration from KeyValues and binary streams, GameData file loading and Steam path lookup."
     },
     {
@@ -4367,7 +4367,7 @@
       ],
       "state": "external-resource",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CGameConfig with its map format, GameData file list and Load/Save overloads; no I/O in the header."
     },
     {
@@ -4801,7 +4801,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Per-document undo/redo history: Keep, KeepNew and MarkUndoPosition record object states and Undo restores them into the map through CMapDoc."
     },
     {
@@ -4814,7 +4814,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CTrackEntry and CHistory, the undo track types and the Keep/KeepNew/MarkUndoPosition API that every edit calls."
     },
     {
@@ -4931,7 +4931,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Legacy .MAP text reader and writer for the document tree (solids, entities, groups, visible-only save) with an MFC progress dialog and file-stream I/O."
     },
     {
@@ -4944,7 +4944,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Legacy binary RMF load and save of faces, planes, solids and visgroups, including the old visgroup reader (COldVisGroup) and corrupt-file tracking."
     },
     {
@@ -5050,7 +5050,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CManifest document over CMapDoc that saves and loads the manifest and its map instances through the save-as command and manifest dialogs."
     },
     {
@@ -5063,7 +5063,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CManifestMap and CManifestInstance (a CMapEntity that references a manifest map) and the manifest load-preference struct."
     },
     {
@@ -5102,7 +5102,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapAlignedBox helper that computes its bounds and implements Copy and CopyFrom, with Render2D and Render3D hooks."
     },
     {
@@ -5115,7 +5115,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CMapAlignedBox with RMF and MAP serialization and its Render2D and Render3D hooks."
     },
     {
@@ -5155,7 +5155,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapAnimator keyframe helper that builds and copies animator state and evaluates the transform at an animation time."
     },
     {
@@ -5168,7 +5168,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CMapAnimator over CMapKeyFrame with UpdateAnimation and GetTransformMatrix."
     },
     {
@@ -5182,7 +5182,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Map check that scans solids, faces and textures for duplicate planes, invalid structure and texture axes, and applies fixes through history from a dialog."
     },
     {
@@ -5208,7 +5208,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapClass base of the document object tree: object IDs, dependency and copy machinery, the class registry and ChunkFile save hooks."
     },
     {
@@ -5221,7 +5221,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapCylinder helper that builds cylinder geometry, bounds and copies, and calls Render2D and Render3D through the texture system."
     },
     {
@@ -5234,7 +5234,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CMapCylinder with RMF and MAP serialization, BuildCylinder and its 2D and 3D render hooks."
     },
     {
@@ -5247,7 +5247,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapDecal helper that attaches decal faces to solids (CanDecalSolid, AddSolid) and resolves its IEditorTexture."
     },
     {
@@ -5260,7 +5260,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CMapDecal and DecalFace_t with RMF and MAP serialization and its Render3D hook."
     },
     {
@@ -5288,7 +5288,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapDisp implements trace, UpdateData, VMF load/save and IMesh rendering; hammer/core/scene/displacement_geometry.cpp already holds the headless geometry."
     },
     {
@@ -5302,7 +5302,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapDisp declares trace, update, LoadVMF/SaveVMF and Render3D members over a CMapAtom base; the displacement data is saved document content."
     },
     {
@@ -5316,7 +5316,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapEntity covers helper creation, bounds, copy and LoadSolidCallback-based VMF loading, with 2D/3D rendering and key handling in the same file."
     },
     {
@@ -5329,7 +5329,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapEntity header declares LoadVMF/SaveVMF, helper management, and Render2D/Render3D hooks over CMapClass and CEditGameClass."
     },
     {
@@ -5370,7 +5370,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapFace declares PLANE/TEXTURE types, LoadVMF/SaveVMF and CMeshBuilder/IMesh render hooks in one header."
     },
     {
@@ -5410,7 +5410,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapGroup manages children, logical 2D positions and LoadVMF/SaveVMF of group membership."
     },
     {
@@ -5423,7 +5423,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapGroup header declares child management, logical positions and LoadVMF/SaveVMF over CMapClass."
     },
     {
@@ -5608,7 +5608,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapOverlay holds the overlay side data, handle state (Handles_Init, HitTest) and Render3D through IMesh; the overlay file format is headless in hammer/core/formats/overlay.cpp."
     },
     {
@@ -5621,7 +5621,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapOverlay header declares overlay handles, hit tests and Render3D over CMapSideList with a CMapView forward declaration."
     },
     {
@@ -5636,7 +5636,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapOverlayTransition computes shore transition geometry, draws it in Render3D and has LoadVMF/SaveVMF persistence that the formats overlay codec in hammer/core/formats already covers."
     },
     {
@@ -5649,7 +5649,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapOverlayTransition header declares ShoreEntityData_t, Render3D and LoadVMF/SaveVMF over CMapHelper."
     },
     {
@@ -5663,7 +5663,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapPath and CMapPathNode hold path nodes and implement LoadVMF/SaveVMF for path data in one file."
     },
     {
@@ -5797,7 +5797,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapSideList stores side lists, consults CMapDoc::GetActiveMapDoc and renders faces through a CMeshBuilder/IMesh in Render3D."
     },
     {
@@ -5810,7 +5810,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapSideList is a CMapHelper that manages the entity 'side' keyvalue, with Render2D/Render3D hooks and ShouldSerialize returning false."
     },
     {
@@ -5823,7 +5823,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapSolid's Carve, ClipByFace and face-ID generation are pure brush geometry, with render and view hooks mixed in."
     },
     {
@@ -5836,7 +5836,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapSolid declares LoadVMF/SaveVMF and RMF/MAP serialization alongside its face array and cordon state."
     },
     {
@@ -5849,7 +5849,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapSphere is a radius helper with CalcBounds, SetRadius, a 2D hit test and a tool-object factory."
     },
     {
@@ -5862,7 +5862,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapSphere declares Render2D/Render3D hooks, and its SerializeRMF and SerializeMAP are stubs that return 0."
     },
     {
@@ -5876,7 +5876,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapSprite loads sprite files and draws preview icons through IMesh and the material system."
     },
     {
@@ -5889,7 +5889,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapSprite declares its render mode and sprite-model state over CMapHelper, with a CreateMapSprite path factory."
     },
     {
@@ -5903,7 +5903,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapStudioModel loads studio model files, advances animation and draws through IMesh and the texture system."
     },
     {
@@ -5916,7 +5916,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapStudioModel declares its oriented-bounds and reverse-pitch state over CMapHelper, with creation from a model path."
     },
     {
@@ -5930,7 +5930,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapSweptPlayerHull computes its swept bounds and renders through Render2D/Render3D and IMesh."
     },
     {
@@ -5943,7 +5943,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapSweptPlayerHull declares CMapHelper state, point handles and the IsSweptHullClass entity test."
     },
     {
@@ -5956,7 +5956,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapView is the shared 2D/3D view base: render throttling by frame timing, activation, and SelectAt against the document."
     },
     {
@@ -5969,7 +5969,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapView2D has an MFC message map, draw-type cycling, a render list and the 2D render entry points."
     },
     {
@@ -5982,7 +5982,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapView2D declares the render list, instance rendering and culling-circle helpers over CMapView2DBase."
     },
     {
@@ -6075,7 +6075,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapWorld owns the document's child objects, used-texture collection and save-list builds."
     },
     {
@@ -6088,7 +6088,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapWorld declares LoadVMF and SaveVMF with CChunkFile over CMapClass and CEditGameClass."
     },
     {
@@ -6232,7 +6232,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Miscellaneous helpers: random seeding, duplicate-solid notification, mychdir, a wcdebug.txt writer and a world-object test."
     },
     {
@@ -6415,7 +6415,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "4,829-line entity page writes key values to CMapEntity/CEditGameClass; the edit logic belongs in hammer.app entity ops and the page is replaced."
     },
     {
@@ -6428,7 +6428,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COP_Entity plus its pick-target helpers and CInstanceParmData; the entity-edit model moves to hammer.app."
     },
     {
@@ -6496,7 +6496,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Input connection page validates and removes entity I/O connections; that logic belongs in hammer.app entity ops (entity_ops.cpp)."
     },
     {
@@ -6509,7 +6509,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CInputConnection and COP_Input; the connection model moves to hammer.app with the entity ops."
     },
     {
@@ -6523,7 +6523,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "2,516-line output page with COutputConnection validation and add/remove of entity outputs; the connection logic moves to hammer.app."
     },
     {
@@ -6536,7 +6536,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COutputConnection, COP_Output and its pick-entity target; the connection model moves to hammer.app."
     },
     {
@@ -7044,7 +7044,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CRender2D is the 2D orthographic view renderer over CRender; the projection and line code belongs to hammer.viewport."
     },
     {
@@ -7057,7 +7057,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CRender2D over CRender for the orthographic views, the 2D counterpart of CRender3DMS."
     },
     {
@@ -7070,7 +7070,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CreateRender3D is a factory that selects the material-system 3D renderer, so the choice belongs to viewport composition."
     },
     {
@@ -7083,7 +7083,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the Render3DType_t enum and the CreateRender3D factory; its only type is the material-system renderer."
     },
     {
@@ -7096,7 +7096,7 @@
       ],
       "state": "per-view-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CRender3DMS over CRender with IMaterial, instance and cull-tree members, the viewport's GPU-facing draw state."
     },
     {
@@ -7148,7 +7148,7 @@
       ],
       "state": "external-resource",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Runs the configured compile and game command sequences: it substitutes $variables from the document path and launches each command through the global CProcessWnd."
     },
     {
@@ -7161,7 +7161,7 @@
       ],
       "state": "external-resource",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares IsRunningCommands and the free command-running functions over the global CProcessWnd; the header holds no class state."
     },
     {
@@ -7309,7 +7309,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Sculpt push, carve and project tools mutate displacement vertices from pointer input and draw their overlays through CRender3D."
     },
     {
@@ -7322,7 +7322,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CSculptTool, CSculptPainter and the CDialog option sheets for the push, carve and project tools with their overlay methods."
     },
     {
@@ -7801,7 +7801,7 @@
       ],
       "state": "derived-cache",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CTextureGroup and TextureContext_t for the texture list, lazy loading and active-group selection."
     },
     {
