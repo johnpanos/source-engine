@@ -56,7 +56,7 @@ One active task per session. Change a row only through the project manager.
 | Session | Workstream | Current task | Files it owns now |
 | --- | --- | --- | --- |
 | source-engine-17 | Project management | Reviews, assignments, orphan cleanup, this page | `docs/agents/*` |
-| source-engine-fb | Render core | M1b regression fixes (a), (b), (c), then M2 S1 (static props through `render.scene`) | render/, materialsystem/shaderapicore, deletion files |
+| source-engine-fb | Render core | M2 S1 (static props through `render.scene`, the user's goal for this session, mid-flight), then M1b fixes (a), (b), (c) | render/, materialsystem/shaderapicore, deletion files |
 | source-engine-f1 | Platforms | M7: Android lifecycle harness and APK build ready to run; **device run blocked: Tab S8 Ultra not reachable** (b151c1c9c) | product/android, tools/quality/android_*, its progress entry |
 | source-engine-7b | Jobs | M3 slice 1: `engine/host_saverestore.cpp` (14 sites: the save thread and deferred writes) onto an injected blocking runner; oracle: byte-identical saves with `save_async` 1 and 0 | `engine/host_saverestore.cpp`, the root's runner wiring |
 | source-engine-3a | Performance | M1: baseline and attribution of the R91 regression on bazzite (sole user of bazzite) | `../source-engine-bisect-{pre,head}`, its progress entry |
@@ -65,7 +65,7 @@ One active task per session. Change a row only through the project manager.
 
 | Risk | Effect | Response |
 | --- | --- | --- |
-| **The R91 cutover made frames 65% slower** (bazzite, 1440p intro4: 13.8 → 22.9 ms), CPU-bound (GPU 31% busy): queued rendering silently off, 6.3 ms texture re-uploads and 6.5 ms lightmap rebuilds per frame on the main thread ([attribution](../../RFC/0016-progress.md#where-the-r91-cutovers-91-ms-goes-m1-attribution-on-bazzite), 6ed908187); J8 excluded | D1 moves further away; every later gain is measured from a worse base | M1b: fb fixes in order, 3a measures each on bazzite |
+| **The R91 cutover made frames 65% slower** (bazzite, 1440p intro4: 13.8 → 22.9 ms), CPU-bound (GPU 31% busy): queued rendering silently off, 6.3 ms texture re-uploads and 6.5 ms lightmap rebuilds per frame on the main thread ([attribution](../../RFC/0016-progress.md#where-the-r91-cutovers-91-ms-goes-m1-part-1-2026-10-10-source-engine-3a), 6ed908187); J8 excluded | D1 moves further away; every later gain is measured from a worse base | M1b: fb fixes in order, 3a measures each on bazzite |
 | The frame-time gap (D1) is 2–4.5× and has no owner today | The deliverable fails at its hardest gate | M1 now; every render slice records its frame cost |
 | Main-thread and render-thread CPU (p50 9–14 ms render thread at 1080p) | CPU-bound frames even with a fast GPU | M2 S3 (GPU skinning), M3 |
 | Shared working tree with several sessions | Lost or tangled work | File ownership above; `tools/agent/commit_paths.py`; orphan review every 30 min |
@@ -74,6 +74,8 @@ One active task per session. Change a row only through the project manager.
 
 ## Decisions needed from the user
 
+0. **Order for fb:** finish R89 S1 first (its current goal from you,
+   mid-flight), or switch now to the R91 regression fixes (M1b)?
 0. **Action:** attach the Galaxy Tab S8 Ultra by USB, or enable wireless
    debugging and give its ip:port. M7 is blocked on it.
 1. The `ivp` submodule fix (C++17 `inline`, needed for MSVC) is uncommitted
