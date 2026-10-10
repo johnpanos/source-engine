@@ -189,6 +189,18 @@ class InventoryTests(unittest.TestCase):
         errors = archlint.validate_inventory(self.root, MODULE_BLOCK, inventory)
         self.assertTrue(any("complete coverage" in message for message in errors))
 
+    def test_complete_coverage_rejects_one_unclassified_file(self) -> None:
+        inventory = good_inventory(self.root)
+        (self.root / "hammer/extra.cpp").write_text("int extra;\n")
+        inventory["coverage"].update(status="complete", totalHammerSourceFiles=2)
+        errors = archlint.validate_inventory(self.root, MODULE_BLOCK, inventory)
+        self.assertTrue(any("complete coverage" in m and "hammer/extra.cpp" in m for m in errors))
+
+    def test_complete_coverage_accepts_a_fully_recorded_tree(self) -> None:
+        inventory = good_inventory(self.root)
+        inventory["coverage"].update(status="complete", totalHammerSourceFiles=1)
+        self.assertEqual([], archlint.validate_inventory(self.root, MODULE_BLOCK, inventory))
+
     def test_coverage_count_must_match(self) -> None:
         inventory = good_inventory(self.root)
         inventory["coverage"]["filesClassified"] = 99

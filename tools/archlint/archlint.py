@@ -1213,10 +1213,18 @@ def validate_inventory(
             f"does not match {len(files)} file records"
         )
     if status == "complete":
+        # Records may also cover files extracted into capability libraries, so
+        # completeness is judged against the editor's source universe, not the
+        # record count.
+        universe = hammer_source_universe(root, module_block)
+        recorded = {record.get("path", "") for record in files}
+        missing = [path for path in universe if path not in recorded]
         total = coverage.get("totalHammerSourceFiles")
-        if len(files) != total:
+        if missing or total != len(universe):
             errors.append(
-                f"inventory claims complete coverage but classifies {len(files)} of {total} files"
+                f"inventory claims complete coverage but {len(missing)} of {len(universe)} "
+                f"source files are unclassified (totalHammerSourceFiles={total})"
+                + (f": {', '.join(missing[:5])}" if missing else "")
             )
     return errors
 

@@ -4,7 +4,7 @@
   "description": "RFC 0002 owned-file inventory. Each record resolves a file to its current owner and its target module, with responsibility/effect/state classification, provenance, and symbol-level splits for mixed files.",
   "baselineRevision": "2d7e01d5",
   "coverage": {
-    "status": "partial",
+    "status": "complete",
     "totalHammerSourceFiles": 682,
     "totalHammerCppFiles": 334,
     "totalHammerHeaderFiles": 350,

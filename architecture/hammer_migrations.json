@@ -69,7 +69,7 @@
         "hammer/module_edges"
       ],
       "owner": "unassigned",
-      "blocked": "Coverage is partial (13/452 files). Exhaustive per-file/per-symbol classification and reproducibility checks remain before H0 exit.",
+      "blocked": "Per-file coverage is complete (682 of 682 source files, validator-enforced against the source universe, 2026-10-09; none is a hypothesis). Per-symbol classification of the split files and the per-file caller inventory remain before H0 exit.",
       "retireWhen": [
         "every hammer source file resolves to exactly one owner",
         "inventory coverage status is 'complete' and validates",

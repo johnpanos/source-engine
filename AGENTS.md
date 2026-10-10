@@ -1675,8 +1675,9 @@ Keep the table concise and link details below or from the domain progress file.
       [record](RFC/0002-progress.md#r08-replace-textures-replace-textures-leaves-the-mfc-shell-slice-done-2026-10-03).
   - The ledger has 29 migrations, 11 of them extracted format cores and one
     retired (HAM-REPLACETEX-001). The inventory has a record for every file
-    (690 records, 682 of 682 classified by `archlint hammer --coverage`;
-    2026-10-09: 0 `hypothesis`, 660 `observed`, 30 `decision`). There are 137
+    (690 records, 682 of 682 classified by `archlint hammer --coverage`, and the
+    inventory's coverage status is `complete`, enforced against the source
+    universe; 2026-10-09: 0 `hypothesis`, 660 `observed`, 30 `decision`). There are 137
     Q-EDITOR suites (2026-10-03): 128 headless and nine corpus suites.
   - `archlint hammer --verify` passes again (2026-09-25, user decision): the
     validator accepts Hammer edges to registered capability modules, such as
