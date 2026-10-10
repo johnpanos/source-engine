@@ -16,8 +16,8 @@ Linux, Android and Apple. It is done when every line below holds, measured:
 | D1 | Every frame ≤ 8.33 ms (120 FPS floor) at 1920×1080 High, 4x MSAA, Radeon 8060S | `frame_floor.py`, row `linux-desktop-high-120` | p50 ≈ 15.3 ms, p99 ≈ 36.9 ms on intro4 (2026-10-06): **2× / 4.5× off**. Bazzite 2560×1440 intro4 timedemo: 22.9 ms at HEAD against 13.8 ms before the R91 cutover (3a's bisect, 2026-10-10) |
 | D2 | Same floor through the resolution sweep (720p–4K) on the 8060S and RTX 3070 | RFC 0016 sweep | 3070 4K p50 20.0 ms (2026-10-06) |
 | D3 | Source 2 lighting parity: game frames match `render_lab` frames of the same scenes, FSR on and off | game/lab captures, visual review | partial (R95/R96) |
-| D4 | The game draws from `render.scene` | CAP012 `render-scene-bypass` = 0 | 345 (2026-10-10) |
-| D5 | Legacy stream retired; three device adapters (Vulkan, GL/GLES, null) | K9 ratchet; CAP011 rule 10 | 7 → 3 adapters landing 2026-10-10 |
+| D4 | The game draws from `render.scene` | CAP012 `render-scene-bypass` = 0 | 345 → 340 in S1's working tree (2026-10-10 05:09) |
+| D5 | Legacy stream retired; three device adapters (Vulkan, GL/GLES, null) | K9 ratchet; CAP011 rule 10 | 3 adapters (2026-10-10); legacy stream open |
 | D6 | One task API; render off the main thread; recording scales with workers | `jobs_ratchet.py` `legacy-job-api` = 0; K9 checks | 297 sites |
 | D7 | Android arm64 device lifecycle and package; Apple builds and runs | R29 / R36 device runs | builds only |
 | D8 | Hammer always builds and plays a map | `corpus.hammer.loop`, `corpus.hammer.ui` | passing |
@@ -57,7 +57,7 @@ One active task per session. Change a row only through the project manager.
 | --- | --- | --- | --- |
 | source-engine-17 | Project management | Reviews, assignments, orphan cleanup, this page | `docs/agents/*` |
 | source-engine-fb | Render core | M2 S1 (static props through `render.scene`, the user's goal for this session, mid-flight), then M1b fixes (a), (b), (c) | render/, materialsystem/shaderapicore, deletion files |
-| source-engine-f1 | Platforms | M7: Android lifecycle harness and APK build ready to run; **device run blocked: Tab S8 Ultra not reachable** (b151c1c9c) | product/android, tools/quality/android_*, its progress entry |
+| source-engine-f1 | Platforms | M7: lifecycle lane and fake-adb self-test landed (6204ca560, 13 seeded faults); **device run blocked: Tab S8 Ultra not reachable** | product/android, tools/quality/android_*, its progress entry |
 | source-engine-7b | Jobs | M3 slice 1: `engine/host_saverestore.cpp` (14 sites: the save thread and deferred writes) onto an injected blocking runner; oracle: byte-identical saves with `save_async` 1 and 0 | `engine/host_saverestore.cpp`, the root's runner wiring |
 | source-engine-3a | Performance | M1: baseline and attribution of the R91 regression on bazzite (sole user of bazzite) | `../source-engine-bisect-{pre,head}`, its progress entry |
 
