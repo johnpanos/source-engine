@@ -57,7 +57,7 @@ One active task per session. Change a row only through the project manager.
 | source-engine-17 | Project management | Reviews, assignments, orphan cleanup, this page | `docs/agents/*` |
 | source-engine-fb | Render core | M0 adapter deletion, then M2 S1 (static props through `render.scene`) | render/, materialsystem/shaderapicore, deletion files |
 | source-engine-f1 | Platforms | M7: Android arm64 device lifecycle (surface recreation, background/foreground, process death) on the Tab S8 Ultra | product/android, tools/quality/android_*, its progress entry |
-| source-engine-7b | Jobs | M3: first `legacy-job-api` cohort onto the job system | jobsystem/, the cohort's call sites |
+| source-engine-7b | Jobs | M3 slice 1: `engine/host_saverestore.cpp` (14 sites: the save thread and deferred writes) onto an injected blocking runner; oracle: byte-identical saves with `save_async` 1 and 0 | `engine/host_saverestore.cpp`, the root's runner wiring |
 | source-engine-3a | Performance | M1: baseline and attribution of the R91 regression on bazzite (sole user of bazzite) | `../source-engine-bisect-{pre,head}`, its progress entry |
 
 ## Risks
