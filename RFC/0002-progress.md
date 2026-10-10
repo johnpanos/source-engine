@@ -2851,7 +2851,8 @@ pointer), `HAMMERTEST_CXX=g++ unittests/hammertest/run_headless.sh`:
   (RFC 0027 L1). `corpus.hammer.viewport-budget` fails `shell.built`
   (no built `hammer_gtk`), and its `.textured` variant is skipped without
   `HAMMER_TEXTURE_VPKS`.
-- clang++ was not run in this session.
+- clang++ (`HAMMERTEST_CXX=clang++`, same session): the identical result, 127 matched,
+  the same 7 environmental mismatches and 1 skip, so both required compilers agree.
 
 What this does and does not show: the headless core passes on g++; the
 UI-driven, loop and MCP corpus suites are unverified on this checkout until
