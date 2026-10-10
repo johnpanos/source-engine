@@ -43,7 +43,7 @@ def build(bld):
 	# the link and the catalog entry on the same condition.
 	if bld.env.CORE_SHADER_API:
 		libs += ['shaderapicore']
-		defines += ['LINKED_PICA_BACKEND']
+		defines += ['LINKED_CORE_SHADER_API']
 		# RFC 0016 R91 part f: on the Linux desktop the core shader API's
 		# frames show through the SDL3-Vulkan bridge's core presenter.
 		if bld.env.RENDER_CORE_VULKAN:

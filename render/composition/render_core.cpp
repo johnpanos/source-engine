@@ -7,9 +7,7 @@
 #include "render/composition/render_core.h"
 
 #include "jobsystem/task_executor.h"
-#if !defined( RENDER_CORE_NO_NULL )
 #include "render/device/null/provider.h"
-#endif
 #include "core_panels.h"
 #include "core_luminance.h"
 #include "core_ui.h"
@@ -27,18 +25,6 @@
 #endif
 #if defined( RENDER_CORE_GL )
 #include "render/device/gl/provider.h"
-#endif
-#if defined( RENDER_CORE_METAL )
-#include "render/device/metal/provider.h"
-#endif
-#if defined( RENDER_CORE_D3D12 )
-#include "render/device/d3d12/provider.h"
-#endif
-#if defined( RENDER_CORE_WEBGPU )
-#include "render/device/webgpu/provider.h"
-#endif
-#if defined( RENDER_CORE_PICA )
-#include "render/device/pica/provider.h"
 #endif
 
 #include <cstdio>
@@ -129,27 +115,13 @@ foundation::Expected<render::scene::DrawList, render::scene::CullStatus> BuildDr
 const render::device::DeviceProviderDescriptor *FindDevice( std::string_view name )
 {
 	const render::device::DeviceProviderDescriptor *linked[] = {
-#if !defined( RENDER_CORE_NO_NULL )
 	    &render::device::null::Describe(),
-#endif
 #if defined( RENDER_CORE_VULKAN )
 	    &render::device::vulkan::Describe(),
 #endif
 #if defined( RENDER_CORE_GL )
 	    &render::device::gl::Describe(),
 	    &render::device::gl::DescribeEs(), // RFC 0022
-#endif
-#if defined( RENDER_CORE_METAL )
-	    &render::device::metal::Describe(), // RFC 0025
-#endif
-#if defined( RENDER_CORE_D3D12 )
-	    &render::device::d3d12::Describe(), // RFC 0024
-#endif
-#if defined( RENDER_CORE_WEBGPU )
-	    &render::device::webgpu::Describe(), // RFC 0029
-#endif
-#if defined( RENDER_CORE_PICA )
-	    &render::device::pica::Describe(), // RFC 0026
 #endif
 	};
 	for ( const render::device::DeviceProviderDescriptor *descriptor : linked )
@@ -212,7 +184,6 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 		}
 		return set;
 	};
-#if !defined( RENDER_CORE_NO_NULL )
 	if ( descriptor.id == "null" )
 	{
 		render::device::null::NullOptions options;
@@ -220,7 +191,6 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 		options.recordCommands = false; // no product reads the command log
 		return render::device::null::Create( options );
 	}
-#endif
 #if defined( RENDER_CORE_GL )
 	if ( descriptor.id == "gl" || descriptor.id == "gles" )
 	{
@@ -230,48 +200,6 @@ render::device::DeviceResult<std::unique_ptr<render::device::IRenderDevice2>> Cr
 		options.validation = request.validation;
 		options.allowed = allow( options.allowed );
 		return render::device::gl::Create( options );
-	}
-#endif
-#if defined( RENDER_CORE_METAL )
-	if ( descriptor.id == "metal" )
-	{
-		render::device::metal::MetalAdapterOptions options;
-		options.validation = request.validation;
-		options.allowed = allow( options.allowed );
-		return render::device::metal::Create( options );
-	}
-#endif
-#if defined( RENDER_CORE_D3D12 )
-	if ( descriptor.id == "d3d12" )
-	{
-		render::device::d3d12::D3d12AdapterOptions options;
-		options.validation = request.validation;
-		options.allowed = allow( options.allowed );
-		return render::device::d3d12::Create( options );
-	}
-#endif
-#if defined( RENDER_CORE_WEBGPU )
-	if ( descriptor.id == "webgpu" )
-	{
-		render::device::webgpu::WebGpuAdapterOptions options;
-		options.validation = request.validation;
-		options.allowed = allow( options.allowed );
-		return render::device::webgpu::Create( options );
-	}
-#endif
-#if defined( RENDER_CORE_PICA )
-	if ( descriptor.id == "pica" )
-	{
-		// RFC 0026: no optional capability to mask.
-		if ( auto missing = render::device::FirstMissing( allow( {} ), request.required ) )
-			return foundation::MakeUnexpected(
-			    render::device::DeviceError{ render::device::DeviceStatus::kUnsupported,
-			        render::device::DeviceOperation::kCreateDevice,
-			        static_cast<std::int32_t>( *missing ) } );
-		render::device::pica::PicaAdapterOptions options;
-		// The memory audit's guard bands under -render-validation.
-		options.guardLinearMemory = request.validation;
-		return render::device::pica::Create( options );
 	}
 #endif
 	return foundation::MakeUnexpected(

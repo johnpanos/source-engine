@@ -1001,13 +1001,6 @@ void CMDLCache::UnserializeVCollide( MDLHandle_t handle, bool synchronousLoad )
 		pStudioData->m_nFlags &= ~STUDIODATA_FLAGS_VCOLLISION_LOADED;
 		memset( &pStudioData->m_VCollisionData, 0, sizeof( pStudioData->m_VCollisionData ) );
 
-#if 0
-		// FIXME:  ywb
-		// If we don't ask for the virtual model to load, then we can get a hitch later on after startup
-		// Should we async load the sub .mdls during startup assuming they'll all be resident by the time the level can actually
-		//  start drawing?
-		if ( pStudioData->m_pVirtualModel || synchronousLoad )
-#endif
 		{
 			virtualmodel_t *pVirtualModel = GetVirtualModel( handle );
 			if ( pVirtualModel )
@@ -1668,12 +1661,6 @@ bool CMDLCache::BuildHardwareData( MDLHandle_t handle, studiodata_t *pStudioData
 	if ( bLoaded )
 	{
 		pStudioData->m_nFlags |= STUDIODATA_FLAGS_STUDIOMESH_LOADED;
-#if defined( PLATFORM_3DS )
-		// The meshes hold the vertices now: the VVD copy (15 MB on
-		// sp_a1_intro4) is released, and a later user (decals, flex) reloads it
-		// through the cache (the 3DS memory audit, 2026-10-07).
-		Flush( handle, MDLCACHE_FLUSH_VERTEXES );
-#endif
 	}
 	else
 	{

@@ -181,7 +181,6 @@ public:
 	// legacy::ICorePassRecorder (the backend, render sequence).
 	std::uint32_t SlotStages() const override;
 	bool AcceptsMeshes() const override { return m_DynamicDraws.load( std::memory_order_relaxed ); }
-	bool AcceptsMeshStreams() const override { return AcceptsMeshes() && m_Pass.ReadsMeshStreams(); }
 	IMaterial *NeutralMaterial( const char *shader ) override
 	{
 		return m_Host && m_Host->neutralMaterial ? m_Host->neutralMaterial( shader ) : nullptr;

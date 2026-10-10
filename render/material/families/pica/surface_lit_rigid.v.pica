@@ -1,6 +1,0 @@
-; The reduced 3DS material model's rigid lit vertex (RFC 0026): a model
-; draw whose vertices stay where the frontend keeps them (CoreMeshStreams)
-; and have no bones: v0 the position and v1 the normal in object space, v3
-; the uv; the palette's first bone (c35-c37) is the model matrix. Linked
-; with lit_bones_main.pica, model_lighting.pica and skin_rigid.pica, in that
-; order. Out as surface_lit.v.pica.

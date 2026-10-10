@@ -77,10 +77,6 @@ public:
 
 	void SetForwarded( ICorePassRecorder *recorder ) { m_Forwarded = recorder; }
 	bool AcceptsMeshes() const override { return m_Forwarded && m_Forwarded->AcceptsMeshes(); }
-	bool AcceptsMeshStreams() const override
-	{
-		return m_Forwarded && m_Forwarded->AcceptsMeshStreams();
-	}
 
 	std::uint32_t QueueMesh( const legacy::CoreMeshDraw &draw ) override
 	{

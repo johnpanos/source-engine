@@ -12,31 +12,14 @@ def build(bld):
 		'render_shaderlib', 'render_device', 'render_math', 'mapcontainer', 'render_pass_lights', 'render_pass_shadows', 'render_pass_ao', 'render_pass_indirect', 'render_pass_panels', 'render_pass_luminance', 'render_pass_visibility', 'render_pass_volumetric', 'render_map_media', 'render_pass_ssr',
 		'vtf_decompress']
 	defines = []
-	# Every product but the 3DS links the null adapter (headless runs and
-	# tools); the 3DS has one device, the PICA200's (RFC 0026).
-	if bld.env.N3DS:
-		defines.append('RENDER_CORE_NO_NULL')
-	else:
-		use.append('render_device_null')
+	# Every product links the null adapter (headless runs and tools).
+	use.append('render_device_null')
 	if bld.env.RENDER_CORE_VULKAN:
 		use.append('render_device_vulkan')
 		defines.append('RENDER_CORE_VULKAN')
 	if bld.env.RENDER_CORE_GL:
 		use.append('render_device_gl')
 		defines.append('RENDER_CORE_GL')
-	if bld.env.RENDER_CORE_METAL:
-		use.append('render_device_metal')
-		defines.append('RENDER_CORE_METAL')
-	if bld.env.RENDER_CORE_D3D12:
-		use.append('render_device_d3d12')
-		defines.append('RENDER_CORE_D3D12')
-	if bld.env.RENDER_CORE_WEBGPU:
-		use.append('render_device_webgpu')
-		defines.append('RENDER_CORE_WEBGPU')
-	# RFC 0026: the 3DS's adapter.
-	if bld.env.N3DS:
-		use.append('render_device_pica')
-		defines.append('RENDER_CORE_PICA')
 	bld.stlib(
 		env         = bld.strict_cpp20_env(),
 		features    = 'cxx capability_strict',

@@ -267,15 +267,7 @@ InitReturnVal_t CSDL3Mgr::Init()
 	// scale the frame up (the tvOS root: 1080p on a 4K television).
 	const SDL_WindowFlags pixelDensity =
 	    CommandLine()->FindParm( "-nohighdpi" ) ? 0 : SDL_WINDOW_HIGH_PIXEL_DENSITY;
-#if defined( PLATFORM_3DS )
-	// The 3DS's top screen (400x240): the PICA backend (shaderapicore) draws
-	// it through citro3d, so the window carries no graphics API.
-	m_Window = SDL_CreateWindow( "", 400, 240, 0 );
-#elif defined( PLATFORM_WASM )
-	// The browser's canvas (RFC 0029): the render core's WebGPU device takes
-	// its surface from the canvas, so the window carries no graphics API.
-	m_Window = SDL_CreateWindow( "", 1280, 720, pixelDensity | SDL_WINDOW_RESIZABLE );
-#elif defined( CORE_SHADER_API )
+#if defined( CORE_SHADER_API )
 	// The core's device takes its surface from the window (SDL_Vulkan_CreateSurface
 	// needs no window flag). Hidden until the mode switch shows it at the mode's
 	// size (ShowAndSync), as the window the UI lays out at must be that size.

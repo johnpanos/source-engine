@@ -4,8 +4,8 @@
 //
 //===========================================================================//
 
-#ifndef SHADERAPIPICA_CORE_COPIES_H
-#define SHADERAPIPICA_CORE_COPIES_H
+#ifndef SHADERAPICORE_CORE_COPIES_H
+#define SHADERAPICORE_CORE_COPIES_H
 
 namespace render::legacy
 {
@@ -55,4 +55,4 @@ CopyResult CopyTargetRegion( Texture &destination, const CopyRect &region,
 
 } // namespace corefacade
 
-#endif // SHADERAPIPICA_CORE_COPIES_H
+#endif // SHADERAPICORE_CORE_COPIES_H

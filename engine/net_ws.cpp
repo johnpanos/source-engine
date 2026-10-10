@@ -20,11 +20,7 @@
 
 // The 3DS's sockets (libctru soc:U) refuse buffer sizes and broadcast; the
 // sockets work without them. Elsewhere a refused option fails the socket.
-#if defined( PLATFORM_3DS )
-#define NET_SOCKOPT_FAILED() ( (void)0 )
-#else
 #define NET_SOCKOPT_FAILED() return 0
-#endif
 
 #define NET_COMPRESSION_STACKBUF_SIZE 4096 
 

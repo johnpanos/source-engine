@@ -205,12 +205,6 @@ bool FindClose(HANDLE handle)
 // If multiple names that match are found then lowercase letters take precedence.
 bool findFileInDirCaseInsensitive( const char *file, char* output, size_t bufSize)
 {
-#if defined( PLATFORM_3DS )
-	// The SD card's FAT file system already matches names case-insensitively,
-	// so a failed open has no other spelling to find, and scanning the
-	// directory for one on every missing-file probe made startup take minutes.
-	return false;
-#endif
 	// Make sure the output buffer is always null-terminated.
 	output[0] = 0;
 

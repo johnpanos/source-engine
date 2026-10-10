@@ -36,19 +36,12 @@ static int s_nBufCurSize = 0;
 static int s_nBufAllocSize = 0;
 static bool s_oomerror_called = false;
 
-#if defined( PLATFORM_3DS )
-extern "C" void MemLedger_Print();
-#endif
 
 void MemAllocOOMError( size_t nSize )
 {
 	if ( !s_oomerror_called )
 	{
 		s_oomerror_called = true;
-#if defined( PLATFORM_3DS )
-		fprintf( stderr, "OOM: %u bytes\n", (unsigned)nSize );
-		MemLedger_Print();
-#endif
 
 		MinidumpUserStreamInfoAppend( "MemAllocOOMError: %u bytes\n", (uint)nSize );
 

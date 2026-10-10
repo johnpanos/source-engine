@@ -1,4 +1,0 @@
-#!/bin/sh
-# pkg-config for the 3DS cross build: relocates devkitPro's .pc files (their
-# prefix is /opt/devkitpro) to the extracted toolchain.
-exec pkg-config --define-prefix "$@"

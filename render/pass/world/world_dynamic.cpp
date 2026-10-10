@@ -26,18 +26,12 @@ bool WorldPass::Batch::PrepareDynamicDraws()
 		const State::MappedMaterial &mapped = queuedDynamic->mapped[dynamicIndex]->material;
 		const std::size_t drawIndexCount =
 		    draw.indices16.empty() ? draw.indices.size() : draw.indices16.size();
-		// Vertices in the frontend's buffers (Streams) or in the draw.
-		const std::size_t drawVertexCount =
-		    draw.streams ? draw.streams->vertexCount : draw.vertices.size();
+		const std::size_t drawVertexCount = draw.vertices.size();
 		const auto outOfRange = [&]( std::uint32_t index )
 		{
 			return index >= drawVertexCount;
 		};
-		const bool streamsValid =
-		    !draw.streams || ( draw.vertices.empty() && draw.streams->record.IsValid() &&
-		                         draw.streams->normals.IsValid() && !draw.bonePalette.empty() &&
-		                         draw.streams->weights.IsValid() == draw.streams->slots.IsValid() );
-		if ( !mapped || drawVertexCount == 0 || !streamsValid || drawIndexCount == 0 ||
+		if ( !mapped || drawVertexCount == 0 || drawIndexCount == 0 ||
 		     drawIndexCount % 3 != 0 ||
 		     std::any_of( draw.indices.begin(), draw.indices.end(), outOfRange ) ||
 		     std::any_of( draw.indices16.begin(), draw.indices16.end(), outOfRange ) )
@@ -62,7 +56,7 @@ bool WorldPass::Batch::PrepareDynamicDraws()
 		if ( draw.lighting && m->program.drawInputs.empty() )
 		{
 			const std::optional<material::GroupRequest> request =
-			    m->resolver->DrawGroup( m->program, {}, &*draw.lighting, draw.bonePalette );
+			    m->resolver->DrawGroup( m->program, {}, &*draw.lighting );
 			litDrawGroups.emplace_back();
 			std::string why;
 			if ( !request || !buildGroup( *request, {}, litDrawGroups.back(), &why ) )
@@ -87,44 +81,6 @@ bool WorldPass::Batch::PrepareDynamicDraws()
 			{
 				note( "material " + draw.Material().name +
 				      ": its static vertex light variant: " + variant.Error() );
-				complete = false;
-				continue;
-			}
-			pipeline = variant.Value();
-		}
-		// A GPU-skinned draw: its palette rides in the lighting group above.
-		if ( !draw.bonePalette.empty() )
-		{
-			auto variant =
-			    lit && !draw.staticVertexLight
-			        ? m->resolver->SkinnedPipeline( m->program )
-			        : foundation::Expected<PipelineId, std::string>(
-			              foundation::MakeUnexpected( std::string(
-			                  "a skinned draw needs model lighting and no baked light" ) ) );
-			if ( !variant )
-			{
-				note( "material " + draw.Material().name +
-				      ": its skinned variant: " + variant.Error() );
-				complete = false;
-				continue;
-			}
-			pipeline = variant.Value();
-		}
-		// Vertices in the frontend's buffers: the program's variant reading
-		// them, skinned when weights and slots are given (else one bone, the
-		// model matrix).
-		if ( draw.streams )
-		{
-			auto variant =
-			    lit && !draw.staticVertexLight
-			        ? m->resolver->MeshStreamsPipeline(
-			              m->program, draw.streams->weights.IsValid() )
-			        : foundation::Expected<PipelineId, std::string>( foundation::MakeUnexpected(
-			              std::string( "mesh streams need model lighting and no baked light" ) ) );
-			if ( !variant )
-			{
-				note( "material " + draw.Material().name +
-				      ": its mesh streams variant: " + variant.Error() );
 				complete = false;
 				continue;
 			}
@@ -170,8 +126,6 @@ bool WorldPass::Batch::PrepareDynamicDraws()
 			vertexBytes = batchVertices;
 			indexBytes = std::as_bytes( std::span( batchIndices ) );
 		}
-		// Draws whose vertices are all the frontend's (Streams) upload
-		// indices alone.
 		BufferDesc desc;
 		desc.size = vertexBytes.size() * sizeof( WorldVertex );
 		desc.usages = { ResourceUsage::kCopyDestination, ResourceUsage::kVertex };

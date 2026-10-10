@@ -422,9 +422,7 @@ private:
 		}
 		text.Append( "backtrace:\n" );
 		BacktraceState frames;
-#if !defined( __EMSCRIPTEN__ ) // the WebAssembly stack cannot be walked: no frames
 		_Unwind_Backtrace( CollectFrame, &frames );
-#endif
 		for ( int i = 0; i < frames.count; ++i )
 		{
 			text.Append( "  0x" );
@@ -540,9 +538,7 @@ public:
 		}
 		// The first frame reported is this function's own.
 		StackState state{ frames, maxFrames, 0, 1 };
-#if !defined( __EMSCRIPTEN__ ) // the WebAssembly stack cannot be walked: no frames
 		_Unwind_Backtrace( CollectStackFrame, &state );
-#endif
 		return state.count;
 	}
 };

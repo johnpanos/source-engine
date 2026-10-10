@@ -80,10 +80,6 @@ ThreadResult ApplyPriority( ThreadPriority priority )
 	                                                            : QOS_CLASS_DEFAULT;
 	return pthread_set_qos_class_self_np( qos, 0 ) == 0 ? ThreadResult::kOk
 	                                                    : ThreadResult::kUnsupported;
-#elif defined( __EMSCRIPTEN__ )
-	// The browser schedules its workers; there is no per-thread priority.
-	(void)priority;
-	return ThreadResult::kUnsupported;
 #else
 	// Linux and Android give each thread its own nice value. Raising priority
 	// needs privilege the process may not have; that is kUnsupported, never
@@ -209,13 +205,7 @@ public:
 		// The record is published under the lock before the thread can run, so
 		// IdOf and Join see it as soon as Start returns.
 		std::lock_guard<std::mutex> lock( m_mutex );
-#if defined( PLATFORM_3DS )
-		// The 3DS creates threads with an explicit stack through its compat layer.
-		const int rc = n3ds_pthread_create( &record->thread, ThreadTrampoline, record,
-			options.stackBytes != 0 ? options.stackBytes : 64 * 1024 );
-#else
 		const int rc = pthread_create( &record->thread, &attr, ThreadTrampoline, record );
-#endif
 		pthread_attr_destroy( &attr );
 		if ( rc != 0 )
 		{
@@ -280,19 +270,11 @@ public:
 	int GetCurrentName( char *buffer, int bufferSize ) const override
 	{
 		char name[64] = {};
-#if defined( __EMSCRIPTEN__ )
-		// Emscripten's threads have no readable name: none is reported.
-		if ( buffer == nullptr || bufferSize <= 0 || name[0] == '\0' )
-		{
-			return -1;
-		}
-#else
 		if ( buffer == nullptr || bufferSize <= 0 ||
 		     pthread_getname_np( pthread_self(), name, sizeof( name ) ) != 0 || name[0] == '\0' )
 		{
 			return -1;
 		}
-#endif
 		const int n = static_cast<int>( std::strlen( name ) );
 		if ( n >= bufferSize )
 		{
@@ -464,7 +446,7 @@ public:
 			NameCallingThread( copy );
 			return ThreadResult::kOk;
 		}
-#if defined( __APPLE__ ) || defined( __EMSCRIPTEN__ )
+#if defined( __APPLE__ )
 		return ThreadResult::kUnsupported; // only the calling thread can be named
 #else
 		return pthread_setname_np( FromNative( native ), copy ) == 0 ? ThreadResult::kOk

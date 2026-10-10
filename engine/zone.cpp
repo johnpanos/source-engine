@@ -135,22 +135,12 @@ void Memory_Init( void )
     // Seems to need to be larger to not get exhausted on
     // 64-bit. Perhaps because of larger pointer sizes.
     int nMaxBytes = 128*1024*1024;
-#elif defined( PLATFORM_3DS )
-	// The hunk holds the loaded map; with no virtual memory it is allocated
-	// whole, and 3DS maps are small: sp_a1_intro4 uses 3.7 MB of it
-	// (`memory`), so 6 MB leaves headroom and gives the heap back the rest.
-	int nMaxBytes = 6*1024*1024;
 #else
 	int nMaxBytes = 48*1024*1024;
 #endif
 	const int nMinCommitBytes = 0x8000;
 #ifndef HUNK_USE_16MB_PAGE
-#if defined( PLATFORM_3DS )
-	// Committed whole: CMemoryStack caps a 3DS stack at its initial commit.
-	const int nInitialCommit = nMaxBytes;
-#else
 	const int nInitialCommit = 0x280000;
-#endif
 	while ( !g_HunkMemoryStack.Init( nMaxBytes, nMinCommitBytes, nInitialCommit ) )	 
 	{
 		Warning( "Unable to allocate %d MB of memory, trying %d MB instead\n", nMaxBytes, nMaxBytes/2 );

@@ -267,29 +267,6 @@ enum class CoreMeshKind : std::uint8_t
 	kBlobShadow, // render-to-texture shadows: ShadowBuild casters and Shadow decals
 	kPortal      // PortalRefract's refraction and flame stages (the core's portal point)
 };
-// A model draw's vertices left where the frontend keeps them (RFC 0026):
-// buffers of the core's device that the frontend writes in place, so neither
-// side builds or copies a vertex per draw. The record is the legacy mesh
-// vertex (24 bytes: position float3 at 0, colour unorm8x4 at 12, uv float2
-// at 16); normals are float3 (12 bytes). A GPU-skinned draw (bonePalette)
-// adds two-weight float2 (8 bytes; the third is 1 - both) and its bones'
-// palette offsets as unorm8x4 (4 bytes, value slot x 3 / 255; the fourth
-// unused); a rigid draw names neither and its palette is one bone, its
-// model matrix. Offsets are in bytes. The frontend keeps every buffer alive
-// and unwritten until the recording that reads the draw is submitted, and
-// releases it behind that submission's token.
-struct CoreMeshStreams
-{
-	device::BufferId record;
-	std::uint64_t recordOffset = 0;
-	device::BufferId normals;
-	std::uint64_t normalOffset = 0;
-	device::BufferId weights;
-	std::uint64_t weightOffset = 0;
-	device::BufferId slots;
-	std::uint64_t slotOffset = 0;
-};
-
 struct CoreMeshDraw
 {
 	CoreMeshKind kind = CoreMeshKind::kSurface;
@@ -302,30 +279,17 @@ struct CoreMeshDraw
 	// core reuses what it built from them (no per-draw copy or key); 0 means
 	// unknown, and the core reads the variables every time.
 	std::uint64_t materialRevision = 0;
-	// A model draw the GPU skins (the reduced model, RFC 0026): boneCount
-	// bone-to-world matrices, 12 floats each (3 rows of a row-major 3x4), at
-	// most material::kMaxReducedBones (19); the vertices are then in bone
-	// space, lightmapUv holding the first two weights (the third is 1 - both)
-	// and tangentS the three bones' palette offsets (slot x 3). A device
-	// without the reduced model refuses the draw by name.
-	const float *bonePalette = nullptr;
-	std::uint32_t boneCount = 0;
 	// Optional: the frontend's own storage of `vertices` and `indices`, which
 	// QueueMesh may take (move from) instead of copying; when set, each holds
 	// exactly the array its pointer names. Left in an unspecified state.
 	std::vector<material::SurfaceWorldVertex> *takeVertices = nullptr;
 	std::vector<std::uint32_t> *takeIndices = nullptr;
 	// 16-bit indices in place of `indices` (null then): indexCount of them,
-	// each below 65536. A device that reads 16-bit indices takes them as they
-	// are (the PICA200 has no 32-bit indices); takeIndices16 as takeIndices.
+	// each below 65536; takeIndices16 as takeIndices.
 	const std::uint16_t *indices16 = nullptr;
 	std::vector<std::uint16_t> *takeIndices16 = nullptr;
 	const material::SurfaceWorldVertex *vertices = nullptr;
 	std::uint32_t vertexCount = 0;
-	// In place of `vertices` (null then): vertexCount vertices in the
-	// frontend's buffers (CoreMeshStreams), for a recorder whose
-	// AcceptsMeshStreams() is true.
-	const CoreMeshStreams *streams = nullptr;
 	const std::uint32_t *indices = nullptr;
 	std::uint32_t indexCount = 0;
 	// The captured foliage root; vertices remain in world space.
@@ -371,9 +335,6 @@ class ICorePassRecorder
 {
 public:
 	virtual bool AcceptsMeshes() const { return false; }
-	// Whether QueueMesh takes a model draw's vertices as CoreMeshStreams
-	// (a device whose reduced model reads them).
-	virtual bool AcceptsMeshStreams() const { return false; }
 	// The render sequence, before marking its stream slot. 0 refuses the whole
 	// draw; a returned tag promises to draw it or record an explicit failure.
 	virtual std::uint32_t QueueMesh( const CoreMeshDraw & ) { return 0; }

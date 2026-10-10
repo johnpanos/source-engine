@@ -112,8 +112,6 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		}
 	}
 	geometry.staticVertexLight = draw.staticVertexLighting;
-	if ( draw.bonePalette && draw.boneCount )
-		geometry.bonePalette.assign( draw.bonePalette, draw.bonePalette + draw.boneCount * 12 );
 	if ( cards )
 	{
 		geometry.cards.assign( draw.cards, draw.cards + draw.cardCount );
@@ -123,17 +121,7 @@ std::uint32_t CoreWorld::QueueMesh( const legacy::CoreMeshDraw &draw )
 		geometry.cardSplineNormals = draw.cardSplineNormals;
 	}
 	// The frontend's own arrays are taken when offered (CoreMeshDraw::take*):
-	// a copy per model draw was the 3DS frame's largest memcpy caller.
-	// Vertices the frontend keeps in place (CoreMeshStreams): named, never copied.
-	else if ( draw.streams )
-	{
-		if ( !AcceptsMeshStreams() )
-			return 0;
-		const legacy::CoreMeshStreams &in = *draw.streams;
-		geometry.streams = pass::world::WorldView::DynamicDraw::Streams{ in.record, in.normals,
-		    in.weights, in.slots, in.recordOffset, in.normalOffset, in.weightOffset, in.slotOffset,
-		    draw.vertexCount };
-	}
+	// a copy per model draw was a frame's largest memcpy caller.
 	else if ( draw.takeVertices && draw.takeVertices->data() == draw.vertices &&
 	          draw.takeVertices->size() == draw.vertexCount )
 		geometry.vertices = std::move( *draw.takeVertices );

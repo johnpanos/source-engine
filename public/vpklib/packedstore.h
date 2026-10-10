@@ -238,14 +238,7 @@ public:
 
 
 	// cache 64 MB total
-#if defined( PLATFORM_3DS )
-	// The 3DS does not read through this cache (packedstore.cpp, ReadData):
-	// one line was the memory audit's choice, and with one 1 MB line the
-	// demo's interleaved reads refilled it constantly.
-	static const int k_nCacheBuffersToKeep = 1;
-#else
 	static const int k_nCacheBuffersToKeep = 4;
-#endif
 	static const int k_cubCacheBufferSize = 0x00100000; // 1MB
 	static const int k_nCacheBufferMask = 0x7FF00000;
 

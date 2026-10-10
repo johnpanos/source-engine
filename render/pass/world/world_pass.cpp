@@ -59,8 +59,7 @@ void WorldPass::SetWorld( WorldData data )
 			// probes and clustered direct light instead of a lightmap page.
 			auto blend =
 			    source.mesh
-			        ? material::ClaimForMesh( claimed.desc, data.reflection.has_value(),
-			              s.sceneColor.load( std::memory_order_relaxed ) )
+			        ? material::ClaimForMesh( claimed.desc, data.reflection.has_value(), true )
 			        : material::ClaimForDrawing( claimed.desc, data.stage != nullptr, nullptr,
 			              data.reflection.has_value() );
 			if ( !blend )
@@ -228,11 +227,6 @@ void WorldPass::ClearWorld()
 	// Queued views stay with their world's generation: in queued mode the
 	// slots of a frame that straddles a level change record after it, and
 	// skip their views (an earlier world's) rather than fail.
-}
-
-bool WorldPass::ReadsMeshStreams() const
-{
-	return m_State->meshStreams.load( std::memory_order_relaxed );
 }
 
 void WorldPass::NoteRefusal( std::string reason )

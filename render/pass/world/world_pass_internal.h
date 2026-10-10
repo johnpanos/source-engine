@@ -431,12 +431,6 @@ using namespace detail;
 struct WorldPass::State
 {
 	IRenderDevice2 *device = nullptr; // the device the resources live on
-	// ReadsMeshStreams: set once the world resolver exists (render sequence),
-	// read by the frontend's handoff on any thread.
-	std::atomic<bool> meshStreams{ false };
-	// Whether the program reads the view's scene colour (refraction): false
-	// for the reduced model, once its resolver exists; true until then.
-	std::atomic<bool> sceneColor{ true };
 	std::span<const std::uint32_t> fragmentModule; // SetSurfaceFragmentModule
 	// The last screen output written on this sequence. Another camera or output
 	// invalidates reuse even when a format's own prepass textures still exist.
@@ -475,8 +469,7 @@ struct WorldPass::State
 		MappedMaterial material;
 		bool claimStage = false;
 		bool claimReflection = false;
-		bool claimSceneColor = true; // State::sceneColor when claimed
-		std::string claimError;      // empty: claimed
+		std::string claimError; // empty: claimed
 		bool requiresDepthAlpha = false;
 		// A claimed SpriteCard's card terms (render.sprite-card.v1).
 		std::optional<sprite_card::Frame> cardTerms;

@@ -181,11 +181,7 @@ static int  GetOptimalReadBuffer( CUtlBuffer *pOutOptimalBuffer, FileHandle_t hF
 static void FreeOptimalReadBuffer( int nMaxSize );
 // The texture read buffer kept between loads (up to this size): none on the
 // 3DS, whose heap cannot spare a cached 2 MB block.
-#if defined( PLATFORM_3DS )
-static constexpr int kKeptReadBufferBytes = 0;
-#else
 static constexpr int kKeptReadBufferBytes = 6 * 1024 * 1024;
-#endif
 
 //-----------------------------------------------------------------------------
 // Use Warning to show texture flags.

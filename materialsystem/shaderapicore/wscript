@@ -1,10 +1,9 @@
 #! /usr/bin/env python
 # encoding: utf-8
 #
-# The Nintendo 3DS shader API (DEST_OS 3ds, --render-backend=pica): the
-# material system's IShaderAPI, drawing through the render core's PICA200
-# device (render.device.pica, RFC 0026 P5). Its vertex program is assembled by
-# the device's pica_device_shaders feature (render/device/pica/wscript).
+# The render core's shader API (--render-backend=core): the material
+# system's IShaderAPI, drawing through the render core's device
+# (render.device.v2).
 
 top = '.'
 PROJECT_NAME = 'shaderapicore'
@@ -38,9 +37,6 @@ def build(bld):
 
 	# bitmap before the libraries it uses (a static link resolves left to right).
 	libs = ['tier0', 'bitmap', 'tier1', 'tier2', 'mathlib', 'render_device']
-	# The 3DS's: its formats and presenter are the PICA device's.
-	if bld.env.N3DS:
-		libs += ['render_device_pica']
 
 	bld.shlib(
 		source   = source,

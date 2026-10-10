@@ -7,15 +7,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#if defined( PLATFORM_WASM )
-// No sysctl: the frequency comes from /proc (absent) or the timing fallback.
-#elif defined( LINUX )
+#if defined( LINUX )
 #include <linux/sysctl.h>
 #else
 #include <sys/sysctl.h>
 # ifdef __APPLE__
 #  define CPUFREQ_SYSCTL "hw.cpufrequency_max"
-# else
+#else
 #  define CPUFREQ_SYSCTL "dev.cpu.0.freq"
 # endif
 #endif

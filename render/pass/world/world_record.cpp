@@ -729,22 +729,9 @@ bool WorldPass::Batch::RecordView()
 		std::copy_n( draw.source->modelToWorld, 16, dynamicConstants.world );
 		encoder.SetDrawConstants( 0, std::as_bytes( std::span( &dynamicConstants, 1 ) )
 		                                 .first( m.program.request.drawConstantBytes ) );
-		if ( const auto &streams = draw.source->streams )
-		{
-			encoder.SetVertexBuffer( 0, streams->record, streams->recordOffset );
-			encoder.SetVertexBuffer( 1, streams->normals, streams->normalOffset );
-			if ( streams->weights.IsValid() )
-			{
-				encoder.SetVertexBuffer( 2, streams->weights, streams->weightOffset );
-				encoder.SetVertexBuffer( 3, streams->slots, streams->slotOffset );
-			}
-		}
-		else
-		{
-			encoder.SetVertexBuffer( 0, draw.vertices, draw.vertexOffset );
-			if ( recordingTemporal )
-				encoder.SetVertexBuffer( 1, draw.vertices, draw.vertexOffset );
-		}
+		encoder.SetVertexBuffer( 0, draw.vertices, draw.vertexOffset );
+		if ( recordingTemporal )
+			encoder.SetVertexBuffer( 1, draw.vertices, draw.vertexOffset );
 		encoder.SetIndexBuffer( draw.indices, draw.indexOffset, draw.indexFormat );
 		encoder.DrawIndexed( draw.count, 1, 0, 0, 0 );
 		++drawnDynamic;

@@ -213,8 +213,6 @@ bool WorldPass::Batch::PrepareResources()
 			return false;
 		}
 		r.resolver = std::move( resolver ).Value();
-		s.meshStreams.store( r.resolver->Program().Reduced(), std::memory_order_relaxed );
-		s.sceneColor.store( r.resolver->Program().ReadsSceneColor(), std::memory_order_relaxed );
 		prewarmResolver( *r.resolver, "world" );
 		// The resolver's points draw with the scene terms the stage supports,
 		// and none without one, as the model resolver's do: a plain map's
@@ -223,7 +221,7 @@ bool WorldPass::Batch::PrepareResources()
 		// (ClaimForDrawing's worldPbr) asks for the stage itself.
 		r.resolver->SetWorldPbr(
 		    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
-		r.resolver->SetSceneColorAvailable( r.resolver->Program().ReadsSceneColor() );
+		r.resolver->SetSceneColorAvailable( true );
 		r.materials.resize( world->materials.size() );
 	}
 	if ( ( !view.staticInstances.empty() || !view.posedModels.empty() ) && !r.modelResolver )
@@ -239,7 +237,7 @@ bool WorldPass::Batch::PrepareResources()
 		r.modelResolver = std::move( resolver ).Value();
 		r.modelResolver->SetWorldPbr(
 		    true, WorldTerms( *world, target.runtimeDirect, target.ambientOcclusionTerm ) );
-		r.modelResolver->SetSceneColorAvailable( r.modelResolver->Program().ReadsSceneColor() );
+		r.modelResolver->SetSceneColorAvailable( true );
 		r.modelMaterials.resize( world->materials.size() );
 		prewarmResolver( *r.modelResolver, "model" );
 	}

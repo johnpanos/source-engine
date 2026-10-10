@@ -102,7 +102,7 @@ void *operator new[] ( unsigned int nSize, int nBlockUse, const char *pFileName,
 }
 #endif
 
-#if (!defined(_DEBUG) && !defined(USE_MEM_DEBUG))
+#if !defined(_DEBUG) && !defined(USE_MEM_DEBUG)
 
 // Support for CHeapMemAlloc for easy switching to using the process heap.
 #ifdef ALLOW_PROCESS_HEAP
@@ -1468,139 +1468,8 @@ CX360SmallBlockPool *CX360SmallBlockHeap::FindPool( void *p )
 #endif
 
 
-#if defined( PLATFORM_3DS )
-//-----------------------------------------------------------------------------
-// Large-allocation ledger (3DS): every live block of at least
-// kLedgerMinBytes with the four frames that allocated it, so an out-of-memory
-// report names its owners (MemLedger_Print; tools/n3ds/n3ds.py symbolizes the
-// LEDGER lines). Unwinding costs only on these rare large allocations.
-//-----------------------------------------------------------------------------
-#include "foundation_facade.h"
-
-namespace
-{
-const size_t kLedgerMinBytes = 64 * 1024;
-const int kLedgerFrames = 4;
-const int kLedgerSlots = 4096; // power of two
-
-struct LedgerEntry
-{
-	void *ptr;
-	size_t size;
-	uintptr_t frames[kLedgerFrames];
-};
-
-LedgerEntry g_Ledger[kLedgerSlots];
-CThreadFastMutex g_LedgerLock;
-int g_LedgerDropped = 0;
-
-unsigned LedgerSlot( void *ptr )
-{
-	return ( unsigned( uintptr_t( ptr ) ) >> 3 ) * 2654435761u & ( kLedgerSlots - 1 );
-}
-
-void LedgerAdd( void *ptr, size_t size )
-{
-	if ( !ptr || size < kLedgerMinBytes )
-		return;
-	LedgerEntry entry = {};
-	entry.ptr = ptr;
-	entry.size = size;
-	// Tier 0's stack capture (R103); its frames start at LedgerAdd, then Alloc,
-	// both skipped as before.
-	void *captured[kLedgerFrames + 2] = {};
-	const int nCaptured = tier0_facade::CaptureStackFromAllocator( captured, kLedgerFrames + 2 );
-	for ( int i = 2; i < nCaptured; ++i )
-		entry.frames[i - 2] = (uintptr_t)captured[i];
-	AUTO_LOCK( g_LedgerLock );
-	for ( unsigned i = LedgerSlot( ptr ), n = 0; n < kLedgerSlots; i = ( i + 1 ) & ( kLedgerSlots - 1 ), ++n )
-	{
-		if ( !g_Ledger[i].ptr || g_Ledger[i].ptr == ptr )
-		{
-			g_Ledger[i] = entry;
-			return;
-		}
-	}
-	++g_LedgerDropped;
-}
-
-void LedgerRemove( void *ptr )
-{
-	if ( !ptr )
-		return;
-	AUTO_LOCK( g_LedgerLock );
-	unsigned i = LedgerSlot( ptr );
-	for ( unsigned n = 0; n < kLedgerSlots && g_Ledger[i].ptr; i = ( i + 1 ) & ( kLedgerSlots - 1 ), ++n )
-	{
-		if ( g_Ledger[i].ptr != ptr )
-			continue;
-		// Backward-shift deletion keeps every probe chain intact.
-		unsigned hole = i;
-		for ( unsigned j = ( i + 1 ) & ( kLedgerSlots - 1 ); g_Ledger[j].ptr; j = ( j + 1 ) & ( kLedgerSlots - 1 ) )
-		{
-			const unsigned home = LedgerSlot( g_Ledger[j].ptr );
-			if ( ( ( j - home ) & ( kLedgerSlots - 1 ) ) >= ( ( j - hole ) & ( kLedgerSlots - 1 ) ) )
-			{
-				g_Ledger[hole] = g_Ledger[j];
-				hole = j;
-			}
-		}
-		g_Ledger[hole] = LedgerEntry();
-		return;
-	}
-}
-} // namespace
-
-// Prints the live large blocks grouped by allocating stack, largest first:
-//   LEDGER <bytes> <blocks> <pc0> <pc1> <pc2> <pc3>
-extern "C" DLL_EXPORT void MemLedger_Print()
-{
-	static LedgerEntry s_Groups[kLedgerSlots];
-	static int s_Counts[kLedgerSlots];
-	int groups = 0;
-	size_t total = 0;
-	{
-		AUTO_LOCK( g_LedgerLock );
-		for ( int i = 0; i < kLedgerSlots; ++i )
-		{
-			const LedgerEntry &e = g_Ledger[i];
-			if ( !e.ptr )
-				continue;
-			total += e.size;
-			int g = 0;
-			while ( g < groups && memcmp( s_Groups[g].frames, e.frames, sizeof( e.frames ) ) )
-				++g;
-			if ( g == groups )
-			{
-				s_Groups[groups] = e;
-				s_Groups[groups].size = 0;
-				s_Counts[groups++] = 0;
-			}
-			s_Groups[g].size += e.size;
-			++s_Counts[g];
-		}
-	}
-	fprintf( stderr, "LEDGER total %u bytes in large blocks, %d stacks, %d untracked\n", (unsigned)total, groups,
-		g_LedgerDropped );
-	for ( int printed = 0; printed < 40 && groups > 0; ++printed )
-	{
-		int best = 0;
-		for ( int g = 1; g < groups; ++g )
-			if ( s_Groups[g].size > s_Groups[best].size )
-				best = g;
-		const LedgerEntry &e = s_Groups[best];
-		fprintf( stderr, "LEDGER %u %d %08x %08x %08x %08x\n", (unsigned)e.size, s_Counts[best],
-			(unsigned)e.frames[0], (unsigned)e.frames[1], (unsigned)e.frames[2], (unsigned)e.frames[3] );
-		s_Groups[best] = s_Groups[--groups];
-		s_Counts[best] = s_Counts[groups];
-	}
-}
-#define MEM_LEDGER_ADD( p, n ) LedgerAdd( p, n )
-#define MEM_LEDGER_REMOVE( p ) LedgerRemove( p )
-#else
 #define MEM_LEDGER_ADD( p, n ) ( (void)0 )
 #define MEM_LEDGER_REMOVE( p ) ( (void)0 )
-#endif
 
 //-----------------------------------------------------------------------------
 // Release versions

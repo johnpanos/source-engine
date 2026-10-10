@@ -225,11 +225,7 @@ std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
 	// variables); on the 3DS (a ~95 MB heap) the desktop's 4096 ran the
 	// intro4 demo out of memory, and 256 still grew ~1.7 MB a few hundred
 	// frames in, so the bound is 64 there (RFC 0026 memory audit).
-#if defined( __3DS__ )
-	constexpr std::size_t kMaxMapped = 64;
-#else
 	constexpr std::size_t kMaxMapped = 4096;
-#endif
 	// A revisioned material's key is built once (MaterialSnapshotKey formats
 	// every variable, which per dynamic draw was a measured share of the frame).
 	if ( source.revision )
@@ -254,19 +250,16 @@ std::shared_ptr<const WorldPass::State::MappedEntry> WorldPass::State::Mapped(
 		if ( auto at = mapped.find( key ); at != mapped.end() )
 			found = at->second;
 	}
-	const bool readsSceneColor = sceneColor.load( std::memory_order_relaxed );
-	if ( found && found->claimStage == stage && found->claimReflection == reflection &&
-	     found->claimSceneColor == readsSceneColor )
+	if ( found && found->claimStage == stage && found->claimReflection == reflection )
 		return found;
 	auto entry = std::make_shared<MappedEntry>(
-	    MappedEntry{ found ? found->material : MapWorldMaterial( source ), stage, reflection,
-	        readsSceneColor, {}, false, {} } );
+	    MappedEntry{ found ? found->material : MapWorldMaterial( source ), stage, reflection, {},
+	        false, {} } );
 	if ( entry->material )
 	{
 		const material::MaterialDesc &desc = entry->material.Value().desc;
-		// Scene color is the target's (the composition's capture), on any map
-		// whose program reads one (State::sceneColor).
-		auto claim = source.mesh ? material::ClaimForMesh( desc, reflection, readsSceneColor )
+		// Scene color is the target's (the composition's capture).
+		auto claim = source.mesh ? material::ClaimForMesh( desc, reflection, true )
 		                         : material::ClaimForDrawing(
 		                               desc, stage, &entry->requiresDepthAlpha, reflection );
 		if ( !claim )

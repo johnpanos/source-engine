@@ -1,16 +1,13 @@
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// The 3DS shader API's frame on render.device.pica, the render core's
-// PICA200 adapter (RFC 0026); nothing here reaches citro3d. The render core
-// draws everything: this borrows the core's device (BindDevice) and owns the
-// frame (a 400x240 colour and depth target in screen orientation, render
-// targets, clears, the core sections the core's passes record into), the
-// shader API's textures and the in-place device buffers behind its model
-// meshes (CoreMeshStreams).
+// The core shader API's frame on the render core's device (render.device.v2).
+// The render core draws everything: this borrows the core's device
+// (BindDevice) and owns the frame (colour and depth targets, render targets,
+// clears, the core sections the core's passes record into) and the shader
+// API's textures and device buffers.
 //
 // Conventions:
 //  * clip space is the port's: D3D's (y up, depth 0 to 1, row 0 at the top);
-//    the device's presenter turns the target onto the top screen;
 //  * mesh vertex colours are D3DCOLOR bytes (B G R A);
 //  * textures are uploaded in the port's raster layout (row 0 at the top).
 //
@@ -20,8 +17,8 @@
 //
 //=============================================================================//
 
-#ifndef PICA_RENDERER_H
-#define PICA_RENDERER_H
+#ifndef CORE_RENDERER_H
+#define CORE_RENDERER_H
 
 #include "core_texture.h"
 #include "render/device/completion.h"
@@ -58,17 +55,13 @@ enum class Memory : std::uint8_t
 enum class UploadFormat : std::uint8_t
 {
 	kRGBA8,  // 4 bytes per texel
-	kETC1,   // render.device.v2's kETC1Rgb
-	kETC1A4, // render.device.v2's kETC1A4
-	kRGBA4,  // render.device.v2's kRGBA4Unorm: a 16-bit word per texel (D42)
-	kRGBA8Srgb, // kRGBA8 decoded from sRGB when sampled (off the 3DS: D3D9's
-	            // per-sampler sRGB read, which the core asks for per import)
+	kRGBA8Srgb, // kRGBA8 decoded from sRGB when sampled (D3D9's per-sampler
+	            // sRGB read, which the core asks for per import)
 	kRGBA16,    // RGBA16161616 texels (8 bytes) stored as render.device.v2's
-	            // kRGBA16Float, which WebGPU and Vulkan both sample (off the
-	            // 3DS: integer-HDR lightmap pages, the same values as
+	            // kRGBA16Float (integer-HDR lightmap pages, the same values as
 	            // shaderapivulkan's 16-bit unorm pages)
-	kRGBA16F    // half floats (8 bytes a texel) as they are, kRGBA16Float (off
-	            // the 3DS: HDR images, IMAGE_FORMAT_RGBA16161616F)
+	kRGBA16F    // half floats (8 bytes a texel) as they are, kRGBA16Float
+	            // (HDR images, IMAGE_FORMAT_RGBA16161616F)
 };
 static_assert( sizeof( Vertex ) == 24, "PICA vertex record" );
 
@@ -185,17 +178,8 @@ struct Stats
 // The depth buffers' format: the PICA200's D24S8; elsewhere D32 float with
 // an 8-bit stencil (portals and stencil clears need one, as the native
 // backend's depth has; WebGPU's depth24plus is no copyable 24-bit unorm).
-#if defined( PLATFORM_3DS )
-constexpr render::device::Format kDepthFormat = render::device::Format::kD24UnormS8;
-#else
 constexpr render::device::Format kDepthFormat = render::device::Format::kD32FloatS8;
-#endif
 
-#if defined( PLATFORM_3DS )
-// Screen: the top screen, 400x240.
-constexpr int kScreenWidth = 400;
-constexpr int kScreenHeight = 240;
-#else
 // Screen: the window's back buffer (RFC 0029: the browser's canvas), set
 // before Init by SetScreenSize.
 inline int kScreenWidth = 1280;
@@ -214,7 +198,6 @@ void ScreenSize( int &width, int &height );
 using Presenter = bool ( * )( void *context, render::device::IRenderDevice2 &device,
     std::uint64_t color, std::uint32_t width, std::uint32_t height );
 void BindPresenter( Presenter presenter, void *context );
-#endif
 
 // The render core's device, which the launcher's composition owns (RFC 0026:
 // one device on the 3DS). Bound before Init; it outlives Shutdown.
@@ -246,7 +229,7 @@ void SetViewport( int x, int y, int width, int height );
 
 // Memory a mesh keeps. inPlace: its one copy is a buffer of the render
 // core's device the CPU writes in place, which the core reads where it is
-// (DeviceBufferOf, CoreMeshStreams); else CPU memory (the world meshes, which
+// (read by the device); else CPU memory (the world meshes, which
 // the core draws from the map's own data). In-place memory falls back to CPU
 // memory when the device has none left.
 void *AllocLinear( Memory kind, std::size_t bytes, bool inPlace = false );
@@ -254,10 +237,6 @@ void FreeLinear( void *ptr );
 // Before rewriting memory a recorded draw may read: submits the frame so far.
 void PrepareWrite( const void *ptr );
 void FlushLinear( const void *ptr, std::size_t bytes );
-// The device buffer and byte offset of in-place memory (AllocLinear), for a
-// draw the current recording makes: the memory then counts as read by it
-// (PrepareWrite submits before rewriting it). False for other memory.
-bool DeviceBufferOf( const void *ptr, render::device::BufferId &buffer, std::uint64_t &offset );
 
 // A section of the frame for a render core pass (RFC 0026 P3, the core's
 // passes at slots of this stream): ends this renderer's pass and returns the
@@ -297,4 +276,4 @@ const Stats &FrameStats();
 
 } // namespace corefacade
 
-#endif // PICA_RENDERER_H
+#endif // CORE_RENDERER_H

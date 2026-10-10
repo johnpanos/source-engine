@@ -187,14 +187,6 @@ public:
 	// per-vertex lighting, SurfaceVariant::staticVertexLight).
 	foundation::Expected<device::PipelineId, std::string> StaticVertexLightPipeline(
 	    const ResolvedProgram &program );
-	// A resolved program's skinned variant (SurfaceVariant::skinned): a model
-	// draw skinned by the GPU from its bone palette (the reduced model only).
-	foundation::Expected<device::PipelineId, std::string> SkinnedPipeline(
-	    const ResolvedProgram &program );
-	// Its variant reading a model draw's vertices where the frontend keeps
-	// them (SurfaceVariant::meshStreams), skinned or rigid (reduced only).
-	foundation::Expected<device::PipelineId, std::string> MeshStreamsPipeline(
-	    const ResolvedProgram &program, bool skinned );
 	// The one surface program every point is drawn through (its layouts for
 	// the view group, SurfaceProgram::ViewGroup).
 	SurfaceProgram &Program() const;
@@ -204,7 +196,7 @@ public:
 	// draw) when given, else the neutral block.
 	std::optional<GroupRequest> DrawGroup( const ResolvedProgram &program,
 	    const std::vector<std::string> &inputTextures,
-	    const ModelLighting *lighting = nullptr, std::span<const float> bonePalette = {} ) const;
+	    const ModelLighting *lighting = nullptr ) const;
 	// The program's pipeline under a debug specialization (RFC 0014): the
 	// shipped pipeline when it is neutral, else its debug variant (made on
 	// first use and kept); the reason when the program has no variant.

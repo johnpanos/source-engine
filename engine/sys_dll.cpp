@@ -57,9 +57,6 @@
 #include "idedicatedexports.h"
 #include "eifacev21.h"
 #include "cl_steamauth.h"
-#if defined( PLATFORM_WASM )
-#include <emscripten/heap.h>
-#endif
 #include "tier0/etwprof.h"
 
 #include "vgui_baseui_interface.h"
@@ -413,10 +410,6 @@ void Sys_Error_Internal( bool bMinidump, const char *error, va_list argsList )
 	{
 #ifdef _WIN32
 		::MessageBox( NULL, text, "Engine Error", MB_OK | MB_TOPMOST );
-#elif defined( __EMSCRIPTEN__ )
-		// A box from a worker thread has no document to draw in; the page
-		// shows the console, so the error goes there.
-		fprintf( stderr, "Engine Error: %s\n", text );
 #elif defined( USE_SDL )
 		// The error is already logged and the process is about to exit. Show the
 		// box but never block on it indefinitely: a session that cannot render
@@ -494,11 +487,6 @@ void Sys_Error_Internal( bool bMinidump, const char *error, va_list argsList )
 	// _exit() avoids calling global destructors in our module, but not in other DLLs.
 	TerminateProcess( GetCurrentProcess(), 100 );
 #else
-#if defined( PLATFORM_WASM )
-	// The browser's page and the Node lane see no message box: the error
-	// is their only report.
-	fprintf( stderr, "Sys_Error: %s\n", text );
-#endif
 	_exit( 100 );
 #endif
 }
@@ -681,15 +669,7 @@ void Sys_InitMemory( void )
 #elif defined(POSIX)
 	uint64_t memsize = ONE_HUNDRED_TWENTY_EIGHT_MB;
 
-#if defined( PLATFORM_3DS )
-	// The New 3DS has 256 MB (no /proc/meminfo); the engine takes a quarter of
-	// it as its cache budget below.
-	memsize = 256ull * 1024 * 1024;
-#elif defined( PLATFORM_WASM )
-	// WebAssembly (RFC 0029): no /proc; the heap's ceiling (wasm32 and the
-	// product's -sMAXIMUM_MEMORY) is the machine the engine sizes against.
-	memsize = emscripten_get_heap_max();
-#elif defined(OSX) || defined(PLATFORM_BSD)
+#if defined(OSX) || defined(PLATFORM_BSD)
 	int mib[2] = { CTL_HW, HW_MEMSIZE };
 	u_int namelen = sizeof(mib) / sizeof(mib[0]);
 	size_t len = sizeof(memsize);
@@ -781,12 +761,6 @@ void Sys_InitMemory( void )
 		host_parms.memsize = MAXIMUM_WIN_MEMORY;
 	}
 
-#if defined( PLATFORM_3DS )
-	// The engine's hunk plus data cache budget (models, sounds): the 3DS's
-	// whole heap is about 100 MB, so a quarter of its 256 MB would starve the
-	// rest. 12 MB of hunk (zone.cpp) leaves 16 MB of cache.
-	host_parms.memsize = 28 * 1024 * 1024;
-#endif
 
 #else
 #error Write me.
@@ -909,12 +883,6 @@ SpewRetval_t Sys_SpewFunc( SpewType_t spewType, const char *pMsg )
 			Plat_DebugString( pMsg );
 		}
 
-#if defined( PLATFORM_3DS ) || defined( PLATFORM_WASM )
-		// The 3DS has no debugger console: every message goes to stderr, the
-		// SD card's console.log, which tools/n3ds/azahar_harness.py streams.
-		// In the browser stderr is the page's console (tools/web).
-		fputs( pMsg, stderr );
-#endif
 		if ( g_bTextMode )
 		{
 			printf( "%s", pMsg );

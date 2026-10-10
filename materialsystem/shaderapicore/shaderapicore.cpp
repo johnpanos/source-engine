@@ -6,20 +6,16 @@
 //
 //===========================================================================//
 //
-// The Nintendo 3DS shader API: a fullbright renderer for the PICA200.
+// The render core's shader API: the material system's IShaderAPI, drawing
+// through the render core's device (render.device.v2) by way of core_renderer.
 //
 // Derived from the empty shader API. The material system drives it as it
-// drives the D3D9 one: meshes keep their vertices and indices in GPU-visible
-// linear memory, a draw runs the bound material's shader (so the material's
-// own texture bindings and render state reach this API), and each RenderPass
-// draws the mesh with the pass's recorded state and the texture bound to
-// sampler 0, modulated by the vertex color. Lighting, shader constants and
-// every other sampler are ignored: the image is the materials' base textures,
-// fullbright. Draws into render targets are skipped (only the back buffer is
-// drawn). Textures are uploaded as ETC1, ETC1A4 or RGBA8 at most
-// pica_texture_size texels a side. core_renderer draws through the render
-// core's PICA200 device (render.device.pica, RFC 0026), whose conventions
-// its own suite proves (render.device.v2.pica).
+// drives the D3D9 one: meshes keep their vertices and indices in device
+// buffers, a draw runs the bound material's shader (so the material's own
+// texture bindings and render state reach this API), and each RenderPass
+// hands the mesh with the pass's recorded state and bound textures to the
+// core, which draws it. Materials the core takes (render.material) draw
+// through it; the rest are refused by name.
 //
 //===========================================================================//
 
@@ -57,27 +53,8 @@
 #include <atomic>
 #include <unordered_map>
 #include <vector>
-#include <malloc.h>
 
 #include "core_texture.h"
-#if defined( PLATFORM_3DS )
-extern "C" unsigned int linearSpaceFree( void ); // libctru: GPU-visible linear heap
-extern "C" unsigned int __ctru_heap_size; // libctru: the main heap's size
-
-// libctru's (linked into the program, not into a composed module): the system
-// tick the harness's guest-time profiler stamps its samples with.
-extern "C" unsigned long long svcGetSystemTick( void );
-#else
-// Elsewhere (RFC 0029: the browser) the device's memory is not the heap's,
-// and the profiler's ticks are the 3DS's rate from the platform clock.
-static unsigned int linearSpaceFree( void ) { return 0; }
-static const unsigned int __ctru_heap_size = 0;
-static unsigned long long svcGetSystemTick( void )
-{
-	return (unsigned long long)( Plat_FloatTime() * 268111856.0 );
-}
-#endif
-
 
 //-----------------------------------------------------------------------------
 // The empty mesh
@@ -238,15 +215,6 @@ private:
 	// PICA record holds none, and the core's model lighting reads them.
 	float *m_pNormals = nullptr;
 	int m_nNormalCapacity = 0;
-	// The GPU-skinning palette slots of a skinned mesh's vertices (unorm8x4,
-	// each a slot x 3; CoreMeshStreams' slots), with the bone each slot
-	// holds: built from the bone weights once per content revision, in the
-	// mesh's memory, when its bones fit the palette (m_nSkinBones > 0).
-	unsigned char *m_pSkinSlots = nullptr;
-	unsigned m_nSkinSlotsRevision = ~0u;
-	int m_nSkinBones = 0;
-	unsigned char m_SkinBones[render::material::kMaxReducedBones] = {};
-	bool SkinSlots();
 	// Before the vertex streams are rewritten: a new content revision, and a
 	// recorded draw reading the in-place memory is submitted first.
 	void PrepareVertexWrite()
@@ -361,7 +329,6 @@ struct FacadeTexture
 	bool half = false;
 };
 
-#if !defined( PLATFORM_3DS )
 // HDR state, owned as shaderapivulkan owned it (ported): the engine enables
 // HDR per map (SetHDREnabled) and mat_hdr_level 2 selects integer HDR (16-bit
 // lightmap pages, the tone-mapping scale in the core's output terms). The
@@ -374,13 +341,6 @@ static HDRType_t CurrentHDRType()
 {
 	return ( mat_hdr_level.GetInt() >= 2 && g_bHDREnabled ) ? HDR_TYPE_INTEGER : HDR_TYPE_NONE;
 }
-#else
-static Vector g_ToneMappingScale( 1.0f, 1.0f, 1.0f );
-static HDRType_t CurrentHDRType()
-{
-	return HDR_TYPE_NONE;
-}
-#endif
 
 enum MatrixStackId
 {
@@ -422,19 +382,15 @@ bool g_CoreMeshSlotPending = false;
 // shaderapivulkan holds it: the depth-alpha copy's encoding.
 constexpr float kCoreDestAlphaDepthRange = 192.0f;
 CUtlVector<FacadeTexture *> g_Textures; // index = handle - 1
-#if !defined( PLATFORM_3DS )
 // Textures the core already imported whose levels changed since (font pages,
 // lightmap pages): refilled in place before the core records its next slot,
 // since the core keeps the ids it imported and does not import them again.
 CUtlVector<FacadeTexture *> g_DirtyImported;
-#endif
 static void MarkTextureDirty( FacadeTexture *texture )
 {
 	texture->dirty = true;
-#if !defined( PLATFORM_3DS )
 	if ( ( texture->gpu.Valid() || texture->gpuSrgb.Valid() ) && g_DirtyImported.Find( texture ) < 0 )
 		g_DirtyImported.AddToTail( texture );
-#endif
 }
 ShaderAPITextureHandle_t g_ModifyTexture = INVALID_SHADERAPI_TEXTURE_HANDLE;
 ShaderAPITextureHandle_t g_BoundTextures[16];
@@ -518,18 +474,14 @@ bool CoreCacheRoom( std::size_t bytes )
 	if ( !s_said )
 	{
 		s_said = true;
-		printf( "pica: core model cache full (%u KB); later meshes build every draw\n",
+		printf( "core shader API: core model cache full (%u KB); later meshes build every draw\n",
 			unsigned( g_CoreCacheBytes >> 10 ) );
 	}
 	return false;
 }
 float g_Modulation[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-#if defined( PLATFORM_3DS )
-int g_TextureSizeCap = 128;
-#else
 // Elsewhere the content's own sizes (RFC 0029: the browser's WebGPU limit).
 int g_TextureSizeCap = 4096;
-#endif
 // Per-present counters of the draw path (printed with the frame stats).
 struct DrawPathCounters
 {
@@ -560,11 +512,7 @@ struct TexturePathCounters
 };
 TexturePathCounters g_TextureCounters;
 DrawPathCounters g_Counters;
-#if defined( PLATFORM_3DS )
-int g_UnmippedSizeCap = 256;
-#else
 int g_UnmippedSizeCap = 4096;
-#endif
 
 void Identity( float *m )
 {
@@ -623,14 +571,9 @@ FacadeTexture *TextureFor( ShaderAPITextureHandle_t handle )
 // targets keep being skipped until their own cohort is brought over.
 bool DrawableTarget( FacadeTexture &texture )
 {
-#if defined( PLATFORM_3DS )
-	if ( !texture.renderTarget || texture.depth || V_strnicmp( texture.name, "_rt_PortalPlane", 15 ) != 0 )
-		return false;
-#else
 	// The full model draws into and samples every colour target.
 	if ( !texture.renderTarget || texture.depth )
 		return false;
-#endif
 	if ( !texture.gpu.IsTarget() && !texture.gpu.CreateTarget( texture.width, texture.height ) )
 		return false;
 	return true;
@@ -697,16 +640,12 @@ unsigned int LevelHash( const CUtlVector<unsigned char> &level )
 void UploadTexture( FacadeTexture &texture )
 {
 	texture.dirty = false;
-#if defined( PLATFORM_3DS )
-	texture.gpu.Release();
-#else
 	// Upload refills an image of the same shape in place (the core keeps its id).
 	if ( texture.cube )
 	{
 		texture.gpu.Release();
 		texture.gpuSrgb.Release();
 	}
-#endif
 	if ( texture.cube )
 	{
 		const std::uint8_t *faces[6];
@@ -721,12 +660,10 @@ void UploadTexture( FacadeTexture &texture )
 			++g_TextureCounters.uploads;
 		else
 			++g_TextureCounters.uploadFailed;
-#if !defined( PLATFORM_3DS )
 		// An env map read as linear values decodes through its sRGB twin, as
 		// shaderapivulkan's sRGB view of the cube does.
 		if ( texture.wantsSrgb && !texture.half )
 			(void)texture.gpuSrgb.UploadCube( texture.cubeSize, faces, true );
-#endif
 		return;
 	}
 	if ( texture.levels.Count() == 0 || texture.baseWidth < 8 || texture.baseHeight < 8 )
@@ -736,12 +673,10 @@ void UploadTexture( FacadeTexture &texture )
 		if ( LevelHash( texture.levels[i] ) != texture.levelHashes[i] )
 		{
 			++g_TextureCounters.corrupted;
-			printf( "pica: MEMORY CORRUPTION texture %s level %d (%dx%d) changed after it arrived\n",
+			printf( "core shader API: MEMORY CORRUPTION texture %s level %d (%dx%d) changed after it arrived\n",
 				texture.name, i, texture.baseWidth >> i, texture.baseHeight >> i );
 		}
 	}
-	const bool mipped = texture.mipLevels > 1;
-#if !defined( PLATFORM_3DS )
 	if ( texture.wide )
 	{
 		const std::uint8_t *wideLevels[1] = { texture.levels[0].Base() };
@@ -755,30 +690,8 @@ void UploadTexture( FacadeTexture &texture )
 			++g_TextureCounters.uploadFailed;
 		return;
 	}
-#endif
-	bool alpha = false;
-	for ( int i = 0; i < texture.levels.Count() && !alpha; ++i )
-	{
-		const int w = texture.baseWidth >> i, h = texture.baseHeight >> i;
-		alpha = corefacade::HasAlpha( texture.levels[i].Base(), w, h );
-	}
-	// Block-compressed when mipmapped (world and model textures); RGBA4 for
-	// textures the material system updates in place (fonts, UI: half the
-	// linear memory of RGBA8, clause D42); RGBA8 for lightmap pages, whose
-	// 2x overbright would show 4-bit steps. -core_texture_rgba8 uploads
-	// everything as RGBA8 (isolates the ETC1 encoder and the RGBA4 packing).
-#if defined( PLATFORM_3DS )
-	static const bool s_ForceRGBA8 = CommandLine()->FindParm( "-core_texture_rgba8" ) != 0;
-#else
-	// Other devices take the decoded levels as they are (RGBA8).
-	static const bool s_ForceRGBA8 = true;
-#endif
-	const corefacade::UploadFormat format =
-	    ( s_ForceRGBA8 || ( !mipped && texture.lightmap ) ) ? corefacade::UploadFormat::kRGBA8
-	    : !mipped                                          ? corefacade::UploadFormat::kRGBA4
-	    : alpha ? corefacade::UploadFormat::kETC1A4
-	            : corefacade::UploadFormat::kETC1;
-	CUtlVector<std::vector<std::uint8_t>> encoded;
+	// The decoded levels are uploaded as they are (RGBA8).
+	const corefacade::UploadFormat format = corefacade::UploadFormat::kRGBA8;
 	const std::uint8_t *levels[16];
 	int count = 0;
 	for ( int i = 0; i < texture.levels.Count() && count < 16; ++i )
@@ -786,21 +699,7 @@ void UploadTexture( FacadeTexture &texture )
 		const int w = texture.baseWidth >> i, h = texture.baseHeight >> i;
 		if ( w < 8 || h < 8 )
 			break;
-		if ( format == corefacade::UploadFormat::kRGBA8 )
-		{
-			levels[count++] = texture.levels[i].Base();
-			continue;
-		}
-		std::vector<std::uint8_t> &out = encoded[encoded.AddToTail()];
-		if ( format == corefacade::UploadFormat::kRGBA4 )
-		{
-			corefacade::PackRgba4Level( texture.levels[i].Base(), w, h, out );
-			levels[count++] = out.data();
-			continue;
-		}
-		if ( !corefacade::EncodeEtc1Level( format == corefacade::UploadFormat::kETC1A4, texture.levels[i].Base(), w, h, out ) )
-			break;
-		levels[count++] = out.data();
+		levels[count++] = texture.levels[i].Base();
 	}
 	if ( count > 0 && texture.gpu.Upload( format, texture.baseWidth, texture.baseHeight, count, levels ) )
 	{
@@ -809,37 +708,21 @@ void UploadTexture( FacadeTexture &texture )
 	}
 	else
 		++g_TextureCounters.uploadFailed;
-#if !defined( PLATFORM_3DS )
 	if ( texture.wantsSrgb && count > 0 &&
 	     texture.gpuSrgb.Upload( corefacade::UploadFormat::kRGBA8Srgb, texture.baseWidth,
 	         texture.baseHeight, count, levels ) )
 		texture.gpuSrgb.SetWrap( texture.wrapS, texture.wrapT );
-	// Off the 3DS the CPU copy stays: the sRGB twin may be asked for later.
-	if ( false )
-#else
-	// Mipmapped levels are not updated in place: drop the CPU copy.
-	if ( mipped )
-#endif
-	{
-		texture.levels.Purge();
-		texture.levelHashes.Purge();
-	}
+	// The CPU copy stays: the sRGB twin may be asked for later.
 }
 
 // The size the GPU keeps for a source level of (w, h): powers of two at most
 // the cap, at least 8.
 void GpuSize( int w, int h, int cap, int &outW, int &outH )
 {
-#if defined( PLATFORM_3DS )
-	// The PICA200 samples only power-of-two textures.
-	outW = corefacade::FloorPow2( w < cap ? w : cap );
-	outH = corefacade::FloorPow2( h < cap ? h : cap );
-#else
 	// Other devices keep the texture's own size (a 1280x720 video frame
 	// resampled to 1024x512 dropped columns: stripes in the menu's movie).
 	outW = w < cap ? w : cap;
 	outH = h < cap ? h : cap;
-#endif
 	if ( outW < 8 ) outW = 8;
 	if ( outH < 8 ) outH = 8;
 }
@@ -1033,21 +916,9 @@ public:
 			g_CorePassRecorder->FrameSubmitted( token, submitted );
 		}
 		const double presentEnd = Plat_FloatTime();
-		{
-			// A slow frame, named with its system ticks: the window to read in
-			// a guest-time profile (guest_profile.py --window START END).
-			static unsigned long long s_frameTick = 0;
-			const unsigned long long tick = svcGetSystemTick();
-			if ( s_frameTick && tick - s_frameTick > 268111856ull * 4 / 10 )
-				printf( "pica: slow frame %d %.0f ms ticks %08x %08x\n", g_FacadeFrame + 1,
-					( tick - s_frameTick ) * 1000.0 / 268111856.0, unsigned( s_frameTick ),
-					unsigned( tick ) );
-			s_frameTick = tick;
-		}
 		g_bDrawingToBackBuffer = true;
 		{
-			// Frame time on the guest clock (Plat_FloatTime: the system tick): the
-			// performance line every 30 frames, the whole frame and the share
+			// Frame time (Plat_FloatTime): the performance line every 30 frames, the whole frame and the share
 			// spent in EndFrame (submit, GPU wait, present).
 			static double s_last = 0, s_sum = 0, s_max = 0, s_present = 0;
 			static int s_count = 0;
@@ -1060,7 +931,7 @@ public:
 				if ( ++s_count == 30 )
 				{
 					const double ms = 1000.0;
-					printf( "pica: perf frame %d avg %.1f ms (%.1f fps) max %.1f ms end-frame %.1f ms\n",
+					printf( "core shader API: perf frame %d avg %.1f ms (%.1f fps) max %.1f ms end-frame %.1f ms\n",
 						g_FacadeFrame + 1, s_sum * ms / 30, 30.0 / s_sum,
 						s_max * ms, s_present * ms / 30 );
 					s_sum = s_max = s_present = 0;
@@ -1074,29 +945,19 @@ public:
 		const int s_frame = ++g_FacadeFrame;
 		if ( s_frame == s_captureFrame + 1 )
 		{
-			const char *path = CommandLine()->ParmValue( "-core_capture_path", "sdmc:/source_core.ppm" );
+			const char *path = CommandLine()->ParmValue( "-core_capture_path", "source_core.ppm" );
 			// stdout, as the stats below: the harnesses (the web page hands the
 			// file back on this line) read it, and engine spew stops reaching
 			// stdout once the console exists.
 			printf(
-			    "pica: capture %s %s\n", path, corefacade::CaptureTopScreen( path ) ? "ok" : "failed" );
+			    "core shader API: capture %s %s\n", path, corefacade::CaptureTopScreen( path ) ? "ok" : "failed" );
 			fflush( stdout );
 		}
-		// Straight to stdout (console.log on the 3DS), not through the engine's
-		// spew, which stops reaching stdout once the console exists.
+		// Straight to stdout, not through the engine's spew, which stops reaching
+		// stdout once the console exists.
 		const corefacade::Stats &stats = corefacade::FrameStats();
 		if ( s_frame % 120 == 1 )
-		{
-			// The heap over time (out-of-memory diagnosis): arena = sbrk'd heap,
-			// used and free inside it.
-			const struct mallinfo heap = mallinfo();
-			printf( "pica: frame %d heap arena %u of %u KB used %u KB free %u KB linear free %u KB\n", s_frame,
-				(unsigned)( heap.arena / 1024 ), (unsigned)( __ctru_heap_size / 1024 ),
-				(unsigned)( heap.uordblks / 1024 ), (unsigned)( heap.fordblks / 1024 ),
-				(unsigned)( linearSpaceFree() / 1024 ) );
-		}
-		if ( s_frame % 120 == 1 )
-			printf( "pica: frame %d textures %u KB meshes %u KB submits %u | "
+			printf( "core shader API: frame %d textures %u KB meshes %u KB submits %u | "
 				"mesh draws %u primlist %u empty %u material %u passes %u target skips %u clears %u overrun draws %u wide texcoords %u core meshes %u refused %u error material %u\n", s_frame,
 				(unsigned)( stats.textureBytes / 1024 ), (unsigned)( stats.meshBytes / 1024 ),
 				(unsigned)stats.submits, g_Counters.meshDraws, g_Counters.primListDraws,
@@ -1104,15 +965,15 @@ public:
 				g_Counters.renderPasses, g_Counters.targetSkips, g_Counters.clears, g_Counters.overrunDraws, g_Counters.wideTexCoordLocks, g_Counters.coreMeshDraws,
 				g_Counters.refusedDraws, g_Counters.errorMaterialDraws );
 		if ( s_frame % 120 == 1 )
-			printf( "pica: target copies %u skipped %u\n", g_Counters.targetCopies,
+			printf( "core shader API: target copies %u skipped %u\n", g_Counters.targetCopies,
 				g_Counters.copiesSkipped );
 		if ( s_frame % 120 == 1 )
-			printf( "pica: textures: images %u rejected %u convert failed %u uploads %u failed %u "
+			printf( "core shader API: textures: images %u rejected %u convert failed %u uploads %u failed %u "
 				"corrupted %u\n",
 				g_TextureCounters.images, g_TextureCounters.rejected, g_TextureCounters.convertFailed,
 				g_TextureCounters.uploads, g_TextureCounters.uploadFailed, g_TextureCounters.corrupted );
 		if ( s_frame % 120 == 1 && stats.targetSwitches )
-			printf( "pica: frame %d target switches %u\n", s_frame, (unsigned)stats.targetSwitches );
+			printf( "core shader API: frame %d target switches %u\n", s_frame, (unsigned)stats.targetSwitches );
 		g_Counters = DrawPathCounters();
 	}
 	virtual bool AddView( void* hwnd );
@@ -1151,12 +1012,12 @@ static CShaderDeviceEmpty s_ShaderDeviceEmpty;
 //-----------------------------------------------------------------------------
 // The DX8 implementation of the shader API
 //-----------------------------------------------------------------------------
-class CShaderAPIEmpty : public IShaderAPI, public IHardwareConfigInternal, public IDebugTextureInfo
+class CCoreShaderAPI : public IShaderAPI, public IHardwareConfigInternal, public IDebugTextureInfo
 {
 public:
 	// constructor, destructor
-	CShaderAPIEmpty( );
-	virtual ~CShaderAPIEmpty();
+	CCoreShaderAPI( );
+	virtual ~CCoreShaderAPI();
 
 	// IDebugTextureInfo implementation.
 public:
@@ -1205,20 +1066,18 @@ public:
 	// manager's SetMode, which the D3D9 composition uses, does the same).
 	bool SetMode( void* hwnd, int nAdapter, const ShaderDeviceInfo_t &info )
 	{
-#if !defined( PLATFORM_3DS )
 		// The mode the engine asked for (it fits the desktop), not -w/-h.
 		corefacade::ResizeScreen( info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight );
-#endif
 		if ( corefacade::Initialized() )
 			return true;
 		g_TextureSizeCap = CommandLine()->ParmValue( "-core_texture_size", g_TextureSizeCap );
 		if ( !corefacade::Init() )
 		{
-			Warning( "pica: GPU initialization failed\n" );
+			Warning( "core shader API: GPU initialization failed\n" );
 			return false;
 		}
 		if ( const int reserveKB = CommandLine()->ParmValue( "-core_linear_reserve", 0 ) )
-			printf( "pica: linear reserve %d KB %s\n", reserveKB,
+			printf( "core shader API: linear reserve %d KB %s\n", reserveKB,
 				corefacade::ReserveLinear( std::size_t( reserveKB ) * 1024 ) ? "held" : "refused" );
 		InitStacks();
 		return true;
@@ -1226,11 +1085,9 @@ public:
 
 	void ChangeVideoMode( const ShaderDeviceInfo_t &info )
 	{
-#if !defined( PLATFORM_3DS )
 		if ( !corefacade::ResizeScreen( info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight ) )
-			Warning( "pica: the screen's targets were not resized to %dx%d\n",
+			Warning( "core shader API: the screen's targets were not resized to %dx%d\n",
 				info.m_DisplayMode.m_nWidth, info.m_DisplayMode.m_nHeight );
-#endif
 	}
 
 	// Called when the dx support level has changed
@@ -1726,11 +1583,7 @@ public:
 	}
 	HDRType_t GetHardwareHDRType() const
 	{
-#if defined( PLATFORM_3DS )
-		return HDR_TYPE_NONE;
-#else
 		return HDR_TYPE_INTEGER;
-#endif
 	}
 	virtual bool NeedsATICentroidHack() const
 	{
@@ -1919,11 +1772,7 @@ public:
 	// overbright in gamma space; integer-HDR pages hold linear light / 16.
 	virtual float GetLightMapScaleFactor( void ) const
 	{
-#if defined( PLATFORM_3DS )
-		return 1.0f;
-#else
 		return CurrentHDRType() == HDR_TYPE_INTEGER ? 16.0f : powf( 2.0f, 2.2f );
-#endif
 	}
 
 
@@ -2097,11 +1946,7 @@ public:
 	virtual bool ShouldWriteDepthToDestAlpha( void ) const { return false; };
 	virtual bool SupportsHDRMode( HDRType_t nHDRMode ) const
 	{
-#if defined( PLATFORM_3DS )
-		return nHDRMode == HDR_TYPE_NONE;
-#else
 		return nHDRMode == HDR_TYPE_NONE || nHDRMode == HDR_TYPE_INTEGER;
-#endif
 	}
 	virtual bool IsDX10Card() const { return false; };
 
@@ -2205,13 +2050,8 @@ public:
 			}
 		}
 	}
-#if defined( PLATFORM_3DS )
-	virtual bool GetHDREnabled( void ) const { return true; }
-	virtual void SetHDREnabled( bool bEnable ) {}
-#else
 	virtual bool GetHDREnabled( void ) const { return g_bHDREnabled; }
 	virtual void SetHDREnabled( bool bEnable ) { g_bHDREnabled = bEnable; }
-#endif
 
 	virtual void CopyRenderTargetToScratchTexture( ShaderAPITextureHandle_t srcRt, ShaderAPITextureHandle_t dstTex, Rect_t *pSrcRect = NULL, Rect_t *pDstRect = NULL ) 
 	{
@@ -2279,20 +2119,20 @@ private:
 // Class Factory
 //-----------------------------------------------------------------------------
 
-static CShaderAPIEmpty g_ShaderAPIEmpty;
+static CCoreShaderAPI g_CoreShaderAPI;
 static CShaderShadowEmpty g_ShaderShadow;
 
 
 
-// The PICA adapter draws base textures fullbright: it claims no semantic
-// feature (no shader model, render targets or HDR).
-static bool DescribePicaAdapter( int adapter, render::RenderAdapterInfo *info )
+// The adapter this shader API reports: the render core's device, which claims
+// no semantic feature of its own (no shader model, render targets or HDR).
+static bool DescribeCoreAdapter( int adapter, render::RenderAdapterInfo *info )
 {
 	if ( adapter != 0 || !info )
 		return false;
 	*info = render::RenderAdapterInfo();
-	Q_strncpy( info->name, "PICA200 (Nintendo 3DS, fullbright)", sizeof( info->name ) );
-	Q_strncpy( info->driverApi, "pica200", sizeof( info->driverApi ) );
+	Q_strncpy( info->name, "Render core device", sizeof( info->name ) );
+	Q_strncpy( info->driverApi, "core", sizeof( info->driverApi ) );
 	return true;
 }
 
@@ -2308,9 +2148,7 @@ public:
 	render::device::TextureId Import( int handle, bool srgb ) override
 	{
 		FacadeTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
-		// The PICA200 decodes no sRGB: the reduced model asks for none.
-		// Elsewhere an sRGB import reads the texture's sRGB twin.
-#if !defined( PLATFORM_3DS )
+		// An sRGB import reads the texture's sRGB twin.
 		// A cube's twin is made beside it: re-uploading the cube would give it
 		// a new id while the core still samples the old one.
 		if ( texture && srgb && texture->cube && !texture->linearSource && !texture->half )
@@ -2350,11 +2188,10 @@ public:
 				return render::device::TextureId{ texture->gpuSrgb.Id() };
 		}
 		srgb = false;
-#endif
 		if ( !texture || srgb )
 		{
 			const int index = handle - 1;
-			printf( "pica: core import of texture %d refused: %s (%s; %d slots)\n", handle,
+			printf( "core shader API: core import of texture %d refused: %s (%s; %d slots)\n", handle,
 				srgb ? "sRGB view" : "no such texture",
 				index < 0 || index >= g_Textures.Count() ? "out of range"
 				: !g_Textures[index]                     ? "empty slot"
@@ -2365,14 +2202,12 @@ public:
 		}
 		if ( texture && texture->dirty )
 			UploadTexture( *texture );
-#if !defined( PLATFORM_3DS )
 		// A render target the core samples before anything drew into it: its
 		// image is made now (WebGPU and Vulkan clear it to zero).
 		if ( texture && texture->renderTarget && !texture->gpu.Valid() )
 			(void)DrawableTarget( *texture );
-#endif
 		if ( !texture->gpu.Valid() )
-			printf( "pica: core import of texture %d (%s) refused: not uploaded (%d levels, %dx%d)\n",
+			printf( "core shader API: core import of texture %d (%s) refused: not uploaded (%d levels, %dx%d)\n",
 				handle, texture->name, texture->levels.Count(), texture->baseWidth, texture->baseHeight );
 		return render::device::TextureId{ texture->gpu.Id() };
 	}
@@ -2395,10 +2230,8 @@ public:
 	bool Pending( int handle ) override
 	{
 		const FacadeTexture *texture = TextureFor( ShaderAPITextureHandle_t( handle ) );
-#if !defined( PLATFORM_3DS )
 		if ( texture && texture->renderTarget && !texture->depth )
 			return false; // Import makes its image
-#endif
 		return texture && !texture->gpu.Valid() && texture->levels.Count() == 0;
 	}
 };
@@ -2414,7 +2247,6 @@ CFacadeCoreTextures g_FacadeCoreTextures;
 static bool DecorateCoreDraw( render::legacy::CoreMeshDraw &draw )
 {
 	g_CoreMeshSlotPending = true;
-#if !defined( PLATFORM_3DS )
 	// $depthblend reads the frame copy's depth alpha (core_copies), as
 	// shaderapivulkan's draws read _rt_FullFrameDepth.
 	bool found = false;
@@ -2422,16 +2254,14 @@ static bool DecorateCoreDraw( render::legacy::CoreMeshDraw &draw )
 	if ( found && depthBlend && depthBlend->GetIntValue() != 0 )
 	{
 		const ShaderAPITextureHandle_t saved = g_BoundTextures[15];
-		g_ShaderAPIEmpty.BindStandardTexture( SHADER_SAMPLER15, TEXTURE_FRAME_BUFFER_FULL_DEPTH );
+		g_CoreShaderAPI.BindStandardTexture( SHADER_SAMPLER15, TEXTURE_FRAME_BUFFER_FULL_DEPTH );
 		draw.depthAlphaHandle = int( g_BoundTextures[15] );
 		draw.depthAlphaRange = kCoreDestAlphaDepthRange;
 		g_BoundTextures[15] = saved;
 	}
-#endif
 	return false;
 }
 
-#if !defined( PLATFORM_3DS )
 static render::device::CompareOp CoreCompare( corefacade::Compare compare )
 {
 	using render::device::CompareOp;
@@ -2480,7 +2310,6 @@ static render::device::StencilOp CoreStencilOp( StencilOperation_t op )
 	default: return StencilOp::kKeep;
 	}
 }
-#endif
 
 // DecorateCoreTarget runs as a slot is marked. A mesh slot takes the bound
 // snapshot's raster state (depth test, write and compare, cull, colour and
@@ -2488,7 +2317,6 @@ static render::device::StencilOp CoreStencilOp( StencilOperation_t op )
 // as shaderapivulkan's slots do (its ApplyDepthBiasState: the material
 // system's decal and normal biases, or the shadow bias factors). The 3DS
 // keeps the defaults it draws with.
-#if !defined( PLATFORM_3DS )
 // Portal 2's shaders scale every ssbump's basis weights by 1/sqrt(3); this
 // SDK's do not (ported from shaderapivulkan, whose copy goes with it).
 // mat_ssbump_normalize -1 follows the running game, 0 and 1 force either.
@@ -2556,20 +2384,15 @@ static void FillCoreSlotTerms( render::legacy::CorePassTarget &target )
 				fog.color[i] *= g_ToneMappingScale.x;
 		}
 		float eye[4];
-		g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
+		g_CoreShaderAPI.GetWorldSpaceCameraPosition( eye );
 		fog.eyeZ = eye[2];
 	}
 }
-#endif
 
 static void DecorateCoreTarget( render::legacy::CorePassTarget &target )
 {
 	const bool mesh = g_CoreMeshSlotPending;
 	g_CoreMeshSlotPending = false;
-#if defined( PLATFORM_3DS )
-	(void)target;
-	(void)mesh;
-#else
 	FillCoreSlotTerms( target );
 	if ( !mesh || g_CurrentSnapshot < 0 || g_CurrentSnapshot >= g_Snapshots.Count() )
 		return;
@@ -2613,7 +2436,6 @@ static void DecorateCoreTarget( render::legacy::CorePassTarget &target )
 	// as shaderapivulkan's SetDynamicDepthBias).
 	out.depthBiasConstant = normalized * 8388608.0f;
 	out.depthBiasSlope = slope;
-#endif
 }
 
 class CFacadeCorePassSlots final : public render::legacy::ICorePassSlots
@@ -2623,14 +2445,12 @@ public:
 	{
 		if ( !g_CorePassRecorder )
 			return;
-#if !defined( PLATFORM_3DS )
 		// What changed in textures the core imported (a font page's new
 		// glyphs) reaches their images before the core records this slot.
 		for ( FacadeTexture *texture : g_DirtyImported )
 			if ( texture->dirty )
 				UploadTexture( *texture );
 		g_DirtyImported.RemoveAll();
-#endif
 		corefacade::CoreSectionTarget section;
 		render::device::CommandEncoder *encoder = corefacade::BeginCoreSection( section );
 		if ( !encoder )
@@ -2640,11 +2460,9 @@ public:
 		target.color = render::device::TextureId{ section.color };
 		target.depth = render::device::TextureId{ section.depth };
 		target.colorFormat = render::device::Format::kRGBA8Unorm;
-#if !defined( PLATFORM_3DS )
 		// The screen and the render targets are copy sources (core_renderer),
 		// for the full model's scene-color reads.
 		target.colorCopySource = true;
-#endif
 		target.depthFormat = corefacade::kDepthFormat;
 		target.width = section.width;
 		target.height = section.height;
@@ -2664,12 +2482,6 @@ public:
 		// intro4 demo's opening).
 		static std::uint64_t s_streamEpoch = 0;
 		target.streamEpoch = ++s_streamEpoch;
-#if defined( PLATFORM_3DS )
-		// LDR, gamma space: the reduced model reads the pages as they are.
-		target.lightmapScale = 1.0f;
-		target.outputScale = 1.0f;
-		target.specular = false;
-#else
 		// The full model's terms, as shaderapivulkan passed them: lightmap
 		// pages scaled by 16 in integer HDR (2^2.2 in LDR), the tone-mapping
 		// scale in HDR, the eye (c10), env maps at 16 in integer HDR (1 in
@@ -2680,7 +2492,7 @@ public:
 		target.outputScale = integerHdr ? g_ToneMappingScale.x : 1.0f;
 		{
 			float eye[4];
-			g_ShaderAPIEmpty.GetWorldSpaceCameraPosition( eye );
+			g_CoreShaderAPI.GetWorldSpaceCameraPosition( eye );
 			for ( int i = 0; i < 3; ++i )
 				target.eye[i] = eye[i];
 		}
@@ -2689,21 +2501,20 @@ public:
 		static ConVarRef fullbright( "mat_fullbright" );
 		target.specular = ( !fastSpecular.IsValid() || fastSpecular.GetBool() ) &&
 		                  ( !fullbright.IsValid() || fullbright.GetInt() != 2 );
-#endif
 		// The wind and foliage time ($treesway's inputs; the reduced model
 		// drops the sway, but the pass reads them).
-		const Vector wind = g_ShaderAPIEmpty.GetVectorRenderingParameter( VECTOR_RENDERPARM_WIND_DIRECTION );
+		const Vector wind = g_CoreShaderAPI.GetVectorRenderingParameter( VECTOR_RENDERPARM_WIND_DIRECTION );
 		const Vector previousWind =
-			g_ShaderAPIEmpty.GetVectorRenderingParameter( VECTOR_RENDERPARM_PREVIOUS_WIND_DIRECTION );
+			g_CoreShaderAPI.GetVectorRenderingParameter( VECTOR_RENDERPARM_PREVIOUS_WIND_DIRECTION );
 		target.foliage[0][0] = wind.x;
 		target.foliage[0][1] = wind.y;
-		target.foliage[0][2] = g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_TIME );
+		target.foliage[0][2] = g_CoreShaderAPI.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_TIME );
 		target.foliage[1][0] = previousWind.x;
 		target.foliage[1][1] = previousWind.y;
 		target.foliage[1][2] =
-			g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_PREVIOUS_FOLIAGE_TIME );
+			g_CoreShaderAPI.GetFloatRenderingParameter( FLOAT_RENDERPARM_PREVIOUS_FOLIAGE_TIME );
 		target.foliageAvailable =
-			g_ShaderAPIEmpty.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_AVAILABLE ) > 0.0f;
+			g_CoreShaderAPI.GetFloatRenderingParameter( FLOAT_RENDERPARM_FOLIAGE_AVAILABLE ) > 0.0f;
 		DecorateCoreTarget( target );
 		g_CorePassRecorder->RecordSlot( tag, *encoder, target );
 		corefacade::EndCoreSection();
@@ -2718,12 +2529,12 @@ static bool CreateCoreShaderBackend( render::LegacyShaderServices *services )
 	if ( !services )
 		return false;
 	FillLifecycle( services );
-	services->api = &g_ShaderAPIEmpty;
+	services->api = &g_CoreShaderAPI;
 	services->stream = &s_ShaderDeviceEmpty;
 	services->shadow = &g_ShaderShadow;
-	services->hardware = &g_ShaderAPIEmpty;
-	services->debugTextures = &g_ShaderAPIEmpty;
-	services->describeAdapter = DescribePicaAdapter;
+	services->hardware = &g_CoreShaderAPI;
+	services->debugTextures = &g_CoreShaderAPI;
+	services->describeAdapter = DescribeCoreAdapter;
 	services->corePassSlots = &g_FacadeCorePassSlots;
 	return true;
 }
@@ -2736,20 +2547,16 @@ extern "C" DLL_EXPORT void CoreShaderBackend_BindCorePassRecorder(
 
 extern "C" DLL_EXPORT void CoreShaderBackend_BindDevice( render::device::IRenderDevice2 *device )
 {
-#if !defined( PLATFORM_3DS )
 	// The fixed display (presentation.fixedDisplay) is the window's size the
 	// launch names: the browser page's canvas (RFC 0029).
 	corefacade::SetScreenSize( CommandLine()->ParmValue( "-w", 1280 ), CommandLine()->ParmValue( "-h", 720 ) );
-#endif
 	corefacade::BindDevice( device );
 }
 
-#if !defined( PLATFORM_3DS )
 extern "C" DLL_EXPORT void CoreShaderBackend_BindPresenter( corefacade::Presenter presenter, void *context )
 {
 	corefacade::BindPresenter( presenter, context );
 }
-#endif
 
 DLL_EXPORT const render::LegacyShaderProvider *CoreShaderBackend_Describe()
 {
@@ -2760,17 +2567,17 @@ DLL_EXPORT const render::LegacyShaderProvider *CoreShaderBackend_Describe()
 }
 
 // FIXME: Remove; it's for backward compat with the materialsystem only for now
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIEmpty, IShaderAPI, 
-									SHADERAPI_INTERFACE_VERSION, g_ShaderAPIEmpty )
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CCoreShaderAPI, IShaderAPI, 
+									SHADERAPI_INTERFACE_VERSION, g_CoreShaderAPI )
 
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderShadowEmpty, IShaderShadow, 
 								SHADERSHADOW_INTERFACE_VERSION, g_ShaderShadow )
 
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIEmpty, IMaterialSystemHardwareConfig, 
-				MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION, g_ShaderAPIEmpty )
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CCoreShaderAPI, IMaterialSystemHardwareConfig, 
+				MATERIALSYSTEM_HARDWARECONFIG_INTERFACE_VERSION, g_CoreShaderAPI )
 
-EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CShaderAPIEmpty, IDebugTextureInfo, 
-				DEBUG_TEXTURE_INFO_VERSION, g_ShaderAPIEmpty )
+EXPOSE_SINGLE_INTERFACE_GLOBALVAR( CCoreShaderAPI, IDebugTextureInfo, 
+				DEBUG_TEXTURE_INFO_VERSION, g_CoreShaderAPI )
 
 
 //-----------------------------------------------------------------------------
@@ -2789,7 +2596,7 @@ static void* ShaderInterfaceFactory( const char *pInterfaceName, int *pReturnCod
 		*pReturnCode = IFACE_OK;
 	}
 	if ( !Q_stricmp( pInterfaceName, SHADERAPI_INTERFACE_VERSION ) )
-		return static_cast< IShaderAPI* >( &g_ShaderAPIEmpty );
+		return static_cast< IShaderAPI* >( &g_CoreShaderAPI );
 	if ( !Q_stricmp( pInterfaceName, SHADERSHADOW_INTERFACE_VERSION ) )
 		return static_cast< IShaderShadow* >( &g_ShaderShadow );
 
@@ -2829,7 +2636,7 @@ static void FillLifecycle( render::LegacyShaderServices *services )
 	};
 	services->lifecycle.setMode = []( void *, void *hWnd, int nAdapter, const ShaderDeviceInfo_t & )
 	{
-		return g_ShaderAPIEmpty.SetMode( hWnd, nAdapter, ShaderDeviceInfo_t() )
+		return g_CoreShaderAPI.SetMode( hWnd, nAdapter, ShaderDeviceInfo_t() )
 		           ? static_cast<CreateInterfaceFn>( ShaderInterfaceFactory )
 		           : static_cast<CreateInterfaceFn>( NULL );
 	};
@@ -2842,27 +2649,11 @@ static void FillLifecycle( render::LegacyShaderServices *services )
 		out->backBufferWidth = out->windowWidth = corefacade::kScreenWidth;
 		out->backBufferHeight = out->windowHeight = corefacade::kScreenHeight;
 	};
-#if defined( PLATFORM_3DS ) || defined( PLATFORM_WASM )
-	// The 3DS's top screen and the browser page's canvas are fixed displays;
-	// a desktop's modes come from the launcher's display (the device facade).
-	services->presentation.fixedDisplay = []( void *, int *width, int *height, int *refreshHz )
-	{
-		*width = corefacade::kScreenWidth;
-		*height = corefacade::kScreenHeight;
-		*refreshHz = 60;
-		return true;
-	};
-#endif
 }
 
 void CShaderDeviceEmpty::GetBackBufferDimensions( int& width, int& height ) const
 {
-#if defined( PLATFORM_3DS )
-	width = corefacade::kScreenWidth;
-	height = corefacade::kScreenHeight;
-#else
 	corefacade::ScreenSize( width, height );
-#endif
 }
 
 // Creates/ destroys a child window
@@ -2975,7 +2766,6 @@ CEmptyMesh::~CEmptyMesh()
 	delete[] m_pBoneIndices;
 	delete[] m_pWideTexCoords;
 	FreeStorage( m_pNormals );
-	FreeStorage( m_pSkinSlots );
 	delete[] m_pTexCoord1;
 }
 
@@ -3317,7 +3107,7 @@ void CEmptyMesh::Draw( int firstIndex, int numIndices )
 	m_nPrims = 0;
 	m_nDrawFirst = firstIndex > 0 ? firstIndex : 0;
 	m_nDrawCount = numIndices > 0 ? numIndices : m_nIndices;
-	g_ShaderAPIEmpty.DrawMesh( this );
+	g_CoreShaderAPI.DrawMesh( this );
 }
 
 void CEmptyMesh::Draw(CPrimList *pPrims, int nPrims)
@@ -3330,7 +3120,7 @@ void CEmptyMesh::Draw(CPrimList *pPrims, int nPrims)
 	}
 	m_pPrims = pPrims;
 	m_nPrims = nPrims;
-	g_ShaderAPIEmpty.DrawMesh( this );
+	g_CoreShaderAPI.DrawMesh( this );
 	m_pPrims = NULL;
 	m_nPrims = 0;
 }
@@ -3375,8 +3165,7 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 	m_nVertexCapacity = capacity;
 	if ( NumBoneWeights( m_Format ) > 0 )
 	{
-		// The weights with the vertices (the core reads them in place); the
-		// bone indices stay CPU memory (the palette slots replace them).
+		// The weights with the vertices; the bone indices stay CPU memory.
 		float *weights = static_cast<float *>(
 			AllocStorage( corefacade::Memory::kVertices, capacity * 2 * sizeof( float ) ) );
 		if ( !weights )
@@ -3389,9 +3178,6 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 		}
 		FreeStorage( m_pBoneWeights );
 		delete[] m_pBoneIndices;
-		FreeStorage( m_pSkinSlots );
-		m_pSkinSlots = NULL;
-		m_nSkinSlotsRevision = ~0u;
 		m_pBoneWeights = weights;
 		m_pBoneIndices = indices;
 		m_nBoneCapacity = capacity;
@@ -3421,11 +3207,7 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 bool CEmptyMesh::EnsureTexCoord1()
 {
 	const int size = TexCoordSize( 1, m_Format );
-#if defined( PLATFORM_3DS )
-	if ( !m_bIsDynamic || size < 2 )
-#else
 	if ( size < 2 )
-#endif
 		return false;
 	if ( m_pTexCoord1 && m_nTexCoord1Size == size && m_nTexCoord1Capacity >= m_nVertexCapacity )
 		return true;
@@ -3748,59 +3530,6 @@ const std::vector<std::uint16_t> *CEmptyMesh::CoreTriangleList( const CEmptyMesh
 	return drawTriangles;
 }
 
-// The palette slots of this mesh's skinned vertices (m_pSkinSlots): each
-// bone a vertex weighs, in first-use order, gets a slot of the GPU-skinning
-// palette (at most kMaxReducedBones); a bone without weight or out of range
-// reads slot 0 with its (zero or rounding) weight, as EmitToCore's built
-// vertices do. Built once per content revision; false when the bones do not
-// fit the palette or there is no memory.
-bool CEmptyMesh::SkinSlots()
-{
-	if ( m_nSkinSlotsRevision == m_nContentRevision )
-		return m_nSkinBones > 0;
-	m_nSkinSlotsRevision = m_nContentRevision;
-	m_nSkinBones = 0;
-	if ( !m_pBoneWeights || !m_pBoneIndices || m_nVertices <= 0 || m_nVertices > m_nBoneCapacity )
-		return false;
-	if ( !m_pSkinSlots )
-		m_pSkinSlots = static_cast<unsigned char *>(
-			AllocStorage( corefacade::Memory::kVertices, size_t( m_nBoneCapacity ) * 4 ) );
-	if ( !m_pSkinSlots )
-		return false;
-	corefacade::PrepareWrite( m_pSkinSlots );
-	constexpr int kPalette = int( render::material::kMaxReducedBones );
-	signed char slotOf[kMaxBones];
-	memset( slotOf, -1, sizeof( slotOf ) );
-	int count = 0;
-	for ( int i = 0; i < m_nVertices; ++i )
-	{
-		const float *w = m_pBoneWeights + i * 2;
-		const unsigned char *b = m_pBoneIndices + i * 4;
-		const float weights[3] = { w[0], w[1], 1.0f - w[0] - w[1] };
-		unsigned char *out = m_pSkinSlots + i * 4;
-		for ( int k = 0; k < 3; ++k )
-		{
-			int slot = 0;
-			if ( weights[k] > 0.0f && b[k] < kMaxBones )
-			{
-				if ( slotOf[b[k]] < 0 )
-				{
-					if ( count == kPalette )
-						return false;
-					slotOf[b[k]] = (signed char)count;
-					m_SkinBones[count++] = b[k];
-				}
-				slot = slotOf[b[k]];
-			}
-			out[k] = (unsigned char)( slot * 3 );
-		}
-		out[3] = 0;
-	}
-	corefacade::FlushLinear( m_pSkinSlots, size_t( m_nVertices ) * 4 );
-	m_nSkinBones = count;
-	return count > 0;
-}
-
 // Source's model lighting at the draw (studiorender's SetAmbientLightCube
 // and SetLight) for the core's mesh point.
 static void FillModelLighting( render::legacy::CoreMeshDraw &draw )
@@ -3853,7 +3582,7 @@ static void FillCoreView( render::legacy::CoreMeshDraw &draw, const float *model
 		}
 	int vx = 0, vy = 0, vw = corefacade::kScreenWidth, vh = corefacade::kScreenHeight;
 	ShaderViewport_t viewport;
-	g_ShaderAPIEmpty.GetViewports( &viewport, 1 );
+	g_CoreShaderAPI.GetViewports( &viewport, 1 );
 	if ( viewport.m_nWidth > 0 && viewport.m_nHeight > 0 )
 	{
 		vx = viewport.m_nTopLeftX;
@@ -3896,7 +3625,7 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 		if ( !( s_reasons & bit ) )
 		{
 			s_reasons |= bit;
-			printf( "pica: a model draw stays legacy: %s (%s)\n", why,
+			printf( "core shader API: a model draw stays legacy: %s (%s)\n", why,
 				g_pBoundMaterial ? g_pBoundMaterial->GetShaderName() : "no material" );
 		}
 		return false;
@@ -3921,7 +3650,7 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	{
 		s_largest = src.m_nVertices;
 		if ( s_largest > 4096 )
-			printf( "pica: core model draw of %d vertices, %d indices (%s)\n", src.m_nVertices,
+			printf( "core shader API: core model draw of %d vertices, %d indices (%s)\n", src.m_nVertices,
 				indexCount, g_pBoundMaterial->GetName() );
 	}
 	// A static mesh keeps the triangles this builds per range (CoreCache).
@@ -3942,110 +3671,8 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	// array first wrote every vertex twice (a measured memset).
 	std::vector<render::material::SurfaceWorldVertex> vertices;
 
-	// The GPU skins (surface_lit_skinned.v.pica) when the draw's bones fit its
-	// palette: the vertices stay in bone space and the palette holds each
-	// bone's bone-to-world rows; an unskinned mesh is one "bone", its model
-	// matrix. The CPU loop below is the fallback (more bones) and the A/B
-	// reference (-core_cpu_skinning).
-	static const bool s_CpuSkinning = CommandLine()->FindParm( "-core_cpu_skinning" ) != 0;
-	constexpr int kPalette = int( render::material::kMaxReducedBones );
-	float palette[kPalette * 12];
-	int paletteCount = 0;
-	signed char slotOf[kMaxBones];
-	bool gpu = !s_CpuSkinning;
-	// The vertices where the mesh keeps them (CoreMeshStreams): nothing is
-	// built or copied per draw when the core reads streams and every stream
-	// is in the mesh's in-place memory (AllocStorage); a skinned mesh adds its
-	// weights and palette slots (SkinSlots), its palette the slots' bones.
-	static_assert( sizeof( corefacade::Vertex ) == 24 && offsetof( corefacade::Vertex, color ) == 12 &&
-		offsetof( corefacade::Vertex, uv ) == 16, "the record CoreMeshStreams names" );
-	render::legacy::CoreMeshStreams streams;
-	// -core_no_mesh_streams: build every draw's vertices (the A/B reference).
-	static const bool s_NoMeshStreams = CommandLine()->FindParm( "-core_no_mesh_streams" ) != 0;
-	bool inPlace = gpu && cacheable && !s_NoMeshStreams && g_CorePassRecorder->AcceptsMeshStreams() &&
-		corefacade::DeviceBufferOf( src.m_pVertices, streams.record, streams.recordOffset ) &&
-		corefacade::DeviceBufferOf( src.m_pNormals, streams.normals, streams.normalOffset );
-	if ( inPlace && skinned )
-	{
-		CEmptyMesh &source = const_cast<CEmptyMesh &>( src );
-		inPlace = source.SkinSlots() &&
-			corefacade::DeviceBufferOf( src.m_pBoneWeights, streams.weights, streams.weightOffset ) &&
-			corefacade::DeviceBufferOf( src.m_pSkinSlots, streams.slots, streams.slotOffset );
-		if ( inPlace )
-		{
-			paletteCount = src.m_nSkinBones;
-			for ( int slot = 0; slot < paletteCount; ++slot )
-				memcpy( palette + slot * 12, g_Bones[src.m_SkinBones[slot]], 12 * sizeof( float ) );
-		}
-	}
-	if ( gpu && skinned && !inPlace )
-	{
-		memset( slotOf, -1, sizeof( slotOf ) );
-		for ( int i = 0; i < src.m_nVertices && gpu; ++i )
-		{
-			const float *w = src.m_pBoneWeights + i * 2;
-			const unsigned char *b = src.m_pBoneIndices + i * 4;
-			const float weights[3] = { w[0], w[1], 1.0f - w[0] - w[1] };
-			for ( int k = 0; k < 3; ++k )
-			{
-				if ( weights[k] <= 0.0f || b[k] >= kMaxBones || slotOf[b[k]] >= 0 )
-					continue;
-				if ( paletteCount == kPalette )
-				{
-					gpu = false;
-					break;
-				}
-				slotOf[b[k]] = (signed char)paletteCount;
-				memcpy( palette + paletteCount * 12, g_Bones[b[k]], 12 * sizeof( float ) );
-				++paletteCount;
-			}
-		}
-	}
-	else if ( gpu && !skinned )
-	{
-		// The model matrix (row vectors, D3D) as one bone's three rows.
-		for ( int r = 0; r < 3; ++r )
-		{
-			palette[r * 4 + 0] = model[0 + r];
-			palette[r * 4 + 1] = model[4 + r];
-			palette[r * 4 + 2] = model[8 + r];
-			palette[r * 4 + 3] = model[12 + r];
-		}
-		paletteCount = 1;
-	}
-	if ( inPlace )
-		;
-	else if ( gpu && paletteCount > 0 )
-	{
-		vertices.reserve( src.m_nVertices );
-		for ( int i = 0; i < src.m_nVertices; ++i )
-		{
-			const corefacade::Vertex &in = src.m_pVertices[i];
-			const float *n = src.m_pNormals + i * 3;
-			float weight0 = 1.0f, weight1 = 0.0f;
-			float offsets[3] = { 0.0f, 0.0f, 0.0f };
-			if ( skinned )
-			{
-				const float *w = src.m_pBoneWeights + i * 2;
-				const unsigned char *b = src.m_pBoneIndices + i * 4;
-				const float weights[3] = { w[0], w[1], 1.0f - w[0] - w[1] };
-				// A bone the CPU path would skip (no weight, out of range)
-				// reads slot 0 with its (zero or rounding) weight.
-				for ( int k = 0; k < 3; ++k )
-					offsets[k] = float( ( weights[k] > 0.0f && b[k] < kMaxBones ? slotOf[b[k]] : 0 ) * 3 );
-				weight0 = w[0];
-				weight1 = w[1];
-			}
-			// Every member given (tangentT and lightmapOffset unread here).
-			vertices.push_back( render::material::SurfaceWorldVertex{
-				{ in.pos[0], in.pos[1], in.pos[2] }, { in.uv[0], in.uv[1] }, { weight0, weight1 },
-				{ in.color[2], in.color[1], in.color[0], in.color[3] }, { n[0], n[1], n[2] },
-				{ offsets[0], offsets[1], offsets[2] }, { 0.0f, 1.0f, 0.0f }, 0.0f } );
-		}
-	}
-	else
-		vertices.resize( src.m_nVertices );
-	for ( int i = 0; !( gpu && paletteCount > 0 ) && i < src.m_nVertices; ++i )
+	vertices.resize( src.m_nVertices );
+	for ( int i = 0; i < src.m_nVertices; ++i )
 	{
 		const corefacade::Vertex &in = src.m_pVertices[i];
 		const float *n = src.m_pNormals + i * 3;
@@ -4105,21 +3732,8 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	draw.variables = variables.data();
 	draw.variableCount = std::uint32_t( variables.size() );
 	draw.materialRevision = material.revision;
-	if ( gpu && paletteCount > 0 )
-	{
-		draw.bonePalette = palette;
-		draw.boneCount = std::uint32_t( paletteCount );
-	}
-	if ( inPlace )
-	{
-		draw.streams = &streams;
-		draw.vertexCount = std::uint32_t( src.m_nVertices );
-	}
-	else
-	{
-		draw.vertices = vertices.data();
-		draw.vertexCount = std::uint32_t( vertices.size() );
-	}
+	draw.vertices = vertices.data();
+	draw.vertexCount = std::uint32_t( vertices.size() );
 	draw.indices16 = drawTriangles->data();
 	draw.indexCount = std::uint32_t( drawTriangles->size() );
 	draw.mesh = true;
@@ -4129,21 +3743,13 @@ bool CEmptyMesh::EmitToCore( int firstIndex, int indexCount )
 	// Cached triangles are lent (the core copies them); built ones are taken.
 	const std::size_t geometryBytes = vertices.size() * sizeof( render::material::SurfaceWorldVertex ) +
 		drawTriangles->size() * sizeof( std::uint16_t );
-	if ( !inPlace )
-		draw.takeVertices = &vertices;
+	draw.takeVertices = &vertices;
 	if ( drawTriangles == &triangles )
 		draw.takeIndices16 = &triangles;
 	if ( DecorateCoreDraw( draw ) )
 		return true;
 	if ( !QueueCore( draw, geometryBytes ) )
 		return skip( 4, "QueueMesh refused it" );
-	static unsigned s_taken = 0;
-	if ( ++s_taken % 50 == 0 && s_taken <= 2000 )
-	{
-		const struct mallinfo heap = mallinfo();
-		printf( "pica: %u core model draws, heap used %u KB, frame %d\n", s_taken,
-			(unsigned)( heap.uordblks / 1024 ), g_FacadeFrame );
-	}
 	return true;
 }
 
@@ -4368,7 +3974,7 @@ bool CEmptyMesh::EmitSurfaceToCore( int firstIndex, int indexCount, render::lega
 	// decals read black from it), and a moving brush (glass, a door) reads
 	// its own lighting, not a full-bright page.
 	if ( lightmapUv && g_pBoundMaterial->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_LIGHTMAP ) )
-		g_ShaderAPIEmpty.BindStandardTexture( SHADER_SAMPLER1,
+		g_CoreShaderAPI.BindStandardTexture( SHADER_SAMPLER1,
 			g_pBoundMaterial->GetPropertyFlag( MATERIAL_PROPERTY_NEEDS_BUMPED_LIGHTMAPS )
 				? TEXTURE_LIGHTMAP_BUMPED
 				: TEXTURE_LIGHTMAP );
@@ -4394,7 +4000,7 @@ bool CEmptyMesh::EmitSurfaceToCore( int firstIndex, int indexCount, render::lega
 	if ( !s_refused[key] )
 	{
 		s_refused[key] = true;
-		printf( "pica: the core refused a %s draw (%s)\n", draw.shader, draw.name );
+		printf( "core shader API: the core refused a %s draw (%s)\n", draw.shader, draw.name );
 	}
 	return false;
 }
@@ -4420,7 +4026,7 @@ void CEmptyMesh::DrawRange( int firstIndex, int indexCount )
 		if ( !s_said )
 		{
 			s_said = true;
-			printf( "pica: draws with the error material (missing content) are dropped\n" );
+			printf( "core shader API: draws with the error material (missing content) are dropped\n" );
 		}
 		++g_Counters.errorMaterialDraws;
 		return;
@@ -4428,14 +4034,9 @@ void CEmptyMesh::DrawRange( int firstIndex, int indexCount )
 	const render::legacy::CoreMeshKind kind = g_pBoundMaterial
 		? render::legacy::CoreMeshKindFor( g_pBoundMaterial )
 		: render::legacy::CoreMeshKind::kSurface;
-#if defined( PLATFORM_3DS )
-	// The reduced model reads model meshes in place and skins them on the GPU.
-	const bool inPlace = kind == render::legacy::CoreMeshKind::kModelSurface;
-#else
 	// The full model has neither variant: every mesh goes with world-space
 	// vertices, skinned here.
 	const bool inPlace = false;
-#endif
 	if ( ( inPlace && EmitToCore( firstIndex, indexCount ) ) ||
 		EmitSurfaceToCore( firstIndex, indexCount, kind ) )
 	{
@@ -4700,34 +4301,34 @@ void CShaderShadowEmpty::DrawFlags( unsigned int drawFlags )
 // Constructor, destructor
 //-----------------------------------------------------------------------------
 
-CShaderAPIEmpty::CShaderAPIEmpty()  : m_Mesh( true )
+CCoreShaderAPI::CCoreShaderAPI()  : m_Mesh( true )
 {
 }
 
-CShaderAPIEmpty::~CShaderAPIEmpty()
+CCoreShaderAPI::~CCoreShaderAPI()
 {
 }
 
 
-bool CShaderAPIEmpty::DoRenderTargetsNeedSeparateDepthBuffer() const
+bool CCoreShaderAPI::DoRenderTargetsNeedSeparateDepthBuffer() const
 {
 	return false;
 }
 
 // Can we download textures?
-bool CShaderAPIEmpty::CanDownloadTextures() const
+bool CCoreShaderAPI::CanDownloadTextures() const
 {
 	// TexImageFromVTF/TexImage2D convert and upload to PICA textures.
 	return true;
 }
 
 // Used to clear the transition table when we know it's become invalid.
-void CShaderAPIEmpty::ClearSnapshots()
+void CCoreShaderAPI::ClearSnapshots()
 {
 }
 
 // Members of IMaterialSystemHardwareConfig
-bool CShaderAPIEmpty::HasDestAlphaBuffer() const
+bool CCoreShaderAPI::HasDestAlphaBuffer() const
 {
 	return false;
 }
@@ -4736,40 +4337,32 @@ bool CShaderAPIEmpty::HasDestAlphaBuffer() const
 // as shaderapivulkan's was; Portal 2 draws its portals' views through the
 // stencil only when the shader API reports one (without it an open portal
 // showed the wall behind it).
-bool CShaderAPIEmpty::HasStencilBuffer() const
+bool CCoreShaderAPI::HasStencilBuffer() const
 {
-#if defined( PLATFORM_3DS )
-	return false;
-#else
 	return true;
-#endif
 }
 
-int CShaderAPIEmpty::MaxViewports() const
+int CCoreShaderAPI::MaxViewports() const
 {
 	return 1;
 }
 
-int CShaderAPIEmpty::GetShadowFilterMode() const
+int CCoreShaderAPI::GetShadowFilterMode() const
 {
 	return 0;
 }
 
-int CShaderAPIEmpty::StencilBufferBits() const
+int CCoreShaderAPI::StencilBufferBits() const
 {
-#if defined( PLATFORM_3DS )
-	return 0;
-#else
 	return 8;
-#endif
 }
 
-int	 CShaderAPIEmpty::GetFrameBufferColorDepth() const
+int	 CCoreShaderAPI::GetFrameBufferColorDepth() const
 {
 	return 0;
 }
 
-int  CShaderAPIEmpty::GetSamplerCount() const
+int  CCoreShaderAPI::GetSamplerCount() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 60))
@@ -4779,22 +4372,22 @@ int  CShaderAPIEmpty::GetSamplerCount() const
 	return 4;
 }
 
-bool CShaderAPIEmpty::HasSetDeviceGammaRamp() const
+bool CCoreShaderAPI::HasSetDeviceGammaRamp() const
 {
 	return false;
 }
 
-bool CShaderAPIEmpty::SupportsCompressedTextures() const
+bool CCoreShaderAPI::SupportsCompressedTextures() const
 {
 	return false;
 }
 
-VertexCompressionType_t CShaderAPIEmpty::SupportsCompressedVertices() const
+VertexCompressionType_t CCoreShaderAPI::SupportsCompressedVertices() const
 {
 	return VERTEX_COMPRESSION_NONE;
 }
 
-bool CShaderAPIEmpty::SupportsVertexAndPixelShaders() const
+bool CCoreShaderAPI::SupportsVertexAndPixelShaders() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 80))
@@ -4803,7 +4396,7 @@ bool CShaderAPIEmpty::SupportsVertexAndPixelShaders() const
 	return true;
 }
 
-bool CShaderAPIEmpty::SupportsPixelShaders_1_4() const
+bool CCoreShaderAPI::SupportsPixelShaders_1_4() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 81))
@@ -4812,7 +4405,7 @@ bool CShaderAPIEmpty::SupportsPixelShaders_1_4() const
 	return true;
 }
 
-bool CShaderAPIEmpty::SupportsPixelShaders_2_0() const
+bool CCoreShaderAPI::SupportsPixelShaders_2_0() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 90))
@@ -4821,7 +4414,7 @@ bool CShaderAPIEmpty::SupportsPixelShaders_2_0() const
 	return true;
 }
 
-bool CShaderAPIEmpty::SupportsPixelShaders_2_b() const
+bool CCoreShaderAPI::SupportsPixelShaders_2_b() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 90))
@@ -4830,12 +4423,12 @@ bool CShaderAPIEmpty::SupportsPixelShaders_2_b() const
 	return true;
 }
 
-bool CShaderAPIEmpty::ActuallySupportsPixelShaders_2_b() const
+bool CCoreShaderAPI::ActuallySupportsPixelShaders_2_b() const
 {
 	return true;
 }
 
-bool CShaderAPIEmpty::SupportsShaderModel_3_0() const
+bool CCoreShaderAPI::SupportsShaderModel_3_0() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 		(ShaderUtil()->GetConfig().dxSupportLevel < 95))
@@ -4844,7 +4437,7 @@ bool CShaderAPIEmpty::SupportsShaderModel_3_0() const
 	return true;
 }
 
-bool CShaderAPIEmpty::SupportsStaticControlFlow() const
+bool CCoreShaderAPI::SupportsStaticControlFlow() const
 {
 	if ( IsOpenGL() )
 		return false;
@@ -4852,7 +4445,7 @@ bool CShaderAPIEmpty::SupportsStaticControlFlow() const
 	return SupportsVertexShaders_2_0();
 }
 
-bool CShaderAPIEmpty::SupportsVertexShaders_2_0() const
+bool CCoreShaderAPI::SupportsVertexShaders_2_0() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 90))
@@ -4861,51 +4454,51 @@ bool CShaderAPIEmpty::SupportsVertexShaders_2_0() const
 	return true;
 }
 
-int  CShaderAPIEmpty::MaximumAnisotropicLevel() const
+int  CCoreShaderAPI::MaximumAnisotropicLevel() const
 {
 	return 0;
 }
 
-void CShaderAPIEmpty::SetAnisotropicLevel( int nAnisotropyLevel )
+void CCoreShaderAPI::SetAnisotropicLevel( int nAnisotropyLevel )
 {
 }
 
-int  CShaderAPIEmpty::MaxTextureWidth() const
-{
-	// Should be big enough to cover all cases
-	return 16384;
-}
-
-int  CShaderAPIEmpty::MaxTextureHeight() const
+int  CCoreShaderAPI::MaxTextureWidth() const
 {
 	// Should be big enough to cover all cases
 	return 16384;
 }
 
-int  CShaderAPIEmpty::MaxTextureAspectRatio() const
+int  CCoreShaderAPI::MaxTextureHeight() const
+{
+	// Should be big enough to cover all cases
+	return 16384;
+}
+
+int  CCoreShaderAPI::MaxTextureAspectRatio() const
 {
 	// Should be big enough to cover all cases
 	return 16384;
 }
 
 
-int	 CShaderAPIEmpty::TextureMemorySize() const
+int	 CCoreShaderAPI::TextureMemorySize() const
 {
 	// fake it
 	return 64 * 1024 * 1024;
 }
 
-int  CShaderAPIEmpty::GetDXSupportLevel() const 
+int  CCoreShaderAPI::GetDXSupportLevel() const 
 { 
 	return 90; 
 }
 
-bool CShaderAPIEmpty::SupportsOverbright() const
+bool CCoreShaderAPI::SupportsOverbright() const
 {
 	return false;
 }
 
-bool CShaderAPIEmpty::SupportsCubeMaps() const
+bool CCoreShaderAPI::SupportsCubeMaps() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 70))
@@ -4914,12 +4507,12 @@ bool CShaderAPIEmpty::SupportsCubeMaps() const
 	return true;
 }
 
-bool CShaderAPIEmpty::SupportsNonPow2Textures() const
+bool CCoreShaderAPI::SupportsNonPow2Textures() const
 {
 	return true;
 }
 
-bool CShaderAPIEmpty::SupportsMipmappedCubemaps() const
+bool CCoreShaderAPI::SupportsMipmappedCubemaps() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 70))
@@ -4928,49 +4521,49 @@ bool CShaderAPIEmpty::SupportsMipmappedCubemaps() const
 	return true;
 }
 
-int  CShaderAPIEmpty::GetTextureStageCount() const
+int  CCoreShaderAPI::GetTextureStageCount() const
 {
 	return 4;
 }
 
-int	 CShaderAPIEmpty::NumVertexShaderConstants() const
+int	 CCoreShaderAPI::NumVertexShaderConstants() const
 {
 	return 128;
 }
 
-int	 CShaderAPIEmpty::NumBooleanVertexShaderConstants() const
+int	 CCoreShaderAPI::NumBooleanVertexShaderConstants() const
 {
 	return 0;
 }
 
-int	 CShaderAPIEmpty::NumIntegerVertexShaderConstants() const
+int	 CCoreShaderAPI::NumIntegerVertexShaderConstants() const
 {
 	return 0;
 }
 
-int	 CShaderAPIEmpty::NumPixelShaderConstants() const
+int	 CCoreShaderAPI::NumPixelShaderConstants() const
 {
 	return 8;
 }
 
-int	 CShaderAPIEmpty::MaxNumLights() const
+int	 CCoreShaderAPI::MaxNumLights() const
 {
 	return 4;
 }
 
-bool CShaderAPIEmpty::SupportsSpheremapping() const
+bool CCoreShaderAPI::SupportsSpheremapping() const
 {
 	return false;
 }
 
 
 // This is the max dx support level supported by the card
-int	CShaderAPIEmpty::GetMaxDXSupportLevel() const
+int	CCoreShaderAPI::GetMaxDXSupportLevel() const
 {
 	return 90;
 }
 
-bool CShaderAPIEmpty::SupportsHardwareLighting() const
+bool CCoreShaderAPI::SupportsHardwareLighting() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 70))
@@ -4979,7 +4572,7 @@ bool CShaderAPIEmpty::SupportsHardwareLighting() const
 	return true;
 }
 
-int	 CShaderAPIEmpty::MaxBlendMatrices() const
+int	 CCoreShaderAPI::MaxBlendMatrices() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 70))
@@ -4990,7 +4583,7 @@ int	 CShaderAPIEmpty::MaxBlendMatrices() const
 	return 0;
 }
 
-int	 CShaderAPIEmpty::MaxBlendMatrixIndices() const
+int	 CCoreShaderAPI::MaxBlendMatrixIndices() const
 {
 	if ((ShaderUtil()->GetConfig().dxSupportLevel > 0) &&
 	    (ShaderUtil()->GetConfig().dxSupportLevel < 70))
@@ -5001,54 +4594,54 @@ int	 CShaderAPIEmpty::MaxBlendMatrixIndices() const
 	return 0;
 }
 
-int	 CShaderAPIEmpty::MaxVertexShaderBlendMatrices() const
+int	 CCoreShaderAPI::MaxVertexShaderBlendMatrices() const
 {
 	return 0;
 }
 
-int	CShaderAPIEmpty::MaxUserClipPlanes() const
+int	CCoreShaderAPI::MaxUserClipPlanes() const
 {
 	return 0;
 }
 
-bool CShaderAPIEmpty::SpecifiesFogColorInLinearSpace() const
+bool CCoreShaderAPI::SpecifiesFogColorInLinearSpace() const
 {
 	return false;
 }
 
-bool CShaderAPIEmpty::SupportsSRGB() const
+bool CCoreShaderAPI::SupportsSRGB() const
 {
 	return false;
 }
 
-bool CShaderAPIEmpty::FakeSRGBWrite() const
+bool CCoreShaderAPI::FakeSRGBWrite() const
 {
 	return false;
 }
 
-bool CShaderAPIEmpty::CanDoSRGBReadFromRTs() const
+bool CCoreShaderAPI::CanDoSRGBReadFromRTs() const
 {
 	return true;
 }
 
-bool CShaderAPIEmpty::SupportsGLMixedSizeTargets() const
+bool CCoreShaderAPI::SupportsGLMixedSizeTargets() const
 {
 	return false;
 }
 
-const char *CShaderAPIEmpty::GetHWSpecificShaderDLLName() const
+const char *CCoreShaderAPI::GetHWSpecificShaderDLLName() const
 {
 	return 0;
 }
 
 // Sets the default *dynamic* state
-void CShaderAPIEmpty::SetDefaultState()
+void CCoreShaderAPI::SetDefaultState()
 {
 }
 
 
 // Returns the snapshot id for the shader state
-StateSnapshot_t	 CShaderAPIEmpty::TakeSnapshot( )
+StateSnapshot_t	 CCoreShaderAPI::TakeSnapshot( )
 {
 	StateSnapshot_t id = 0;
 	if (g_ShaderShadow.m_IsTranslucent)
@@ -5075,34 +4668,34 @@ StateSnapshot_t	 CShaderAPIEmpty::TakeSnapshot( )
 		snapshot.polyOffset = g_ShaderShadow.m_PolyOffset;
 		index = g_Snapshots.AddToTail( snapshot );
 		if ( index > 0x7FF )
-			Warning( "pica: %d distinct state snapshots exceed StateSnapshot_t's 11 index bits\n", index + 1 );
+			Warning( "core shader API: %d distinct state snapshots exceed StateSnapshot_t's 11 index bits\n", index + 1 );
 	}
 	return id | ( StateSnapshot_t( index ) << 4 );
 }
 
 // Returns true if the state snapshot is transparent
-bool CShaderAPIEmpty::IsTranslucent( StateSnapshot_t id ) const
+bool CCoreShaderAPI::IsTranslucent( StateSnapshot_t id ) const
 {
 	return (id & TRANSLUCENT) != 0; 
 }
 
-bool CShaderAPIEmpty::IsAlphaTested( StateSnapshot_t id ) const
+bool CCoreShaderAPI::IsAlphaTested( StateSnapshot_t id ) const
 {
 	return (id & ALPHATESTED) != 0; 
 }
 
-bool CShaderAPIEmpty::IsDepthWriteEnabled( StateSnapshot_t id ) const
+bool CCoreShaderAPI::IsDepthWriteEnabled( StateSnapshot_t id ) const
 {
 	return (id & DEPTHWRITE) != 0; 
 }
 
-bool CShaderAPIEmpty::UsesVertexAndPixelShaders( StateSnapshot_t id ) const
+bool CCoreShaderAPI::UsesVertexAndPixelShaders( StateSnapshot_t id ) const
 {
 	return (id & VERTEX_AND_PIXEL_SHADERS) != 0; 
 }
 
 // Gets the vertex format for a set of snapshot ids
-VertexFormat_t CShaderAPIEmpty::ComputeVertexFormat( int numSnapshots, StateSnapshot_t* pIds ) const
+VertexFormat_t CCoreShaderAPI::ComputeVertexFormat( int numSnapshots, StateSnapshot_t* pIds ) const
 {
 	VertexFormat_t format = 0;
 	for ( int i = 0; i < numSnapshots; ++i )
@@ -5115,111 +4708,111 @@ VertexFormat_t CShaderAPIEmpty::ComputeVertexFormat( int numSnapshots, StateSnap
 }
 
 // Gets the vertex format for a set of snapshot ids
-VertexFormat_t CShaderAPIEmpty::ComputeVertexUsage( int numSnapshots, StateSnapshot_t* pIds ) const
+VertexFormat_t CCoreShaderAPI::ComputeVertexUsage( int numSnapshots, StateSnapshot_t* pIds ) const
 {
 	return ComputeVertexFormat( numSnapshots, pIds );
 }
 
 // Uses a state snapshot
-void CShaderAPIEmpty::UseSnapshot( StateSnapshot_t snapshot )
+void CCoreShaderAPI::UseSnapshot( StateSnapshot_t snapshot )
 {
 }
 
 // Sets the color to modulate by
-void CShaderAPIEmpty::Color3f( float r, float g, float b )
+void CCoreShaderAPI::Color3f( float r, float g, float b )
 {
 	g_Modulation[0] = r, g_Modulation[1] = g, g_Modulation[2] = b, g_Modulation[3] = 1.0f;
 }
 
-void CShaderAPIEmpty::Color3fv( float const* pColor )
+void CCoreShaderAPI::Color3fv( float const* pColor )
 {
 }
 
-void CShaderAPIEmpty::Color4f( float r, float g, float b, float a )
+void CCoreShaderAPI::Color4f( float r, float g, float b, float a )
 {
 	g_Modulation[0] = r, g_Modulation[1] = g, g_Modulation[2] = b, g_Modulation[3] = a;
 }
 
-void CShaderAPIEmpty::Color4fv( float const* pColor )
+void CCoreShaderAPI::Color4fv( float const* pColor )
 {
 }
 
 // Faster versions of color
-void CShaderAPIEmpty::Color3ub( unsigned char r, unsigned char g, unsigned char b )
+void CCoreShaderAPI::Color3ub( unsigned char r, unsigned char g, unsigned char b )
 {
 }
 
-void CShaderAPIEmpty::Color3ubv( unsigned char const* rgb )
+void CCoreShaderAPI::Color3ubv( unsigned char const* rgb )
 {
 }
 
-void CShaderAPIEmpty::Color4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a )
+void CCoreShaderAPI::Color4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a )
 {
 }
 
-void CShaderAPIEmpty::Color4ubv( unsigned char const* rgba )
+void CCoreShaderAPI::Color4ubv( unsigned char const* rgba )
 {
 }
 
 // The shade mode
-void CShaderAPIEmpty::ShadeMode( ShaderShadeMode_t mode )
+void CCoreShaderAPI::ShadeMode( ShaderShadeMode_t mode )
 {
 }
 
 // Binds a particular material to render with
-void CShaderAPIEmpty::Bind( IMaterial* pMaterial )
+void CCoreShaderAPI::Bind( IMaterial* pMaterial )
 {
 	g_pBoundMaterial = static_cast<IMaterialInternal *>( pMaterial );
 }
 
 // Cull mode
-void CShaderAPIEmpty::CullMode( MaterialCullMode_t cullMode )
+void CCoreShaderAPI::CullMode( MaterialCullMode_t cullMode )
 {
 }
 
-void CShaderAPIEmpty::ForceDepthFuncEquals( bool bEnable )
+void CCoreShaderAPI::ForceDepthFuncEquals( bool bEnable )
 {
 }
 
 // Forces Z buffering on or off
-void CShaderAPIEmpty::OverrideDepthEnable( bool bEnable, bool bDepthEnable )
+void CCoreShaderAPI::OverrideDepthEnable( bool bEnable, bool bDepthEnable )
 {
 }
 
-void CShaderAPIEmpty::OverrideAlphaWriteEnable( bool bOverrideEnable, bool bAlphaWriteEnable )
+void CCoreShaderAPI::OverrideAlphaWriteEnable( bool bOverrideEnable, bool bAlphaWriteEnable )
 {
 }
 
-void CShaderAPIEmpty::OverrideColorWriteEnable( bool bOverrideEnable, bool bColorWriteEnable )
+void CCoreShaderAPI::OverrideColorWriteEnable( bool bOverrideEnable, bool bColorWriteEnable )
 {
 }
 
 //legacy fast clipping linkage
-void CShaderAPIEmpty::SetHeightClipZ( float z )
+void CCoreShaderAPI::SetHeightClipZ( float z )
 {
 }
 
-void CShaderAPIEmpty::SetHeightClipMode( enum MaterialHeightClipMode_t heightClipMode )
+void CCoreShaderAPI::SetHeightClipMode( enum MaterialHeightClipMode_t heightClipMode )
 {
 }
 
 // Sets the lights
-void CShaderAPIEmpty::SetLight( int lightNum, const LightDesc_t& desc )
+void CCoreShaderAPI::SetLight( int lightNum, const LightDesc_t& desc )
 {
 	if ( lightNum >= 0 && lightNum < kFacadeMaxLights )
 		g_Lights[lightNum] = desc;
 }
 
 // Sets lighting origin for the current model
-void CShaderAPIEmpty::SetLightingOrigin( Vector vLightingOrigin )
+void CCoreShaderAPI::SetLightingOrigin( Vector vLightingOrigin )
 {
 }
 
-void CShaderAPIEmpty::SetAmbientLight( float r, float g, float b )
+void CCoreShaderAPI::SetAmbientLight( float r, float g, float b )
 {
 }
 
-void CShaderAPIEmpty::SetAmbientLightCube( Vector4D cube[6] )
+void CCoreShaderAPI::SetAmbientLightCube( Vector4D cube[6] )
 {
 	for ( int face = 0; face < 6; ++face )
 		for ( int c = 0; c < 3; ++c )
@@ -5227,88 +4820,88 @@ void CShaderAPIEmpty::SetAmbientLightCube( Vector4D cube[6] )
 }
 
 // Get lights
-int CShaderAPIEmpty::GetMaxLights( void ) const
+int CCoreShaderAPI::GetMaxLights( void ) const
 {
 	return kFacadeMaxLights;
 }
 
-const LightDesc_t& CShaderAPIEmpty::GetLight( int lightNum ) const
+const LightDesc_t& CCoreShaderAPI::GetLight( int lightNum ) const
 {
 	static LightDesc_t blah;
 	return lightNum >= 0 && lightNum < kFacadeMaxLights ? g_Lights[lightNum] : blah;
 }
 
 // Render state for the ambient light cube (vertex shaders)
-void CShaderAPIEmpty::SetVertexShaderStateAmbientLightCube()
+void CCoreShaderAPI::SetVertexShaderStateAmbientLightCube()
 {
 }
 
-void CShaderAPIEmpty::SetSkinningMatrices()
+void CCoreShaderAPI::SetSkinningMatrices()
 {
 }
 
 // Lightmap texture binding
-void CShaderAPIEmpty::BindLightmap( TextureStage_t stage )
+void CCoreShaderAPI::BindLightmap( TextureStage_t stage )
 {
 }
 
-void CShaderAPIEmpty::BindBumpLightmap( TextureStage_t stage )
+void CCoreShaderAPI::BindBumpLightmap( TextureStage_t stage )
 {
 }
 
-void CShaderAPIEmpty::BindFullbrightLightmap( TextureStage_t stage )
+void CCoreShaderAPI::BindFullbrightLightmap( TextureStage_t stage )
 {
 }
 
-void CShaderAPIEmpty::BindWhite( TextureStage_t stage )
+void CCoreShaderAPI::BindWhite( TextureStage_t stage )
 {
 }
 
-void CShaderAPIEmpty::BindBlack( TextureStage_t stage )
+void CCoreShaderAPI::BindBlack( TextureStage_t stage )
 {
 }
 
-void CShaderAPIEmpty::BindGrey( TextureStage_t stage )
+void CCoreShaderAPI::BindGrey( TextureStage_t stage )
 {
 }
 
 // Gets the lightmap dimensions
-void CShaderAPIEmpty::GetLightmapDimensions( int *w, int *h )
+void CCoreShaderAPI::GetLightmapDimensions( int *w, int *h )
 {
 	g_pShaderUtil->GetLightmapDimensions( w, h );
 }
 
 // Special system flat normal map binding.
-void CShaderAPIEmpty::BindFlatNormalMap( TextureStage_t stage )
+void CCoreShaderAPI::BindFlatNormalMap( TextureStage_t stage )
 {
 }
 
-void CShaderAPIEmpty::BindNormalizationCubeMap( TextureStage_t stage )
+void CCoreShaderAPI::BindNormalizationCubeMap( TextureStage_t stage )
 {
 }
 
-void CShaderAPIEmpty::BindSignedNormalizationCubeMap( TextureStage_t stage )
+void CCoreShaderAPI::BindSignedNormalizationCubeMap( TextureStage_t stage )
 {
 }
 
-void CShaderAPIEmpty::BindFBTexture( TextureStage_t stage, int textureIndex )
+void CCoreShaderAPI::BindFBTexture( TextureStage_t stage, int textureIndex )
 {
 }
 
 // Flushes any primitives that are buffered
-void CShaderAPIEmpty::FlushBufferedPrimitives()
+void CCoreShaderAPI::FlushBufferedPrimitives()
 {
 }
 
 // Gets the dynamic mesh; note that you've got to render the mesh
 // before calling this function a second time. Clients should *not*
 // call DestroyStaticMesh on the mesh returned by this call.
-IMesh* CShaderAPIEmpty::GetDynamicMesh( IMaterial* pMaterial, int nHWSkinBoneCount, bool buffered, IMesh* pVertexOverride, IMesh* pIndexOverride )
+IMesh* CCoreShaderAPI::GetDynamicMesh( IMaterial* pMaterial, int nHWSkinBoneCount, bool buffered, IMesh* pVertexOverride, IMesh* pIndexOverride )
 {
 	return GetDynamicMeshEx( pMaterial, 0, nHWSkinBoneCount, buffered, pVertexOverride, pIndexOverride );
 }
 
-IMesh* CShaderAPIEmpty::GetDynamicMeshEx( IMaterial* pMaterial, VertexFormat_t fmt, int nHWSkinBoneCount, bool buffered, IMesh* pVertexOverride, IMesh* pIndexOverride )
+IMesh* CCoreShaderAPI::GetDynamicMeshEx( IMaterial* pMaterial, VertexFormat_t fmt, int nHWSkinBoneCount, bool buffered, IMesh* pVertexOverride, IMesh* pIndexOverride )
 {
 	VertexFormat_t format = fmt;
 	if ( format == 0 && pMaterial )
@@ -5320,26 +4913,26 @@ IMesh* CShaderAPIEmpty::GetDynamicMeshEx( IMaterial* pMaterial, VertexFormat_t f
 	return &m_Mesh;
 }
 
-IMesh* CShaderAPIEmpty::GetFlexMesh()
+IMesh* CCoreShaderAPI::GetFlexMesh()
 {
 	return &m_Mesh;
 }
 
 // Begins a rendering pass that uses a state snapshot
-void CShaderAPIEmpty::BeginPass( StateSnapshot_t snapshot  )
+void CCoreShaderAPI::BeginPass( StateSnapshot_t snapshot  )
 {
 	g_CurrentSnapshot = int( snapshot >> 4 );
 }
 
 // Renders a single pass of a material
-void CShaderAPIEmpty::RenderPass( int nPass, int nPassCount )
+void CCoreShaderAPI::RenderPass( int nPass, int nPassCount )
 {
 	if ( g_pRenderMesh )
 		g_pRenderMesh->RenderPass();
 }
 
 // stuff related to matrix stacks
-void CShaderAPIEmpty::MatrixMode( MaterialMatrixMode_t matrixMode )
+void CCoreShaderAPI::MatrixMode( MaterialMatrixMode_t matrixMode )
 {
 	switch ( matrixMode )
 	{
@@ -5349,7 +4942,7 @@ void CShaderAPIEmpty::MatrixMode( MaterialMatrixMode_t matrixMode )
 	}
 }
 
-void CShaderAPIEmpty::PushMatrix()
+void CCoreShaderAPI::PushMatrix()
 {
 	int &top = g_StackTop[g_CurrentStack];
 	if ( top + 1 < kStackDepth )
@@ -5359,40 +4952,40 @@ void CShaderAPIEmpty::PushMatrix()
 	}
 }
 
-void CShaderAPIEmpty::PopMatrix()
+void CCoreShaderAPI::PopMatrix()
 {
 	if ( g_StackTop[g_CurrentStack] > 0 )
 		--g_StackTop[g_CurrentStack];
 }
 
-void CShaderAPIEmpty::LoadMatrix( float *m )
+void CCoreShaderAPI::LoadMatrix( float *m )
 {
 	memcpy( Top(), m, 16 * sizeof( float ) );
 }
 
-void CShaderAPIEmpty::MultMatrix( float *m )
+void CCoreShaderAPI::MultMatrix( float *m )
 {
 	Mul( Top(), m, Top() );
 }
 
-void CShaderAPIEmpty::MultMatrixLocal( float *m )
+void CCoreShaderAPI::MultMatrixLocal( float *m )
 {
 	MultLocal( m );
 }
 
-void CShaderAPIEmpty::GetMatrix( MaterialMatrixMode_t matrixMode, float *dst )
+void CCoreShaderAPI::GetMatrix( MaterialMatrixMode_t matrixMode, float *dst )
 {
 	const int stack = matrixMode == MATERIAL_VIEW ? kStackView :
 		( matrixMode == MATERIAL_PROJECTION ? kStackProjection : kStackModel );
 	memcpy( dst, Top( stack ), 16 * sizeof( float ) );
 }
 
-void CShaderAPIEmpty::LoadIdentity( void )
+void CCoreShaderAPI::LoadIdentity( void )
 {
 	Identity( Top() );
 }
 
-void CShaderAPIEmpty::LoadCameraToWorld( void )
+void CCoreShaderAPI::LoadCameraToWorld( void )
 {
 	// The inverse of the view's rotation (an orthonormal 3x3: its transpose),
 	// with no translation.
@@ -5404,7 +4997,7 @@ void CShaderAPIEmpty::LoadCameraToWorld( void )
 			m[i * 4 + j] = v[j * 4 + i];
 }
 
-void CShaderAPIEmpty::Ortho( double left, double top, double right, double bottom, double zNear, double zFar )
+void CCoreShaderAPI::Ortho( double left, double top, double right, double bottom, double zNear, double zFar )
 {
 	// D3DXMatrixOrthoOffCenterRH( left, right, top (as bottom), bottom (as top) ).
 	const double l = left, r = right, b = top, t = bottom;
@@ -5420,7 +5013,7 @@ void CShaderAPIEmpty::Ortho( double left, double top, double right, double botto
 	MultLocal( m );
 }
 
-void CShaderAPIEmpty::PerspectiveX( double fovx, double aspect, double zNear, double zFar )
+void CCoreShaderAPI::PerspectiveX( double fovx, double aspect, double zNear, double zFar )
 {
 	// D3DXMatrixPerspectiveRH.
 	const double width = 2.0 * zNear * tan( fovx * M_PI / 360.0 );
@@ -5435,15 +5028,15 @@ void CShaderAPIEmpty::PerspectiveX( double fovx, double aspect, double zNear, do
 	MultLocal( m );
 }
 
-void CShaderAPIEmpty::PerspectiveOffCenterX( double fovx, double aspect, double zNear, double zFar, double bottom, double top, double left, double right )
+void CCoreShaderAPI::PerspectiveOffCenterX( double fovx, double aspect, double zNear, double zFar, double bottom, double top, double left, double right )
 {
 }
 
-void CShaderAPIEmpty::PickMatrix( int x, int y, int width, int height )
+void CCoreShaderAPI::PickMatrix( int x, int y, int width, int height )
 {
 }
 
-void CShaderAPIEmpty::Rotate( float angle, float x, float y, float z )
+void CCoreShaderAPI::Rotate( float angle, float x, float y, float z )
 {
 	const float length = sqrtf( x * x + y * y + z * z );
 	if ( length <= 0.0f )
@@ -5459,7 +5052,7 @@ void CShaderAPIEmpty::Rotate( float angle, float x, float y, float z )
 	MultLocal( m );
 }
 
-void CShaderAPIEmpty::Translate( float x, float y, float z )
+void CCoreShaderAPI::Translate( float x, float y, float z )
 {
 	float m[16];
 	Identity( m );
@@ -5467,7 +5060,7 @@ void CShaderAPIEmpty::Translate( float x, float y, float z )
 	MultLocal( m );
 }
 
-void CShaderAPIEmpty::Scale( float x, float y, float z )
+void CCoreShaderAPI::Scale( float x, float y, float z )
 {
 	float m[16];
 	Identity( m );
@@ -5475,7 +5068,7 @@ void CShaderAPIEmpty::Scale( float x, float y, float z )
 	MultLocal( m );
 }
 
-void CShaderAPIEmpty::ScaleXY( float x, float y )
+void CCoreShaderAPI::ScaleXY( float x, float y )
 {
 	float m[16];
 	Identity( m );
@@ -5484,31 +5077,31 @@ void CShaderAPIEmpty::ScaleXY( float x, float y )
 }
 
 // Fog methods...
-void CShaderAPIEmpty::FogMode( MaterialFogMode_t fogMode )
+void CCoreShaderAPI::FogMode( MaterialFogMode_t fogMode )
 {
 }
 
-void CShaderAPIEmpty::FogStart( float fStart )
+void CCoreShaderAPI::FogStart( float fStart )
 {
 	g_CoreFog.start = fStart;
 }
 
-void CShaderAPIEmpty::FogEnd( float fEnd )
+void CCoreShaderAPI::FogEnd( float fEnd )
 {
 	g_CoreFog.end = fEnd;
 }
 
-void CShaderAPIEmpty::SetFogZ( float fogZ )
+void CCoreShaderAPI::SetFogZ( float fogZ )
 {
 	g_CoreFog.fogZ = fogZ;
 }
 	
-void CShaderAPIEmpty::FogMaxDensity( float flMaxDensity )
+void CCoreShaderAPI::FogMaxDensity( float flMaxDensity )
 {
 	g_CoreFog.maxDensity = flMaxDensity;
 }
 
-void CShaderAPIEmpty::GetFogDistances( float *fStart, float *fEnd, float *fFogZ )
+void CCoreShaderAPI::GetFogDistances( float *fStart, float *fEnd, float *fFogZ )
 {
 	if ( fStart )
 		*fStart = g_CoreFog.start;
@@ -5519,7 +5112,7 @@ void CShaderAPIEmpty::GetFogDistances( float *fStart, float *fEnd, float *fFogZ 
 }
 
 
-void CShaderAPIEmpty::SceneFogColor3ub( unsigned char r, unsigned char g, unsigned char b )
+void CCoreShaderAPI::SceneFogColor3ub( unsigned char r, unsigned char g, unsigned char b )
 {
 	g_CoreFog.sceneColor[0] = r;
 	g_CoreFog.sceneColor[1] = g;
@@ -5527,45 +5120,45 @@ void CShaderAPIEmpty::SceneFogColor3ub( unsigned char r, unsigned char g, unsign
 }
 
 
-void CShaderAPIEmpty::SceneFogMode( MaterialFogMode_t fogMode )
+void CCoreShaderAPI::SceneFogMode( MaterialFogMode_t fogMode )
 {
 	g_CoreFog.sceneMode = fogMode;
 }
 
-void CShaderAPIEmpty::GetSceneFogColor( unsigned char *rgb )
+void CCoreShaderAPI::GetSceneFogColor( unsigned char *rgb )
 {
 	rgb[0] = g_CoreFog.sceneColor[0];
 	rgb[1] = g_CoreFog.sceneColor[1];
 	rgb[2] = g_CoreFog.sceneColor[2];
 }
 
-MaterialFogMode_t CShaderAPIEmpty::GetSceneFogMode( )
+MaterialFogMode_t CCoreShaderAPI::GetSceneFogMode( )
 {
 	return g_CoreFog.sceneMode;
 }
 
-int CShaderAPIEmpty::GetPixelFogCombo( )
+int CCoreShaderAPI::GetPixelFogCombo( )
 {
 	return 0;
 }
 
-void CShaderAPIEmpty::FogColor3f( float r, float g, float b )
+void CCoreShaderAPI::FogColor3f( float r, float g, float b )
 {
 }
 
-void CShaderAPIEmpty::FogColor3fv( float const* rgb )
+void CCoreShaderAPI::FogColor3fv( float const* rgb )
 {
 }
 
-void CShaderAPIEmpty::FogColor3ub( unsigned char r, unsigned char g, unsigned char b )
+void CCoreShaderAPI::FogColor3ub( unsigned char r, unsigned char g, unsigned char b )
 {
 }
 
-void CShaderAPIEmpty::FogColor3ubv( unsigned char const* rgb )
+void CCoreShaderAPI::FogColor3ubv( unsigned char const* rgb )
 {
 }
 
-void CShaderAPIEmpty::SetViewports( int nCount, const ShaderViewport_t* pViewports )
+void CCoreShaderAPI::SetViewports( int nCount, const ShaderViewport_t* pViewports )
 {
 	if ( nCount <= 0 || !pViewports )
 		return;
@@ -5575,7 +5168,7 @@ void CShaderAPIEmpty::SetViewports( int nCount, const ShaderViewport_t* pViewpor
 			g_Viewport.m_nHeight );
 }
 
-int CShaderAPIEmpty::GetViewports( ShaderViewport_t* pViewports, int nMax ) const
+int CCoreShaderAPI::GetViewports( ShaderViewport_t* pViewports, int nMax ) const
 {
 	if ( pViewports && nMax >= 1 )
 	{
@@ -5587,80 +5180,78 @@ int CShaderAPIEmpty::GetViewports( ShaderViewport_t* pViewports, int nMax ) cons
 }
 
 // Sets the vertex and pixel shaders
-void CShaderAPIEmpty::SetVertexShaderIndex( int vshIndex )
+void CCoreShaderAPI::SetVertexShaderIndex( int vshIndex )
 {
 }
 
-void CShaderAPIEmpty::SetPixelShaderIndex( int pshIndex )
+void CCoreShaderAPI::SetPixelShaderIndex( int pshIndex )
 {
 }
 
 // Sets the constant registers for vertex and pixel shaders
-void CShaderAPIEmpty::SetVertexShaderConstant( int var, float const* pVec, int numConst, bool bForce )
+void CCoreShaderAPI::SetVertexShaderConstant( int var, float const* pVec, int numConst, bool bForce )
 {
 }
 
-void CShaderAPIEmpty::SetBooleanVertexShaderConstant( int var, BOOL const* pVec, int numConst, bool bForce )
+void CCoreShaderAPI::SetBooleanVertexShaderConstant( int var, BOOL const* pVec, int numConst, bool bForce )
 {
 }
 
-void CShaderAPIEmpty::SetIntegerVertexShaderConstant( int var, int const* pVec, int numConst, bool bForce )
+void CCoreShaderAPI::SetIntegerVertexShaderConstant( int var, int const* pVec, int numConst, bool bForce )
 {
 }
 
-void CShaderAPIEmpty::SetPixelShaderConstant( int var, float const* pVec, int numConst, bool bForce )
+void CCoreShaderAPI::SetPixelShaderConstant( int var, float const* pVec, int numConst, bool bForce )
 {
 }
 
-void CShaderAPIEmpty::SetBooleanPixelShaderConstant( int var, BOOL const* pVec, int numBools, bool bForce )
+void CCoreShaderAPI::SetBooleanPixelShaderConstant( int var, BOOL const* pVec, int numBools, bool bForce )
 {
 }
 
-void CShaderAPIEmpty::SetIntegerPixelShaderConstant( int var, int const* pVec, int numIntVecs, bool bForce )
+void CCoreShaderAPI::SetIntegerPixelShaderConstant( int var, int const* pVec, int numIntVecs, bool bForce )
 {
 }
 
-void CShaderAPIEmpty::InvalidateDelayedShaderConstants( void )
+void CCoreShaderAPI::InvalidateDelayedShaderConstants( void )
 {
 }
 
-float CShaderAPIEmpty::GammaToLinear_HardwareSpecific( float fGamma ) const
+float CCoreShaderAPI::GammaToLinear_HardwareSpecific( float fGamma ) const
 {
 	return SrgbGammaToLinear( fGamma );
 }
 
-float CShaderAPIEmpty::LinearToGamma_HardwareSpecific( float fLinear ) const
+float CCoreShaderAPI::LinearToGamma_HardwareSpecific( float fLinear ) const
 {
 	return SrgbLinearToGamma( fLinear );
 }
 
-void CShaderAPIEmpty::SetLinearToGammaConversionTextures( ShaderAPITextureHandle_t hSRGBWriteEnabledTexture, ShaderAPITextureHandle_t hIdentityTexture )
+void CCoreShaderAPI::SetLinearToGammaConversionTextures( ShaderAPITextureHandle_t hSRGBWriteEnabledTexture, ShaderAPITextureHandle_t hIdentityTexture )
 {
 
 }
 
 
 // Returns the nearest supported format
-ImageFormat CShaderAPIEmpty::GetNearestSupportedFormat( ImageFormat fmt, bool bFilteringRequired /* = true */ ) const
+ImageFormat CCoreShaderAPI::GetNearestSupportedFormat( ImageFormat fmt, bool bFilteringRequired /* = true */ ) const
 {
 	// Uploads arrive as RGBA8888 (the material system decodes DXT and friends)
 	// and are encoded for the PICA here. Off the 3DS HDR images keep their
 	// half floats, as shaderapivulkan kept them (the env maps' ENV_MAP_SCALE
 	// range is lost in 8 bits).
-#if !defined( PLATFORM_3DS )
 	if ( fmt == IMAGE_FORMAT_RGBA16161616F )
 		return fmt;
-#endif
 	return IMAGE_FORMAT_RGBA8888;
 }
 
-ImageFormat CShaderAPIEmpty::GetNearestRenderTargetFormat( ImageFormat fmt ) const
+ImageFormat CCoreShaderAPI::GetNearestRenderTargetFormat( ImageFormat fmt ) const
 {
 	return IMAGE_FORMAT_RGBA8888;
 }
 
 // Sets the texture state
-void CShaderAPIEmpty::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t textureHandle )
+void CCoreShaderAPI::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t textureHandle )
 {
 	if ( stage >= 0 && stage < 16 )
 		g_BoundTextures[stage] = textureHandle;
@@ -5668,12 +5259,12 @@ void CShaderAPIEmpty::BindTexture( Sampler_t stage, ShaderAPITextureHandle_t tex
 		g_BoundLightmap = INVALID_SHADERAPI_TEXTURE_HANDLE;
 }
 
-void CShaderAPIEmpty::ClearColor3ub( unsigned char r, unsigned char g, unsigned char b )
+void CCoreShaderAPI::ClearColor3ub( unsigned char r, unsigned char g, unsigned char b )
 {
 	g_ClearColor = unsigned( r ) | ( unsigned( g ) << 8 ) | ( unsigned( b ) << 16 ) | 0xFF000000u;
 }
 
-void CShaderAPIEmpty::ClearColor4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a )
+void CCoreShaderAPI::ClearColor4ub( unsigned char r, unsigned char g, unsigned char b, unsigned char a )
 {
 	g_ClearColor = unsigned( r ) | ( unsigned( g ) << 8 ) | ( unsigned( b ) << 16 ) | ( unsigned( a ) << 24 );
 }
@@ -5681,7 +5272,7 @@ void CShaderAPIEmpty::ClearColor4ub( unsigned char r, unsigned char g, unsigned 
 // Indicates we're going to be modifying this texture
 // TexImage2D, TexSubImage2D, TexWrap, TexMinFilter, and TexMagFilter
 // all use the texture specified by this function.
-void CShaderAPIEmpty::ModifyTexture( ShaderAPITextureHandle_t textureHandle )
+void CCoreShaderAPI::ModifyTexture( ShaderAPITextureHandle_t textureHandle )
 {
 	g_ModifyTexture = textureHandle;
 }
@@ -5695,7 +5286,7 @@ static bool IsLinearSourceFormat( ImageFormat format )
 		format == IMAGE_FORMAT_R32F;
 }
 
-void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset, int width, int height, 
+void CCoreShaderAPI::TexImage2D( int level, int cubeFace, ImageFormat dstFormat, int zOffset, int width, int height, 
 						 ImageFormat srcFormat, bool bSrcIsTiled, void *imageData )
 {
 	++g_TextureCounters.images;
@@ -5707,14 +5298,13 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 		// Each face's base level (smaller levels are not kept), square, at
 		// most the size cap a side.
 		if ( level == 0 && cubeFace == 0 )
-			printf( "pica: cube %s face images %dx%d src format %d data %d\n", texture->name,
+			printf( "core shader API: cube %s face images %dx%d src format %d data %d\n", texture->name,
 				width, height, (int)srcFormat, imageData != NULL );
 		if ( level != 0 || cubeFace < 0 || cubeFace > 5 || !imageData || width != height )
 		{
 			++g_TextureCounters.rejected;
 			return;
 		}
-#if !defined( PLATFORM_3DS )
 		// Half-float faces are kept as they are, at their own size.
 		if ( srcFormat == IMAGE_FORMAT_RGBA16161616F )
 		{
@@ -5732,7 +5322,6 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 			return;
 		}
 		texture->half = false;
-#endif
 		CUtlVector<unsigned char> rgba;
 		rgba.SetCount( width * height * 4 );
 		if ( !ImageLoader::ConvertImageFormat( (const unsigned char *)imageData, srcFormat,
@@ -5779,9 +5368,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 		texture->levelHashes.Purge();
 		texture->baseWidth = gpuW;
 		texture->baseHeight = gpuH;
-#if !defined( PLATFORM_3DS )
 		texture->wide = dstFormat == IMAGE_FORMAT_RGBA16161616;
-#endif
 		CUtlVector<unsigned char> &out = texture->levels[texture->levels.AddToTail()];
 		out.SetCount( gpuW * gpuH * ( texture->wide ? 8 : 4 ) );
 		memset( out.Base(), 0, out.Count() );
@@ -5825,7 +5412,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 				fwrite( &rgba[i * 4], 1, 3, f );
 			fclose( f );
 		}
-		printf( "pica: dumped %s level %d %dx%d src format %d\n", texture->name, level, width, height, (int)srcFormat );
+		printf( "core shader API: dumped %s level %d %dx%d src format %d\n", texture->name, level, width, height, (int)srcFormat );
 	}
 	texture->wide = false; // levels with data are kept as RGBA8
 	if ( texture->levels.Count() == 0 || !mipped )
@@ -5849,7 +5436,7 @@ void CShaderAPIEmpty::TexImage2D( int level, int cubeFace, ImageFormat dstFormat
 	MarkTextureDirty( texture );
 }
 
-void CShaderAPIEmpty::TexSubImage2D( int level, int cubeFace, int xOffset, int yOffset, int zOffset, int width, int height,
+void CCoreShaderAPI::TexSubImage2D( int level, int cubeFace, int xOffset, int yOffset, int zOffset, int width, int height,
 						 ImageFormat srcFormat, int srcStride, bool bSrcIsTiled, void *imageData )
 {
 	FacadeTexture *texture = TextureFor( g_ModifyTexture );
@@ -5884,14 +5471,13 @@ void CShaderAPIEmpty::TexSubImage2D( int level, int cubeFace, int xOffset, int y
 	MarkTextureDirty( texture );
 }
 
-void CShaderAPIEmpty::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
+void CCoreShaderAPI::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 {
 	// The material system's texture upload: every mip of the frame (face 0;
 	// cube and volume textures keep their first face/slice) through TexImage2D,
 	// which keeps the levels that fit the PICA and encodes them.
 	if ( !pVTF )
 		return;
-#if !defined( PLATFORM_3DS )
 	// The full model's cube maps: each face's base level (TexImage2D's cube path).
 	FacadeTexture *target = TextureFor( g_ModifyTexture );
 	if ( target && target->cube )
@@ -5906,7 +5492,6 @@ void CShaderAPIEmpty::TexImageFromVTF( IVTFTexture *pVTF, int iVTFFrame )
 		}
 		return;
 	}
-#endif
 	for ( int level = 0; level < pVTF->MipCount(); ++level )
 	{
 		int width = 0, height = 0, depth = 0;
@@ -5931,7 +5516,7 @@ int g_TexLockRect[4] = {}; // x, y, width, height
 
 static ImageFormat g_TexLockFormat = IMAGE_FORMAT_RGBA8888;
 
-bool CShaderAPIEmpty::TexLock( int level, int cubeFaceID, int xOffset, int yOffset, 
+bool CCoreShaderAPI::TexLock( int level, int cubeFaceID, int xOffset, int yOffset, 
 								int width, int height, CPixelWriter& writer )
 {
 	FacadeTexture *texture = TextureFor( g_ModifyTexture );
@@ -5975,7 +5560,7 @@ bool CShaderAPIEmpty::TexLock( int level, int cubeFaceID, int xOffset, int yOffs
 	return true;
 }
 
-void CShaderAPIEmpty::TexUnlock( )
+void CCoreShaderAPI::TexUnlock( )
 {
 	if ( g_TexLockTexture == INVALID_SHADERAPI_TEXTURE_HANDLE )
 		return;
@@ -5990,15 +5575,15 @@ void CShaderAPIEmpty::TexUnlock( )
 
 
 // These are bound to the texture, not the texture environment
-void CShaderAPIEmpty::TexMinFilter( ShaderTexFilterMode_t texFilterMode )
+void CCoreShaderAPI::TexMinFilter( ShaderTexFilterMode_t texFilterMode )
 {
 }
 
-void CShaderAPIEmpty::TexMagFilter( ShaderTexFilterMode_t texFilterMode )
+void CCoreShaderAPI::TexMagFilter( ShaderTexFilterMode_t texFilterMode )
 {
 }
 
-void CShaderAPIEmpty::TexWrap( ShaderTexCoordComponent_t coord, ShaderTexWrapMode_t wrapMode )
+void CCoreShaderAPI::TexWrap( ShaderTexCoordComponent_t coord, ShaderTexWrapMode_t wrapMode )
 {
 	FacadeTexture *texture = TextureFor( g_ModifyTexture );
 	if ( !texture )
@@ -6011,11 +5596,11 @@ void CShaderAPIEmpty::TexWrap( ShaderTexCoordComponent_t coord, ShaderTexWrapMod
 	texture->gpu.SetWrap( texture->wrapS, texture->wrapT );
 }
 
-void CShaderAPIEmpty::TexSetPriority( int priority )
+void CCoreShaderAPI::TexSetPriority( int priority )
 {
 }
 
-ShaderAPITextureHandle_t CShaderAPIEmpty::CreateTexture( 
+ShaderAPITextureHandle_t CCoreShaderAPI::CreateTexture( 
 	int width, 
 	int height,
 	int depth,
@@ -6033,7 +5618,7 @@ ShaderAPITextureHandle_t CShaderAPIEmpty::CreateTexture(
 }
 
 // Create a multi-frame texture (equivalent to calling "CreateTexture" multiple times, but more efficient)
-void CShaderAPIEmpty::CreateTextures( 
+void CCoreShaderAPI::CreateTextures( 
 							ShaderAPITextureHandle_t *pHandles,
 							int count,
 							int width, 
@@ -6057,24 +5642,20 @@ void CShaderAPIEmpty::CreateTextures(
 		texture->depth = ( flags & TEXTURE_CREATE_DEPTHBUFFER ) != 0;
 		texture->lightmap =
 			pTextureGroupName && V_strcmp( pTextureGroupName, TEXTURE_GROUP_LIGHTMAP ) == 0;
-#if !defined( PLATFORM_3DS )
 		// An integer-HDR lightmap page keeps its 16-bit texels (the record
 		// format shaderapivulkan kept and locked).
 		texture->wide = texture->lightmap && dstImageFormat == IMAGE_FORMAT_RGBA16161616 &&
 			texture->mipLevels == 1;
 		texture->linearSource = texture->wide;
-#endif
-#if !defined( PLATFORM_3DS )
 		// The full model samples cube maps as cubes (the 3DS keeps face 0).
 		texture->cube = ( flags & TEXTURE_CREATE_CUBEMAP ) != 0;
-#endif
 		V_strncpy( texture->name, pDebugName ? pDebugName : "", sizeof( texture->name ) );
 		pHandles[k] = ShaderAPITextureHandle_t( g_Textures.AddToTail( texture ) + 1 );
 	}
 }
 
 
-ShaderAPITextureHandle_t CShaderAPIEmpty::CreateDepthTexture( ImageFormat renderFormat, int width, int height, const char *pDebugName, bool bTexture )
+ShaderAPITextureHandle_t CCoreShaderAPI::CreateDepthTexture( ImageFormat renderFormat, int width, int height, const char *pDebugName, bool bTexture )
 {
 	ShaderAPITextureHandle_t handle = 0;
 	CreateTextures( &handle, 1, width, height, 1, renderFormat, 1, 1, TEXTURE_CREATE_DEPTHBUFFER,
@@ -6082,7 +5663,7 @@ ShaderAPITextureHandle_t CShaderAPIEmpty::CreateDepthTexture( ImageFormat render
 	return handle;
 }
 
-void CShaderAPIEmpty::DeleteTexture( ShaderAPITextureHandle_t textureHandle )
+void CCoreShaderAPI::DeleteTexture( ShaderAPITextureHandle_t textureHandle )
 {
 	FacadeTexture *texture = TextureFor( textureHandle );
 	if ( !texture )
@@ -6095,25 +5676,23 @@ void CShaderAPIEmpty::DeleteTexture( ShaderAPITextureHandle_t textureHandle )
 	if ( g_BoundLightmap == textureHandle )
 		g_BoundLightmap = INVALID_SHADERAPI_TEXTURE_HANDLE;
 	g_Textures[int( textureHandle ) - 1] = NULL;
-#if !defined( PLATFORM_3DS )
 	g_DirtyImported.FindAndRemove( texture );
-#endif
 	delete texture;
 }
 
-bool CShaderAPIEmpty::IsTexture( ShaderAPITextureHandle_t textureHandle )
+bool CCoreShaderAPI::IsTexture( ShaderAPITextureHandle_t textureHandle )
 {
 	return TextureFor( textureHandle ) != NULL;
 }
 
-bool CShaderAPIEmpty::IsTextureResident( ShaderAPITextureHandle_t textureHandle )
+bool CCoreShaderAPI::IsTextureResident( ShaderAPITextureHandle_t textureHandle )
 {
 	FacadeTexture *texture = TextureFor( textureHandle );
 	return texture && texture->gpu.Valid();
 }
 
 // stuff that isn't to be used from within a shader
-void CShaderAPIEmpty::ClearBuffers( bool bClearColor, bool bClearDepth, bool bClearStencil, int renderTargetWidth, int renderTargetHeight )
+void CCoreShaderAPI::ClearBuffers( bool bClearColor, bool bClearDepth, bool bClearStencil, int renderTargetWidth, int renderTargetHeight )
 {
 	if ( g_bDrawingToBackBuffer && corefacade::Initialized() )
 	{
@@ -6128,12 +5707,12 @@ void CShaderAPIEmpty::ClearBuffers( bool bClearColor, bool bClearDepth, bool bCl
 // world space. Portal 2's stencil portals clear depth inside each portal's
 // stencil this way before drawing the view through it; with these empty the
 // view failed the depth test against the wall behind the portal.
-void CShaderAPIEmpty::ClearBuffersObeyStencil( bool bClearColor, bool bClearDepth )
+void CCoreShaderAPI::ClearBuffersObeyStencil( bool bClearColor, bool bClearDepth )
 {
 	ClearBuffersObeyStencilEx( bClearColor, bClearColor, bClearDepth );
 }
 
-void CShaderAPIEmpty::ClearBuffersObeyStencilEx( bool bClearColor, bool bClearAlpha, bool bClearDepth )
+void CCoreShaderAPI::ClearBuffersObeyStencilEx( bool bClearColor, bool bClearAlpha, bool bClearDepth )
 {
 	if ( !bClearColor && !bClearAlpha && !bClearDepth )
 		return;
@@ -6146,7 +5725,7 @@ void CShaderAPIEmpty::ClearBuffersObeyStencilEx( bool bClearColor, bool bClearAl
 	g_CoreClipPlanesEnabled = clipPlanes;
 }
 
-void CShaderAPIEmpty::PerformFullScreenStencilOperation( void )
+void CCoreShaderAPI::PerformFullScreenStencilOperation( void )
 {
 	const int clipPlanes = g_CoreClipPlanesEnabled;
 	g_CoreClipPlanesEnabled = 0;
@@ -6154,19 +5733,19 @@ void CShaderAPIEmpty::PerformFullScreenStencilOperation( void )
 	g_CoreClipPlanesEnabled = clipPlanes;
 }
 
-void CShaderAPIEmpty::SetScissorRect( const int nLeft, const int nTop, const int nRight, const int nBottom, const bool bEnableScissor )
+void CCoreShaderAPI::SetScissorRect( const int nLeft, const int nTop, const int nRight, const int nBottom, const bool bEnableScissor )
 {
 }
 
 // The engine's screenshots: what the frame drew into the current target,
 // converted to the caller's format (ported from shaderapivulkan's ReadPixels).
-void CShaderAPIEmpty::ReadPixels( int x, int y, int width, int height, unsigned char *data, ImageFormat dstFormat )
+void CCoreShaderAPI::ReadPixels( int x, int y, int width, int height, unsigned char *data, ImageFormat dstFormat )
 {
 	Rect_t rect = { x, y, width, height };
 	ReadPixels( &rect, &rect, data, dstFormat, 0 );
 }
 
-void CShaderAPIEmpty::ReadPixels( Rect_t *pSrcRect, Rect_t *pDstRect, unsigned char *data, ImageFormat dstFormat, int nDstStride )
+void CCoreShaderAPI::ReadPixels( Rect_t *pSrcRect, Rect_t *pDstRect, unsigned char *data, ImageFormat dstFormat, int nDstStride )
 {
 	if ( !pSrcRect || !data || pSrcRect->width <= 0 || pSrcRect->height <= 0 )
 		return;
@@ -6179,52 +5758,52 @@ void CShaderAPIEmpty::ReadPixels( Rect_t *pSrcRect, Rect_t *pDstRect, unsigned c
 	ImageLoader::ConvertImageFormat( rgba.Base(), IMAGE_FORMAT_RGBA8888, data, dstFormat, width, height, 0, stride );
 }
 
-void CShaderAPIEmpty::FlushHardware()
+void CCoreShaderAPI::FlushHardware()
 {
 }
 
-void CShaderAPIEmpty::ResetRenderState( bool bFullReset )
+void CCoreShaderAPI::ResetRenderState( bool bFullReset )
 {
 }
 
 // Set the number of bone weights
-void CShaderAPIEmpty::SetNumBoneWeights( int numBones )
+void CCoreShaderAPI::SetNumBoneWeights( int numBones )
 {
 }
 
-void CShaderAPIEmpty::EnableHWMorphing( bool bEnable )
+void CCoreShaderAPI::EnableHWMorphing( bool bEnable )
 {
 }
 
 // Selection mode methods
-int CShaderAPIEmpty::SelectionMode( bool selectionMode )
+int CCoreShaderAPI::SelectionMode( bool selectionMode )
 {
 	return 0;
 }
 
-void CShaderAPIEmpty::SelectionBuffer( unsigned int* pBuffer, int size )
+void CCoreShaderAPI::SelectionBuffer( unsigned int* pBuffer, int size )
 {
 }
 
-void CShaderAPIEmpty::ClearSelectionNames( )
+void CCoreShaderAPI::ClearSelectionNames( )
 {
 }
 
-void CShaderAPIEmpty::LoadSelectionName( int name )
+void CCoreShaderAPI::LoadSelectionName( int name )
 {
 }
 
-void CShaderAPIEmpty::PushSelectionName( int name )
+void CCoreShaderAPI::PushSelectionName( int name )
 {
 }
 
-void CShaderAPIEmpty::PopSelectionName()
+void CCoreShaderAPI::PopSelectionName()
 {
 }
 
 
 // Use this to get the mesh builder that allows us to modify vertex data
-CMeshBuilder* CShaderAPIEmpty::GetVertexModifyBuilder()
+CMeshBuilder* CCoreShaderAPI::GetVertexModifyBuilder()
 {
 	return 0;
 }
@@ -6233,22 +5812,22 @@ CMeshBuilder* CShaderAPIEmpty::GetVertexModifyBuilder()
 // Implementations should chain back to IShaderUtil->BindTexture(), etc.
 
 // Use this to begin and end the frame
-void CShaderAPIEmpty::BeginFrame()
+void CCoreShaderAPI::BeginFrame()
 {
 }
 
-void CShaderAPIEmpty::EndFrame()
+void CCoreShaderAPI::EndFrame()
 {
 }
 
 // returns the current time in seconds....
-double CShaderAPIEmpty::CurrentTime() const
+double CCoreShaderAPI::CurrentTime() const
 {
 	return Sys_FloatTime();
 }
 
 // Get the current camera position in world space.
-void CShaderAPIEmpty::GetWorldSpaceCameraPosition( float * pPos ) const
+void CCoreShaderAPI::GetWorldSpaceCameraPosition( float * pPos ) const
 {
 	// The view matrix's inverse translation (row vectors, D3D), as
 	// shaderapivulkan computes it: the eye in world space.
@@ -6257,11 +5836,11 @@ void CShaderAPIEmpty::GetWorldSpaceCameraPosition( float * pPos ) const
 		pPos[i] = -( view[12] * view[i * 4] + view[13] * view[i * 4 + 1] + view[14] * view[i * 4 + 2] );
 }
 
-void CShaderAPIEmpty::ForceHardwareSync( void )
+void CCoreShaderAPI::ForceHardwareSync( void )
 {
 }
 
-void CShaderAPIEmpty::SetClipPlane( int index, const float *pPlane )
+void CCoreShaderAPI::SetClipPlane( int index, const float *pPlane )
 {
 	if ( index < 0 || index >= 6 || !pPlane )
 		return;
@@ -6271,7 +5850,7 @@ void CShaderAPIEmpty::SetClipPlane( int index, const float *pPlane )
 	g_CoreClipPlanes[index][3] = -pPlane[3];
 }
 
-void CShaderAPIEmpty::EnableClipPlane( int index, bool bEnable )
+void CCoreShaderAPI::EnableClipPlane( int index, bool bEnable )
 {
 	if ( index < 0 || index >= 6 )
 		return;
@@ -6281,30 +5860,30 @@ void CShaderAPIEmpty::EnableClipPlane( int index, bool bEnable )
 		g_CoreClipPlanesEnabled &= ~( 1 << index );
 }
 
-void CShaderAPIEmpty::SetFastClipPlane( const float *pPlane )
+void CCoreShaderAPI::SetFastClipPlane( const float *pPlane )
 {
 }
 
-void CShaderAPIEmpty::EnableFastClip( bool bEnable )
+void CCoreShaderAPI::EnableFastClip( bool bEnable )
 {
 }
 
-int CShaderAPIEmpty::GetCurrentNumBones( void ) const
+int CCoreShaderAPI::GetCurrentNumBones( void ) const
 {
 	return 0;
 }
 
-bool CShaderAPIEmpty::IsHWMorphingEnabled( void ) const
+bool CCoreShaderAPI::IsHWMorphingEnabled( void ) const
 {
 	return false;
 }
 
-int CShaderAPIEmpty::GetCurrentLightCombo( void ) const
+int CCoreShaderAPI::GetCurrentLightCombo( void ) const
 {
 	return 0;
 }
 
-void CShaderAPIEmpty::GetDX9LightState( LightState_t *state ) const
+void CCoreShaderAPI::GetDX9LightState( LightState_t *state ) const
 {
 	state->m_nNumLights = 0;
 	state->m_bAmbientLight = false;
@@ -6312,56 +5891,56 @@ void CShaderAPIEmpty::GetDX9LightState( LightState_t *state ) const
 	state->m_bStaticLightTexel = false;
 }
 
-MaterialFogMode_t CShaderAPIEmpty::GetCurrentFogType( void ) const
+MaterialFogMode_t CCoreShaderAPI::GetCurrentFogType( void ) const
 {
 	return MATERIAL_FOG_NONE;
 }
 
-void CShaderAPIEmpty::RecordString( const char *pStr )
+void CCoreShaderAPI::RecordString( const char *pStr )
 {
 }
 
-bool CShaderAPIEmpty::ReadPixelsFromFrontBuffer() const
+bool CCoreShaderAPI::ReadPixelsFromFrontBuffer() const
 {
 	return true;
 }
 
-bool CShaderAPIEmpty::PreferDynamicTextures() const
+bool CCoreShaderAPI::PreferDynamicTextures() const
 {
 	return false;
 }
 
-bool CShaderAPIEmpty::PreferReducedFillrate() const
+bool CCoreShaderAPI::PreferReducedFillrate() const
 { 
 	return false; 
 }
 
-bool CShaderAPIEmpty::HasProjectedBumpEnv() const
+bool CCoreShaderAPI::HasProjectedBumpEnv() const
 {
 	return true;
 }
 
-int  CShaderAPIEmpty::GetCurrentDynamicVBSize( void )
+int  CCoreShaderAPI::GetCurrentDynamicVBSize( void )
 {
 	return 0;
 }
 
-void CShaderAPIEmpty::DestroyVertexBuffers( bool bExitingLevel )
+void CCoreShaderAPI::DestroyVertexBuffers( bool bExitingLevel )
 {
 }
 
-void CShaderAPIEmpty::EvictManagedResources()
+void CCoreShaderAPI::EvictManagedResources()
 {
 }
 
-void CShaderAPIEmpty::SetTextureTransformDimension( TextureStage_t textureStage, int dimension, bool projected )
+void CCoreShaderAPI::SetTextureTransformDimension( TextureStage_t textureStage, int dimension, bool projected )
 {
 }
 
-void CShaderAPIEmpty::SetBumpEnvMatrix( TextureStage_t textureStage, float m00, float m01, float m10, float m11 )
+void CCoreShaderAPI::SetBumpEnvMatrix( TextureStage_t textureStage, float m00, float m01, float m10, float m11 )
 {
 }
 
-void CShaderAPIEmpty::SyncToken( const char *pToken )
+void CCoreShaderAPI::SyncToken( const char *pToken )
 {
 }

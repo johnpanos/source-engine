@@ -49,31 +49,11 @@ void EndDMXContext( bool bDecommitMemory )
 {
 	Assert( s_bInDMXContext );
 	s_bInDMXContext = false;
-#if defined( PLATFORM_3DS )
-	// No virtual memory: a stack is allocated whole and FreeAll keeps it, so a
-	// decommit releases the block (1 MB per module that loads DMX) until the
-	// next context.
-	if ( bDecommitMemory )
-	{
-		s_DMXAllocator.Term();
-		s_bAllocatorInitialized = false;
-		return;
-	}
-#endif
 	s_DMXAllocator.FreeAll( bDecommitMemory );
 }
 
 void DecommitDMXMemory()
 {
-#if defined( PLATFORM_3DS )
-	// As EndDMXContext's decommit: the block itself goes until the next context.
-	if ( !s_bInDMXContext && s_bAllocatorInitialized )
-	{
-		s_DMXAllocator.Term();
-		s_bAllocatorInitialized = false;
-		return;
-	}
-#endif
 	s_DMXAllocator.FreeAll( true );
 }
 

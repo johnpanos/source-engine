@@ -486,11 +486,7 @@ int CSystem::GetAvailableDrives(char *buf, int bufLen)
 //-----------------------------------------------------------------------------
 double CSystem::GetFreeDiskSpace(const char *path)
 {
-#if defined( PLATFORM_3DS )
-	// newlib + libctru: statvfs over the SD card's FAT file system.
-	struct statvfs buf;
-	int ret = statvfs( path, &buf );
-#elif __DARWIN_ONLY_64_BIT_INO_T || PLATFORM_BSD
+#if __DARWIN_ONLY_64_BIT_INO_T || PLATFORM_BSD
     // MoeMod: newer macOS only support 64bit, so no statfs64 is provided
     struct statfs buf;
     int ret = statfs( path, &buf );

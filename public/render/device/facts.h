@@ -6,7 +6,7 @@
 //			root selects a declared fallback or fails by name. Nothing falls
 //			back silently.
 //
-//			diagnosticBackend ("null", "vulkan", "gl", "pica") exists for logs and
+//			diagnosticBackend ("null", "vulkan", "gl", "gles") exists for logs and
 //			evidence only. Portable code must not compare it (CAP011 rule 5):
 //			behavior follows capabilities.
 //
@@ -114,11 +114,7 @@ enum class ArtifactFormat : std::uint8_t
 {
 	kSpirv,
 	kGlsl450,
-	kGlslEs310, // the GL adapter's ES dialect (RFC 0022)
-	kHlsl,      // the Direct3D 12 adapter's HLSL, shader model 6.6 (RFC 0024)
-	kMsl,       // the Metal adapter's Metal Shading Language 3.0 (RFC 0025)
-	kPica,      // PICA200: PVS1 vertex programs, PFP1 combiner programs (RFC 0026)
-	kWgsl       // the WebGPU adapter's WGSL, translated by the pinned tint (RFC 0029)
+	kGlslEs310 // the GL adapter's ES dialect (RFC 0022)
 };
 
 struct Limits

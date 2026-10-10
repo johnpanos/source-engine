@@ -94,7 +94,7 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #include "engine/render_core_binding.h"
 #include "render/composition/render_core.h"
 #include "render/composition/render_device_setting.h"
-#if defined( LINKED_PICA_BACKEND )
+#if defined( LINKED_CORE_SHADER_API )
 #include "render/device/pica/host_binding.h"
 #endif
 #if defined( LINKED_CORE_PRESENTER )
@@ -103,9 +103,6 @@ int MessageBox( HWND hWnd, const char *message, const char *header, unsigned uTy
 #include "render/device/device.h"
 #include "render/pass/output/encoded_copy.h"
 extern ILauncherMgr *g_pLauncherMgr;
-#endif
-#if defined( LINKED_PICA_BACKEND ) && defined( LINKED_WEBGPU_DEVICE )
-#include "render/device/webgpu/provider.h"
 #endif
 #include "render/legacy/material_blocks.h"
 #include "render/legacy/stage_markers.h"
@@ -684,9 +681,6 @@ static bool BindAudioMediaProviders( IEngineAPI *engine )
 static bool BindAudioProviders( IEngineAPI *engine )
 {
 	const audio::DeviceProvider *catalog[] = {
-#ifdef AUDIO_PROVIDER_N3DS
-	    Audio_N3dsProvider(),
-#endif
 #ifdef AUDIO_PROVIDER_SDL
 	    Audio_SDLProvider(),
 #endif
@@ -905,7 +899,7 @@ bool CSourceAppSystemGroup::Create()
 	// entry-point name; see legacy_shader_provider.h. The first entry is the
 	// default when -renderer is absent.
 	const render::LegacyShaderProvider *catalog[] = {
-#if defined( LINKED_PICA_BACKEND )
+#if defined( LINKED_CORE_SHADER_API )
 	    // The 3DS client's only drawing backend.
 	    CoreShaderBackend_Describe(),
 #endif
@@ -1015,7 +1009,7 @@ bool CSourceAppSystemGroup::Create()
 		// The legacy backend's capabilities order their calls on the material
 		// system's render call queue (render/legacy/capabilities.h).
 		RenderCore_BindRenderCallQueue( m_pRenderCore, MaterialSystem_RenderCallQueueHost() );
-#if defined( LINKED_PICA_BACKEND )
+#if defined( LINKED_CORE_SHADER_API )
 		// RFC 0026: the 3DS has one device, the core's; the shader API
 		// borrows it.
 		CoreShaderBackend_BindDevice( binding->device );
@@ -1083,20 +1077,6 @@ bool CSourceAppSystemGroup::Create()
 				    return shown;
 			    },
 			    m_pCorePresentation.get() );
-		}
-#endif
-#if defined( LINKED_PICA_BACKEND ) && defined( LINKED_WEBGPU_DEVICE )
-		// RFC 0029: frames on the WebGPU device show on the page's canvas.
-		if ( !Q_stricmp( config.device, "webgpu" ) )
-		{
-			CoreShaderBackend_BindPresenter(
-			    []( void *, render::device::IRenderDevice2 &device, std::uint64_t color,
-			        unsigned int width, unsigned int height )
-			    {
-				    return render::device::webgpu::PresentToCanvas(
-				        device, render::device::TextureId{ color }, width, height, "#canvas" );
-			    },
-			    nullptr );
 		}
 #endif
 		Msg( "Render core: device %s, features %s\n", binding->deviceName, config.features );
@@ -1253,11 +1233,11 @@ void CSourceAppSystemGroup::Destroy()
 
 #if defined( LINKED_RENDER_CORE )
 	// Every system and module that borrowed the core is gone.
-#if defined( LINKED_PICA_BACKEND ) &&                                                              \
+#if defined( LINKED_CORE_SHADER_API ) &&                                                              \
     ( defined( LINKED_WEBGPU_DEVICE ) || defined( LINKED_CORE_PRESENTER ) )
 	CoreShaderBackend_BindPresenter( nullptr, nullptr );
 #endif
-#if defined( LINKED_PICA_BACKEND )
+#if defined( LINKED_CORE_SHADER_API )
 	CoreShaderBackend_BindCorePassRecorder( nullptr );
 	CoreShaderBackend_BindDevice( nullptr );
 #endif
@@ -1356,7 +1336,7 @@ bool GrabSourceMutex()
 	CRC32_ProcessBuffer( &gameCRC, (void *)pchGameParam, Q_strlen( pchGameParam ) );
 	CRC32_Final( &gameCRC );
 
-#if defined( ANDROID ) || defined( OSX ) || defined( PLATFORM_3DS )
+#if defined( ANDROID ) || defined( OSX )
 	// The system runs one instance of an app; an Apple app also cannot lock
 	// files in /tmp, which is outside its sandbox, and the 3DS has no /tmp.
 	return true;

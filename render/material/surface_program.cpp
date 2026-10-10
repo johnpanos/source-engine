@@ -6,7 +6,6 @@
 
 #include "render/material/surface_program.h"
 
-#include "surface_reduced.h"
 
 #include "render/device/errors.h"
 #include "render/pbr_ltc_table.h"
@@ -166,19 +165,6 @@ foundation::Expected<std::unique_ptr<SurfaceProgram>, SurfaceStatus> SurfaceProg
     std::span<const std::uint32_t> fragmentModule,
     std::span<const std::uint32_t> shadowFragmentModule )
 {
-	// A kPica device draws the reduced 3DS material model (RFC 0026 decision
-	// 8, surface_reduced.cpp), with layouts of what that model reads.
-	if ( device.Facts().artifactFormat == ArtifactFormat::kPica )
-	{
-		std::unique_ptr<SurfaceProgram> reduced( new SurfaceProgram( device ) );
-		reduced->m_Reduced = true;
-		reduced->m_ColorFormat = colorFormat;
-		reduced->m_DepthFormat = depthFormat;
-		reduced->m_SampleCount = sampleCount;
-		if ( sampleCount != 1 || !reduced->CreateReducedLayouts() )
-			return foundation::MakeUnexpected( SurfaceStatus::kDevice );
-		return reduced;
-	}
 	// The frame group reads the map's reflection probes as a cube array (RPRB
 	// v8), so the program needs the device's cube arrays (clause D32).
 	if ( !device.Facts().capabilities.Has( Capability::kCubeArrays ) )
@@ -330,18 +316,6 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	const auto key = std::make_pair( variant, debug );
 	if ( auto found = m_Pipelines.find( key ); found != m_Pipelines.end() )
 		return found->second;
-	if ( m_Reduced )
-	{
-		// The debug views are the shader programs'; the reduced model has none.
-		if ( !( debug == shaderlib::DebugSpecialization{} ) )
-			return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
-		auto reduced = ReducedPipeline( variant );
-		if ( !reduced )
-			return reduced;
-		m_Pipelines.emplace( key, reduced.Value() );
-		m_Shipped.emplace( reduced.Value().value, variant );
-		return reduced;
-	}
 	// The program in the device's artifact format (RFC 0016 K10), with its
 	// reflected bindings from the store; a suite's seeded fragment replaces
 	// the core one, on a SPIR-V device only.
@@ -490,8 +464,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 	                            : prepass ? " prepass"
 	                                      : "" ) +
 	                        ( variant.instanced ? " instanced" : "" ) +
-	                        ( variant.staticVertexLight ? " static-light" : "" ) +
-	                        ( variant.skinned ? " skinned" : "" );
+	                        ( variant.staticVertexLight ? " static-light" : "" );
 	desc.debugName = debugName;
 	if ( variant.shadowDepth )
 	{
@@ -527,7 +500,7 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::Pipeline(
 
 namespace
 {
-constexpr const char *kVariantKeyTag = "surface-v4"; // v4: SurfaceVariant::meshStreams
+constexpr const char *kVariantKeyTag = "surface-v5"; // v5: no skinned or meshStreams fields
 } // namespace
 
 std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
@@ -536,7 +509,7 @@ std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
 	char line[512];
 	std::snprintf( line, sizeof( line ),
 	    "%s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
-	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u",
+	    "%u %u %u %u %u %u %08x %08x %u %u %u %u %u %u %u %u %u %u %u %u %u %u",
 	    kVariantKeyTag, unsigned( m_ColorFormat ), unsigned( m_DepthFormat ), m_SampleCount,
 	    unsigned( v.blend ), unsigned( v.alphaWrite ), v.terms, v.detailMode, unsigned( v.layout ),
 	    unsigned( v.ignoreDepth ), unsigned( d.stencil.enabled ), unsigned( d.stencil.compare ),
@@ -549,8 +522,7 @@ std::string SurfaceProgram::VariantKey( const SurfaceVariant &v ) const
 	    unsigned( v.temporal ), v.materialFeatures, v.viewFeatures, v.treeSwayMode,
 	    unsigned( v.alphaToCoverage ), unsigned( v.decalModulate ), unsigned( v.cable ),
 	    unsigned( v.shadowDepth ), unsigned( v.instanced ), unsigned( v.staticVertexLight ),
-	    unsigned( v.blendTexture2 ), unsigned( v.energy ), unsigned( v.wireframe ),
-	    unsigned( v.skinned ), unsigned( v.meshStreams ) );
+	    unsigned( v.blendTexture2 ), unsigned( v.energy ), unsigned( v.wireframe ) );
 	return line;
 }
 
@@ -560,15 +532,14 @@ std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
 	for ( const std::string &key : keys )
 	{
 		char tag[16] = {};
-		unsigned f[41] = {};
+		unsigned f[39] = {};
 		if ( std::sscanf( key.c_str(),
 		         "%15s %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u "
-		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u %u",
+		         "%u %u %u %u %u %u %x %x %u %u %u %u %u %u %u %u %u %u %u %u %u %u",
 		         tag, &f[0], &f[1], &f[2], &f[3], &f[4], &f[5], &f[6], &f[7], &f[8], &f[9], &f[10],
 		         &f[11], &f[12], &f[13], &f[14], &f[15], &f[16], &f[17], &f[18], &f[19], &f[20],
 		         &f[21], &f[22], &f[23], &f[24], &f[25], &f[26], &f[27], &f[28], &f[29], &f[30],
-		         &f[31], &f[32], &f[33], &f[34], &f[35], &f[36], &f[37], &f[38], &f[39],
-		         &f[40] ) != 42 ||
+		         &f[31], &f[32], &f[33], &f[34], &f[35], &f[36], &f[37], &f[38] ) != 40 ||
 		     std::strcmp( tag, kVariantKeyTag ) != 0 )
 			continue;
 		if ( f[0] != unsigned( m_ColorFormat ) || f[1] != unsigned( m_DepthFormat ) ||
@@ -612,8 +583,6 @@ std::size_t SurfaceProgram::Prewarm( std::span<const std::string> keys )
 		v.blendTexture2 = f[36] != 0;
 		v.energy = f[37] != 0;
 		v.wireframe = f[38] != 0;
-		v.skinned = f[39] != 0;
-		v.meshStreams = std::uint8_t( f[40] );
 		if ( Pipeline( v ) )
 			++created;
 	}
@@ -686,43 +655,6 @@ foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::StaticVertexLigh
 	return Pipeline( variant );
 }
 
-foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::SkinnedPipeline( PipelineId shipped )
-{
-	const auto found = m_Shipped.find( shipped.value );
-	if ( found == m_Shipped.end() )
-		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
-	if ( !m_Reduced )
-	{
-		m_PipelineFailure = "GPU skinning is the reduced model's (kWorldLitSkinned)";
-		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
-	}
-	SurfaceVariant variant = found->second;
-	variant.skinned = true;
-	if ( ReduceSurface( variant ).vertex != ReducedVertex::kWorldLitSkinned )
-		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
-	return Pipeline( variant );
-}
-
-foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::MeshStreamsPipeline(
-    PipelineId shipped, bool skinned )
-{
-	const auto found = m_Shipped.find( shipped.value );
-	if ( found == m_Shipped.end() )
-		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
-	if ( !m_Reduced )
-	{
-		m_PipelineFailure = "mesh streams are the reduced model's (CoreMeshStreams)";
-		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
-	}
-	SurfaceVariant variant = found->second;
-	variant.skinned = skinned;
-	variant.meshStreams = skinned ? 2 : 1;
-	const ReducedVertex vertex = ReduceSurface( variant ).vertex;
-	if ( vertex != ReducedVertex::kStreamsSkinned && vertex != ReducedVertex::kStreamsRigid )
-		return foundation::MakeUnexpected( SurfaceStatus::kInvalidRequest );
-	return Pipeline( variant );
-}
-
 foundation::Expected<PipelineId, SurfaceStatus> SurfaceProgram::InstancedPipeline(
     PipelineId pipeline )
 {
@@ -759,10 +691,7 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
     const SurfaceTextures &textures, const SamplerDesc &sampler )
 {
 	SurfaceVariant point = variant;
-	// The reduced model tests alpha in fixed function (surface_reduced.h).
-	if ( m_Reduced )
-		point.alphaTestReference = std::int16_t( ReducedAlphaTest( constants ) );
-	if ( !m_Reduced && ( point.terms & kSurfacePbr ) )
+	if ( point.terms & kSurfacePbr )
 	{
 		const std::uint32_t features = SurfaceMaterialFeatures( constants );
 		// Preserve the established control flow for authored warp lookups.
@@ -792,13 +721,6 @@ foundation::Expected<ProgramRequest, SurfaceStatus> SurfaceProgram::Request(
 	                      : 0.0f;
 	const auto bytes = std::as_bytes( std::span( &packed, 1 ) );
 	request.material.constants.assign( bytes.begin(), bytes.end() );
-	if ( m_Reduced )
-	{
-		// The base alone, read as stored: the reduced model shades in gamma
-		// space (the PICA200 decodes no sRGB).
-		request.material.textures.push_back( { 1, textures.base, 2, sampler, false } );
-		return request;
-	}
 	request.material.textures.push_back(
 	    { 1, textures.base, 2, sampler, textures.baseSrgb && !variant.decalModulate } );
 	// The water point reads its env map without sRGB decoding, as
@@ -834,8 +756,6 @@ GroupRequest SurfaceProgram::FrameGroup( const SurfaceFrame &frame, std::string 
 	request.constantsBinding = 0;
 	const auto bytes = std::as_bytes( std::span( &frame, 1 ) );
 	request.constants.assign( bytes.begin(), bytes.end() );
-	if ( m_Reduced )
-		return request; // the reduced layout's constants alone
 	SamplerDesc clamped;
 	clamped.address = AddressMode::kClampToEdge;
 	request.textures.push_back( { 1, std::move( splitSumTable ), 2, clamped } );
@@ -889,8 +809,6 @@ GroupRequest SurfaceProgram::ViewGroup( const SurfaceViewGpu &view,
 	    screen.depthAlphaSourceHeight > 0 ? 1.0f / float( screen.depthAlphaSourceHeight ) : 0.0f;
 	const auto bytes = std::as_bytes( std::span( &captured, 1 ) );
 	request.constants.assign( bytes.begin(), bytes.end() );
-	if ( m_Reduced )
-		return request; // no clustered lights, shadows or screen inputs
 	auto storage = [&]( std::uint32_t binding, std::span<const std::byte> data )
 	{
 		GroupBuffer buffer;
@@ -978,27 +896,14 @@ GroupRequest SurfaceProgram::NeutralViewGroup( const SurfaceScreenInputs &screen
 
 GroupRequest SurfaceProgram::DrawGroup( std::string page, const ModelLighting &lighting,
     const SamplerDesc &sampler, std::string gradient, std::string indirect,
-    std::string shadowMask, std::span<const float> bonePalette ) const
+    std::string shadowMask ) const
 {
 	GroupRequest request;
 	request.layout = m_DrawLayout;
 	request.constantsBinding = 2;
 	const auto bytes = std::as_bytes( std::span( &lighting, 1 ) );
 	request.constants.assign( bytes.begin(), bytes.end() );
-	if ( !bonePalette.empty() )
-	{
-		// The skinned program reads the whole palette (kMaxReducedBones);
-		// bones past the draw's are zero.
-		std::vector<float> palette( kMaxReducedBones * kReducedBoneFloats, 0.0f );
-		std::copy_n( bonePalette.begin(), std::min( bonePalette.size(), palette.size() ),
-		    palette.begin() );
-		const auto paletteBytes = std::as_bytes( std::span( palette ) );
-		request.constants.insert( request.constants.end(), paletteBytes.begin(), paletteBytes.end() );
-	}
-	// The reduced model reads the page as stored (gamma, surface_reduced.h).
-	request.textures.push_back( { 0, std::move( page ), 1, sampler, !m_Reduced } );
-	if ( m_Reduced )
-		return request;
+	request.textures.push_back( { 0, std::move( page ), 1, sampler, true } );
 	// The gradient page is signed linear data, filtered as the page is.
 	request.textures.push_back( { 3, std::move( gradient ), 4, sampler } );
 	request.textures.push_back( { 5, std::move( indirect ), 6, sampler } );

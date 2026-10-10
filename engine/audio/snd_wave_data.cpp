@@ -37,14 +37,7 @@ extern double realtime;
 // Force a small cache for debugging cache issues.
 // #define FORCE_SMALL_MEMORY_CACHE_SIZE	( 6 * 1024 * 1024 )
 
-#if defined( PLATFORM_3DS )
-// ~90 MB of main heap in all: the DSP's hardware voices keep their own
-// copies in linear memory (snd_dev_n3ds.cpp), so this cache only feeds
-// first plays and the software path.
-#define DEFAULT_WAV_MEMORY_CACHE ( 4 * 1024 * 1024 )
-#else
 #define DEFAULT_WAV_MEMORY_CACHE ( 16 * 1024 * 1024 )
-#endif
 #define DEFAULT_XBOX_WAV_MEMORY_CACHE ( 16 * 1024 * 1024 )
 #define TF_XBOX_WAV_MEMORY_CACHE ( 24 * 1024 * 1024 ) // Team Fortress uses a larger cache
 
@@ -706,14 +699,10 @@ bool CAsyncWavDataCache::Init( unsigned int memSize )
 		return true;
 	
 	{
-#if defined( PLATFORM_3DS )
-		memSize = DEFAULT_WAV_MEMORY_CACHE;
-#else
 		if ( memSize < DEFAULT_WAV_MEMORY_CACHE )
 		{
 			memSize = DEFAULT_WAV_MEMORY_CACHE;
 		}
-#endif
 	}
 
 #if FORCE_SMALL_MEMORY_CACHE_SIZE

@@ -499,83 +499,6 @@ void OnChangeThreadAffinity( IConVar *var, const char *pOldValue, float flOldVal
 
 ConVar threadpool_affinity( "threadpool_affinity", "1", 0, "Enable setting affinity", 0, 0, 0, 0, &OnChangeThreadAffinity );
 
-#if 0
-extern ConVar threadpool_reserve;
-CThreadEvent g_ReleaseThreadReservation( true );
-CInterlockedInt g_NumReservedThreads;
-
-void ThreadPoolReserverFunction()
-{
-	g_ReleaseThreadReservation.Wait();
-	--g_NumReservedThreads;
-}
-
-void ReserveThreads( int nToReserve )
-{
-	nToReserve = clamp( nToReserve, 0, g_pThreadPool->NumThreads() );
-	g_ReleaseThreadReservation.Set();
-
-	while ( g_NumReservedThreads != 0 )
-	{
-		ThreadSleep( 0 );
-	}
-
-	g_ReleaseThreadReservation.Reset();
-
-	while ( nToReserve-- )
-	{
-		g_NumReservedThreads++;
-		g_pThreadPool->QueueCall( &ThreadPoolReserverFunction )->Release();
-	}
-
-	Msg( "%d threads being reserved\n", (int)g_NumReservedThreads );
-}
-
-void OnChangeThreadReserve( IConVar *var, const char *pOldValue, float flOldValue )
-{
-	ReserveThreads( threadpool_reserve.GetInt() );
-}
-
-ConVar threadpool_reserve( "threadpool_reserve", "0", 0, "Consume the specified number of threads in the thread pool", 0, 0, 0, 0, &OnChangeThreadReserve );
-
-CON_COMMAND( threadpool_cycle_reserve, "Cycles threadpool reservation by powers of 2" )
-{
-	int nCores = g_pThreadPool->NumThreads() + 1;
-	int nAvailableCores = nCores - g_NumReservedThreads;
-	Assert( nAvailableCores );
-	int ratio = nCores / nAvailableCores;
-	ratio *= 2;
-	if ( ratio > nCores )
-	{
-		ReserveThreads( 0 );
-	}
-	else
-	{
-		ReserveThreads( nCores - nCores / ratio );
-	}
-}
-
-CON_COMMAND( thread_test_tslist, "" )
-{
-	int nTests = ( args.ArgC() == 1 ) ? 10000 : atoi( args.Arg( 1 ) );
-	RunTSListTests( nTests );
-}
-
-CON_COMMAND( thread_test_tsqueue, "" )
-{
-	int nTests = ( args.ArgC() == 1 ) ? 10000 : atoi( args.Arg( 1 ) );
-	RunTSQueueTests( nTests );
-}
-
-CON_COMMAND( threadpool_run_tests, "" )
-{
-	int nTests = ( args.ArgC() == 1 ) ? 1 : atoi( args.Arg( 1 ) );
-	for ( int i = 0; i < nTests; i++ )
-	{
-		RunThreadPoolTests();
-	}
-}
-#endif
 
 // RFC 0003 J3 thread census: every live thread of this process by OS name,
 // pool indices stripped (tier0 names pool workers <pool><index>), one
@@ -1365,9 +1288,6 @@ void Host_ReadConfiguration_360( void )
 // Purpose: 
 // Input  : false - 
 //-----------------------------------------------------------------------------
-#if defined( PLATFORM_3DS )
-void N3ds_ApplyPlatformDefaults(); // n3ds_platform_defaults.cpp
-#endif
 
 void Host_ReadConfiguration()
 {
@@ -1418,13 +1338,6 @@ void Host_ReadConfiguration()
 
 	Cbuf_Execute();
 
-#if defined( PLATFORM_3DS )
-	// After config.cfg, so a saved desktop config cannot undo them.
-	N3ds_ApplyPlatformDefaults();
-	// Apply the material settings now: a later first update (mid map load,
-	// under +map) reloads every texture beside the map's resident ones.
-	UpdateMaterialSystemConfig();
-#endif
 
 	if ( pRemoteStorage )
 	{
@@ -1687,7 +1600,6 @@ void Host_AccumulateTime( float dt )
 		host_frametime	= host_state.interval_per_tick;
 	}
 
-#if 1
 	if ( host_framerate.GetFloat() > 0 
 #if !defined(SWDS)
 		&& ( CanCheat() || demoplayer->IsPlayingBack() ) 
@@ -1752,7 +1664,6 @@ void Host_AccumulateTime( float dt )
 		host_frametime = min( (double)host_frametime, MAX_FRAMETIME );
 		host_frametime = max( (double)host_frametime, MIN_FRAMETIME );
 	}
-#endif
 
 	// Adjust the client clock very slightly to keep it in line with the server clock.
 	float adj = cl.GetClockDriftMgr().AdjustFrameTime( host_frametime ) - host_frametime;
@@ -4204,13 +4115,6 @@ void Host_Init( bool bDedicated )
 #endif
 
 	Host_PostInit();
-#if defined( PLATFORM_3DS )
-	// Again after the client's PostInit, which applies Portal 2's system-level
-	// presets (cpu_level...; the table sets them low), and before any map loads
-	// so the material settings take effect without a texture reload.
-	N3ds_ApplyPlatformDefaults();
-	UpdateMaterialSystemConfig();
-#endif
 	EndLoadingUpdates( );
 #ifndef SWDS
 	CMatRenderContextPtr pRenderContext( g_pMaterialSystem );

@@ -176,11 +176,6 @@ inline void ThreadPause()
 	__db16cyc();
 #elif defined( COMPILER_GCC ) && (defined( __i386__ ) || defined( __x86_64__ ))
 	__asm __volatile( "pause" );
-#elif defined( PLATFORM_3DS )
-	// The 3DS kernel does not preempt between threads of a core, and a yield
-	// only runs threads of equal or higher priority: a spin-wait on a worker
-	// (created at a lower priority) would never let it run. A short sleep does.
-	Plat_ThreadSleepMicroseconds( 50 );
 #elif defined( POSIX )
 	Plat_ThreadYield();
 #elif defined ( COMPILER_MSVC64 )

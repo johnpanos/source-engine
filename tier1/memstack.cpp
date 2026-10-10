@@ -55,18 +55,6 @@ bool CMemoryStack::Init( unsigned maxSize, unsigned commitSize, unsigned initial
 {
 	Assert( !m_pBase );
 
-#if defined( PLATFORM_3DS )
-	// No virtual memory: a stack's maximum is allocated whole, and the
-	// desktop maxima (32 MB of save memory, 8 MB material stacks, ...) would
-	// take the 3DS's entire heap (at a 2 MB cap, nine stacks were still the
-	// largest share in tools/n3ds/heap_census.py). A stack is capped at 1 MB or
-	// its initial commit, whichever is larger; a caller that needs a large
-	// stack (the hunk) commits it up front.
-	const unsigned kPlatformCap = 1u * 1024u * 1024u;
-	const unsigned nCap = initialCommit > kPlatformCap ? initialCommit : kPlatformCap;
-	if ( maxSize > nCap )
-		maxSize = nCap;
-#endif
 
 	m_maxSize = maxSize;
 	m_alignment = AlignValue( alignment, 4 );

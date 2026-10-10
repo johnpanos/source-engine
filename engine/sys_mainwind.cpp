@@ -1408,7 +1408,7 @@ void *CGame::GetMainWindow( void )
 
 void *CGame::GetMainDeviceWindow( void )
 {
-#if defined( USE_SDL ) && ( defined( USE_SDL3 ) || defined( PLATFORM_3DS ) )
+#if defined( USE_SDL ) && defined( USE_SDL3 )
 	return (void*)m_pSDLWindow;
 #else
 	return (void*)m_hWindow;
