@@ -2956,6 +2956,21 @@
             "render.device.null"
           ]
         },
+        "frozenAdapters": {
+          "render.device": {
+            "owner": "R89",
+            "reason": "Device adapters are frozen at seven until the game draws from render.scene (user direction, 2026-10-10): each adapter multiplies the cost of every device-contract change while the scene the core is built around is not yet the game's path. The list only shrinks; adding an adapter is a user decision.",
+            "modules": [
+              "render.device.vulkan",
+              "render.device.gl",
+              "render.device.metal",
+              "render.device.webgpu",
+              "render.device.d3d12",
+              "render.device.pica",
+              "render.device.null"
+            ]
+          }
+        },
         "adapterConsumers": [
           "render.composition",
           "render.core-tests",

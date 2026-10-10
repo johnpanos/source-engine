@@ -524,7 +524,7 @@ Each new render slice must identify at least one concrete outcome:
 3. Remove a duplicate owner or measurably reduce complete-frame cost.
 
 If none applies, defer the slice. Prioritize the complete Portal 2 frame already
-ordered in [AGENTS.md](../AGENTS.md#current-render-quality-priority-user-direction-2026-09-30).
+ordered in [AGENTS.md](../docs/agents/roadmap.md#current-render-priority-user-direction-2026-09-30-amended-2026-10-10).
 Speculative backends, additional GI techniques and generalized extension
 frameworks wait unless the user selects them or they satisfy a declared
 requirement. This does not retire the required OpenGL adapter, platform profiles,
@@ -1101,6 +1101,48 @@ with its rule number: an upward edge (scene → frame), a sibling edge
 (`render.pass.shadows` → `render.renderer`), a portable edge to an adapter
 (`render.graph` → `render.device.vulkan`), an adapter-to-adapter edge, an
 unlayered `render.*` module, and a backend-identity comparison in a pass.
+
+### Adapter freeze and scene first (user direction, 2026-10-10)
+
+The device port has seven adapters: Vulkan, GL (with its GLES dialect),
+Metal, WebGPU, Direct3D 12, PICA and null. The scene they all feed is not
+yet the game's path: `render.scene` is a first slice that copies its
+instance table on every commit, and the game draws through
+`render.pass.world`'s own `WorldData` (CAP012 `render-scene-bypass`, 345
+sites in 36 files on 2026-10-10). Every change to the device contract costs
+one change per adapter.
+
+- **No new adapters.** `frozenAdapters` in the render layer contract
+  (`architecture/modules.json`) lists the seven; archlint CAP011 rule 10
+  rejects any other `render.device.*` module, wherever it is declared. The
+  list only shrinks: deleting an adapter removes its entry. Adding one is a
+  user decision.
+- **No adapter features while R89 is open.** Adapter changes are limited to
+  defect fixes, what the scene path needs, and what keeps their shared
+  suites passing. An adapter's CAP013 line ceiling is not raised for
+  anything else.
+- **R89 first.** R89's scene path (the game's world, props and models drawn
+  as `render.scene` instances, `render-scene-bypass` at 0, K5's "game draws
+  from the scene" check) comes before every other render slice, including
+  the Source 2 lighting items. A slice that grows `WorldPass` or
+  `WorldData` instead of moving its inputs to the scene does not land.
+
+The freeze lifts when R89 is done, or earlier by user decision.
+
+**Adapter set reduced to Vulkan, GL/GLES and null** (user direction,
+2026-10-10: "nuke backends we don't need now, and just focus on Vulkan and
+GLES"). The Direct3D 12, WebGPU, Metal and PICA adapters are deleted, with
+the products only they served: the 3DS client
+([RFC 0026 PICA200](0026-pica200-device-adapter.md)), the WebAssembly
+products ([RFC 0029](0029-webassembly-and-webgpu-platform.md)) and
+`render-d3d12-windows` ([RFC 0024](0024-direct3d12-device-adapter.md)).
+Metal ([RFC 0025](0025-metal-device-adapter.md)) is not needed: Apple
+targets run Vulkan through MoltenVK. [RFC 0028](0028-direct3d9-device-adapter.md)
+(Direct3D 9, never implemented) is withdrawn. Null stays as the device
+oracle and the dedicated, test and tool products' device. GLES remains the
+GL adapter's dialect ([RFC 0022](0022-opengl-es-3.1-compatibility-preset.md)).
+The deleting change removes each adapter from `frozenAdapters`; rule 10
+then keeps the set at three.
 
 ## Device port (`render.device.v2`)
 

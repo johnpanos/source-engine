@@ -785,6 +785,46 @@ class LayerContractTest(unittest.TestCase):
         self.module('render.device.null')['allowedEdges'].append('platform.sdl3.render-surface')
         self.assertEqual(self.errors(), [])
 
+    def freeze_device_adapters(self):
+        self.contract['frozenAdapters'] = {'render.device': {
+            'modules': ['render.device.vulkan', 'render.device.gl', 'render.device.null'],
+            'owner': 'R89', 'reason': 'The scene comes first.'}}
+
+    def test_frozen_adapters_pass_with_their_tests_and_planned_entries(self):
+        self.freeze_device_adapters()
+        self.add('render.device.vulkan.tests', ['render.device.vulkan'], kind='native-test')
+        self.contract['layers'][7].append('render.device.vulkan.tests')
+        self.assertEqual(self.errors(), [])
+
+    def test_new_adapter_on_a_frozen_port_fails_rule_10(self):
+        self.freeze_device_adapters()
+        self.add('render.device.vk2', ['render.device'], kind='backend')
+        self.contract['adapters']['render.device'].append('render.device.vk2')
+        errors = self.assertRule(10, 'render.device.vk2: render.device adapters are frozen (R89')
+        self.assertTrue(any('render.device.vk2: in the render.device adapter column' in e for e in errors), errors)
+
+    def test_new_adapter_hidden_in_a_layer_or_outside_still_fails_rule_10(self):
+        self.freeze_device_adapters()
+        self.add('render.device.dx11', ['render.contracts'])
+        self.contract['layers'][1].append('render.device.dx11')
+        self.assertRule(10, 'render.device.dx11: render.device adapters are frozen')
+        self.contract['layers'][1].remove('render.device.dx11')
+        self.contract['outside'][0]['modules'].append('render.device.dx11')
+        self.assertRule(10, 'render.device.dx11: render.device adapters are frozen')
+
+    def test_deleted_frozen_adapter_must_leave_the_list(self):
+        self.freeze_device_adapters()
+        self.block['modules'] = [m for m in self.block['modules'] if m['id'] != 'render.device.null']
+        self.contract['adapters']['render.device'].remove('render.device.null')
+        self.contract['independent'][1].remove('render.device.null')
+        self.assertRule(10, 'render.device.null: frozen render.device adapter is no longer a module')
+
+    def test_frozen_adapter_group_needs_owner_and_reason(self):
+        self.contract['frozenAdapters'] = {'render.device': {'modules': [], 'owner': 'soon'}}
+        errors = self.errors()
+        self.assertIn('CAP011 layerContracts render frozenAdapters render.device: owner must be a roadmap row', errors)
+        self.assertIn('CAP011 layerContracts render frozenAdapters render.device: needs a reason', errors)
+
     def test_unlayered_render_module_fails_rule_4(self):
         self.add('render.stray', ['render.contracts'])
         self.assertRule(4, 'render.stray: render.* module has no layer')

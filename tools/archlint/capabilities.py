@@ -284,7 +284,8 @@ def cycle_errors(block):
 
 LAYER_CONTRACT_KEYS = {'id', 'rfc', 'description', 'prefix', 'layers', 'externalBases', 'independent',
                        'adapters', 'adapterConsumers', 'outside', 'backendIdentity', 'planned',
-                       'edgeCeilings', 'forbiddenLiterals', 'translation'}
+                       'edgeCeilings', 'forbiddenLiterals', 'translation', 'frozenAdapters'}
+FROZEN_ADAPTER_KEYS = {'modules', 'owner', 'reason'}
 FORBIDDEN_LITERAL_KEYS = {'modules', 'literals', 'reason'}
 TRANSLATION_KEYS = {'translators', 'formatBases', 'fixtures', 'reason', 'pending'}
 PENDING_KEYS = {'module', 'edge', 'type', 'owner', 'reason'}
@@ -356,6 +357,19 @@ def layer_contract_shape_errors(contract):
         else:
             errors += [f'{label}: backendIdentity unknown key {key}'
                        for key in sorted(set(identity) - BACKEND_IDENTITY_KEYS)]
+    frozen = contract.get('frozenAdapters', {})
+    if not isinstance(frozen, dict) or not all(isinstance(v, dict) for v in frozen.values()):
+        errors.append(f'{label}: frozenAdapters maps each port to a group')
+    else:
+        for port, group in sorted(frozen.items()):
+            where = f'{label} frozenAdapters {port}'
+            errors += [f'{where}: unknown key {key}' for key in sorted(set(group) - FROZEN_ADAPTER_KEYS)]
+            if not ROADMAP_ROW.match(str(group.get('owner', ''))):
+                errors.append(f'{where}: owner must be a roadmap row')
+            if not group.get('reason'):
+                errors.append(f'{where}: needs a reason')
+            if not is_string_list(group.get('modules')):
+                errors.append(f'{where}: modules must be a list of module ids')
     ceilings = contract.get('edgeCeilings', {})
     if not isinstance(ceilings, dict) or not all(is_string_list(v) for v in ceilings.values()):
         errors.append(f'{label}: edgeCeilings maps each module to the list of edges it may have')
@@ -580,6 +594,32 @@ def ceiling_errors(contract, modules):
     return errors
 
 
+def frozen_adapter_errors(contract, modules):
+    """Rule 10: a port in `frozenAdapters` gains no adapter. Every module named
+    `<port>.<name>` (or below it, such as its tests) belongs to a listed
+    adapter, the port's column names no other `<port>.*` module (bridges and
+    other adapters named outside the port's prefix are not counted), and each listed
+    adapter is still a module, so the list only shrinks: deleting an adapter
+    removes it here, and adding one is a reviewed change to the contract."""
+    errors = []
+    for port, group in sorted(contract.get('frozenAdapters', {}).items()):
+        allowed = set(group.get('modules', []))
+        why = f"{group.get('owner')}: {group.get('reason')}"
+        for mid in sorted(modules):
+            if not mid.startswith(port + '.'):
+                continue
+            adapter = port + '.' + mid[len(port) + 1:].split('.', 1)[0]
+            if adapter not in allowed:
+                errors.append(f'CAP011 rule 10 {mid}: {port} adapters are frozen '
+                              f'({why}); adding one is a user decision')
+        column = {e for e in contract.get('adapters', {}).get(port, []) if e.startswith(port + '.')}
+        for entry in sorted(column - allowed):
+            errors.append(f'CAP011 rule 10 {entry}: in the {port} adapter column but not in its frozen list')
+        for entry in sorted(allowed - set(modules) - set(contract.get('planned', []))):
+            errors.append(f'CAP011 rule 10 {entry}: frozen {port} adapter is no longer a module; remove it')
+    return errors
+
+
 def string_literals(text):
     """(line, content) of each C/C++ string literal, skipping comments and
     character literals. Raw strings are read as ordinary ones, which is enough
@@ -782,7 +822,8 @@ def layer_contract_errors(root, block, strip):
     6. a module in `edgeCeilings` declares no edge beyond its ceiling;
     7. the `forbiddenLiterals` modules name none of the literals in a string;
     8-9. `translation`: only translators read formats or are depended on, and
-       the core forward-declares only its own types (translation_errors).
+       the core forward-declares only its own types (translation_errors);
+    10. a port in `frozenAdapters` gains no adapter (frozen_adapter_errors).
     """
     contracts = block.get('layerContracts')
     if not isinstance(contracts, list):
@@ -799,6 +840,7 @@ def layer_contract_errors(root, block, strip):
         errors += edge_errors(contract, modules, layer_of, port_of, outside)
         errors += backend_identity_errors(root, block, contract, set(layer_of) | set(port_of), strip)
         errors += ceiling_errors(contract, modules)
+        errors += frozen_adapter_errors(contract, modules)
         errors += forbidden_literal_errors(root, block, contract)
         errors += translation_errors(root, block, contract, layer_of, port_of, outside, strip)
     return sorted(set(errors))
