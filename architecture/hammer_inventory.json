@@ -3378,7 +3378,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Applies or reverts a ChangeSet of created, removed and modified map objects to the document in either direction."
     },
     {
@@ -3391,7 +3391,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Builds the displacement surface of a solid side from its power and displacement data, validating power 2 to 4."
     },
     {
@@ -3404,7 +3404,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Indexes document entities by name, with case-insensitive pattern matching for lookups."
     },
     {
@@ -3418,7 +3418,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Owns document settings, the typed object maps, id allocation and the visgroup tree lookup."
     },
     {
@@ -3432,7 +3432,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Parses and formats side planes, connections and entity key values, and sets or removes entity keys in place."
     },
     {
@@ -3445,7 +3445,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Answers document queries for group members, entity solids, expansion to leaves, containers and visibility."
     },
     {
@@ -3458,7 +3458,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Implements the axis-aligned Box operations and builds solid geometry from scene data."
     },
     {
@@ -3633,7 +3633,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Implements the 2D and 3D camera state: view kind, axes, yaw and pitch clamping, and finite-value checks."
     },
     {
@@ -3646,7 +3646,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Extracts a render snapshot of solids and entities from the document, with entity draw data and instance-class detection."
     },
     {
@@ -3659,7 +3659,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Implements the grid policy: size steps, line classification and rounding for grid lines."
     },
     {
@@ -3672,7 +3672,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Picks document objects under a screen point or rectangle in 2D and 3D, with distance-to-rect and segment tests."
     },
     {
@@ -3685,7 +3685,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Headless view policy (IsShown, studio-model path test, unique polygon edge extraction) over hammer/scene map queries; no MFC or GDI."
     },
     {
@@ -8942,7 +8942,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "DocumentEdit stages changes over a borrowed base and ChangeSet applies forward or backward patches to the document."
     },
     {
@@ -8955,7 +8955,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Builds the displacement surface of a side from its typed Displacement on each call, a pure bridge to mapgeometry."
     },
     {
@@ -8968,7 +8968,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Snapshot index over a document reader answering the structural queries in one pass, valid until the reader changes."
     },
     {
@@ -8981,7 +8981,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The map document value holding every solid, entity and group plus settings, with low-level Put and Erase."
     },
     {
@@ -8994,7 +8994,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Plain value types for solids, sides, entities, connections and groups with ObjectId and vmfId identity."
     },
     {
@@ -9007,7 +9007,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Pure structural queries (group membership, leaves, owners, bounds, entity lookup) over a DocumentReader."
     },
     {
@@ -9020,7 +9020,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Convex polygons, bounds and plane-to-side-point rules derived from a solid, under one mapgeometry tolerance policy."
     },
     {
@@ -9207,7 +9207,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Orthographic 2D and perspective 3D camera value types that own screen-space and view-angle conventions."
     },
     {
@@ -9220,7 +9220,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "RenderSnapshot extraction of stable ids, derived geometry, material names and selection as plain values."
     },
     {
@@ -9233,7 +9233,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Grid snapping policy shared by tools and the grid lines a 2D view draws."
     },
     {
@@ -9246,7 +9246,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Pure hit testing of 2D clicks, 3D rays and 2D marquees against a DocumentReader and camera."
     },
     {
@@ -9259,7 +9259,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Visibility and appearance policies shared by picking and extraction so clicks and frames agree."
     }
   ]
