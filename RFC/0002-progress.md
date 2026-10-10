@@ -2833,3 +2833,33 @@ is done and the rest remains, as noted in each item. `archlint hammer
    - 2026-09-25: `AxisAlignedBox` is extracted and characterized, and the
      `Vector`↔`Vec3` seam exists (D5). No legacy `BoundBox` caller routes
      through it yet, so the status stays `characterized`.
+
+## Q-EDITOR headless run and inventory completion (2026-10-09)
+
+Observed at `79a18b090` (clean tree apart from the unrelated `ivp` submodule
+pointer), `HAMMERTEST_CXX=g++ unittests/hammertest/run_headless.sh`:
+
+- 135 suites selected: 127 matched, 7 mismatched, 1 skipped; the verdict is
+  FAIL as the runner defines it.
+- The 127 matched suites are the headless domain, format, app, scene, viewport,
+  tool, presenter and adapter suites.
+- The 7 mismatches are environmental, not logic failures. Five corpus suites
+  (`corpus.hammer.loop`, `.ui`, `.ui.wayland`, `.ui.scaled-x11`,
+  `.ui.scaled-wayland`) and `corpus.hammer.mcp` need
+  `build/toolchains/pbrt-map-toolchain.json`, which does not exist: the
+  old `build/` tree layout was replaced by `out/<profile>/<flavor>/`
+  (RFC 0027 L1). `corpus.hammer.viewport-budget` fails `shell.built`
+  (no built `hammer_gtk`), and its `.textured` variant is skipped without
+  `HAMMER_TEXTURE_VPKS`.
+- clang++ was not run in this session.
+
+What this does and does not show: the headless core passes on g++; the
+UI-driven, loop and MCP corpus suites are unverified on this checkout until
+their toolchain file and `hammer_gtk` are produced by a `./kiln build`.
+The suites' provider paths still name the pre-kiln `build/` tree and need
+retargeting to the kiln output tree; that is an open follow-up, not done here.
+
+Inventory (HAM-INVENTORY-001): all 682 source files have records, none a
+`hypothesis`, and the coverage status is `complete`, validated against the
+source universe. Per-symbol classification and the per-file caller inventory
+remain.
