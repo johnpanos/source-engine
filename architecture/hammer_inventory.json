@@ -2068,7 +2068,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Transport-free JSON-RPC handler that forwards each tool call to the injected command layer, with no file or native UI calls in this file."
     },
     {
@@ -2081,7 +2081,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "McpServer declares the transport-free JSON-RPC surface over an injected catalog and execute function; it is the MCP adapter, not MFC."
     },
     {
@@ -2094,7 +2094,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "DiskByteStore reads byte ranges with std::ifstream and std::filesystem, the disk provider for the byte-store port."
     },
     {
@@ -2107,7 +2107,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "DiskByteStore implements ports::IByteStore with ifstream ranged reads (Size, ReadRange) so the VPK reader pulls only the bytes it needs."
     },
     {
@@ -2116,11 +2116,12 @@
       "destinationModule": "hammer.adapters.platform",
       "responsibility": "platform-adapter",
       "effects": [
-        "file-io"
+        "file-io",
+        "process-execution"
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Build() runs tools/quality/vmf_map_build.py through IToolProcessProvider and parses its \"vmf_map_build:\" status line into a MapBuildResult."
     },
     {
@@ -2129,11 +2130,12 @@
       "destinationModule": "hammer.adapters.platform",
       "responsibility": "platform-adapter",
       "effects": [
-        "file-io"
+        "file-io",
+        "process-execution"
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "ToolProcessMapBuilder implements ports::IMapBuilder over the borrowed platform tool-process provider, with the repo root, output root and disk-path mapping injected."
     },
     {
@@ -2264,7 +2266,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "DecodeKtx2Preview reads KTX2 bytes through texturecontainer::ReadKtx2Image and accepts only packaged RGBA8/BGRA8 2D levels."
     },
     {
@@ -2277,7 +2279,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares DecodeKtx2Preview(bytes, error) returning hammer::formats::VtfImage for the headless material catalog."
     },
     {
@@ -2598,11 +2600,12 @@
       "destinationModule": "hammer.composition",
       "responsibility": "composition",
       "effects": [
-        "file-io"
+        "file-io",
+        "process-execution"
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "main() is the headless composition root: it builds SessionCommands over EditSession, the tool-process map builder and the MCP server, with no UI."
     },
     {
@@ -2615,7 +2618,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "main() decodes a VTF through hammer::formats and texturecontainer and writes a PAM file, bounded to 1 GiB of input."
     },
     {
@@ -2628,7 +2631,7 @@
       ],
       "state": "derived-cache",
       "factorization": "split",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Decal clipping: the Inside/Intersect/SHClip Sutherland-Hodgman math is pure float-vertex code, while CreateClippedPoly and R_DecalComputeBasis take legacy CMapFace and IEditorTexture."
     },
     {
@@ -2641,7 +2644,7 @@
       ],
       "state": "derived-cache",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Header declares only CreateClippedPoly(CMapFace*, IEditorTexture*, ...) and VERTEXSIZE/MAX_CLIPVERT, so it stays with the legacy face types."
     },
     {
@@ -3213,7 +3216,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Maps FGD key type names to KeyType and implements case-insensitive entity class input/output lookups."
     },
     {
@@ -8712,7 +8715,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "IAssetSource is the port for HasAsset, ReadAsset and ListAssets by path, implemented by VPK, search-path and disk providers."
     },
     {
@@ -8725,7 +8728,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "IByteStore is a ranged byte-read port (Size, ReadRange) used by VPK reading and implemented by hammer/adapters/platform/disk_byte_store."
     },
     {
@@ -8738,7 +8741,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the entity class, key and I/O definition types and the IEntityCatalog lookup port, implemented by FgdEntityCatalog and matching entity_catalog.cpp."
     },
     {
@@ -8752,7 +8755,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "IInstanceContent returns merged content for func_instance entities with a Revision that changes when content may have changed, used by app/instance_preview and viewport extraction."
     },
     {
@@ -8765,7 +8768,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "IMapBuilder with MapBuildRequest and MapBuildResult is the port the compile queue calls to build a map, implemented out of process by the tool-process builder."
     },
     {
@@ -8778,7 +8781,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "IMapCodec declares FormatName, Decode to DecodedMap and Encode to text with CodecError diagnostics, implemented by VmfMapCodec with no I/O in the port."
     },
     {
@@ -8791,7 +8794,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "IMaterialInfo declares Exists, Size and Names queries for materials, implemented by MaterialInfoAdapter over the catalog."
     },
     {
