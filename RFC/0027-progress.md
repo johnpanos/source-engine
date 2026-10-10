@@ -864,10 +864,11 @@ Evidence:
   pre-change baseline's (25 known, listed in the seventh slice and the
   reflection-probe, lighting back-end, frame-floor and environment cases).
   Profile parity 39/0.
-- **Not in L1, still open.** The Hammer build scripts (`hammer/gtk/build.sh`,
-  `build_*_shell.sh`) keep callers (`viewport_smoke.sh`,
-  `hammer_viewport_budget.py`, the Hammer profiles) and their own deletion
-  row. The platform scripts are L7. The render_lab and r03 test trees are
+- **Not in L1, still open.** The platform scripts are L7. (Update 2026-10-10:
+  the Hammer build cohort is retired; `hammer/gtk/build.sh` and
+  `build_gtk_shell.sh` are gone and in `retired_scan.py`'s list, and
+  `viewport_smoke.sh` builds through `./kiln build hammer`. Only
+  `build_mfc_shell.sh`, the MFC/Wine parity harness, remains.) The render_lab and r03 test trees are
   not launcher-driven. Retail captures were not rerun (no Steam client
   here); hosted CI has not run.
 

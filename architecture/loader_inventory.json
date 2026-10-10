@@ -2,10 +2,10 @@
   "version": 1,
   "description": "Static dynamic-loader site inventory for RFC 0001 retirement Phase A.",
   "classificationCounts": {
-    "first-party-composition": 107,
+    "first-party-composition": 105,
     "loader-provider": 1,
     "native-symbol-probe": 20,
-    "optional-provider": 12,
+    "optional-provider": 10,
     "retained-extension": 31,
     "tool-indirection": 120,
     "unbuilt-vendor": 25
@@ -525,26 +525,6 @@
       "classification": "native-symbol-probe",
       "reason": "Native API availability or vendor symbol probe.",
       "telemetry": "tier0-native-adapter"
-    },
-    {
-      "fingerprint": "8813963f452b52f9663e",
-      "rule": "ARCH101",
-      "path": "engine/cl_texturelistpanel.cpp",
-      "line": 972,
-      "excerpt": "m_pP4Module = Sys_LoadModule( \"p4lib\" );",
-      "mechanism": "ARCH101",
-      "classification": "first-party-composition",
-      "reason": "First-party runtime module assembled by legacy application composition."
-    },
-    {
-      "fingerprint": "c310c62c9a2e9aac1c7f",
-      "rule": "ARCH102",
-      "path": "engine/cl_texturelistpanel.cpp",
-      "line": 977,
-      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( m_pP4Module );",
-      "mechanism": "ARCH102",
-      "classification": "first-party-composition",
-      "reason": "First-party runtime module assembled by legacy application composition."
     },
     {
       "fingerprint": "afac4b46d9d989672084",
@@ -1657,7 +1637,7 @@
       "fingerprint": "c75a549a7e534eb066b0",
       "mechanism": "native-loader",
       "path": "launcher/launcher.cpp",
-      "line": 603,
+      "line": 602,
       "excerpt": "LoadLibrary( rgchSteamPath );",
       "classification": "first-party-composition",
       "reason": "First-party runtime module assembled by legacy application composition.",
@@ -1682,26 +1662,6 @@
       "classification": "first-party-composition",
       "reason": "First-party runtime module assembled by legacy application composition.",
       "telemetry": "bootstrap-native-adapter"
-    },
-    {
-      "fingerprint": "b916eda1b73adec600a5",
-      "rule": "ARCH101",
-      "path": "materialsystem/ctexture.cpp",
-      "line": 4779,
-      "excerpt": "m_pP4Module = Sys_LoadModule( \"p4lib\" );",
-      "mechanism": "ARCH101",
-      "classification": "optional-provider",
-      "reason": "Optional product, renderer, input, video, or vendor provider."
-    },
-    {
-      "fingerprint": "9495f1241d7317e96176",
-      "rule": "ARCH102",
-      "path": "materialsystem/ctexture.cpp",
-      "line": 4784,
-      "excerpt": "CreateInterfaceFn factory = Sys_GetFactory( m_pP4Module );",
-      "mechanism": "ARCH102",
-      "classification": "optional-provider",
-      "reason": "Optional product, renderer, input, video, or vendor provider."
     },
     {
       "fingerprint": "cda253b9ed1044df605e",

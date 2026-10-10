@@ -670,7 +670,7 @@ foundation::Expected<PipelineResult, Error> Session::Run( const PipelineRequest 
 	}
 
 	auto prepared = toolchain.Value()->Prepare(
-	    { &profile, m_Config.sourceRoot, m_Config.dependencyRoot, request.cancel } );
+	    { &profile, m_Config.sourceRoot, m_Config.dependencyRoot, request.cancel, flavor } );
 	if ( !prepared )
 		return foundation::MakeUnexpected(
 		    Fail( "toolchain", prepared.Error().code + ": " + prepared.Error().detail ) );

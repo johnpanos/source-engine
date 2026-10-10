@@ -952,64 +952,15 @@ static char * BufferReplace( char *buf, char const *szFindData, char const *szNe
 class CP4Requirement
 {
 public:
-	CP4Requirement();
-	~CP4Requirement();
-
-protected:
-	bool m_bLoadedModule;
-	CSysModule *m_pP4Module;
+	CP4Requirement()
+	{
+		// Runtime products never acquire p4lib; a provider is present only if a tool host supplied one.
+		if ( !p4 )
+		{
+			Warning( "Can't load p4lib.dll\n" );
+		}
+	}
 };
-
-CP4Requirement::CP4Requirement() :
-	m_bLoadedModule( false ),
-	m_pP4Module( NULL )
-{
-#ifdef STAGING_ONLY
-	if ( p4 )
-		return;
-
-	// load the p4 lib
-	m_pP4Module = Sys_LoadModule( "p4lib" );
-	m_bLoadedModule = true;
-		
-	if ( m_pP4Module )
-	{
-		CreateInterfaceFn factory = Sys_GetFactory( m_pP4Module );
-		if ( factory )
-		{
-			p4 = ( IP4 * )factory( P4_INTERFACE_VERSION, NULL );
-
-			if ( p4 )
-			{
-				extern CreateInterfaceFn g_AppSystemFactory;
-				p4->Connect( g_AppSystemFactory );
-				p4->Init();
-			}
-		}
-	}
-#endif // STAGING_ONLY
-
-	if ( !p4 )
-	{
-		Warning( "Can't load p4lib.dll\n" );
-	}
-}
-
-CP4Requirement::~CP4Requirement()
-{
-	if ( m_bLoadedModule && m_pP4Module )
-	{
-		if ( p4 )
-		{
-			p4->Shutdown();
-			p4->Disconnect();
-		}
-
-		Sys_UnloadModule( m_pP4Module );
-		m_pP4Module = NULL;
-		p4 = NULL;
-	}
-}
 #endif // #ifdef IS_WINDOWS_PC
 
 //////////////////////////////////////////////////////////////////////////

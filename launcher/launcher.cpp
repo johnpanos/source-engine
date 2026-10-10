@@ -50,7 +50,6 @@
 #include "tier1/tier1.h"
 #include "tier2/tier2.h"
 #include "tier3/tier3.h"
-#include "p4lib/ip4.h"
 #include "inputsystem/iinputsystem.h"
 #include "filesystem/IQueuedLoader.h"
 #include "appframework/linked_systems.h"
@@ -873,17 +872,6 @@ bool CSourceAppSystemGroup::Create()
 	// Hook in datamodel and p4 control if we're running with -tools
 	if ( IsPC() && ( ( CommandLine()->FindParm( "-tools" ) && !CommandLine()->FindParm( "-nop4" ) ) || CommandLine()->FindParm( "-p4" ) ) )
 	{
-#ifdef STAGING_ONLY
-		AppModule_t p4libModule = LoadModule( "p4lib" DLL_EXT_STRING );
-		IP4 *p4 = (IP4*)AddSystem( p4libModule, P4_INTERFACE_VERSION );
-		
-		// If we are running with -steam then that means the tools are being used by an SDK user. Don't exit in this case!
-		if ( !p4 && !CommandLine()->FindParm( "-steam" ) )
-		{
-			return false;
-		}
-#endif // STAGING_ONLY
-
 		AppModule_t vstdlibModule = LoadModule( "vstdlib" DLL_EXT_STRING );
 		IProcessUtils *processUtils = ( IProcessUtils* )AddSystem( vstdlibModule, PROCESS_UTILS_INTERFACE_VERSION );
 		if ( !processUtils )

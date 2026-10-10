@@ -210,7 +210,7 @@
       ],
       "evidence": [],
       "remainingWork": [
-        "inventory and migrate the remaining physics and optional integration loader sites",
+        "migrate the inventoried loader sites: utils/studiomdl/collisionmodel.cpp loads vphysics by filename (Sys_LoadModule); utils/studiomdl/studiomdl.cpp AddSystems names vstdlib, materialsystem, studiorender and mdllib by filename and loads the optional p4lib (a tool-only provider, see phase-e-tool-integrations)",
         "establish installed compiler corpus evidence"
       ]
     },
@@ -268,7 +268,6 @@
       ],
       "evidence": [],
       "remainingWork": [
-        "remove the audited runtime P4 acquisition paths",
         "complete the Perforce/MySQL/proprietary caller inventory and migrate each tool cohort",
         "install product dependency enforcement and evidence"
       ]

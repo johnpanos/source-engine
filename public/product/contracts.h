@@ -153,6 +153,9 @@ struct ToolchainRequest
 	std::filesystem::path sourceRoot;     // read-only
 	std::filesystem::path dependencyRoot; // the only writable place
 	const ICancellation *cancel = nullptr;
+	// The build flavor. A toolchain whose target varies by flavor (Android's
+	// ABI) reads it; the others ignore it.
+	std::string flavor;
 };
 
 struct ToolchainEnvironment

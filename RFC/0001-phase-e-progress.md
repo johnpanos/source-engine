@@ -141,3 +141,42 @@ restore generic runtime discovery as rollback: restore the previous named tool
 product or direct-library composition for that cohort. The preserved `IVTex`
 and `IVRadDLL` compatibility APIs are not permission to reintroduce
 `ILaunchableDLL` discovery.
+
+Update (2026-10-10): the audited runtime P4 acquisition paths are removed.
+`launcher/launcher.cpp` no longer loads `p4lib` under `-tools`/`-p4`, and
+`CP4Requirement` in `materialsystem/ctexture.cpp` no longer loads or unloads it;
+both were `STAGING_ONLY`. `phase-e-tool-integrations` stays `planned`: the
+Perforce/MySQL/proprietary caller inventory and the product dependency
+enforcement remain open. `archlint check --all`, `baseline --verify` and
+`inventory --verify` pass after reviewed removals (4 stale entries). No runtime
+build was run.
+
+The same `STAGING_ONLY` p4lib acquisition in `engine/cl_texturelistpanel.cpp`
+(`CP4Requirement`) is removed too. Remaining runtime-adjacent p4 sites are tier2's
+factory lookup (no load) and `hammer_launcher` (a tool).
+
+Host-tool evidence (2026-10-10, `out/tools-linux/dev/install`, tree built
+2026-10-08, source `b45178a5c`): `vvis_host_smoke.py` passes (four clusters, two
+worker counts, failure cases, BSP2 round trip) and `vrad_host_smoke.py` passes
+(LDR light, two worker counts, BSP2 round trip). `vtex` is a 12 KB executable
+with `libvtex_dll.so` as a `DT_NEEDED` entry, so it links the command entry
+directly with no `dlopen` wrapper. `vvis` has no launchable-DLL adapter; its one
+`CreateInterface` export is the tier1 interface-registry symbol. These are the
+synthetic-room smokes already named above, not versioned-corpus or
+process-protocol evidence, so no cohort moves to `verified`.
+
+StudioMDL loader inventory (2026-10-10, from source): two filename-loading
+sites remain in the tool. `collisionmodel.cpp` loads `vphysics.dll` through
+`Sys_LoadModule`, and `studiomdl.cpp` lists `vstdlib`, `materialsystem`,
+`studiorender` and `mdllib` as `AppSystemInfo_t` names and loads the optional
+`p4lib` (tool-only, `-nop4`). The data cache, datamodel and null shader
+provider are already linked. There is no Waf target for StudioMDL yet (R82
+owns that), so the migration and its installed corpus run stay open.
+
+Waf targets for texturecompile and shadercompile (2026-10-10, assessed, not
+added): `texturecompile.cpp` includes `<windows.h>`, `<conio.h>`, `<direct.h>`
+and `<io.h>` and links VMPI (rejected on Linux), and shadercompile depends on
+the Windows D3DX/FXC path (`d3dxfxc.*`). Neither compiles on a Linux host
+profile without a port, so a Waf target needs either the MSVC/Wine host profile
+or that port, which is its own bounded slice. Both cohorts stay `active`.
+
