@@ -3,7 +3,7 @@
   "id": "pbrt-map-linux-x86_64-v1",
   "description": "Host tools for tools/quality/pbrt_map_build.py (PBRT scene -> BSP2 preview map). Pins reuse the OpenUSD and KTX host profiles; this profile adds the pipeline's own tools and install layout. It certifies no RFC 0008 gate.",
   "target": {"product": "pbrt-map-pipeline", "os": "linux", "architecture": "x86_64"},
-  "toolchain": {"usd_python": "/usr/bin/python3.12", "python": "3.12.14"},
+  "toolchain": {"usd_python": "/usr/bin/python3.12", "python": "3.12.15"},
   "profiles": {
     "openusd": "quality/product_profiles/openusd-linux-tools.json",
     "ktx": "quality/product_profiles/ktx2-linux-tools.json"

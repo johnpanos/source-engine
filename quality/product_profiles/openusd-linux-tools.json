@@ -3,7 +3,7 @@
   "id": "openusd-linux-x86_64-gcc16-v1",
   "description": "RFC 0008 F2 World Stage authoring and validation tool profile; native product and Cycles checks are not yet certified.",
   "target": {"product": "world-stage-tools", "os": "linux", "architecture": "x86_64"},
-  "toolchain": {"cxx": "g++", "family": "gcc", "version": "16.2.1", "standard_library": "libstdc++", "openusd_cxx_standard": "C++17", "first_party_cxx_standard": "C++20", "cmake": "4.3.0", "python": "3.12.14", "build_type": "Release"},
+  "toolchain": {"cxx": "g++", "family": "gcc", "version": "16.2.1", "standard_library": "libstdc++", "openusd_cxx_standard": "C++17", "first_party_cxx_standard": "C++20", "cmake": "4.3.0", "python": "3.12.15", "build_type": "Release"},
   "dependencies": {
     "openusd": {
       "repository": "https://github.com/PixarAnimationStudios/OpenUSD.git",
