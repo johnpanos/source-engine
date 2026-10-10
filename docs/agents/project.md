@@ -73,15 +73,15 @@ One active task per session. Change a row only through the project manager.
 
 ## Decisions needed from the user
 
-1. The `ivp` submodule fix (C++17 `inline`, needed for MSVC) is uncommitted
-   in the fork since 2026-09-21: push it to the fork and bump the pointer?
-2. Mod-shader compatibility: declare it unsupported, or keep a narrow
-   bytecode path behind the frontend?
-3. Keep tvOS and the MSVC/Wine dedicated server as extra scope?
-5. Recover the R91 regression forward on the core (the plan's default), or
+1. Recover the R91 regression forward on the core (the plan's default), or
    temporarily restore shaderapivulkan as the default until the core matches
    it? Restoring reverses the 2026-10-07 deletion decision.
-4. D1's binding row (`linux-desktop-high-120`) names the Radeon 8060S, which
+2. The `ivp` submodule fix (C++17 `inline`, needed for MSVC) is uncommitted
+   in the fork since 2026-09-21: push it to the fork and bump the pointer?
+3. Mod-shader compatibility: declare it unsupported, or keep a narrow
+   bytecode path behind the frontend?
+4. Keep tvOS and the MSVC/Wine dedicated server as extra scope?
+5. D1's binding row (`linux-desktop-high-120`) names the Radeon 8060S, which
    is the dev host, but benchmarks may not run on the host (user direction,
    2026-10-06; they run on bazzite, an RTX 3070). Which machine certifies the
    120 FPS floor: allow certification runs on the 8060S, or re-target the
