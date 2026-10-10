@@ -13,7 +13,7 @@ Linux, Android and Apple. It is done when every line below holds, measured:
 
 | # | Exit criterion | Measure | Now (date) |
 | --- | --- | --- | --- |
-| D1 | Every frame ≤ 8.33 ms (120 FPS floor) at 1920×1080 High, 4x MSAA, Radeon 8060S | `frame_floor.py`, row `linux-desktop-high-120` | p50 ≈ 15.3 ms, p99 ≈ 36.9 ms on intro4 (2026-10-06): **2× / 4.5× off**. Bazzite 2560×1440 intro4 timedemo: 22.9 ms at HEAD against 13.8 ms before the R91 cutover (3a's bisect, 2026-10-10) |
+| D1 | Every frame ≤ 8.33 ms (120 FPS floor) at 1920×1080 High, 4x MSAA, Radeon 8060S | `frame_floor.py`, row `linux-desktop-high-120` | Bazzite (RTX 3070) at HEAD: mean ≈ 23 ms flat over 720p–1440p, p50 21.5, p99 66, p99.9 ≈ 205; 450 of 1,991 frames over 33 ms (5–7 before the R91 cutover, which ran 11.3 / 12.4 / 13.8 ms at 720p / 1080p / 1440p). CPU-bound: main thread 98–99%, GPU 28–31% (2026-10-10, 043566cd6) |
 | D2 | Same floor through the resolution sweep (720p–4K) on the 8060S and RTX 3070 | RFC 0016 sweep | 3070 4K p50 20.0 ms (2026-10-06) |
 | D3 | Source 2 lighting parity: game frames match `render_lab` frames of the same scenes, FSR on and off | game/lab captures, visual review | partial (R95/R96) |
 | D4 | The game draws from `render.scene` | CAP012 `render-scene-bypass` = 0 | 345 → 340 in S1's working tree (2026-10-10 05:09) |
@@ -105,11 +105,13 @@ One active task per session. Change a row only through the project manager.
 | The frame-time gap (D1) is 2–4.5× and has no owner today | The deliverable fails at its hardest gate | M1 now; every render slice records its frame cost |
 | Main-thread and render-thread CPU (p50 9–14 ms render thread at 1080p) | CPU-bound frames even with a fast GPU | M2 S3 (GPU skinning), M3 |
 | Shared working tree with several sessions | Lost or tangled work | File ownership above; `tools/agent/commit_paths.py`; orphan review every 30 min |
-| Hardware access (bazzite is the only benchmark box, one session at a time; Tab S8) | Gates can't be measured | Measurement sessions book the device; unavailable runs are recorded, not skipped |
+| Hardware access (bazzite is the only benchmark box, one session at a time, and its gnome-shell holds 5.8 of the 3070's 8 GB, so 1440p allocations now fail; Tab S8 unreachable) | Gates can't be measured | Measurement sessions book the device; unavailable runs are recorded, not skipped |
 | Mod shaders no longer render (stdshader passes removed) | Compatibility claim narrower than RFC 0001 says | User decision needed |
 
 ## Decisions needed from the user
 
+0. **Action:** OK to restart the GNOME session (or reboot) on bazzite? Its
+   gnome-shell holds 5.8 GB of VRAM and blocks the 1440p and 4K points.
 0. **Order for fb:** finish R89 S1 first (its current goal from you,
    mid-flight), or switch now to the R91 regression fixes (M1b)?
 0. **Action:** attach the Galaxy Tab S8 Ultra by USB, or enable wireless
