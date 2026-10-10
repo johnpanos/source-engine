@@ -18,7 +18,7 @@ Linux, Android and Apple. It is done when every line below holds, measured:
 | D3 | Source 2 lighting parity: game frames match `render_lab` frames of the same scenes, FSR on and off | game/lab captures, visual review | partial (R95/R96) |
 | D4 | The game draws from `render.scene` | CAP012 `render-scene-bypass` = 0 | 345 → 340 in S1's working tree (2026-10-10 05:09) |
 | D5 | Legacy stream retired; three device adapters (Vulkan, GL/GLES, null) | K9 ratchet; CAP011 rule 10 | 3 adapters (2026-10-10); legacy stream open |
-| D6 | One task API; render off the main thread; recording scales with workers | `jobs_ratchet.py` `legacy-job-api` = 0; K9 checks | 297 sites |
+| D6 | One task API; render off the main thread; recording scales with workers | `jobs_ratchet.py` `legacy-job-api` = 0; K9 checks | 279 sites |
 | D7 | Android arm64 device lifecycle and package; Apple builds and runs | R29 / R36 device runs | builds only |
 | D8 | Hammer always builds and plays a map | `corpus.hammer.loop`, `corpus.hammer.ui` | passing |
 

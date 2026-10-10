@@ -48,7 +48,7 @@
       "legacy-job-api": 9
     },
     "engine/host.cpp": {
-      "legacy-job-api": 14,
+      "legacy-job-api": 10,
       "pool-wait": 1
     },
     "engine/host_frame_graph.h": {
@@ -58,10 +58,6 @@
       "legacy-job-api": 3,
       "pool-wait": 1,
       "unaudited-node": 26
-    },
-    "engine/host_saverestore.cpp": {
-      "legacy-job-api": 14,
-      "thread-create": 1
     },
     "engine/indirect_light_host.cpp": {
       "fork-join": 2,
@@ -351,9 +347,9 @@
   "schema": "jobs-ratchet/v1",
   "totals": {
     "fork-join": 31,
-    "legacy-job-api": 297,
+    "legacy-job-api": 279,
     "pool-wait": 32,
-    "thread-create": 36,
+    "thread-create": 35,
     "unaudited-node": 27
   }
 }

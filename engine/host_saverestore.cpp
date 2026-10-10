@@ -56,8 +56,13 @@
 #include "testscriptmgr.h"
 #include "vengineserver_impl.h"
 #include "saverestore_filesystem.h"
-#include "tier1/callqueue.h"
-#include "vstdlib/jobthread.h"
+#include "platform/contracts/task_runner.h"
+#include <functional>
+#include <future>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
 #include "enginebugreporter.h"
 #include "tier1/memstack.h"
 #include "vstdlib/jobthread.h"
@@ -99,7 +104,46 @@ ConVar save_spew( "save_spew", "0" );
 #define SECTION_MAGIC_NUMBER	0x54541234
 #define SECTION_VERSION_NUMBER	2
 
-CCallQueue g_AsyncSaveCallQueue;
+// The deferred save writes (RFC 0003 J8): closures run in queue order by
+// FinishAsyncSave, on the blocking lane (save_async 1) or inline (0). A
+// disabled queue drains, then runs a closure at once.
+class CSaveWriteQueue
+{
+public:
+	void DisableQueue( bool bDisable )
+	{
+		if ( m_bNoQueue == bDisable )
+			return;
+		if ( !m_bNoQueue )
+			CallQueued();
+		m_bNoQueue = bDisable;
+	}
+	int Count() { std::lock_guard<std::mutex> lock( m_mutex ); return (int)m_queue.size(); }
+	void CallQueued() // callers hold LOCAL_THREAD_LOCK: drains never overlap
+	{
+		std::vector<std::function<void()>> batch;
+		{
+			std::lock_guard<std::mutex> lock( m_mutex );
+			batch.swap( m_queue );
+		}
+		for ( auto &call : batch )
+			call();
+	}
+	void Queue( std::function<void()> call )
+	{
+		if ( m_bNoQueue )
+			return call();
+		std::lock_guard<std::mutex> lock( m_mutex );
+		m_queue.push_back( std::move( call ) );
+	}
+
+private:
+	bool m_bNoQueue = false;
+	std::mutex m_mutex;
+	std::vector<std::function<void()>> m_queue;
+};
+
+CSaveWriteQueue g_AsyncSaveCallQueue;
 static bool g_ConsoleInput = false;
 
 static char g_szMapLoadOverride[32];
@@ -108,7 +152,28 @@ static char g_szMapLoadOverride[32];
 
 //-----------------------------------------------------------------------------
 
-IThreadPool *g_pSaveThread;
+// The blocking lane save work runs on: injected by the composition root
+// (SaveRestore_SetBlockingRunner), null in a root that supplies none, where
+// saves write inline. This file owns no thread.
+static platform::ISequencedTaskRunner *g_pSaveLane;
+
+// Posts a closure to the save lane; false when there is no lane or it is shut
+// down, in which case the closure was destroyed unrun.
+static bool PostSaveLane( std::function<void()> call )
+{
+	if ( !g_pSaveLane )
+		return false;
+	return g_pSaveLane->PostTask( platform::Task( std::move( call ) ) ) == platform::PostResult::kAccepted;
+}
+
+// Injected by the composition root; clearing waits for the work posted.
+void SaveRestore_SetBlockingRunner( platform::ISequencedTaskRunner *pRunner )
+{
+	std::promise<void> done;
+	if ( !pRunner && PostSaveLane( [&] { done.set_value(); } ) )
+		done.get_future().wait();
+	g_pSaveLane = pRunner;
+}
 
 static bool g_bSaveInProgress = false;
 
@@ -134,6 +199,16 @@ static bool HaveExactMap( const char *pszMapName )
 	return false;
 }
 
+// Queues the write of a buffer the file system takes ownership of (bFreeMemory),
+// with its own copy of the name: the same call the deferred queue made.
+static void QueueAsyncWrite( const char *pName, const void *pData, int nBytes )
+{
+	std::string fileName( pName );
+	g_AsyncSaveCallQueue.Queue( [fileName, pData, nBytes] {
+		g_pSaveRestoreFileSystem->AsyncWrite( fileName.c_str(), pData, nBytes, true, false, (FSAsyncControl_t *)NULL );
+	} );
+}
+
 void FinishAsyncSave()
 {
 	LOCAL_THREAD_LOCK();
@@ -151,11 +226,8 @@ void DispatchAsyncSave()
 	Assert( !g_bSaveInProgress );
 	g_bSaveInProgress = true;
 
-	if ( save_async.GetBool() )
-	{
-		g_pSaveThread->QueueCall( &FinishAsyncSave );
-	}
-	else
+	// No lane (multiplayer) or a refused post: write inline, as save_async 0.
+	if ( !save_async.GetBool() || !PostSaveLane( &FinishAsyncSave ) )
 	{
 		FinishAsyncSave();
 	}
@@ -694,7 +766,10 @@ int CSaveRestore::SaveGameSlot( const char *pSaveName, const char *pSaveComment,
 	if ( m_bClearSaveDir )
 	{
 		m_bClearSaveDir = false;
-		g_AsyncSaveCallQueue.QueueCall( this, &CSaveRestore::DoClearSaveDir, IsXSave() );
+		{
+			const bool bIsXSave = IsXSave();
+			g_AsyncSaveCallQueue.Queue( [this, bIsXSave] { DoClearSaveDir( bIsXSave ); } );
+		}
 	}
 
 	if ( !IsXSave() )
@@ -731,7 +806,12 @@ int CSaveRestore::SaveGameSlot( const char *pSaveName, const char *pSaveComment,
 		SaveMsg( "Queue AgeSaveList\n"); 
 		if ( StorageDeviceValid() )
 		{
-			g_AsyncSaveCallQueue.QueueCall( this, &CSaveRestore::AgeSaveList, CUtlEnvelope<const char *>(pSaveName), save_history_count.GetInt(), IsXSave() );
+			{
+				std::string saveName( pSaveName );
+				const int nCount = save_history_count.GetInt();
+				const bool bIsXSave = IsXSave();
+				g_AsyncSaveCallQueue.Queue( [this, saveName, nCount, bIsXSave] { AgeSaveList( saveName.c_str(), nCount, bIsXSave ); } );
+			}
 		}
 	}
 
@@ -834,17 +914,21 @@ int CSaveRestore::SaveGameSlot( const char *pSaveName, const char *pSaveComment,
 	saveHeader.Put( pSaveData->GetBuffer(), pSaveData->GetCurPos() );
 	
 	// Create the save game container before the directory copy 
-	g_AsyncSaveCallQueue.QueueCall( g_pSaveRestoreFileSystem, &ISaveRestoreFileSystem::AsyncWrite, CUtlEnvelope<const char *>(name), saveHeader.Base(), saveHeader.TellPut(), true, false, (FSAsyncControl_t *) NULL );
-	g_AsyncSaveCallQueue.QueueCall( this, &CSaveRestore::DirectoryCopy, CUtlEnvelope<const char *>(hlPath), CUtlEnvelope<const char *>(name), m_bIsXSave );
+	QueueAsyncWrite( name, saveHeader.Base(), saveHeader.TellPut() );
+	{
+		std::string srcPath( hlPath ), destName( name );
+		const bool bIsXSave = m_bIsXSave;
+		g_AsyncSaveCallQueue.Queue( [this, srcPath, destName, bIsXSave] { DirectoryCopy( srcPath.c_str(), destName.c_str(), bIsXSave ); } );
+	}
 
 	// Finish all writes and close the save game container
 	// @TODO: this async finish all writes has to go away, very expensive and will make game hitchy. switch to a wait on the last async op
-	g_AsyncSaveCallQueue.QueueCall( g_pFileSystem, &IFileSystem::AsyncFinishAllWrites );
+	g_AsyncSaveCallQueue.Queue( [] { g_pFileSystem->AsyncFinishAllWrites(); } );
 	
 	if ( IsXSave() && StorageDeviceValid() )
 	{
 		// Finish all pending I/O to the storage devices
-		g_AsyncSaveCallQueue.QueueCall( g_pXboxSystem, &IXboxSystem::FinishContainerWrites );
+		g_AsyncSaveCallQueue.Queue( [] { g_pXboxSystem->FinishContainerWrites(); } );
 	}
 
 	S_ExtraUpdate();
@@ -1474,7 +1558,10 @@ bool CSaveRestore::SaveGameState( bool bTransition, CSaveRestoreData **ppReturnS
 	{
 		Q_snprintf( name, 256, "//%s/%s%s.HL1", MOD_DIR, GetSaveDir(), GetSaveGameMapName( sv.GetMapName() ) ); // DON'T FixSlashes on this, it needs to be //MOD
 		SaveMsg( "Queue COM_CreatePath\n" );
-		g_AsyncSaveCallQueue.QueueCall( &COM_CreatePath, CUtlEnvelope<const char *>(name) );
+		{
+			std::string path( name );
+			g_AsyncSaveCallQueue.Queue( [path] { COM_CreatePath( path.c_str() ); } );
+		}
 	}
 	else
 	{
@@ -1484,7 +1571,7 @@ bool CSaveRestore::SaveGameState( bool bTransition, CSaveRestoreData **ppReturnS
 	S_ExtraUpdate();
 
 	SaveMsg( "Queue AsyncWrite (%s)\n", name );
-	g_AsyncSaveCallQueue.QueueCall( g_pSaveRestoreFileSystem, &ISaveRestoreFileSystem::AsyncWrite, CUtlEnvelope<const char *>(name), pBuffer, nBytesStateFile, true, false, (FSAsyncControl_t *)NULL );
+	QueueAsyncWrite( name, pBuffer, nBytesStateFile );
 	pBuffer = NULL;
 	
 	//---------------------------------
@@ -2057,7 +2144,7 @@ bool CSaveRestore::SaveClientState( const char *name )
 	buffer.Put( sections.musicdata, sections.musicsize );
 
 	SaveMsg( "Queue AsyncWrite (%s)\n", name );
-	g_AsyncSaveCallQueue.QueueCall( g_pSaveRestoreFileSystem, &ISaveRestoreFileSystem::AsyncWrite, CUtlEnvelope<const char *>(name), pBuffer, nBytes, true, false, (FSAsyncControl_t *)NULL );
+	QueueAsyncWrite( name, pBuffer, nBytes );
 
 	Finish( pSaveData );
 
@@ -2405,7 +2492,7 @@ void CSaveRestore::EntityPatchWrite( CSaveRestoreData *pSaveData, const char *le
 	else
 	{
 		SaveMsg( "Queue AsyncWrite (%s)\n", name );
-		g_AsyncSaveCallQueue.QueueCall( g_pSaveRestoreFileSystem, &ISaveRestoreFileSystem::AsyncWrite, CUtlEnvelope<const char *>(name), pBuffer, nBytesEntityPatch, true, false, (FSAsyncControl_t *)NULL );
+		QueueAsyncWrite( name, pBuffer, nBytesEntityPatch );
 	}
 }
 
@@ -2788,11 +2875,12 @@ void CSaveRestore::OnFinishedClientRestore()
 
 void CSaveRestore::AutoSaveDangerousIsSafe()
 {
-	if ( save_async.GetBool() && ThreadInMainThread() && g_pSaveThread )
+	if ( save_async.GetBool() && ThreadInMainThread() && g_pSaveLane )
 	{
-		g_pSaveThread->QueueCall(  this, &CSaveRestore::FinishAsyncSave );
-
-		g_pSaveThread->QueueCall(  this, &CSaveRestore::AutoSaveDangerousIsSafe );
+		// Both on the lane, in this order: the writes land, then the
+		// commit re-checks off the main thread.
+		PostSaveLane( [this] { FinishAsyncSave(); } );
+		PostSaveLane( [this] { AutoSaveDangerousIsSafe(); } );
 
 		return;
 	}
@@ -3253,16 +3341,6 @@ void CSaveRestore::Init( void )
 	{
 		GetSaveMemory();
 
-		Assert( !g_pSaveThread );
-
-		ThreadPoolStartParams_t threadPoolStartParams;
-		threadPoolStartParams.nThreads = 1;
-		{
-			threadPoolStartParams.fDistribute = TRS_FALSE;
-		}
-
-		g_pSaveThread = CreateThreadPool();
-		g_pSaveThread->Start( threadPoolStartParams, "SaveJob" );
 	}
 
 	m_nDeferredCommandFrames = 0;
@@ -3279,12 +3357,6 @@ void CSaveRestore::Init( void )
 void CSaveRestore::Shutdown( void )
 {
 	FinishAsyncSave();
-	if ( g_pSaveThread )
-	{
-		g_pSaveThread->Stop();
-		g_pSaveThread->Release();
-		g_pSaveThread = NULL;
-	}
 	m_szSaveGameScreenshotFile[0] = 0;
 }
 

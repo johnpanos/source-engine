@@ -1152,3 +1152,43 @@ summaries come from `demo_frames.analyze` over each run.
   own correctness and performance evidence; the demo gives no reason yet.
 - `thread-create` (38 sites) and the runtime census's 4 undeclared threads
   must reach 0 for J3; `unaudited-node` (27) shrinks with J6.
+
+## J8 first cohort: engine save/restore (2026-10-10)
+
+`legacy-job-api` 297 to 279 in `engine/host_saverestore.cpp` (14 to 0 sites;
+its `thread-create` 1 to 0). The cohort was picked by sites outside render/ and
+materialsystem/ that are built and bootable: `replay/` (about 28) is in no Waf
+target, so it cannot be verified; `QueuedLoader`/`filesystem_async` are the
+declared J3 I/O owners; `engine/host.cpp` was another session's.
+
+- **What moved.** The one-thread `IThreadPool` and the `CCallQueue`
+  deferral became a local ordered closure queue (`CSaveWriteQueue`) drained by
+  `FinishAsyncSave`, on a `platform::ISequencedTaskRunner` the host injects
+  (`SaveRestore_SetBlockingRunner`, `engine/host_saverestore.h`). The host
+  composes the runner (`engine/host.cpp`: one `platform::ThreadTaskRunner`,
+  the declared J3 owner, created before `saverestore->Init`, cleared with a
+  drain after `saverestore->Shutdown`). No process-wide accessor; save/restore
+  depends on the runner interface only. Without a runner (dedicated or
+  multiplayer) saves write inline, as `save_async 0` always did.
+- **Dependencies.** Save work is one ordered sequence: DoClearSaveDir,
+  AgeSaveList, the state AsyncWrite, DirectoryCopy, AsyncFinishAllWrites are
+  queued in that order and run in that order; `FinishAsyncSave` still blocks
+  its caller (map change, quit, the next save) under `LOCAL_THREAD_LOCK`.
+- **Oracle** `tools/quality/save_async_oracle.py` (headless, private runtime
+  copy, paused): three saves per `save_async` mode, quick and autosave in each,
+  `load` each and `getpos`, a save followed at once by `quit` and by a map
+  change that must reload. Strict: the last save embeds the on-disk state
+  files byte for byte (async last and inline last), sizes equal across modes,
+  loaded positions equal. Not byte-identical across modes: the engine saves
+  uninitialised struct padding (NaN and large-float words that differ between
+  two saves of one mode, a pre-existing property), so the cross-mode
+  comparison allows the words that differ within a mode and fails above them.
+  Negative: a build whose drain runs in reverse fails (no saves, crash).
+  Portal `testchmb_a_01` and Portal 2 `sp_a1_intro4`: pass.
+- **Not done.** No HEAD-built engine comparison (the shared tree's render
+  work did not build while the baseline was attempted); the save-path
+  semantics are held by the strict checks above instead. No TSan lane exists
+  for this cohort; the queue's only shared state is the vector under its
+  mutex.
+- **Decision.** A first design had a vstdlib process-wide lane accessor; it
+  was removed for injection from the root (no new global service locator).

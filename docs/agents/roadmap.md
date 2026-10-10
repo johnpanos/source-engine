@@ -141,7 +141,7 @@ Short corrections to entries the archive carries; details in the records.
 - `r_core_world` defaults to 1 (`engine/render_core_world_draw.cpp`).
 - CAP012 totals (target zero): platform branches 2,382; console code 1,778;
   format shapes 1,601; OS calls 1,334; adapter code outside adapters 525;
-  scene bypass 344. Jobs: legacy job API 297 sites, thread creation 36.
+  scene bypass 344. Jobs: legacy job API 279 sites, thread creation 36.
 - Unranked children and side programs (R70–R80, R91-PANELS, R50-CUBE,
   Portal 2 split-screen, TVOS-PROFILE and the rest) keep their state in
   their records; the archive lists them.

@@ -72,6 +72,7 @@
 #include "tier0/vcrmode.h"
 #include "traceinit.h"
 #include "host_saverestore.h"
+#include "../platform/runners/thread_task_runner.h"
 #include "l_studio.h"
 #include "cl_demo.h"
 #include "cdll_engine_int.h"
@@ -1079,6 +1080,9 @@ void UseDefaultBindings( void )
 }
 
 static bool g_bConfigCfgExecuted = false;
+#ifndef SWDS
+static platform::ThreadTaskRunner *g_pBlockingLane = NULL;
+#endif
 
 //-----------------------------------------------------------------------------
 // Purpose: Write out our 360 exclusive settings to internal storage
@@ -3906,6 +3910,10 @@ void Host_Init( bool bDedicated )
 
 
 #ifndef SWDS
+	// RFC 0003 J8: the host composes the blocking lane save writes run on.
+	// platform::ThreadTaskRunner owns its thread (the declared J3 owner).
+	g_pBlockingLane = new platform::ThreadTaskRunner( "blocking-lane" );
+	SaveRestore_SetBlockingRunner( g_pBlockingLane );
 	TRACEINIT( saverestore->Init(), saverestore->Shutdown() );
 #endif
 
@@ -4780,6 +4788,9 @@ void Host_Shutdown(void)
 
 #ifndef SWDS
 	TRACESHUTDOWN( saverestore->Shutdown() );
+	SaveRestore_SetBlockingRunner( NULL ); // drains the lane first
+	delete g_pBlockingLane;
+	g_pBlockingLane = NULL;
 #endif
 
 	TRACESHUTDOWN( COM_Shutdown() );

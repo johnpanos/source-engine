@@ -14,6 +14,16 @@
 
 class CSaveRestoreData;
 
+namespace platform
+{
+class ISequencedTaskRunner;
+}
+
+// The blocking lane the save writes run on (RFC 0003 J8), injected by the
+// composition root before saverestore->Init and cleared (with a drain) after
+// saverestore->Shutdown. Without one, saves write inline.
+void SaveRestore_SetBlockingRunner( platform::ISequencedTaskRunner *pRunner );
+
 abstract_class ISaveRestore
 {
 public:
