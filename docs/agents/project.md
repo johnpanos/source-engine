@@ -28,8 +28,9 @@ In order; a milestone closes only when its exit criterion is measured.
 
 | ID | Milestone | Exit criterion | Status |
 | --- | --- | --- | --- |
-| M0 | Reset | Adapters cut to three; AGENTS.md split; no orphaned work in the tree | finishing (adapter deletion, fb) |
+| M0 | Reset | Adapters cut to three; AGENTS.md split; no orphaned work in the tree | done (2026-10-10: 410ff4b56, 8d665920e) |
 | M1 | Measured baseline | Frame floor and resolution sweep at HEAD on bazzite (RTX 3070, fullscreen 2560×1440 plus the sweep points), with per-thread CPU and per-pass GPU time, recorded below as the budget table; the R91 cutover's +9.1 ms attributed per pass and thread against 615223388 | assigned (3a) |
+| M1b | Recover the R91 regression | intro4 timedemo on bazzite at 2560×1440 back to ≤ 13.8 ms, image unchanged: (a) imported textures uploaded on change only, (b) no per-frame lightmap rebuild, (c) queued rendering on the core shader API | assigned (fb fixes, 3a measures) |
 | M2 | Scene authority (R89) | `render-scene-bypass` 0, in slices: S1 static props, S2 BSP world, S3 posed models (feeds GPU skinning), S4 view and frame terms, S5 baked lighting environment, S6 dynamic draws | S1 next |
 | M3 | Frame off the main thread (R94, K9) | Render recording off the main thread, scaling with workers; `legacy-job-api` falling every week | not started |
 | M4 | Lighting complete in game (R96, R90, R65/R66) | Every declared term matched game/lab | partial |
@@ -55,7 +56,7 @@ One active task per session. Change a row only through the project manager.
 | Session | Workstream | Current task | Files it owns now |
 | --- | --- | --- | --- |
 | source-engine-17 | Project management | Reviews, assignments, orphan cleanup, this page | `docs/agents/*` |
-| source-engine-fb | Render core | M0 adapter deletion, then M2 S1 (static props through `render.scene`) | render/, materialsystem/shaderapicore, deletion files |
+| source-engine-fb | Render core | M1b regression fixes (a), (b), (c), then M2 S1 (static props through `render.scene`) | render/, materialsystem/shaderapicore, deletion files |
 | source-engine-f1 | Platforms | M7: Android lifecycle harness and APK build ready to run; **device run blocked: Tab S8 Ultra not reachable** (b151c1c9c) | product/android, tools/quality/android_*, its progress entry |
 | source-engine-7b | Jobs | M3 slice 1: `engine/host_saverestore.cpp` (14 sites: the save thread and deferred writes) onto an injected blocking runner; oracle: byte-identical saves with `save_async` 1 and 0 | `engine/host_saverestore.cpp`, the root's runner wiring |
 | source-engine-3a | Performance | M1: baseline and attribution of the R91 regression on bazzite (sole user of bazzite) | `../source-engine-bisect-{pre,head}`, its progress entry |
@@ -64,7 +65,7 @@ One active task per session. Change a row only through the project manager.
 
 | Risk | Effect | Response |
 | --- | --- | --- |
-| **The R91 cutover made frames 65% slower** (bazzite, 1440p intro4: 13.8 → 22.9 ms, `615223388..154155845`; J8 `e3ed8cd95` in range, not excluded), while drawing less than the old backend | D1 moves further away; every later gain is measured from a worse base | M1 attributes the 9.1 ms per pass and thread before any optimization; fixes go to the owner of what's slow |
+| **The R91 cutover made frames 65% slower** (bazzite, 1440p intro4: 13.8 → 22.9 ms), CPU-bound (GPU 31% busy): queued rendering silently off, 6.3 ms texture re-uploads and 6.5 ms lightmap rebuilds per frame on the main thread ([attribution](../../RFC/0016-progress.md#where-the-r91-cutovers-91-ms-goes-m1-attribution-on-bazzite), 6ed908187); J8 excluded | D1 moves further away; every later gain is measured from a worse base | M1b: fb fixes in order, 3a measures each on bazzite |
 | The frame-time gap (D1) is 2–4.5× and has no owner today | The deliverable fails at its hardest gate | M1 now; every render slice records its frame cost |
 | Main-thread and render-thread CPU (p50 9–14 ms render thread at 1080p) | CPU-bound frames even with a fast GPU | M2 S3 (GPU skinning), M3 |
 | Shared working tree with several sessions | Lost or tangled work | File ownership above; `tools/agent/commit_paths.py`; orphan review every 30 min |
@@ -75,15 +76,12 @@ One active task per session. Change a row only through the project manager.
 
 0. **Action:** attach the Galaxy Tab S8 Ultra by USB, or enable wireless
    debugging and give its ip:port. M7 is blocked on it.
-1. Recover the R91 regression forward on the core (the plan's default), or
-   temporarily restore shaderapivulkan as the default until the core matches
-   it? Restoring reverses the 2026-10-07 deletion decision.
-2. The `ivp` submodule fix (C++17 `inline`, needed for MSVC) is uncommitted
+1. The `ivp` submodule fix (C++17 `inline`, needed for MSVC) is uncommitted
    in the fork since 2026-09-21: push it to the fork and bump the pointer?
-3. Mod-shader compatibility: declare it unsupported, or keep a narrow
+2. Mod-shader compatibility: declare it unsupported, or keep a narrow
    bytecode path behind the frontend?
-4. Keep tvOS and the MSVC/Wine dedicated server as extra scope?
-5. D1's binding row (`linux-desktop-high-120`) names the Radeon 8060S, which
+3. Keep tvOS and the MSVC/Wine dedicated server as extra scope?
+4. D1's binding row (`linux-desktop-high-120`) names the Radeon 8060S, which
    is the dev host, but benchmarks may not run on the host (user direction,
    2026-10-06; they run on bazzite, an RTX 3070). Which machine certifies the
    120 FPS floor: allow certification runs on the 8060S, or re-target the
