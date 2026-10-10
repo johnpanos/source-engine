@@ -29,7 +29,7 @@ In order; a milestone closes only when its exit criterion is measured.
 | ID | Milestone | Exit criterion | Status |
 | --- | --- | --- | --- |
 | M0 | Reset | Adapters cut to three; AGENTS.md split; no orphaned work in the tree | done (2026-10-10: 410ff4b56, 8d665920e) |
-| M1 | Measured baseline | Frame floor and resolution sweep at HEAD on bazzite (RTX 3070, fullscreen 2560×1440 plus the sweep points), with per-thread CPU and per-pass GPU time, recorded below as the budget table; the R91 cutover's +9.1 ms attributed per pass and thread against 615223388 | assigned (3a) |
+| M1 | Measured baseline | Frame floor and resolution sweep at HEAD on bazzite (RTX 3070, fullscreen 2560×1440 plus the sweep points), with per-thread CPU and per-pass GPU time, recorded below as the budget table; the R91 cutover's +9.1 ms attributed per pass and thread against 615223388 | done except 4K (blocked on bazzite VRAM), 043566cd6 |
 | M1b | Recover the R91 regression | intro4 timedemo on bazzite at 2560×1440 back to ≤ 13.8 ms, image unchanged: (a) imported textures uploaded on change only, (b) no per-frame lightmap rebuild, (c) queued rendering on the core shader API | assigned (fb fixes, 3a measures) |
 | M2 | Scene authority (R89) | `render-scene-bypass` 0, in slices: S1 static props, S2 BSP world, S3 posed models (feeds GPU skinning), S4 view and frame terms, S5 baked lighting environment, S6 dynamic draws | S1 next |
 | M3 | Frame off the main thread (R94, K9) | Render recording off the main thread, scaling with workers; `legacy-job-api` falling every week | not started |
@@ -95,7 +95,7 @@ One active task per session. Change a row only through the project manager.
 | source-engine-fb | Render core | M2 S1 (static props through `render.scene`, the user's goal for this session, mid-flight), then M1b fixes (a), (b), (c) | render/, materialsystem/shaderapicore, deletion files |
 | source-engine-f1 | Platforms | M7: lifecycle lane and fake-adb self-test landed (6204ca560, 13 seeded faults); **device run blocked: Tab S8 Ultra not reachable** | product/android, tools/quality/android_*, its progress entry |
 | source-engine-7b | Jobs | M3 slice 1: `engine/host_saverestore.cpp` (14 sites: the save thread and deferred writes) onto an injected blocking runner; oracle: byte-identical saves with `save_async` 1 and 0 | `engine/host_saverestore.cpp`, the root's runner wiring |
-| source-engine-3a | Performance | M1: baseline and attribution of the R91 regression on bazzite (sole user of bazzite) | `../source-engine-bisect-{pre,head}`, its progress entry |
+| source-engine-3a | Performance | M1 done (sweep and budget table, 043566cd6); now: attribute HEAD's worst frames (p99.9 ≈ 205 ms), then measure each M1b fix on bazzite (sole user) | `../source-engine-bisect-{pre,head}`, its progress entry |
 
 ## Risks
 
