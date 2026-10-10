@@ -2149,7 +2149,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "BuildMipChain and PreviewTextures are pure linear-light mip math; ImportSourceMaterial reads VMTs and textures through the injected MaterialFiles callbacks."
     },
     {
@@ -2162,7 +2162,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "IMaterialTextures is the render-sequence source of imported VMT materials and decoded textures, with MaterialFiles callbacks supplied by the composition root."
     },
     {
@@ -2175,7 +2175,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "IModelSource returns a parsed studio model (mdl::LoadModel, body 0) with its textures resolved, or the reader error, for a model path."
     },
     {
@@ -2188,7 +2188,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Builds face batches, edge lines and model batches from a viewport::RenderSnapshot with the editor shading and selection colors, with no device calls."
     },
     {
@@ -2201,7 +2201,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the FaceVertex, FaceBatch, SceneGeometry and ModelAsset types and BuildSceneGeometry/BuildModelBatches over render.pass.lines."
     },
     {
@@ -2214,7 +2214,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "ViewportRenderer stages meshes and textures and records render-graph frames on the core device, releasing frames and resources through leases."
     },
     {
@@ -2227,7 +2227,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "ViewportRenderer draws any number of offscreen views of one document through render.scene, render.pass.opaque and render.pass.lines."
     },
     {
@@ -2240,7 +2240,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "ViewportService owns a ViewportRenderer used only on the render sequence and replies to the host sequence through its runner, with ReturnFrame leases."
     },
     {
@@ -2253,7 +2253,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "ViewportService posts ViewJob copies to the render sequence and returns pixels via the reply runner; the device and runners outlive the service."
     },
     {
@@ -2996,7 +2996,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Cordon format logic: bounds, plane parsing, solid-in-box and point-in-box tests over kvtext nodes; no I/O."
     },
     {
@@ -3009,7 +3009,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Entity property sheet: case-insensitive key lookup against the schema and the sheet rows shown for an entity; no I/O."
     },
     {
@@ -3022,7 +3022,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "FGD tokenizer and Parser (classes, members, helper arguments, directives) that turns FGD text into EntityClass records; no I/O in this file."
     },
     {
@@ -3035,7 +3035,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "FGD entity catalog: merges sourced classes from FGD files into ports::EntityClassInfo with key, I/O and hint data; no file reads here."
     },
     {
@@ -3048,7 +3048,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Group table parsing from kvtext: editor group IDs, object IDs and top-level group resolution."
     },
     {
@@ -3062,7 +3062,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Instance expansion: flattens instance entities by transform and reads instance files through IFileStore, bounded at depth 16."
     },
     {
@@ -3075,7 +3075,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "PrepareForCompile expands instances through IFileStore and returns the compile-prep result for the map before export."
     },
     {
@@ -3088,7 +3088,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "VMT parser: Material with case-insensitive parameters, patch detection and ParseMaterial over VMT text; no I/O."
     },
     {
@@ -3101,7 +3101,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MaterialCatalog indexes materials and reads VMT/VTF/KTX assets through ports::IAssetSource, with include and patch recursion and a depth limit of 10."
     },
     {
@@ -3114,7 +3114,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MaterialInfoAdapter implements the material-info port over MaterialCatalog for existence, size and name listing."
     },
     {
@@ -3127,7 +3127,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Overlay entity decoding: parses bracketed vectors, doubles and scalars into overlay fields; no I/O."
     },
     {
@@ -3140,7 +3140,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "InstantiatePrefab copies a prefab document into world solids and entities under a placement rotation; pure transform."
     },
     {
@@ -3153,7 +3153,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Ordered search over IAssetSource providers, keeping the first occurrence of each listed path."
     },
     {
@@ -3166,7 +3166,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Parses visgroup KeyValues blocks and object memberships, and computes the hidden set for visibility filtering."
     },
     {
@@ -3179,7 +3179,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Strict VMF codec mapping every block and key to typed scene fields, with CodecError diagnostics for unrepresentable content."
     },
     {
@@ -3192,7 +3192,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Opens a VPK directory through an IByteStore and forwards Find, Read and List to content.vpk."
     },
     {
@@ -3205,7 +3205,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Decodes VTF headers and mip data (DXT, RGB/A and Strata BC7 formats) into an RGBA image without file access."
     },
     {
@@ -4498,7 +4498,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "GTK shell model catalog: opens VPK archives and scans sdk_content maps through the disk byte store."
     },
     {
@@ -4511,7 +4511,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CatalogModels, an IModelSource over VPK archives for the GTK preview, namespace hammer::gtk."
     },
     {
@@ -4524,7 +4524,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "GTK shell texture catalog: opens VPK texture archives through the disk byte store and the KTX2 preview."
     },
     {
@@ -4537,7 +4537,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CatalogTextures, an IMaterialTextures source for the GTK preview."
     },
     {
@@ -4550,7 +4550,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Loads FGD schema text from disk with std::ifstream for the GTK shell entity schema."
     },
     {
@@ -4563,7 +4563,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the GTK shell entity schema loader over fgd_entity_catalog."
     },
     {
@@ -4576,7 +4576,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "GlibTaskRunner posts work onto a GLib main context (g_main_context refs) as a platform.task-runner single-thread runner."
     },
     {
@@ -4589,7 +4589,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares GlibTaskRunner, a platform.task-runner.v1 runner bound to a GLib main context."
     },
     {
@@ -4603,7 +4603,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Headless offscreen render path for the GTK shell that renders a workspace view and writes a binary PPM file."
     },
     {
@@ -4617,7 +4617,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "GTK Object Properties window: widgets bound to EntityInspector rows, with edits applied through EditorWorkspace."
     },
     {
@@ -4630,7 +4630,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the GTK Object Properties window entry point over EditorWorkspace."
     },
     {
@@ -4643,7 +4643,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Runs the shared platform.task-runner.v1 suite against the GLib runner; a test, not shell code."
     },
     {
@@ -4656,7 +4656,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "GtkWidget subclass HammerViewport that shows a GdkTexture frame and reports size and scale changes."
     },
     {
@@ -4669,7 +4669,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the HammerViewport GObject widget and its texture accessors."
     },
     {
@@ -4683,7 +4683,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "GTK visgroups panel (VisgroupsView) that shows the visgroup tree and routes membership actions to EditorWorkspace."
     },
     {
@@ -4696,7 +4696,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares MakeVisgroupsPanel for the GTK shell over EditorWorkspace."
     },
     {
@@ -8495,7 +8495,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CordonBox/CordonResult and ApplyCordon over kvtext nodes, a pure format operation matching cordon.cpp's record."
     },
     {
@@ -8508,7 +8508,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares PropertyRow, EntityPropertySheet and BuildPropertySheet, which build display rows from FGD classes and KeyValues with no I/O, matching entity_property_sheet.cpp."
     },
     {
@@ -8521,7 +8521,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the FGD model (EntityClass, properties, helpers, I/O) and ParseFgd/ResolveClass over text, with no file access, matching fgd.cpp."
     },
     {
@@ -8534,7 +8534,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "FgdEntityCatalog implements ports::IEntityCatalog from FGD text supplied through an injected FgdLoader callback, so the header itself performs no file reads, matching fgd_entity_catalog.cpp."
     },
     {
@@ -8547,7 +8547,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares GroupTable, ParseGroups and ExpandGroupSelection over kvtext nodes, pure parsing of editor group ids, matching groups.cpp."
     },
     {
@@ -8561,7 +8561,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares ExpandInstances, which flattens func_instance entities and reads instance files through the ports::IFileStore parameter, matching instancing.cpp."
     },
     {
@@ -8574,7 +8574,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CompileOptions and PrepareForCompile, which expands instances through an IFileStore before export, matching map_export.cpp."
     },
     {
@@ -8587,7 +8587,7 @@
       ],
       "state": "external-resource",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the Material type and ParseMaterial over VMT text with no I/O, matching material.cpp."
     },
     {
@@ -8600,7 +8600,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares MaterialCatalog, which indexes materials and reads VMT/VTF assets through ports::IAssetSource, matching material_catalog.cpp."
     },
     {
@@ -8613,7 +8613,7 @@
       ],
       "state": "derived-cache",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MaterialInfoAdapter implements ports::IMaterialInfo over a MaterialCatalog for existence, size and name queries, matching material_info_adapter.cpp."
     },
     {
@@ -8626,7 +8626,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares Overlay, ParseOverlay and ExtractOverlays over kvtext entities, a pure decode, matching overlay.cpp."
     },
     {
@@ -8639,7 +8639,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "extract",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares Placement, PrefabInstance and InstantiatePrefab, a pure transform of a prefab document into world objects, matching prefab.cpp."
     },
     {
@@ -8652,7 +8652,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "SearchPathAssets implements ports::IAssetSource by ordered search over provider assets, keeping the first occurrence, matching search_path_assets.cpp."
     },
     {
@@ -8665,7 +8665,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares VisGroup parsing from KeyValues and ApplyVisGroupFilter for hidden-set computation, pure and matching visgroups.cpp."
     },
     {
@@ -8678,7 +8678,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "VmfMapCodec implements ports::IMapCodec over VMF text with typed decode and encode, no I/O, matching vmf_map_codec.cpp."
     },
     {
@@ -8691,7 +8691,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "VpkArchive implements ports::IAssetSource over a ports::IByteStore that reads the VPK directory and entries, matching vpk_archive.cpp."
     },
     {
@@ -8704,7 +8704,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares ReadVtfInfo and DecodeVtf over in-memory bytes using the texturecontainer VTF reader, with no file access, matching vtf_image.cpp."
     },
     {
