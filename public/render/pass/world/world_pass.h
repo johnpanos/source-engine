@@ -56,6 +56,8 @@
 #include "render/material/surface_program.h"
 #include "render/projected_light.h"
 #include "render/resources/mip_feedback.h"
+#include "render/scene/draw_list.h"
+#include "render/scene/snapshot.h"
 #include "render/shadow_tile.h"
 #include "render/sprite_card.h"
 #include "render/ui_draw_list.h"
@@ -261,6 +263,11 @@ struct WorldData
 		// because it is the one every distance selects. The pass owns this
 		// policy; a host that draws neither kind (a lab scene) leaves it false.
 		bool posed = false;
+		// The surfaces an instance draws unless a view selects another level's
+		// (the host's level-0 selection). Null selects every surface; an
+		// explicit empty list is a blank model. A subset contains unique,
+		// increasing indices into surfaces.
+		std::optional<std::vector<std::uint32_t>> selection;
 		std::uint32_t vertexCount = 0; // every level, for a posed model's correspondence
 		std::uint32_t lodCount() const { return std::uint32_t( lods.size() ); }
 		// The level a surface belongs to, or ~0u when it belongs to none.
@@ -296,17 +303,38 @@ struct WorldData
 			lods.push_back( std::move( level ) );
 		}
 	};
-	struct StaticInstance
-	{
-		std::uint32_t mesh = 0;
-		std::uint32_t skin = 0;
-		float world[16] = {}; // object to world, row-major
-		// Null selects every surface; an explicit empty list is a blank model.
-		// A subset contains unique, increasing indices into StaticMesh::surfaces.
-		std::optional<std::vector<std::uint32_t>> surfaceSelection;
-	};
 	std::vector<StaticMesh> staticMeshes;
-	std::vector<StaticInstance> staticInstances;
+	// The map's static props (RFC 0016 R89): a render.scene snapshot with one
+	// MeshInstance per prop, in prop order. The scene, committed through
+	// ChangeSets by its owner, is the authority; the pass reads it and keeps
+	// no copy. desc.mesh is a StaticMesh index (~0u names no mesh: the model
+	// did not parse and the instance draws nothing), desc.material the studio
+	// skin, desc.world the object to world transform.
+	std::shared_ptr<const scene::SceneSnapshot> props;
+	std::size_t PropCount() const { return props ? props->instances.size() : 0; }
+	// Appends one prop to `props` (tests and tools that build a world by hand;
+	// the composition commits its props through a render.scene ChangeSet).
+	// `world` is 16 floats, row-major. Returns the prop's index.
+	std::uint32_t AddStaticProp(
+	    std::uint32_t mesh, std::uint32_t skin, const float *world = nullptr )
+	{
+		auto next =
+		    std::make_shared<scene::SceneSnapshot>( props ? *props : scene::SceneSnapshot{} );
+		const std::size_t index = next->instances.size();
+		next->instances.resize( index + 1 );
+		scene::MeshInstance &instance = next->instances[index];
+		instance.id = scene::InstanceId{ index + 1 };
+		instance.desc.mesh = mesh;
+		instance.desc.material = skin;
+		if ( world )
+			std::copy_n( world, 16, &instance.desc.world.rows[0].x );
+		props = std::move( next );
+		return std::uint32_t( index );
+	}
+	const scene::MeshInstanceDesc &Prop( std::size_t index ) const
+	{
+		return props->instances[index].desc;
+	}
 	// Rises when staticMeshes changes. A world republished with the same
 	// revision (a late probe volume re-setting the stage) keeps its resident
 	// model buffers, so stage lighting does not re-upload every model.
@@ -379,7 +407,7 @@ struct WorldCutoutShadows
 	std::vector<WorldShadowView> views;
 	std::vector<std::uint32_t> surfaces; // into WorldData::surfaces
 	// Static props' alpha-tested surfaces: (instance into
-	// WorldData::staticInstances, surface into its mesh's surfaces), each
+	// WorldData::props, surface into its mesh's surfaces), each
 	// drawn with the instance's transform and skin from its level when the
 	// level is resident.
 	std::vector<std::pair<std::uint32_t, std::uint32_t>> staticSurfaces;
@@ -560,16 +588,37 @@ struct StageLightingInputs
 struct WorldView
 {
 	std::vector<std::uint32_t> surfaces; // into WorldData::surfaces
-	struct StaticInstance
+	// The static props the view draws (RFC 0016 R89): the scene's draw list
+	// over WorldData::props, culled with the view's frustum and the host's
+	// visibility, in the host's submission order.
+	struct StaticProps
 	{
-		std::uint32_t instance = 0; // into WorldData::staticInstances
-		// Captured per-view geometry selection, including the selected LOD.
-		// Absence inherits the world's instance selection when queued.
-		std::optional<std::vector<std::uint32_t>> surfaceSelection;
-		StaticInstance() = default;
-		StaticInstance( std::uint32_t value ) : instance( value ) {}
-	};
-	std::vector<StaticInstance> staticInstances;
+		// The snapshot the list indexes (the world's props at queue time).
+		std::shared_ptr<const scene::SceneSnapshot> scene;
+		scene::DrawList list;
+		// Parallel to list.items: the surfaces the view's selected level
+		// draws (captured, so later body-group changes cannot mutate it).
+		// Absence inherits StaticMesh::selection.
+		std::vector<std::optional<std::vector<std::uint32_t>>> selections;
+		std::size_t size() const { return list.items.size(); }
+		bool empty() const { return list.items.empty(); }
+		std::uint32_t Instance( std::size_t i ) const { return list.items[i].instance; }
+		const std::optional<std::vector<std::uint32_t>> &Selection( std::size_t i ) const
+		{
+			static const std::optional<std::vector<std::uint32_t>> kNone;
+			return i < selections.size() ? selections[i] : kNone;
+		}
+		// Appends one instance (tests and tools; the composition culls).
+		void Add( std::uint32_t instance,
+		    std::optional<std::vector<std::uint32_t>> selection = std::nullopt )
+		{
+			scene::DrawItem item;
+			item.instance = instance;
+			list.items.push_back( item );
+			selections.resize( list.items.size() - 1 );
+			selections.push_back( std::move( selection ) );
+		}
+	} props;
 	// One animated model at the pose captured for this view. Geometry and
 	// material skins are shared with WorldData::staticMeshes; these vertices
 	// are already in world space, so the model draw uses an identity transform.

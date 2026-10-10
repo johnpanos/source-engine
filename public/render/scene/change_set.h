@@ -47,7 +47,6 @@ public:
 	void Remove( InstanceId id ) { m_Changes.push_back( { Op::kRemove, id, {} } ); }
 
 	const std::vector<Change> &Changes() const { return m_Changes; }
-	bool Empty() const { return m_Changes.empty(); }
 
 private:
 	std::vector<Change> m_Changes;

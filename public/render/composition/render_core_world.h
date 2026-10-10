@@ -99,6 +99,12 @@ struct RenderCoreStaticProp
 	int skin;
 	float world[12];         // model to world, three rows of four
 	bool castsShadow = true; // authored static-prop and Studio shadow flags
+	// The model's render bounds in model space (the box the host culls the
+	// prop with, transformed by `world`). Absent (hasBounds false): the core
+	// bounds the prop by its parsed model's vertices.
+	bool hasBounds = false;
+	float boundsMin[3] = {};
+	float boundsMax[3] = {};
 };
 
 // One visible static-prop instance with the LOD selected by the engine for
@@ -351,6 +357,31 @@ public:
 	virtual void SetStaticProps( const RenderCoreStaticModel *models, unsigned int modelCount,
 	    const RenderCoreStaticProp *props, unsigned int propCount ) = 0;
 	virtual bool DrawsStaticProp( unsigned int prop, unsigned int lod = 0 ) const = 0;
+	// The map's BSP leaves as scene instances (RFC 0016 K5, R89): `count`
+	// boxes (min x y z, max x y z) and the leaf each stands for. Main thread.
+	virtual void SetWorldLeaves( const float *boxes, const int *leaves, unsigned int count ) = 0;
+	// A view's culling over the leaves and the static props, exactly as
+	// DrawView culls the props: `planes` holds six legacy frustum planes (normal
+	// x y z, then dist; kept while n . p - dist >= 0); visibleLeaf and
+	// visibleProp are the host's verdict, one byte per leaf and per prop.
+	// Writes the surviving leaf and prop indexes (room for every leaf and prop),
+	// what the frustum and the verdict removed, and whether the same cull on
+	// the compute pool gave the same list (1, 0; -1 without a pool). False
+	// without a leaf scene. Main thread.
+	struct ViewCull
+	{
+		const float *planes;
+		const unsigned char *visibleLeaf;
+		unsigned int leafCount;
+		const unsigned char *visibleProp;
+		unsigned int propCount;
+		int *drawnLeaves;
+		int *drawnProps;
+		unsigned int drawnLeafCount = 0, drawnPropCount = 0;
+		unsigned int frustumCulled = 0, providerCulled = 0;
+		int pooledEqual = -1;
+	};
+	virtual bool CullView( ViewCull &view ) const = 0;
 	// The world stage's copy of the engine's world mesh uploads: the engine
 	// makes every upload it makes to the renderer here too (its lightmap
 	// layers, recomposed as moving objects block baked light; the probe

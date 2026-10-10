@@ -127,25 +127,25 @@ bool WorldPass::DrawsStaticInstance( std::uint32_t instance ) const
 {
 	const State &s = *m_State;
 	std::lock_guard<std::mutex> guard( s.lock );
-	if ( !s.world || !s.claims || instance >= s.world->staticInstances.size() )
+	if ( !s.world || !s.claims || instance >= s.world->PropCount() )
 		return false;
-	const WorldData::StaticInstance &placement = s.world->staticInstances[instance];
-	const std::uint32_t mesh = placement.mesh;
+	const auto &placement = s.world->Prop( instance );
+	const std::uint32_t mesh = std::uint32_t( placement.mesh );
 	if ( mesh >= s.world->staticMeshes.size() )
 		return false;
 	const WorldData::StaticMesh &data = s.world->staticMeshes[mesh];
-	if ( !ValidSurfaceSelection( placement.surfaceSelection, data.surfaces.size() ) )
+	if ( !ValidSurfaceSelection( data.selection, data.surfaces.size() ) )
 		return false;
-	if ( placement.surfaceSelection && placement.surfaceSelection->empty() )
+	if ( data.selection && data.selection->empty() )
 		return true;
 	if ( data.surfaces.empty() )
 		return false;
 	for ( std::uint32_t i = 0; i < data.surfaces.size(); ++i )
 	{
-		if ( !SurfaceSelected( placement.surfaceSelection, i ) )
+		if ( !SurfaceSelected( data.selection, i ) )
 			continue;
 		const WorldSurface &surface = data.surfaces[i];
-		const std::uint32_t material = StaticMaterial( data, placement, i );
+		const std::uint32_t material = StaticMaterial( data, placement.material, i );
 		if ( !LevelSurfaceDrawable( data, i, surface ) || material >= s.claims->size() ||
 		     !( *s.claims )[material].draws || !s.world->materials[material].mesh )
 			return false;
@@ -168,16 +168,13 @@ bool WorldPass::DrawsPosedModel( std::uint32_t meshId, std::uint32_t skin,
 		return true;
 	if ( mesh.surfaces.empty() )
 		return false;
-	WorldData::StaticInstance instance;
-	instance.mesh = meshId;
-	instance.skin = skin;
 	bool hasSurface = false;
 	for ( std::uint32_t i = 0; i < mesh.surfaces.size(); ++i )
 	{
 		if ( !SurfaceSelected( surfaceSelection, i ) )
 			continue;
 		const WorldSurface &surface = mesh.surfaces[i];
-		const std::uint32_t material = StaticMaterial( mesh, instance, i );
+		const std::uint32_t material = StaticMaterial( mesh, skin, i );
 		if ( material >= s.claims->size() )
 			return false;
 		const bool blended = ( *s.claims )[material].blended;
@@ -312,17 +309,17 @@ std::size_t WorldPass::State::OpaqueBatchSize(
 			if ( surface >= s.world->surfaces.size() ||
 			     !materialEligible( s.world->surfaces[surface].material ) )
 				return false;
-		const auto meshEligible = [&]( const WorldData::StaticInstance &instance,
+		const auto meshEligible = [&]( std::uint64_t meshId, std::uint64_t skin,
 		                              const auto &selection, RenderCoreDrawPhase phase )
 		{
-			if ( instance.mesh >= s.world->staticMeshes.size() )
+			if ( meshId >= s.world->staticMeshes.size() )
 				return false;
-			const auto &mesh = s.world->staticMeshes[instance.mesh];
+			const auto &mesh = s.world->staticMeshes[meshId];
 			for ( std::uint32_t surface = 0; surface < mesh.surfaces.size(); ++surface )
 			{
 				if ( !SurfaceSelected( selection, surface ) )
 					continue;
-				const auto material = StaticMaterial( mesh, instance, surface );
+				const auto material = StaticMaterial( mesh, skin, surface );
 				if ( material >= s.claims->size() )
 					return false;
 				const bool blended = ( *s.claims )[material].blended;
@@ -333,20 +330,20 @@ std::size_t WorldPass::State::OpaqueBatchSize(
 			}
 			return true;
 		};
-		for ( const auto &draw : view.staticInstances )
-			if ( draw.instance >= s.world->staticInstances.size() ||
-			     !meshEligible( s.world->staticInstances[draw.instance], draw.surfaceSelection,
+		for ( std::size_t i = 0; i < view.props.size(); ++i )
+		{
+			if ( view.props.Instance( i ) >= s.world->PropCount() )
+				return false;
+			const auto &prop = s.world->Prop( view.props.Instance( i ) );
+			if ( !meshEligible( prop.mesh, prop.material, view.props.Selection( i ),
 			         RenderCoreDrawPhase::kAll ) )
 				return false;
-		for ( const auto &pose : view.posedModels )
-		{
-			WorldData::StaticInstance instance;
-			instance.mesh = pose.mesh;
-			instance.skin = pose.skin;
-			if ( !meshEligible( instance, pose.surfaceSelection, pose.phase ) )
-				return false;
 		}
-		return true;
+		return std::all_of( view.posedModels.begin(), view.posedModels.end(),
+		    [&]( const WorldView::PosedModel &pose )
+		    {
+			    return meshEligible( pose.mesh, pose.skin, pose.surfaceSelection, pose.phase );
+		    } );
 	};
 	const WorldView *first = lookup( tags.front() );
 	if ( !first || !eligible( *first ) )

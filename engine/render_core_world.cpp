@@ -13,6 +13,7 @@
 #include "gl_rmain.h"
 #include "host.h"
 #include "render_core_host.h"
+#include "render/composition/render_core_world.h"
 #include "staticpropmgr.h"
 #include "tier0/dbg.h"
 #include "tier1/convar.h"
@@ -123,17 +124,10 @@ void RenderCoreWorld_LevelInit()
 		boxes.insert( boxes.end(), box, box + 6 );
 		codes.push_back( leaf );
 	}
-	for ( int prop = 0; prop < StaticPropMgr_CorePropCount(); ++prop )
-	{
-		Vector mins, maxs;
-		StaticPropMgr_CorePropBounds( prop, mins, maxs );
-		const float box[6] = { mins.x, mins.y, mins.z, maxs.x, maxs.y, maxs.z };
-		boxes.insert( boxes.end(), box, box + 6 );
-		codes.push_back( -prop - 1 );
-	}
-	if ( !codes.empty() &&
-	     !RenderCoreHost_SetWorldInstances( boxes.data(), codes.data(), int( codes.size() ) ) )
-		Warning( "Render core: the world scene refused its leaves and props.\n" );
+	// The static props are the core's own scene, committed with its models
+	// (IRenderCoreWorld::SetStaticProps).
+	if ( IRenderCoreWorld *world = RenderCoreHost_World(); world && !codes.empty() )
+		world->SetWorldLeaves( boxes.data(), codes.data(), unsigned( codes.size() ) );
 }
 
 bool RenderCoreWorld_Capturing()
@@ -246,20 +240,18 @@ void WriteViewRecord( const ViewRecord &view )
 			visibleProp[prop] = 1;
 	}
 
-	// The core's culling, with the view's planes and the legacy visibility.
-	std::vector<int> drawn( MAX( 1, RenderCoreHost_WorldInstanceCount() ) );
-	int drawnCount = 0, frustumCulled = -1, providerCulled = -1, pooledEqual = -1;
-	const bool live = RenderCoreHost_CullWorld( view.planes, FRUSTUM_NUMPLANES, visibleLeaf.data(),
-	    brush->numleafs, visibleProp.data(), propCount, drawn.data(), &drawnCount, &frustumCulled,
-	    &providerCulled, &pooledEqual );
-	std::vector<int> coreLeaves, coreProps;
-	for ( int i = 0; i < drawnCount; ++i )
-	{
-		if ( drawn[i] >= 0 )
-			coreLeaves.push_back( drawn[i] );
-		else
-			coreProps.push_back( -drawn[i] - 1 );
-	}
+	// The core's culling, with the view's planes and the legacy visibility
+	// (the leaves and props of its scenes: what DrawView draws them from).
+	std::vector<int> coreLeaves( MAX( 1, brush->numleafs ) ), coreProps( MAX( 1, propCount ) );
+	IRenderCoreWorld::ViewCull cull{ view.planes, visibleLeaf.data(), unsigned( brush->numleafs ),
+	    visibleProp.data(), unsigned( propCount ), coreLeaves.data(), coreProps.data() };
+	IRenderCoreWorld *world = RenderCoreHost_World();
+	const bool live = world && world->CullView( cull );
+	coreLeaves.resize( cull.drawnLeafCount );
+	coreProps.resize( cull.drawnPropCount );
+	const int frustumCulled = live ? int( cull.frustumCulled ) : -1;
+	const int providerCulled = live ? int( cull.providerCulled ) : -1;
+	const int pooledEqual = live ? cull.pooledEqual : -1;
 	std::sort( coreLeaves.begin(), coreLeaves.end() );
 	std::sort( coreProps.begin(), coreProps.end() );
 	auto difference = []( const std::vector<int> &a, const std::vector<int> &b )
@@ -291,7 +283,7 @@ void WriteViewRecord( const ViewRecord &view )
 	    capture.tag.Get(), capture.views++, view.origin[0], view.origin[1], view.origin[2],
 	    live ? "true" : "false", view.forcedLeaf ? "true" : "false",
 	    view.visOverride ? "true" : "false", view.waterReflection ? "true" : "false",
-	    RenderCoreHost_WorldInstanceCount(), int( legacyLeaves.size() ), int( coreLeaves.size() ),
+	    int( brush->numleafs ) + propCount, int( legacyLeaves.size() ), int( coreLeaves.size() ),
 	    int( legacyProps.size() ), int( coreProps.size() ), frustumCulled, providerCulled,
 	    pooledEqual );
 	AppendList( out, "missing", missing );

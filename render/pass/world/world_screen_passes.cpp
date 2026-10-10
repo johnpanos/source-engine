@@ -157,17 +157,18 @@ bool WorldPass::Batch::RecordScreenPasses()
 				// it draws only the levels already resident: a released level is
 				// uploaded when a view selects it, not by this pass over every
 				// instance (which would keep every level resident forever).
-				for ( std::uint32_t id = 0; id < world->staticInstances.size(); ++id )
+				for ( std::uint32_t id = 0; id < world->PropCount(); ++id )
 				{
-					const auto &instance = world->staticInstances[id];
+					const auto &instance = world->Prop( id );
 					if ( instance.mesh >= world->staticMeshes.size() )
 						continue;
 					const auto &mesh = world->staticMeshes[instance.mesh];
 					for ( std::uint32_t surface = 0; surface < mesh.surfaces.size(); ++surface )
 					{
-						if ( !SurfaceSelected( instance.surfaceSelection, surface ) )
+						if ( !SurfaceSelected( mesh.selection, surface ) )
 							continue;
-						const std::uint32_t material = StaticMaterial( mesh, instance, surface );
+						const std::uint32_t material =
+						    StaticMaterial( mesh, instance.material, surface );
 						if ( material >= claims->size() || !( *claims )[material].draws ||
 						     !world->materials[material].mesh )
 							continue;
@@ -191,8 +192,8 @@ bool WorldPass::Batch::RecordScreenPasses()
 							listsComplete = false;
 							continue;
 						}
-						prepassModels.push_back(
-						    { 0, false, id, instance.mesh, lod, surface, material } );
+						prepassModels.push_back( { 0, false, id, std::uint32_t( instance.mesh ),
+						    lod, surface, material } );
 					}
 				}
 			}

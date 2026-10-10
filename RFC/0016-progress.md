@@ -13893,3 +13893,89 @@ none of fixes (a)–(c) addresses. `615223388` has no such frames (p99.9
 37.6 ms at 1080p). Pipeline creation never landed in the playback window
 (one 83 ms burst of `SurfaceProgram` pipeline creation came after it, during
 the quit), and no allocator or GC-like stall shows.
+
+## R89: world and props move onto the scene (2026-10-10)
+
+The scene-owned slice of R89 lands: static props and BSP leaves become
+`render.scene` content that the composition commits and culls, and the engine
+stops owning a scene. Adapters stayed frozen (user direction 2026-10-10); no
+adapter code changed.
+
+What landed:
+
+- Static props are `render.scene` `MeshInstance`s committed through
+  `CoreWorld::SetStaticProps` (snapshot `m_Props`); `WorldData::staticInstances`
+  is deleted and `WorldData::props` holds the snapshot (`PropCount`, `Prop`,
+  and `AddStaticProp` for hand-built worlds). `StaticMesh::selection` carries
+  the host's level-0 selection (the composition sets it from
+  `SelectedSurfaces(0)`); a wholly blank model carries the explicit empty
+  selection that arithmetic returns, not a null one.
+- BSP leaves arrive through the new `IRenderCoreWorld::SetWorldLeaves` and are
+  culled by `CullView(ViewCull&)`; `CoreWorld::CullView` culls leaves and props
+  against the host verdict and reports `frustumCulled`/`providerCulled`/
+  `pooledEqual`; `DrawView` builds `view.props.list` scene draw lists in host
+  submission order. Cull jobs run on the host `TaskExecutor` (`BindCullJobs`).
+- The scene stores instances in a persistent `InstanceTable`: 256-slot blocks
+  behind `shared_ptr`s, commit copies only touched blocks, an id→slot map plus
+  free list, provider filtering by `set_intersection`. A snapshot shares its
+  blocks with the table, so a held snapshot outlives its scene (test C5).
+- The engine no longer owns a scene: `SceneFactory` is gone from
+  `RenderCoreBinding`, and `RenderCoreHost_SetWorldInstances`, `CullWorld`,
+  `WorldInstanceCount` and `LevelShutdown` are deleted. The engine passes plain
+  C structs across the boundary (anti-corruption); `StaticPropMgr_CorePropModelBounds`
+  supplies model-space render bounds.
+- The lab suites moved with the API: `model-selection` builds props and
+  per-view prop selections; `SelectionWorld` sets the level-0 selection and the
+  wholly-blank world sets the explicit empty selection, mirroring the
+  composition. The scene test's C5 clauses (two scenes independent, held
+  snapshot outlives its scene) — dropped by the rewrite — are restored, and the
+  `render.scene.v1` floor is honestly 20.
+
+Decisions: `render-scene-bypass` fell 344→325 (recorded with
+`structure --write`). Five CAP013 ceilings were raised with the reviewed reason
+"R89: scene-owned world/props/leaves move into the composition (RFC 0016 K5)"
+(user approval 2026-10-10): render.composition 7116→7247, render.core-tests
+25047→25162, render.pass.world 6425→6428, render.scene 417→420, render.lab
+24510→24511.
+
+Evidence: `quality-results/conformance.20261010T193725Z.json` —
+render.scene.v1 20/20, render.scene.publication 6/6, render.composition 64,
+render.world.null 159, render.lab.model-selection 37, all pass;
+render.view-oracles.comparator 434
+(`conformance.20261010T194229Z.json`); `structure --verify` 0 errors;
+`stylelint --changed` 0 failures; `./kiln build
+portal-linux-native-vulkan --flavor dev` green. Lab trees: `build-rc-lab` and
+`build-model-eligibility-lab` (the model-selection provider), both
+`--render-core-vulkan=on` with the KTX pin roots.
+
+The view-oracle workload moved to the core renderer
+(`render-view-oracles-v1.json`), and `render.scene.culling` then hit a
+pre-existing core-path boot crash: `CShaderDeviceEmpty::CreateVertexBuffer`
+shares one dynamic mesh across formats, and `CEmptyMesh::EnsureVertices`
+allocated the bone arrays only on its growth path, so a mesh sized by a plain
+caller and later given a skinned format took the early return with
+`m_pBoneWeights` NULL and `Lock` memset it (SIGSEGV at frame ~1201 of the
+Portal boot). It reproduced identically at clean HEAD `1ed6d4953` in a
+baseline worktree (`render.scene.culling` fails `portal_testchmb_a_00.boots`,
+`quality-results/conformance.20261010T200720Z.json` there), so the crash
+predates this slice. The fix extracts `CEmptyMesh::EnsureBoneStorage` and
+calls it from both paths, so the bone arrays catch up when the shared mesh
+gains a skinned format late. `render.scene.culling` then passes 136 checks
+(`conformance.20261010T202440Z.json`), reporting per-view
+`frustumCulled`/`providerCulled` and prop counts where the crash had produced
+no views at all. The boot pair is the oracle: `CEmptyMesh` is file-local to
+`shaderapicore.cpp` (the legacy-provider test links `shaderapiempty`, which
+has no bone storage), so the suite's HEAD-fail/fix-pass pair is the negative
+control. CAP013 `materialsystem/shaderapicore/` was raised 5916→5922 with the
+reviewed reason "R89: skinned models on the core path — CEmptyMesh bone
+arrays must grow when the shared mesh gains a skinned format late (boot crash
+fix)" (user approval 2026-10-10).
+
+Pre-existing, reported separately: `render.lab.posed-model` fails
+`posed-model.refract-refuses-missing-scene-color` and
+`posed-model.cable-refuses-missing-required-normal-texture`. Both reproduce
+identically at clean HEAD `1ed6d4953` in a separate worktree
+(`quality-results/conformance.20261010T192058Z.json` there), so they predate
+this slice; they are render/material claim negative controls this slice does
+not touch. The `host_saverestore.cpp` memsets in the same working tree belong
+to the separate save-determinism thread and are not claimed here.

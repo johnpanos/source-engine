@@ -326,17 +326,16 @@ inline std::string PageName( int handle )
 	return "lightmap-page:" + std::to_string( handle );
 }
 
-inline std::uint32_t StaticMaterial( const WorldData::StaticMesh &mesh,
-    const WorldData::StaticInstance &instance, std::uint32_t surface )
+inline std::uint32_t StaticMaterial(
+    const WorldData::StaticMesh &mesh, std::uint64_t skin, std::uint32_t surface )
 {
 	if ( surface >= mesh.surfaces.size() )
 		return ~0u;
 	if ( mesh.skinMaterials.empty() )
-		return instance.skin == 0 ? mesh.surfaces[surface].material : ~0u;
-	if ( instance.skin >= mesh.skinMaterials.size() ||
-	     surface >= mesh.skinMaterials[instance.skin].size() )
+		return skin == 0 ? mesh.surfaces[surface].material : ~0u;
+	if ( skin >= mesh.skinMaterials.size() || surface >= mesh.skinMaterials[skin].size() )
 		return ~0u;
-	return mesh.skinMaterials[instance.skin][surface];
+	return mesh.skinMaterials[skin][surface];
 }
 
 // Model geometry residency (RFC 0016). A level no view has selected for this

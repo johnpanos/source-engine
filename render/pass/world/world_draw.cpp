@@ -59,6 +59,24 @@ void WorldPass::Batch::submitSurfaceFootprints( const WorldSurface &surface,
 	     surface.firstIndex > indices.size() ||
 	     surface.indexCount > indices.size() - surface.firstIndex )
 		return;
+	// One clip-space point onto the viewport, grown into the footprint's
+	// screen box; false for a point behind the eye or not finite.
+	const auto projectCorner =
+	    [&]( const float clip[4], float &minX, float &minY, float &maxX, float &maxY )
+	{
+		if ( !std::isfinite( clip[0] ) || !std::isfinite( clip[1] ) || !std::isfinite( clip[3] ) ||
+		     clip[3] <= 1.0e-6f )
+			return false;
+		const float x = std::clamp(
+		    ( clip[0] / clip[3] * 0.5f + 0.5f ) * view.viewport.width, 0.0f, view.viewport.width );
+		const float y = std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) * view.viewport.height,
+		    0.0f, view.viewport.height );
+		minX = std::min( minX, x );
+		minY = std::min( minY, y );
+		maxX = std::max( maxX, x );
+		maxY = std::max( maxY, y );
+		return true;
+	};
 	// The box's eight corners bound every vertex's projection while all of
 	// them are in front of the eye; a corner behind it falls back to the
 	// surface's own vertices, which may still all be in front.
@@ -92,22 +110,11 @@ void WorldPass::Batch::submitSurfaceFootprints( const WorldSurface &surface,
 				for ( int row = 0; row < 4; ++row )
 					clip[row] = toClip[row * 4 + 0] * p[0] + toClip[row * 4 + 1] * p[1] +
 					            toClip[row * 4 + 2] * p[2] + toClip[row * 4 + 3];
-				if ( !std::isfinite( clip[0] ) || !std::isfinite( clip[1] ) ||
-				     !std::isfinite( clip[3] ) || clip[3] <= 1.0e-6f )
+				if ( !projectCorner( clip, minX, minY, maxX, maxY ) )
 				{
 					front = false;
 					break;
 				}
-				const float x =
-				    std::clamp( ( clip[0] / clip[3] * 0.5f + 0.5f ) * view.viewport.width, 0.0f,
-				        view.viewport.width );
-				const float y =
-				    std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) * view.viewport.height, 0.0f,
-				        view.viewport.height );
-				minX = std::min( minX, x );
-				minY = std::min( minY, y );
-				maxX = std::max( maxX, x );
-				maxY = std::max( maxY, y );
 			}
 			if ( !front )
 			{
@@ -138,22 +145,11 @@ void WorldPass::Batch::submitSurfaceFootprints( const WorldSurface &surface,
 						            view.toClip[row * 4 + 1] * position[1] +
 						            view.toClip[row * 4 + 2] * position[2] +
 						            view.toClip[row * 4 + 3];
-					if ( !std::isfinite( clip[0] ) || !std::isfinite( clip[1] ) ||
-					     !std::isfinite( clip[3] ) || clip[3] <= 1.0e-6f )
+					if ( !projectCorner( clip, minX, minY, maxX, maxY ) )
 					{
 						valid = false;
 						break;
 					}
-					const float x =
-					    std::clamp( ( clip[0] / clip[3] * 0.5f + 0.5f ) * view.viewport.width, 0.0f,
-					        view.viewport.width );
-					const float y =
-					    std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) * view.viewport.height,
-					        0.0f, view.viewport.height );
-					minX = std::min( minX, x );
-					minY = std::min( minY, y );
-					maxX = std::max( maxX, x );
-					maxY = std::max( maxY, y );
 				}
 				if ( valid && maxX > minX && maxY > minY && compact->maxU >= compact->minU &&
 				     compact->maxV >= compact->minV )
@@ -199,22 +195,11 @@ void WorldPass::Batch::submitSurfaceFootprints( const WorldSurface &surface,
 				for ( int row = 0; row < 4; ++row )
 					for ( int col = 0; col < 4; ++col )
 						clip[row] += view.toClip[row * 4 + col] * position[col];
-				if ( !std::isfinite( clip[0] ) || !std::isfinite( clip[1] ) ||
-				     !std::isfinite( clip[3] ) || clip[3] <= 1.0e-6f )
+				if ( !projectCorner( clip, minX, minY, maxX, maxY ) )
 				{
 					valid = false;
 					break;
 				}
-				const float x =
-				    std::clamp( ( clip[0] / clip[3] * 0.5f + 0.5f ) * view.viewport.width, 0.0f,
-				        view.viewport.width );
-				const float y =
-				    std::clamp( ( 0.5f - clip[1] / clip[3] * 0.5f ) * view.viewport.height, 0.0f,
-				        view.viewport.height );
-				minX = std::min( minX, x );
-				minY = std::min( minY, y );
-				maxX = std::max( maxX, x );
-				maxY = std::max( maxY, y );
 				minU = std::min( minU, vertex.uv[0] );
 				minV = std::min( minV, vertex.uv[1] );
 				maxU = std::max( maxU, vertex.uv[0] );
@@ -383,11 +368,10 @@ void WorldPass::Batch::drawSurfaces( const std::vector<std::uint32_t> &list,
 // a pose, whose vertices are in world space) and object-to-clip.
 material::FamilyDrawConstants WorldPass::Batch::modelDrawConstants( const StaticDraw &draw )
 {
-	const WorldData::StaticInstance *instance =
-	    draw.posed ? nullptr : &world->staticInstances[draw.instance];
+	const scene::MeshInstanceDesc *instance = draw.posed ? nullptr : &world->Prop( draw.instance );
 	material::FamilyDrawConstants modelConstants;
 	if ( instance )
-		std::copy( instance->world, instance->world + 16, modelConstants.world );
+		std::copy_n( &instance->world.rows[0].x, 16, modelConstants.world );
 	else
 	{
 		for ( int i = 0; i < 4; ++i )
@@ -447,8 +431,7 @@ void WorldPass::Batch::bindModel(
 // A model draw's texture mip feedback (the per-surface footprint).
 void WorldPass::Batch::modelFeedback( const StaticDraw &draw )
 {
-	const WorldData::StaticInstance *instance =
-	    draw.posed ? nullptr : &world->staticInstances[draw.instance];
+	const scene::MeshInstanceDesc *instance = draw.posed ? nullptr : &world->Prop( draw.instance );
 	const WorldData::StaticMesh &mesh = world->staticMeshes[draw.mesh];
 	const WorldSurface &surface = mesh.surfaces[draw.surface];
 	WorldSurface feedbackSurface = surface;
@@ -479,7 +462,7 @@ void WorldPass::Batch::modelFeedback( const StaticDraw &draw )
 				box = &( *modelFootprintBounds )[draw.mesh][draw.surface];
 		}
 		submitSurfaceFootprints( feedbackSurface, r.modelMaterials, vertices, *level.indices,
-		    extents, instance ? instance->world : nullptr, nullptr, box );
+		    extents, instance ? &instance->world.rows[0].x : nullptr, nullptr, box );
 	}
 }
 

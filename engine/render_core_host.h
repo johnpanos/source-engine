@@ -79,25 +79,7 @@ void RenderCoreHost_MarkFrameEnd();
 void RenderCoreHost_MarkViewBegin();
 void RenderCoreHost_MarkViewEnd();
 
-// R_LevelInit and R_LevelShutdown (gl_rmisc.cpp): the world's scene lives
-// from one to the other.
+// R_LevelInit (gl_rmisc.cpp): registers the map's leaves with the core's scene.
 void RenderCoreHost_LevelInit();
-void RenderCoreHost_LevelShutdown();
-
-// RFC 0016 K5, for render_core_world.cpp: the world scene's instances
-// (nCount boxes as min x y z, max x y z, each with its code: a BSP leaf's
-// index, or -(p + 1) for static prop p), and the core's culling of them for
-// one view: pPlanes holds nPlanes planes as normal x y z and dist (inside
-// when normal . p >= dist); pVisibleLeaf and pVisibleProp flag what the
-// legacy view found visible, the view's visibility provider (the BSP
-// traversal for leaves; the client's prop list for props). Writes the drawn
-// codes (at most the instance count) and the draw list's culled counts, and
-// whether the pooled builder's list equals it item for item (1 or 0; -1
-// without a pooled builder); false without a world scene.
-bool RenderCoreHost_SetWorldInstances( const float *pBoxes, const int *pCodes, int nCount );
-bool RenderCoreHost_CullWorld( const float *pPlanes, int nPlanes, const unsigned char *pVisibleLeaf,
-    int nLeafCount, const unsigned char *pVisibleProp, int nPropCount, int *pDrawnCodes,
-    int *pDrawnCount, int *pFrustumCulled, int *pProviderCulled, int *pPooledEqual );
-int RenderCoreHost_WorldInstanceCount();
 
 #endif // RENDER_CORE_HOST_H

@@ -404,6 +404,64 @@ static bool ReadStaticModelFile( const std::string &path, std::string &bytes )
 	return true;
 }
 
+// The render box the host culls prop `index` with, in model space: the core's
+// prop scene bounds the instance by it, so it culls exactly as the host does.
+static void FillPropBounds( int index, RenderCoreStaticProp &prop )
+{
+	Vector mins, maxs;
+	StaticPropMgr_CorePropModelBounds( index, mins, maxs );
+	prop.hasBounds = true;
+	for ( int axis = 0; axis < 3; ++axis )
+	{
+		prop.boundsMin[axis] = mins[axis];
+		prop.boundsMax[axis] = maxs[axis];
+	}
+}
+
+// Every map's static props are scene instances of the core (RFC 0016 R89),
+// whether or not it draws their models (a retail BSP's props are the legacy
+// stream's: no models are registered, so no instance names a mesh). The
+// props' model is the registered model they use, when there is one.
+// Returns how many props the core may draw (a skin was selected).
+static int RegisterStaticProps(
+    IRenderCoreWorld *pWorld, const auto *models, unsigned int modelCount, int staticModelCount )
+{
+	const int propCount = StaticPropMgr_CorePropCount();
+	std::vector<RenderCoreStaticProp> props( propCount );
+	for ( int i = 0; i < propCount; ++i )
+	{
+		const model_t *model = NULL;
+		unsigned char alpha = 0;
+		float modulation[3] = {};
+		StaticPropMgr_CorePropInfo(
+		    i, &model, props[i].world, &props[i].skin, &alpha, modulation, &props[i].castsShadow );
+		FillPropBounds( i, props[i] );
+		studiohdr_t *header = model && modelCount ? modelinfo->GetStudiomodel( model ) : NULL;
+		if ( header && ( header->flags & STUDIOHDR_FLAGS_DO_NOT_CAST_SHADOWS ) )
+			props[i].castsShadow = false;
+		props[i].model = ~0u;
+		for ( int m = 0; m < staticModelCount; ++m )
+		{
+			if ( StaticPropMgr_CoreModel( m ) == model )
+			{
+				props[i].model = unsigned( m );
+				break;
+			}
+		}
+		if ( !modelCount || alpha != 255 || modulation[0] != 1.0f || modulation[1] != 1.0f ||
+		     modulation[2] != 1.0f || !model || modelinfo->IsTranslucent( model ) ||
+		     modelinfo->ModelHasMaterialProxy( model ) )
+			props[i].skin = -1;
+	}
+	pWorld->SetStaticProps( static_cast<const RenderCoreStaticModel *>( models ), modelCount,
+	    props.data(), unsigned( props.size() ) );
+	return int( std::count_if( props.begin(), props.end(),
+	    []( const RenderCoreStaticProp &prop )
+	    {
+		    return prop.skin >= 0;
+	    } ) );
+}
+
 static void LevelInitModels( IRenderCoreWorld *pWorld )
 {
 	struct ModelSource
@@ -565,7 +623,7 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 			++missingMaterials;
 			continue;
 		}
-		RenderCoreStaticModel &out = models[i];
+		auto &out = models[i];
 		out.posed = state.registeredPosed[i];
 		out.name = source.name.c_str();
 		out.mdl = source.mdl.data();
@@ -581,38 +639,11 @@ static void LevelInitModels( IRenderCoreWorld *pWorld )
 	Msg( "r_core_world: Studio model inputs: %d models, missing model %d, mdl %d, vvd %d, "
 	     "vtx %d, materials %d\n",
 	    modelCount, missingModel, missingMdl, missingVvd, missingVtx, missingMaterials );
-	std::vector<RenderCoreStaticProp> props( propCount );
-	for ( int i = 0; i < propCount; ++i )
-	{
-		const model_t *model = NULL;
-		unsigned char alpha = 0;
-		float modulation[3] = {};
-		StaticPropMgr_CorePropInfo(
-		    i, &model, props[i].world, &props[i].skin, &alpha, modulation, &props[i].castsShadow );
-		studiohdr_t *header = model ? modelinfo->GetStudiomodel( model ) : NULL;
-		if ( header && ( header->flags & STUDIOHDR_FLAGS_DO_NOT_CAST_SHADOWS ) )
-			props[i].castsShadow = false;
-		props[i].model = ~0u;
-		for ( int m = 0; m < staticModelCount; ++m )
-		{
-			if ( StaticPropMgr_CoreModel( m ) == model )
-			{
-				props[i].model = unsigned( m );
-				break;
-			}
-		}
-		if ( alpha != 255 || modulation[0] != 1.0f || modulation[1] != 1.0f ||
-		     modulation[2] != 1.0f || !model || modelinfo->IsTranslucent( model ) ||
-		     modelinfo->ModelHasMaterialProxy( model ) )
-			props[i].skin = -1;
-	}
-	pWorld->SetStaticProps(
-	    models.data(), unsigned( models.size() ), props.data(), unsigned( props.size() ) );
+	const int eligible =
+	    RegisterStaticProps( pWorld, models.data(), unsigned( models.size() ), staticModelCount );
 	int claimed = 0;
-	int eligible = 0;
 	for ( int i = 0; i < propCount; ++i )
 	{
-		eligible += props[i].skin >= 0 ? 1 : 0;
 		if ( pWorld->DrawsStaticProp( unsigned( i ) ) )
 			++claimed;
 	}
@@ -1023,6 +1054,7 @@ static void LevelInitWorld()
 	UploadCubemapProbes( pWorld, pBrush );
 	pWorld->SetWorld( vertices.Base(), vertices.Count(), indices.Base(), indices.Count(),
 	    surfaces.Base(), surfaces.Count(), materialDescs.Base(), materialDescs.Count() );
+	RegisterStaticProps( pWorld, static_cast<const void *>( NULL ), 0, 0 );
 
 	// A surface is the core's when the core draws its material.
 	state.takes.SetCount( pBrush->numsurfaces );

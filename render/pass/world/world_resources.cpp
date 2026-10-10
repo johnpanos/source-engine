@@ -224,7 +224,7 @@ bool WorldPass::Batch::PrepareResources()
 		r.resolver->SetSceneColorAvailable( true );
 		r.materials.resize( world->materials.size() );
 	}
-	if ( ( !view.staticInstances.empty() || !view.posedModels.empty() ) && !r.modelResolver )
+	if ( ( !view.props.empty() || !view.posedModels.empty() ) && !r.modelResolver )
 	{
 		auto resolver = material::ProgramResolver::Create( device, target.colorFormat,
 		    target.depthFormat, target.samples, material::VertexLayout::kModel,

@@ -104,14 +104,6 @@ struct RenderCore
 namespace
 {
 
-foundation::Expected<render::scene::DrawList, render::scene::CullStatus> BuildDrawListPooledOnCore(
-    void *context, const render::scene::SceneSnapshot &snapshot,
-    const render::scene::SceneView &view, render::scene::IVisibilityProvider *provider )
-{
-	RenderCore &core = *static_cast<RenderCore *>( context );
-	return render::scene::BuildDrawListPooled( snapshot, view, *core.cullJobs, provider );
-}
-
 const render::device::DeviceProviderDescriptor *FindDevice( std::string_view name )
 {
 	const render::device::DeviceProviderDescriptor *linked[] = {
@@ -323,11 +315,6 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 
 	core->binding.device = core->port;
 	core->binding.renderer = core->renderer.get();
-	core->binding.sceneFactory.create = &render::scene::CreateRenderScene;
-	core->binding.sceneFactory.makeView = &render::scene::MakeView;
-	core->binding.sceneFactory.buildDrawList = &render::scene::BuildDrawList;
-	core->binding.sceneFactory.context = core.get();
-	core->binding.sceneFactory.buildDrawListPooled = &BuildDrawListPooledOnCore;
 	core->binding.stageMarkers = core->frontend->Markers();
 	core->binding.materialBlocks = core->frontend->MaterialBlocks();
 	core->binding.capabilities = core->frontend->Capabilities();
@@ -342,6 +329,7 @@ extern "C" RenderCore *RenderCore_Create( const RenderCoreConfig *config, Render
 	core->binding.corePasses = core->frontend->CorePasses();
 	core->world =
 	    std::make_unique<render::composition::CoreWorld>( *core->frontend, *core->renderer );
+	core->world->BindCullJobs( core->cullJobs.get() );
 	// RFC 0016 K12: the indirect-light producers' GPU work runs on the core,
 	// flushed on the render sequence ahead of each frame the legacy frame
 	// executor runs; only the native Vulkan backend runs its frames there.

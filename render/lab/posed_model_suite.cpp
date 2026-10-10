@@ -562,7 +562,10 @@ std::optional<std::string> RunChecks(
 			view.dynamicDraws.push_back( std::move( draw ) );
 		}
 		else if ( staticModels )
-			view.staticInstances = { 0, 1 };
+		{
+			view.props.Add( 0 );
+			view.props.Add( 1 );
+		}
 		else
 			view.posedModels.push_back( std::move( pose ) );
 		if ( twoLayers )
@@ -792,12 +795,12 @@ std::optional<std::string> RunChecks(
 	    "posed-model.world-batch-preserves-cutout-coverage", cutoutBatch.Stats().lastFailure );
 	cutoutBatch.ReleaseDevice( *device );
 	WorldData staticWorld = MeshWorld();
-	WorldData::StaticInstance frontStatic;
+	float frontWorld[16] = {};
 	for ( int i = 0; i < 4; ++i )
-		frontStatic.world[i * 5] = 1.0f;
-	staticWorld.staticInstances.push_back( frontStatic );
-	frontStatic.world[11] = 0.1f;
-	staticWorld.staticInstances.push_back( frontStatic );
+		frontWorld[i * 5] = 1.0f;
+	staticWorld.AddStaticProp( 0, 0, frontWorld );
+	frontWorld[11] = 0.1f;
+	staticWorld.AddStaticProp( 0, 0, frontWorld );
 	WorldPass staticPass;
 	staticPass.SetWorld( std::move( staticWorld ) );
 	CanvasImage staticControl, staticDepth;
@@ -842,11 +845,10 @@ std::optional<std::string> RunChecks(
 	    std::make_shared<const std::vector<material::SurfaceModelVertex>>( std::move( cutout ) );
 	cutoutWorld.staticMeshes.push_back( cutoutWorld.staticMeshes[0] );
 	cutoutWorld.staticMeshes[1].surfaces[0].material = 1;
-	frontStatic.world[11] = 0.0f;
-	cutoutWorld.staticInstances.push_back( frontStatic );
-	frontStatic.world[11] = 0.1f;
-	frontStatic.mesh = 1;
-	cutoutWorld.staticInstances.push_back( frontStatic );
+	frontWorld[11] = 0.0f;
+	cutoutWorld.AddStaticProp( 0, 0, frontWorld );
+	frontWorld[11] = 0.1f;
+	cutoutWorld.AddStaticProp( 1, 0, frontWorld );
 	WorldPass cutoutPass;
 	cutoutPass.SetWorld( std::move( cutoutWorld ) );
 	CanvasImage cutoutControl, cutoutPrepassed;

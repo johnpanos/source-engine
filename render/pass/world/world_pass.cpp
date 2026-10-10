@@ -282,25 +282,35 @@ void ExpandCards( sprite_card::Frame frame, WorldView::DynamicDraw &draw )
 std::uint32_t WorldPass::QueueView( WorldView view )
 {
 	State &s = *m_State;
-	if ( view.surfaces.empty() && view.staticInstances.empty() && view.posedModels.empty() &&
+	if ( view.surfaces.empty() && view.props.empty() && view.posedModels.empty() &&
 	     view.dynamicDraws.empty() )
 		return 0;
 	std::lock_guard<std::mutex> guard( s.lock );
 	if ( !s.world )
 		return 0;
-	for ( WorldView::StaticInstance &draw : view.staticInstances )
+	if ( !view.props.empty() )
 	{
-		if ( draw.instance >= s.world->staticInstances.size() )
+		// The list indexes the world's props: this snapshot, as it is now.
+		view.props.scene = s.world->props;
+		view.props.selections.resize( view.props.size() );
+	}
+	for ( std::size_t i = 0; i < view.props.size(); ++i )
+	{
+		if ( view.props.Instance( i ) >= s.world->PropCount() )
 		{
 			s.stats.lastRefusal = "a static model names an instance the world does not have";
 			return 0;
 		}
-		const WorldData::StaticInstance &instance = s.world->staticInstances[draw.instance];
-		if ( !draw.surfaceSelection )
-			draw.surfaceSelection = instance.surfaceSelection;
-		if ( instance.mesh >= s.world->staticMeshes.size() ||
-		     !ValidSurfaceSelection(
-		         draw.surfaceSelection, s.world->staticMeshes[instance.mesh].surfaces.size() ) )
+		const auto &instance = s.world->Prop( view.props.Instance( i ) );
+		if ( instance.mesh >= s.world->staticMeshes.size() )
+		{
+			s.stats.lastRefusal = "a static model has an invalid surface selection";
+			return 0;
+		}
+		const WorldData::StaticMesh &mesh = s.world->staticMeshes[instance.mesh];
+		if ( !view.props.selections[i] )
+			view.props.selections[i] = mesh.selection;
+		if ( !ValidSurfaceSelection( view.props.selections[i], mesh.surfaces.size() ) )
 		{
 			s.stats.lastRefusal = "a static model has an invalid surface selection";
 			return 0;
@@ -381,15 +391,12 @@ std::uint32_t WorldPass::QueueView( WorldView view )
 					s.levelSource->PrefetchLevel( meshId, lod );
 			}
 		};
-		for ( const WorldView::StaticInstance &draw : view.staticInstances )
-		{
-			const WorldData::StaticInstance &inst = s.world->staticInstances[draw.instance];
-			prefetchMesh( inst.mesh );
-		}
+		for ( std::size_t i = 0; i < view.props.size(); ++i )
+			prefetchMesh( std::uint32_t( s.world->Prop( view.props.Instance( i ) ).mesh ) );
 		for ( const WorldView::PosedModel &pose : view.posedModels )
 			prefetchMesh( pose.mesh );
 	}
-	s.stats.staticInstancesQueued += view.staticInstances.size();
+	s.stats.staticInstancesQueued += view.props.size();
 	s.stats.posedModelsQueued += view.posedModels.size();
 	const std::uint32_t serial = s.nextSerial;
 	s.nextSerial = ( s.nextSerial + 1 ) & kWorldSerialMask;

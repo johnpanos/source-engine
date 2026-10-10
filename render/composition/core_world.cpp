@@ -154,19 +154,107 @@ bool CoreWorld::PoseModel(
 	return true;
 }
 
+namespace
+{
+
+// A scene's draw list over `view`, less the instances `keep` rejects (the
+// host's verdict: a visibility provider only removes). With a pool, the same
+// cull on it must give the same list: pooledEqual is 1 when it does, else 0.
+scene::DrawList CullWithVerdict( const scene::SceneSnapshot &snapshot, const scene::SceneView &view,
+    const std::vector<unsigned char> &keep, jobsystem::IGraphExecutor *jobs = nullptr,
+    int *pooledEqual = nullptr )
+{
+	scene::DrawList list = scene::BuildDrawList( snapshot, view );
+	if ( jobs && pooledEqual )
+	{
+		auto pooled = scene::BuildDrawListPooled( snapshot, view, *jobs );
+		*pooledEqual = pooled.HasValue() && pooled.Value().frustumCulled == list.frustumCulled &&
+		               std::ranges::equal( pooled.Value().items, list.items,
+		                   []( const scene::DrawItem &a, const scene::DrawItem &b )
+		                   {
+			                   return a.instance == b.instance && a.depth == b.depth;
+		                   } );
+	}
+	const std::size_t before = list.items.size();
+	std::erase_if( list.items,
+	    [&]( const scene::DrawItem &item )
+	    {
+		    return !keep[item.instance];
+	    } );
+	list.providerCulled = std::uint32_t( before - list.items.size() );
+	return list;
+}
+
+} // namespace
+
+void CoreWorld::SetWorldLeaves( const float *boxes, const int *leaves, unsigned int count )
+{
+	auto leafScene = scene::CreateRenderScene();
+	scene::ChangeSet placed;
+	m_LeafOf.assign( leaves, leaves + count );
+	for ( unsigned int i = 0; i < count; ++i )
+	{
+		scene::MeshInstanceDesc desc;
+		std::copy_n( boxes + i * 6, 6, &desc.localBounds.min.x );
+		placed.Add( leafScene->Reserve(), desc );
+	}
+	m_Leaves = count && leafScene->Commit( placed ) ? leafScene->Snapshot() : nullptr;
+}
+
+bool CoreWorld::CullView( ViewCull &view ) const
+{
+	if ( !m_Leaves )
+		return false;
+	render::math::Frustum frustum;
+	for ( int i = 0; i < 6; ++i )
+		frustum.planes[i] = {
+		    { view.planes[i * 4], view.planes[i * 4 + 1], view.planes[i * 4 + 2] },
+		    -view.planes[i * 4 + 3] };
+	scene::ViewDesc desc;
+	desc.viewBit = 32; // every instance
+	desc.frustum = frustum;
+	const scene::SceneView sceneView = scene::MakeView( desc );
+	// The leaves, then the props, each against the host's verdict for them.
+	std::vector<unsigned char> keep( m_Leaves->instances.size() );
+	for ( std::size_t i = 0; i < keep.size(); ++i )
+		keep[i] = m_LeafOf[i] < int( view.leafCount ) && view.visibleLeaf[m_LeafOf[i]];
+	view.pooledEqual = -1;
+	const scene::DrawList leaves =
+	    CullWithVerdict( *m_Leaves, sceneView, keep, m_CullJobs, &view.pooledEqual );
+	for ( const scene::DrawItem &item : leaves.items )
+		view.drawnLeaves[view.drawnLeafCount++] = m_LeafOf[item.instance];
+	view.frustumCulled = leaves.frustumCulled;
+	view.providerCulled = leaves.providerCulled;
+	if ( !m_Props )
+		return true;
+	keep.assign( PropCount(), 0 );
+	std::copy_n(
+	    view.visibleProp, std::min<std::size_t>( keep.size(), view.propCount ), keep.begin() );
+	int propsEqual = 1;
+	const scene::DrawList props =
+	    CullWithVerdict( *m_Props, sceneView, keep, m_CullJobs, &propsEqual );
+	for ( const scene::DrawItem &item : props.items )
+		view.drawnProps[view.drawnPropCount++] = int( item.instance );
+	view.frustumCulled += props.frustumCulled;
+	view.providerCulled += props.providerCulled;
+	view.pooledEqual = m_CullJobs ? view.pooledEqual && propsEqual : -1;
+	return true;
+}
+
 bool CoreWorld::DrawsStaticProp( unsigned int prop, unsigned int lod ) const
 {
-	if ( !m_StageSet || prop >= m_StaticInstances.size() )
+	if ( !m_StageSet || prop >= PropCount() )
 		return false;
-	const pass::world::WorldData::StaticInstance &instance = m_StaticInstances[prop];
-	if ( instance.mesh >= m_ModelPoseSources.size() )
+	const scene::MeshInstance &placed = m_Props->instances[prop];
+	const std::uint32_t mesh = std::uint32_t( placed.desc.mesh );
+	if ( mesh >= m_ModelPoseSources.size() )
 		return false;
-	const ModelPoseSource &model = m_ModelPoseSources[instance.mesh];
+	const ModelPoseSource &model = m_ModelPoseSources[mesh];
 	if ( !model.parsed || lod >= model.lodCount )
 		return false;
 	const auto selected = model.SelectedSurfaces( 0, lod );
 	return m_Pass.DrawsPosedModel(
-	    instance.mesh, instance.skin, RenderCoreDrawPhase::kAll, selected );
+	    mesh, std::uint32_t( placed.desc.material ), RenderCoreDrawPhase::kAll, selected );
 }
 
 bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
@@ -191,16 +279,39 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 		view.surfaces.assign( surfaces, surfaces + count );
 	if ( staticPropCount )
 	{
-		view.staticInstances.reserve( staticPropCount );
+		// The props the host drew for this view are its visibility verdict;
+		// the scene culls them with the view's frustum and the draw list is
+		// what the pass draws, in the host's submission order.
+		std::vector<unsigned char> allowed( PropCount(), 0 );
+		std::vector<std::uint32_t> order( PropCount(), 0 );
+		std::vector<std::uint32_t> levels( PropCount(), 0 );
 		for ( unsigned int i = 0; i < staticPropCount; ++i )
 		{
-			const pass::world::WorldData::StaticInstance &instance =
-			    m_StaticInstances[staticProps[i].prop];
-			pass::world::WorldView::StaticInstance captured( staticProps[i].prop );
-			captured.surfaceSelection =
-			    m_ModelPoseSources[instance.mesh].SelectedSurfaces( 0, staticProps[i].lod );
-			view.staticInstances.push_back( std::move( captured ) );
+			const unsigned int prop = staticProps[i].prop;
+			allowed[prop] = 1;
+			order[prop] = i;
+			levels[prop] = staticProps[i].lod;
 		}
+		render::math::float4x4 rowClip;
+		std::copy_n( worldToClip, 16, &rowClip.rows[0].x );
+		scene::ViewDesc sceneDesc;
+		sceneDesc.viewBit = 32;
+		sceneDesc.frustum = render::math::ExtractFrustum( render::math::Transpose( rowClip ) );
+		view.props.scene = m_Props;
+		view.props.list = CullWithVerdict( *m_Props, scene::MakeView( sceneDesc ), allowed );
+		std::stable_sort( view.props.list.items.begin(), view.props.list.items.end(),
+		    [&]( const scene::DrawItem &a, const scene::DrawItem &b )
+		    {
+			    return order[a.instance] < order[b.instance];
+		    } );
+		for ( const scene::DrawItem &item : view.props.list.items )
+		{
+			const std::uint32_t mesh = std::uint32_t( m_Props->instances[item.instance].desc.mesh );
+			view.props.selections.push_back(
+			    m_ModelPoseSources[mesh].SelectedSurfaces( 0, levels[item.instance] ) );
+		}
+		if ( view.props.empty() && !count && !posedModelCount )
+			return true; // every prop is outside the view: nothing to draw
 	}
 	for ( unsigned int i = 0; i < posedModelCount; ++i )
 	{
@@ -283,7 +394,7 @@ bool CoreWorld::DrawView( const unsigned int *surfaces, unsigned int count,
 	// frame builds one shadow atlas and one ambient-occlusion pass rather than
 	// one per view. A frame whose world view has not recorded yet, and a view
 	// with its own surfaces or static instances, keep their own lighting.
-	view.drawsWorldGeometry = !view.surfaces.empty() || !view.staticInstances.empty();
+	view.drawsWorldGeometry = !view.surfaces.empty() || !view.props.empty();
 	// A stage view's lights are clustered and its shadows planned when its
 	// slot records (the render sequence), from what the frame holds now.
 	std::shared_ptr<PendingView> pending;

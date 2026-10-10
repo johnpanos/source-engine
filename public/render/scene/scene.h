@@ -59,24 +59,6 @@ public:
 	virtual std::uint64_t Revision() const = 0;
 };
 
-// How roots and the engine create scenes (RFC 0016 A.7): a plain factory, so
-// the engine links no render module.
-struct SceneFactory
-{
-	std::unique_ptr<IRenderScene> ( *create )() = nullptr;
-	// MakeView and BuildDrawList (view.h, draw_list.h), for hosts that link
-	// no render module and cull their own scenes (the engine's world scene).
-	SceneView ( *makeView )( const ViewDesc &desc ) = nullptr;
-	DrawList ( *buildDrawList )( const SceneSnapshot &snapshot, const SceneView &view,
-	    IVisibilityProvider *provider ) = nullptr;
-	// BuildDrawListPooled on the owner's executor (context, the owner's
-	// state); nullptr when the owner has none.
-	void *context = nullptr;
-	foundation::Expected<DrawList, CullStatus> ( *buildDrawListPooled )( void *context,
-	    const SceneSnapshot &snapshot, const SceneView &view,
-	    IVisibilityProvider *provider ) = nullptr;
-};
-
 std::unique_ptr<IRenderScene> CreateRenderScene();
 
 } // namespace render::scene

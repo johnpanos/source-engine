@@ -314,7 +314,6 @@ void R_LevelInit( void )
 void R_LevelShutdown()
 {
 	RenderCoreWorldDraw_LevelShutdown();
-	RenderCoreHost_LevelShutdown();
 
 	R_PaintShutdown();
 	R_Surface_LevelShutdown();

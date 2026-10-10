@@ -416,6 +416,12 @@ public:
 		modulation[2] = prop.m_DiffuseModulation.z;
 		*castsShadow = ( prop.m_Flags & STATIC_PROP_NO_SHADOW ) == 0;
 	}
+	// The model-space render bounds the world render box is made from.
+	void CorePropModelBounds( int nProp, Vector &mins, Vector &maxs ) const
+	{
+		mins = m_StaticProps[nProp].m_RenderBBoxMin;
+		maxs = m_StaticProps[nProp].m_RenderBBoxMax;
+	}
 	void CorePropBounds( int nProp, Vector &mins, Vector &maxs ) const
 	{
 		mins = m_StaticProps[nProp].m_WorldRenderBBoxMin;
@@ -2419,6 +2425,11 @@ static ConCommand prop_crosshair( "prop_crosshair", Cmd_PropCrosshair_f, "Shows 
 int StaticPropMgr_CorePropCount()
 {
 	return s_StaticPropMgr.CorePropCount();
+}
+
+void StaticPropMgr_CorePropModelBounds( int nProp, Vector &mins, Vector &maxs )
+{
+	s_StaticPropMgr.CorePropModelBounds( nProp, mins, maxs );
 }
 
 void StaticPropMgr_CorePropBounds( int nProp, Vector &mins, Vector &maxs )

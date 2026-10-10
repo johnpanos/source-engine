@@ -367,8 +367,8 @@ int main()
 	if ( !checks.That( core && result.status == RENDER_CORE_OK, "P1.the-null-core-composes" ) )
 		return checks.Report();
 	const RenderCoreBinding *binding = RenderCore_GetBinding( core );
-	checks.That( binding && binding->device && binding->renderer && binding->sceneFactory.create &&
-	                 binding->stageMarkers && std::strcmp( binding->deviceName, "null" ) == 0,
+	checks.That( binding && binding->device && binding->renderer && binding->stageMarkers &&
+	                 std::strcmp( binding->deviceName, "null" ) == 0,
 	    "P1.the-binding-is-complete" );
 	if ( IRenderMaterialBlocks *blocks = binding ? binding->materialBlocks : nullptr )
 	{
@@ -471,9 +471,6 @@ int main()
 	checks.That( g_Slots.tags.empty(), "cost.disabled-frame-adds-no-slots" );
 	(void)renderer->EndFrame();
 
-	auto scene = binding->sceneFactory.create();
-	checks.That( scene && scene->Revision() == 0, "P1.the-scene-factory-makes-scenes" );
-	scene.reset();
 	RenderCore_Destroy( core );
 	RenderCore_Destroy( nullptr );
 	checks.That( true, "P1.destroy-tears-down" );

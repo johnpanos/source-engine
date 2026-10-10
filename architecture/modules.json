@@ -960,6 +960,7 @@
           "render.resources",
           "render.frame",
           "render.culling",
+          "render.scene",
           "render.shader-library",
           "render.contracts"
         ]

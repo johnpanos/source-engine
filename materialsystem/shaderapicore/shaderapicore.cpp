@@ -166,6 +166,8 @@ private:
 	// (static meshes are filled once; doubling wasted linear memory).
 	bool EnsureVertices( int count, bool exact = false );
 	bool EnsureIndices( int count, bool exact = false );
+	// Bone arrays for a skinned format, sized with the vertices; see EnsureVertices.
+	bool EnsureBoneStorage( int capacity );
 	// A dynamic mesh's storage is CPU memory: every draw copies it into the
 	// frame's transient ring, so it never needs GPU-visible linear memory.
 	void *AllocStorage( corefacade::Memory kind, size_t bytes );
@@ -3144,8 +3146,10 @@ void CEmptyMesh::FreeStorage( void *storage )
 
 bool CEmptyMesh::EnsureVertices( int count, bool exact )
 {
+	// The shared dynamic mesh can gain a skinned format after a plain caller
+	// sized it; the bone arrays must catch up before a skinned lock writes them.
 	if ( count <= m_nVertexCapacity )
-		return m_pVertices != NULL;
+		return m_pVertices && EnsureBoneStorage( m_nVertexCapacity );
 	int capacity = m_nVertexCapacity ? m_nVertexCapacity : 64;
 	while ( capacity < count )
 		capacity *= 2;
@@ -3162,25 +3166,8 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 	}
 	m_pVertices = vertices;
 	m_nVertexCapacity = capacity;
-	if ( NumBoneWeights( m_Format ) > 0 )
-	{
-		// The weights with the vertices; the bone indices stay CPU memory.
-		float *weights = static_cast<float *>(
-			AllocStorage( corefacade::Memory::kVertices, capacity * 2 * sizeof( float ) ) );
-		if ( !weights )
-			return false;
-		unsigned char *indices = new unsigned char[capacity * 4];
-		if ( m_pBoneWeights )
-		{
-			memcpy( weights, m_pBoneWeights, m_nBoneCapacity * 2 * sizeof( float ) );
-			memcpy( indices, m_pBoneIndices, m_nBoneCapacity * 4 );
-		}
-		FreeStorage( m_pBoneWeights );
-		delete[] m_pBoneIndices;
-		m_pBoneWeights = weights;
-		m_pBoneIndices = indices;
-		m_nBoneCapacity = capacity;
-	}
+	if ( !EnsureBoneStorage( capacity ) )
+		return false;
 	if ( m_Format & VERTEX_NORMAL )
 	{
 		float *normals = static_cast<float *>(
@@ -3198,6 +3185,32 @@ bool CEmptyMesh::EnsureVertices( int count, bool exact )
 	// (windows, doors) are static meshes the core draws through this path, lit
 	// by their own pages.
 	(void)EnsureTexCoord1();
+	return true;
+}
+
+// The bone arrays exist only while the format is skinned, and the shared
+// dynamic mesh can be sized by a plain caller before a skinned one arrives;
+// capacity tracks the vertex capacity so any later skinned lock finds storage.
+bool CEmptyMesh::EnsureBoneStorage( int capacity )
+{
+	if ( NumBoneWeights( m_Format ) == 0 || capacity <= m_nBoneCapacity )
+		return true;
+	// The weights with the vertices; the bone indices stay CPU memory.
+	float *weights = static_cast<float *>(
+	    AllocStorage( corefacade::Memory::kVertices, capacity * 2 * sizeof( float ) ) );
+	if ( !weights )
+		return false;
+	unsigned char *indices = new unsigned char[capacity * 4];
+	if ( m_pBoneWeights )
+	{
+		memcpy( weights, m_pBoneWeights, m_nBoneCapacity * 2 * sizeof( float ) );
+		memcpy( indices, m_pBoneIndices, m_nBoneCapacity * 4 );
+	}
+	FreeStorage( m_pBoneWeights );
+	delete[] m_pBoneIndices;
+	m_pBoneWeights = weights;
+	m_pBoneIndices = indices;
+	m_nBoneCapacity = capacity;
 	return true;
 }
 

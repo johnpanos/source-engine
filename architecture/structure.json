@@ -118,39 +118,39 @@
         "engine/render_core_world_draw.cpp": 10,
         "public/render/composition/render_core_world.h": 8,
         "public/render/pass/world/world_pass.h": 14,
-        "render/composition/core_world.cpp": 15,
-        "render/composition/core_world.h": 11,
+        "render/composition/core_world.cpp": 13,
+        "render/composition/core_world.h": 10,
         "render/composition/core_world_diagnostics.cpp": 3,
         "render/composition/core_world_handoff.cpp": 5,
-        "render/composition/core_world_scene.cpp": 25,
+        "render/composition/core_world_scene.cpp": 23,
         "render/composition/core_world_temporal.cpp": 2,
         "render/lab/blob_shadow_suite.cpp": 4,
         "render/lab/energy_surface_suite.cpp": 7,
         "render/lab/gpu_submission_suite.cpp": 5,
-        "render/lab/model_selection_suite.cpp": 21,
+        "render/lab/model_selection_suite.cpp": 19,
         "render/lab/particles_suite.cpp": 6,
         "render/lab/pbr_compat_suite.cpp": 7,
         "render/lab/portal_refract_suite.cpp": 4,
-        "render/lab/posed_model_suite.cpp": 90,
+        "render/lab/posed_model_suite.cpp": 89,
         "render/lab/selfillum_suite.cpp": 8,
         "render/lab/shadowed_lights_suite.cpp": 2,
         "render/lab/softparticle_suite.cpp": 3,
         "render/lab/sprite_suite.cpp": 3,
         "render/lab/static_light_suite.cpp": 4,
-        "render/lab/tree_sway_suite.cpp": 13,
+        "render/lab/tree_sway_suite.cpp": 12,
         "render/lab/ui_suite.cpp": 2,
         "render/lab/view_state_suite.cpp": 8,
         "render/lab/visibility_suite.cpp": 3,
         "render/pass/world/world_batch.h": 4,
-        "render/pass/world/world_cutout_shadows.cpp": 2,
-        "render/pass/world/world_draw.cpp": 6,
+        "render/pass/world/world_cutout_shadows.cpp": 1,
+        "render/pass/world/world_draw.cpp": 4,
         "render/pass/world/world_dynamic.cpp": 4,
-        "render/pass/world/world_materials.cpp": 6,
-        "render/pass/world/world_pass.cpp": 16,
-        "render/pass/world/world_pass_internal.h": 8,
+        "render/pass/world/world_materials.cpp": 3,
+        "render/pass/world/world_pass.cpp": 15,
+        "render/pass/world/world_pass_internal.h": 7,
         "render/pass/world/world_record.cpp": 2,
         "render/pass/world/world_residency.cpp": 7,
-        "render/pass/world/world_view.cpp": 6
+        "render/pass/world/world_view.cpp": 4
       }
     },
     {
@@ -2584,7 +2584,7 @@
         "ceiling": 146333
       },
       "engine/": {
-        "ceiling": 170670
+        "ceiling": 170637
       },
       "engine/audio/": {
         "ceiling": 39742
@@ -2709,7 +2709,15 @@
         "ceiling": 32771
       },
       "materialsystem/shaderapicore/": {
-        "ceiling": 5928
+        "ceiling": 5922,
+        "raised": [
+          {
+            "date": "2026-10-10",
+            "from": 5916,
+            "to": 5922,
+            "reason": "R89: skinned models on the core path \u2014 CEmptyMesh bone arrays must grow when the shared mesh gains a skinned format late (boot crash fix)"
+          }
+        ]
       },
       "materialsystem/shaderapiempty/": {
         "ceiling": 2053
@@ -2923,7 +2931,7 @@
         "ceiling": 354
       },
       "public/engine/": {
-        "ceiling": 2223
+        "ceiling": 2222
       },
       "public/fgdlib/": {
         "ceiling": 722
@@ -3121,7 +3129,21 @@
         "ceiling": 344
       },
       "render.composition": {
-        "ceiling": 7116
+        "ceiling": 7247,
+        "raised": [
+          {
+            "date": "2026-10-10",
+            "from": 7116,
+            "to": 7245,
+            "reason": "R89: scene-owned world/props/leaves move into the composition (RFC 0016 K5)"
+          },
+          {
+            "date": "2026-10-10",
+            "from": 7245,
+            "to": 7247,
+            "reason": "R89: scene-owned world/props/leaves move into the composition (RFC 0016 K5)"
+          }
+        ]
       },
       "render.conformance-tests": {
         "ceiling": 8143
@@ -3130,7 +3152,21 @@
         "ceiling": 9599
       },
       "render.core-tests": {
-        "ceiling": 25047
+        "ceiling": 25162,
+        "raised": [
+          {
+            "date": "2026-10-10",
+            "from": 25047,
+            "to": 25156,
+            "reason": "R89: scene-owned world/props/leaves move into the composition (RFC 0016 K5)"
+          },
+          {
+            "date": "2026-10-10",
+            "from": 25156,
+            "to": 25162,
+            "reason": "R89: scene-owned world/props/leaves move into the composition (RFC 0016 K5)"
+          }
+        ]
       },
       "render.culling": {
         "ceiling": 1152
@@ -3160,7 +3196,15 @@
         "ceiling": 4120
       },
       "render.lab": {
-        "ceiling": 24514
+        "ceiling": 24511,
+        "raised": [
+          {
+            "date": "2026-10-10",
+            "from": 24510,
+            "to": 24511,
+            "reason": "R89: scene-owned world/props/leaves move into the composition (RFC 0016 K5)"
+          }
+        ]
       },
       "render.lab.app": {
         "ceiling": 589
@@ -3241,7 +3285,15 @@
         "ceiling": 1029
       },
       "render.pass.world": {
-        "ceiling": 6428
+        "ceiling": 6428,
+        "raised": [
+          {
+            "date": "2026-10-10",
+            "from": 6425,
+            "to": 6428,
+            "reason": "R89: scene-owned world/props/leaves move into the composition (RFC 0016 K5)"
+          }
+        ]
       },
       "render.renderer": {
         "ceiling": 227
@@ -3250,7 +3302,15 @@
         "ceiling": 551
       },
       "render.scene": {
-        "ceiling": 418
+        "ceiling": 420,
+        "raised": [
+          {
+            "date": "2026-10-10",
+            "from": 417,
+            "to": 420,
+            "reason": "R89: scene-owned world/props/leaves move into the composition (RFC 0016 K5)"
+          }
+        ]
       },
       "render.shader-extension-abi-test": {
         "ceiling": 108

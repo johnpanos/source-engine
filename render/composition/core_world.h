@@ -38,7 +38,9 @@
 #include "render/pass/shadows/shadow_passes.h"
 #include "render/pass/shadows/shadow_plan.h"
 #include "render/pass/skinning/skinning.h"
+#include "jobsystem/graph_executor.h"
 #include "render/pass/world/world_pass.h"
+#include "render/scene/scene.h"
 #include "render/resources/mesh_cache.h"
 
 #include <atomic>
@@ -117,6 +119,9 @@ public:
 	void SetStaticProps( const RenderCoreStaticModel *models, unsigned int modelCount,
 	    const RenderCoreStaticProp *props, unsigned int propCount ) override;
 	bool DrawsStaticProp( unsigned int prop, unsigned int lod = 0 ) const override;
+	void SetWorldLeaves( const float *boxes, const int *leaves, unsigned int count ) override;
+	bool CullView( ViewCull &view ) const override;
+	void BindCullJobs( jobsystem::IGraphExecutor *jobs ) { m_CullJobs = jobs; }
 	world_mesh_gpu::IWorldMeshUpload *StageUpload() override { return &m_Capture; }
 	void ClearWorld() override
 	{
@@ -132,7 +137,9 @@ public:
 			m_Casters.reset();
 		}
 		m_StaticMeshes.clear();
-		m_StaticInstances.clear();
+		m_Props.reset();
+		m_Leaves.reset();
+		m_LeafOf.clear();
 		m_StaticCastsShadow.clear();
 		m_StaticMaterials.clear();
 		m_ModelPoseSources.clear();
@@ -298,7 +305,17 @@ private:
 	// Rises whenever the model geometry changes (SetStaticProps), so a world
 	// republished with the same revision keeps its resident model levels.
 	std::uint64_t m_ModelsRevision = 0;
-	std::vector<pass::world::WorldData::StaticInstance> m_StaticInstances;
+	// The static props (RFC 0016 R89): one render.scene MeshInstance each, in
+	// prop order, committed through a ChangeSet by SetStaticProps. The scene
+	// is the authority; m_Props is its published snapshot, which the world
+	// pass reads and the views cull.
+	std::shared_ptr<const render::scene::SceneSnapshot> m_Props;
+	// The BSP leaves as instances (the K5 oracle's scene): instance -> leaf.
+	std::shared_ptr<const render::scene::SceneSnapshot> m_Leaves;
+	std::vector<int> m_LeafOf;
+	std::size_t PropCount() const { return m_Props ? m_Props->instances.size() : 0; }
+	// The compute pool the capture compares serial culling against.
+	jobsystem::IGraphExecutor *m_CullJobs = nullptr;
 	std::vector<bool> m_StaticCastsShadow;
 	std::vector<pass::world::WorldMaterial> m_StaticMaterials;
 	struct ModelPoseSource

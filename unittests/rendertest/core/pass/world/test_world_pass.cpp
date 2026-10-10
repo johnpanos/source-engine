@@ -238,15 +238,15 @@ void OpaqueBatching( testing::Checks &checks )
 	    WorldData::StaticMeshLod::MakeLevel( std::move( modelVertices ), { 0, 1, 2, 0, 2, 3 } ),
 	    { { 4, 0, 0, 6 } } );
 	world.staticMeshes.push_back( std::move( mesh ) );
-	WorldData::StaticInstance instance;
+	float placed[16] = {};
 	for ( int i = 0; i < 4; ++i )
-		instance.world[i * 5] = 1;
-	world.staticInstances.push_back( instance );
+		placed[i * 5] = 1;
+	world.AddStaticProp( 0, 0, placed );
 	WorldPass pass;
 	pass.SetWorld( world );
 	WorldView wall = View( { 0 }, 1 ), prop = View( {}, 1 );
 	wall.temporalView = prop.temporalView = 7;
-	prop.staticInstances = { 0 };
+	prop.props.Add( 0 );
 	const auto wallTag = pass.QueueView( wall ), propTag = pass.QueueView( prop );
 	const std::uint32_t pair[] = { wallTag, propTag };
 	checks.That( pass.OpaqueBatchSize( pair, 1 ) == 2, "W21.world-model-prefix" );
@@ -680,10 +680,8 @@ void ModelLevelResidency( testing::Checks &checks )
 	    WorldData::StaticMeshLod::MakeLevel( near, { 0, 1, 2, 0, 2, 3 } ), { { 4, 0, 0, 6 } } );
 	mesh.AddLevel( WorldData::StaticMeshLod::MakeLevel( far, { 0, 1, 2 } ), { { 4, 0, 0, 3 } } );
 	world.staticMeshes.push_back( std::move( mesh ) );
-	WorldData::StaticInstance instance;
-	instance.surfaceSelection.emplace();
-	instance.surfaceSelection->push_back( 0 );
-	world.staticInstances.push_back( instance );
+	world.staticMeshes.back().selection = std::vector<std::uint32_t>{ 0 };
+	world.AddStaticProp( 0, 0 );
 	world.modelsRevision = 7;
 	WorldPass pass;
 	pass.SetWorld( std::move( world ) );
@@ -705,9 +703,7 @@ void ModelLevelResidency( testing::Checks &checks )
 	{
 		target.frame = frame;
 		WorldView view;
-		WorldView::StaticInstance draw( 0 );
-		draw.surfaceSelection = std::vector<std::uint32_t>{ surface };
-		view.staticInstances.push_back( draw );
+		view.props.Add( 0, std::vector<std::uint32_t>{ surface } );
 		auto encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
 		pass.Record( pass.QueueView( std::move( view ) ), encoder, target );
 	};
@@ -756,10 +752,8 @@ void ModelLevelResidency( testing::Checks &checks )
 	pinnedMesh.AddLevel(
 	    WorldData::StaticMeshLod::MakeLevel( far, { 0, 1, 2 } ), { { 4, 0, 0, 3 } } );
 	pinned.staticMeshes.push_back( std::move( pinnedMesh ) );
-	WorldData::StaticInstance coarse;
-	coarse.surfaceSelection.emplace();
-	coarse.surfaceSelection->push_back( 1 );
-	pinned.staticInstances.push_back( coarse );
+	pinned.staticMeshes.back().selection = std::vector<std::uint32_t>{ 1 };
+	pinned.AddStaticProp( 0, 0 );
 	pinned.modelsRevision = 8;
 	WorldPass coarsePass;
 	coarsePass.SetWorld( std::move( pinned ) );
@@ -767,9 +761,7 @@ void ModelLevelResidency( testing::Checks &checks )
 	auto recordCoarse = [&]( std::uint32_t surface )
 	{
 		WorldView view;
-		WorldView::StaticInstance draw( 0 );
-		draw.surfaceSelection = std::vector<std::uint32_t>{ surface };
-		view.staticInstances.push_back( draw );
+		view.props.Add( 0, std::vector<std::uint32_t>{ surface } );
 		auto encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
 		coarsePass.Record( coarsePass.QueueView( std::move( view ) ), encoder, target );
 		target.frame = ++coarseFrame;
@@ -794,17 +786,13 @@ void ModelLevelResidency( testing::Checks &checks )
 	gone.indexCount = 6; // counts without staging: nothing can upload it
 	emptyMesh.AddLevel( std::move( gone ), { { 4, 0, 0, 6 } } );
 	empty.staticMeshes.push_back( std::move( emptyMesh ) );
-	WorldData::StaticInstance goneInstance;
-	goneInstance.surfaceSelection.emplace();
-	goneInstance.surfaceSelection->push_back( 1 );
-	empty.staticInstances.push_back( goneInstance );
+	empty.staticMeshes.back().selection = std::vector<std::uint32_t>{ 1 };
+	empty.AddStaticProp( 0, 0 );
 	WorldPass emptyPass;
 	emptyPass.SetWorld( std::move( empty ) );
 	target.frame = 1;
 	WorldView goneView;
-	WorldView::StaticInstance goneDraw( 0 );
-	goneDraw.surfaceSelection = std::vector<std::uint32_t>{ 1 };
-	goneView.staticInstances.push_back( goneDraw );
+	goneView.props.Add( 0, std::vector<std::uint32_t>{ 1 } );
 	auto goneEncoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
 	emptyPass.Record( emptyPass.QueueView( std::move( goneView ) ), goneEncoder, target );
 	checks.That( emptyPass.Failures() == 1 && emptyPass.Stats().lastFailure.find(
@@ -888,10 +876,8 @@ void ModelLevelSourceResupply( testing::Checks &checks )
 	    WorldData::StaticMeshLod::MakeLevel( nearVerts, nearIdx ), { { 4, 0, 0, 6 } } );
 	mesh.AddLevel( WorldData::StaticMeshLod::MakeLevel( farVerts, farIdx ), { { 4, 0, 0, 3 } } );
 	world.staticMeshes.push_back( std::move( mesh ) );
-	WorldData::StaticInstance instance;
-	instance.surfaceSelection.emplace();
-	instance.surfaceSelection->push_back( 0 );
-	world.staticInstances.push_back( instance );
+	world.staticMeshes.back().selection = std::vector<std::uint32_t>{ 0 };
+	world.AddStaticProp( 0, 0 );
 	world.modelsRevision = 10;
 
 	FakeLevelSource source;
@@ -921,9 +907,7 @@ void ModelLevelSourceResupply( testing::Checks &checks )
 	{
 		target.frame = frame;
 		WorldView view;
-		WorldView::StaticInstance draw( 0 );
-		draw.surfaceSelection = std::vector<std::uint32_t>{ surface };
-		view.staticInstances.push_back( draw );
+		view.props.Add( 0, std::vector<std::uint32_t>{ surface } );
 		auto encoder = device.BeginEncoder( QueueKind::kGraphics ).Value();
 		pass.Record( pass.QueueView( std::move( view ) ), encoder, target );
 	};
@@ -952,7 +936,8 @@ void ModelLevelSourceResupply( testing::Checks &checks )
 	mesh2.AddLevel(
 	    WorldData::StaticMeshLod::MakeLevel( farVerts, farIdx ), { { 4, 0, 0, 3 } } );
 	world2.staticMeshes.push_back( std::move( mesh2 ) );
-	world2.staticInstances.push_back( instance );
+	world2.staticMeshes.back().selection = std::vector<std::uint32_t>{ 0 };
+	world2.AddStaticProp( 0, 0 );
 	world2.modelsRevision = 10; // same revision: keep existing GPU allocations
 	pass.SetWorld( std::move( world2 ) );
 
@@ -1307,22 +1292,21 @@ int main()
 		mesh.AddLevel( WorldData::StaticMeshLod::MakeLevel( std::move( triangle ), { 0, 1, 2 } ),
 		    { { 4, 0, 0, 3 } }, { { 4 }, { 5 } } );
 		props.staticMeshes.push_back( std::move( mesh ) );
-		WorldData::StaticInstance instance;
-		instance.world[0] = instance.world[5] = instance.world[10] = instance.world[15] = 1.0f;
-		instance.world[3] = 2.0f;
-		props.staticInstances.push_back( instance );
-		instance.world[3] = 4.0f;
-		instance.skin = 1;
-		props.staticInstances.push_back( instance );
-		instance.skin = 2;
-		props.staticInstances.push_back( instance );
+		float placed[16] = {};
+		placed[0] = placed[5] = placed[10] = placed[15] = 1.0f;
+		placed[3] = 2.0f;
+		props.AddStaticProp( 0, 0, placed );
+		placed[3] = 4.0f;
+		props.AddStaticProp( 0, 1, placed );
+		props.AddStaticProp( 0, 2, placed );
 		WorldPass modelPass;
 		modelPass.SetWorld( std::move( props ) );
 		checks.That( modelPass.DrawsStaticInstance( 0 ) && modelPass.DrawsStaticInstance( 1 ) &&
 		                 !modelPass.DrawsStaticInstance( 2 ) && !modelPass.DrawsStaticInstance( 3 ),
 		    "W11.claims-shared-geometry-with-valid-skins" );
 		WorldView modelView = View( {} );
-		modelView.staticInstances = { 0, 1 };
+		modelView.props.Add( 0 );
+		modelView.props.Add( 1 );
 		const std::uint32_t modelTag = modelPass.QueueView( std::move( modelView ) );
 		checks.That( modelTag != 0 && modelPass.Stats().staticInstancesQueued == 2,
 		    "W11.static-only-view-has-its-own-slot" );
@@ -1857,10 +1841,10 @@ int main()
 		mesh.AddLevel( WorldData::StaticMeshLod::MakeLevel( std::move( triangle ), { 0, 1, 2 } ),
 		    { { materialId, 0, 0, 3 }, { 0, 0, 0, 3 } } );
 		world.staticMeshes.push_back( std::move( mesh ) );
-		WorldData::StaticInstance instance;
+		float placed[16] = {};
 		for ( int i = 0; i < 4; ++i )
-			instance.world[i * 5] = 1;
-		world.staticInstances.push_back( instance );
+			placed[i * 5] = 1;
+		world.AddStaticProp( 0, 0, placed );
 		WorldPass staged;
 		staged.SetWorld( std::move( world ) );
 		TextureDesc portalDepthDesc = depthDesc;

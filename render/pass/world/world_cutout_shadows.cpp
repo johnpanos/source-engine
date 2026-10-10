@@ -85,15 +85,15 @@ bool WorldPass::Batch::RecordCutoutShadows()
 		};
 		for ( const auto &[instanceIndex, surfaceIndex] : cutouts.staticSurfaces )
 		{
-			if ( instanceIndex >= world->staticInstances.size() )
+			if ( instanceIndex >= world->PropCount() )
 				continue;
-			const WorldData::StaticInstance &instance = world->staticInstances[instanceIndex];
+			const auto &instance = world->Prop( instanceIndex );
 			if ( instance.mesh >= world->staticMeshes.size() )
 				continue;
 			const WorldData::StaticMesh &mesh = world->staticMeshes[instance.mesh];
 			if ( surfaceIndex >= mesh.surfaces.size() )
 				continue;
-			const std::uint32_t material = StaticMaterial( mesh, instance, surfaceIndex );
+			const std::uint32_t material = StaticMaterial( mesh, instance.material, surfaceIndex );
 			const std::uint32_t lod = mesh.LodOfSurface( surfaceIndex );
 			if ( lod == ~0u || instance.mesh >= s.models.models.size() ||
 			     lod >= s.models.models[instance.mesh].size() ||
@@ -121,7 +121,7 @@ bool WorldPass::Batch::RecordCutoutShadows()
 			cutout.surface = &mesh.surfaces[surfaceIndex];
 			cutout.vertices = level.vertices;
 			cutout.indices = level.indices;
-			cutout.world = instance.world;
+			cutout.world = &instance.world.rows[0].x;
 			draws.push_back( cutout );
 		}
 		for ( const std::uint32_t index : cutouts.surfaces )

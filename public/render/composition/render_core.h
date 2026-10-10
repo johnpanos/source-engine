@@ -124,7 +124,6 @@ struct RenderCoreBinding
 	// must not branch on which adapter it is (CAP011 rule 5; see deviceName).
 	render::device::IRenderDevice2 *device = nullptr;
 	render::frame::IRenderer *renderer = nullptr;
-	render::scene::SceneFactory sceneFactory;
 	IRenderStageMarkers *stageMarkers = nullptr;
 	// RenderMaterialBlocks001, for the proxy corpus's frontend side.
 	IRenderMaterialBlocks *materialBlocks = nullptr;

@@ -73,17 +73,35 @@ bool WorldPass::Batch::PrepareSurfacesAndModels()
 		}
 		return &s.models.models[meshId][lod];
 	};
-	for ( std::size_t staticIndex = 0; staticIndex < view.staticInstances.size(); ++staticIndex )
+	// A model surface's material when its program and groups are ready.
+	const auto readyModelMaterial = [&]( const char *kind, std::uint32_t meshId,
+	                                    std::uint32_t surfaceId, std::uint32_t materialId )
 	{
-		const auto &draw = view.staticInstances[staticIndex];
-		const std::uint32_t instanceId = draw.instance;
-		if ( instanceId >= world->staticInstances.size() )
+		const Resources::Material *material =
+		    materialId < claims->size() && ( *claims )[materialId].draws
+		        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
+		        : nullptr;
+		if ( !material && failure.empty() && !lastMaterialPending )
+			note( std::string( kind ) + " " + std::to_string( meshId ) + " surface " +
+			      std::to_string( surfaceId ) + " names unclaimed material " +
+			      std::to_string( materialId ) );
+		return material &&
+		       !( material->program.request.drawLayout.IsValid() &&
+		           !drawGroupReady( *material, 0 ) ) &&
+		       !( material->program.request.frameLayout.IsValid() &&
+		           !frameGroupReady( *material ) );
+	};
+	for ( std::size_t staticIndex = 0; staticIndex < view.props.size(); ++staticIndex )
+	{
+		const std::uint32_t instanceId = view.props.Instance( staticIndex );
+		const auto &selection = view.props.Selection( staticIndex );
+		if ( instanceId >= world->PropCount() )
 		{
 			note( "a view named a static model instance the world does not have" );
 			complete = false;
 			continue;
 		}
-		const WorldData::StaticInstance &instance = world->staticInstances[instanceId];
+		const auto &instance = world->Prop( instanceId );
 		if ( instance.mesh >= world->staticMeshes.size() )
 		{
 			note( "a static model instance names no mesh" );
@@ -91,32 +109,20 @@ bool WorldPass::Batch::PrepareSurfacesAndModels()
 			continue;
 		}
 		const WorldData::StaticMesh &mesh = world->staticMeshes[instance.mesh];
-		if ( !ValidSurfaceSelection( draw.surfaceSelection, mesh.surfaces.size() ) )
+		if ( !ValidSurfaceSelection( selection, mesh.surfaces.size() ) )
 		{
 			note( "a static model has an invalid surface selection" );
 			complete = false;
 			continue;
 		}
-		if ( draw.surfaceSelection && draw.surfaceSelection->empty() )
+		if ( selection && selection->empty() )
 			continue;
 		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
 		{
-			if ( !SurfaceSelected( draw.surfaceSelection, surfaceId ) )
+			if ( !SurfaceSelected( selection, surfaceId ) )
 				continue;
-			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
-			const Resources::Material *material =
-			    materialId < claims->size() && ( *claims )[materialId].draws
-			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
-			        : nullptr;
-			if ( !material && failure.empty() && !lastMaterialPending )
-				note( "static model " + std::to_string( instance.mesh ) + " surface " +
-				      std::to_string( surfaceId ) + " names unclaimed material " +
-				      std::to_string( materialId ) );
-			if ( !material ||
-			     ( material->program.request.drawLayout.IsValid() &&
-			         !drawGroupReady( *material, 0 ) ) ||
-			     ( material->program.request.frameLayout.IsValid() &&
-			         !frameGroupReady( *material ) ) )
+			const std::uint32_t materialId = StaticMaterial( mesh, instance.material, surfaceId );
+			if ( !readyModelMaterial( "static model", instance.mesh, surfaceId, materialId ) )
 			{
 				complete = false;
 				continue;
@@ -129,8 +135,8 @@ bool WorldPass::Batch::PrepareSurfacesAndModels()
 				complete = false;
 				continue;
 			}
-			staticDraws.push_back( { staticCohorts[staticIndex], false, instanceId, instance.mesh,
-			    lod, surfaceId, materialId } );
+			staticDraws.push_back( { staticCohorts[staticIndex], false, instanceId,
+			    std::uint32_t( instance.mesh ), lod, surfaceId, materialId } );
 		}
 	}
 	for ( std::uint32_t poseId = 0; poseId < view.posedModels.size(); ++poseId )
@@ -148,9 +154,6 @@ bool WorldPass::Batch::PrepareSurfacesAndModels()
 		// A posed model draws one hardware level: the selection names that
 		// level's surfaces, its index buffer is that level's own, and the host's
 		// vertices are the pose of that level.
-		WorldData::StaticInstance instance;
-		instance.mesh = pose.mesh;
-		instance.skin = pose.skin;
 		std::uint32_t level = ~0u;
 		bool levelRefused = false;
 		for ( std::uint32_t surfaceId = 0; surfaceId < mesh.surfaces.size(); ++surfaceId )
@@ -178,7 +181,7 @@ bool WorldPass::Batch::PrepareSurfacesAndModels()
 				break;
 			}
 			level = lod;
-			const std::uint32_t materialId = StaticMaterial( mesh, instance, surfaceId );
+			const std::uint32_t materialId = StaticMaterial( mesh, pose.skin, surfaceId );
 			if ( materialId >= claims->size() )
 			{
 				note( "posed model " + std::to_string( pose.mesh ) + " surface " +
@@ -191,19 +194,7 @@ bool WorldPass::Batch::PrepareSurfacesAndModels()
 			if ( ( pose.phase == RenderCoreDrawPhase::kOpaque && blended ) ||
 			     ( pose.phase == RenderCoreDrawPhase::kBlended && !blended ) )
 				continue;
-			const Resources::Material *material =
-			    materialId < claims->size() && ( *claims )[materialId].draws
-			        ? materialReadyIn( *r.modelResolver, r.modelMaterials, materialId )
-			        : nullptr;
-			if ( !material && failure.empty() && !lastMaterialPending )
-				note( "posed model " + std::to_string( pose.mesh ) + " surface " +
-				      std::to_string( surfaceId ) + " names unclaimed material " +
-				      std::to_string( materialId ) );
-			if ( !material ||
-			     ( material->program.request.drawLayout.IsValid() &&
-			         !drawGroupReady( *material, 0 ) ) ||
-			     ( material->program.request.frameLayout.IsValid() &&
-			         !frameGroupReady( *material ) ) )
+			if ( !readyModelMaterial( "posed model", pose.mesh, surfaceId, materialId ) )
 			{
 				complete = false;
 				continue;

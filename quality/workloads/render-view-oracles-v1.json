@@ -3,7 +3,7 @@
   "id": "render-view-oracles-v1",
   "description": "RFC 0016 K0 frozen view oracles and per-draw state fixtures (tools/render/view_oracle.py). Each scenario boots one map on the native Vulkan client headless (portal_boot.py), places the camera per shot and screenshots; the backend records the frame's views and draws (source-view-oracle/v1, -vieworacle) and its per-draw state (source-draw-state/v1, -drawstatefixture). Determinism: host_framerate fixes the step; -deterministicrender fixes particle seeds and the world's static batch order and seeds the shared random stream with 0 (as -random_invariant); -nosound keeps scripted scenes from waiting on real-time sound playback; noclip and a camera re-placed right before each screenshot keep the view still. Coverage notes: no Portal map has a Water material, a point_camera or a func_monitor, so water reflection and refraction come from Portal 2 (sp_a1_wakeup), and the Portal monitor shots spawn a point_camera (the client's DrawMonitors renders every active point_camera into _rt_Camera). The Portal 2 client in this tree compiles monitors out (viewrender.cpp defines USE_MONITORS only for HL2_CLIENT_DLL and CSTRIKE_DLL, and client_portal2.vpc defines neither), so no Portal 2 map renders a monitor view; retail Portal 2 does (sp_a4_intro's Wheatley monitors).",
   "common": {
-    "renderer": "native-vulkan",
+    "renderer": "core",
     "physics": "vphysics_box3d",
     "size": [
       1024,

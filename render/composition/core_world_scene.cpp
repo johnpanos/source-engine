@@ -189,7 +189,7 @@ void CoreWorld::SetWorld( const RenderCoreWorldVertex *vertices, unsigned int ve
 		m_Casters.reset();
 	}
 	m_StaticMeshes.clear();
-	m_StaticInstances.clear();
+	m_Props.reset();
 	m_StaticMaterials.clear();
 	m_StageRuntimeDirect.store( false, std::memory_order_relaxed );
 	m_StageHasIndirect.store( false, std::memory_order_relaxed );
@@ -336,7 +336,7 @@ void CoreWorld::SetWorldMesh( const void *wmsh, unsigned long long wmshBytes,
 		m_Casters.reset();
 	}
 	m_StaticMeshes.clear();
-	m_StaticInstances.clear();
+	m_Props.reset();
 	m_StaticMaterials.clear();
 	m_StageRuntimeDirect.store( false, std::memory_order_relaxed );
 	m_StageHasIndirect.store( false, std::memory_order_relaxed );
@@ -518,7 +518,7 @@ void CoreWorld::SetStage()
 			}
 		}
 	}
-	data.staticInstances = m_StaticInstances;
+	data.props = m_Props;
 	// The model geometry's revision, so the pass keeps the levels it already
 	// uploaded when only the stage's lighting changed (a late probe volume).
 	data.modelsRevision = m_ModelsRevision;
@@ -539,7 +539,7 @@ void CoreWorld::SetStaticCasters()
 	unsigned int instances = 0;
 	unsigned int noShadow = 0;
 	unsigned int cutout = 0;
-	for ( std::uint32_t i = 0; i < m_StaticInstances.size(); ++i )
+	for ( std::uint32_t i = 0; i < PropCount(); ++i )
 	{
 		if ( !m_Pass.DrawsStaticInstance( i ) )
 			continue;
@@ -548,7 +548,13 @@ void CoreWorld::SetStaticCasters()
 			++noShadow;
 			continue;
 		}
-		const pass::world::WorldData::StaticInstance &instance = m_StaticInstances[i];
+		const scene::MeshInstance &placed = m_Props->instances[i];
+		struct
+		{
+			std::uint32_t mesh, skin;
+			const float *world;
+		} instance = { std::uint32_t( placed.desc.mesh ), std::uint32_t( placed.desc.material ),
+		    &placed.desc.world.rows[0].x };
 		if ( instance.mesh >= m_StaticMeshes.size() )
 			continue;
 		const pass::world::WorldData::StaticMesh &mesh = m_StaticMeshes[instance.mesh];
@@ -564,9 +570,8 @@ void CoreWorld::SetStaticCasters()
 		std::vector<CasterLevel> levels;
 		for ( std::size_t s = 0; s < mesh.surfaces.size(); ++s )
 		{
-			if ( instance.surfaceSelection &&
-			     !std::binary_search( instance.surfaceSelection->begin(),
-			         instance.surfaceSelection->end(), std::uint32_t( s ) ) )
+			if ( mesh.selection && !std::binary_search( mesh.selection->begin(),
+			                           mesh.selection->end(), std::uint32_t( s ) ) )
 				continue;
 			std::uint32_t material = mesh.surfaces[s].material;
 			if ( !mesh.skinMaterials.empty() )
@@ -671,7 +676,7 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 		return;
 	m_StaticMeshes.clear();
 	m_StaticMaterials.clear();
-	m_StaticInstances.clear();
+	m_Props.reset();
 	m_StaticCastsShadow.clear();
 	m_ModelPoseSources.clear();
 	m_ModelBytes.clear();
@@ -679,7 +684,6 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 	m_StaticMeshes.resize( modelCount );
 	m_ModelPoseSources.resize( modelCount );
 	m_ModelBytes.resize( modelCount );
-	m_StaticInstances.reserve( propCount );
 	for ( unsigned int i = 0; i < modelCount; ++i )
 	{
 		const RenderCoreStaticModel &source = models[i];
@@ -901,27 +905,44 @@ void CoreWorld::SetStaticProps( const RenderCoreStaticModel *models, unsigned in
 		}
 		poseSource.parsed = complete;
 	}
+	// Each parsed model's default selection (level 0).
+	for ( unsigned int i = 0; i < modelCount; ++i )
+	{
+		if ( m_ModelPoseSources[i].parsed )
+			m_StaticMeshes[i].selection = m_ModelPoseSources[i].SelectedSurfaces( 0 );
+	}
+	// The props are scene instances, committed in one change set: prop order
+	// is instance order. A prop whose model did not parse is added with no
+	// mesh (~0u), so it keeps its index and draws nothing. The host's render
+	// box bounds it (it culls with the same box); a host that gave none
+	// leaves it unbounded, so it is never culled.
+	auto propScene = scene::CreateRenderScene();
+	scene::ChangeSet placed;
 	for ( unsigned int i = 0; i < propCount; ++i )
 	{
-		pass::world::WorldData::StaticInstance instance;
-		instance.mesh = props[i].skin >= 0 ? props[i].model : ~0u;
-		instance.skin = props[i].skin >= 0 ? std::uint32_t( props[i].skin ) : ~0u;
-		if ( instance.mesh < m_ModelPoseSources.size() && m_ModelPoseSources[instance.mesh].parsed )
-			instance.surfaceSelection = m_ModelPoseSources[instance.mesh].SelectedSurfaces( 0 );
-		else
-			instance.mesh = ~0u;
-		for ( int row = 0; row < 3; ++row )
-			std::copy(
-			    props[i].world + row * 4, props[i].world + row * 4 + 4, instance.world + row * 4 );
-		instance.world[15] = 1.0f;
-		m_StaticInstances.push_back( instance );
+		const std::uint32_t mesh = props[i].skin >= 0 ? props[i].model : ~0u;
+		scene::MeshInstanceDesc desc;
+		desc.mesh =
+		    mesh < m_ModelPoseSources.size() && m_ModelPoseSources[mesh].parsed ? mesh : ~0u;
+		desc.material = props[i].skin >= 0 ? std::uint32_t( props[i].skin ) : ~0u;
+		std::copy_n( props[i].world, 12, &desc.world.rows[0].x );
+		constexpr float kUnbounded = 1.0e18f;
+		desc.localBounds =
+		    props[i].hasBounds
+		        ? render::math::Aabb{ { props[i].boundsMin[0], props[i].boundsMin[1],
+		                                  props[i].boundsMin[2] },
+		              { props[i].boundsMax[0], props[i].boundsMax[1], props[i].boundsMax[2] } }
+		        : render::math::Aabb{ { -kUnbounded, -kUnbounded, -kUnbounded },
+		              { kUnbounded, kUnbounded, kUnbounded } };
+		placed.Add( propScene->Reserve(), desc );
 		m_StaticCastsShadow.push_back( props[i].castsShadow );
 	}
+	m_Props = propCount && propScene->Commit( placed ) ? propScene->Snapshot() : nullptr;
 	unsigned int parsed = 0;
 	for ( const pass::world::WorldData::StaticMesh &mesh : m_StaticMeshes )
 		parsed += !mesh.surfaces.empty() ? 1u : 0u;
 	std::fprintf( stderr, "Render core: static meshes: %u of %u parsed, %zu instances\n", parsed,
-	    modelCount, m_StaticInstances.size() );
+	    modelCount, PropCount() );
 	if ( m_StageSet )
 	{
 		SetStage();

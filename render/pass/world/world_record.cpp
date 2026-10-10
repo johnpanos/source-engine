@@ -114,7 +114,7 @@ void WorldPass::RecordBatch(
 			}
 			if ( !found )
 				break;
-			staticCohorts.insert( staticCohorts.end(), cohort.staticInstances.size(), cohortIndex );
+			staticCohorts.insert( staticCohorts.end(), cohort.props.size(), cohortIndex );
 			posedCohorts.insert( posedCohorts.end(), cohort.posedModels.size(), cohortIndex );
 			if ( cohortIndex == 0 )
 			{
@@ -123,9 +123,15 @@ void WorldPass::RecordBatch(
 			}
 			else
 			{
-				view.staticInstances.insert( view.staticInstances.end(),
-				    std::make_move_iterator( cohort.staticInstances.begin() ),
-				    std::make_move_iterator( cohort.staticInstances.end() ) );
+				// Cohorts of one frame share the world's props snapshot; the
+				// merged list appends this cohort's items and selections.
+				if ( !view.props.scene )
+					view.props.scene = cohort.props.scene;
+				view.props.selections.resize( view.props.list.items.size() );
+				view.props.list.items.insert( view.props.list.items.end(),
+				    cohort.props.list.items.begin(), cohort.props.list.items.end() );
+				for ( std::size_t i = 0; i < cohort.props.size(); ++i )
+					view.props.selections.push_back( cohort.props.Selection( i ) );
 				view.posedModels.insert( view.posedModels.end(),
 				    std::make_move_iterator( cohort.posedModels.begin() ),
 				    std::make_move_iterator( cohort.posedModels.end() ) );
@@ -454,6 +460,27 @@ bool WorldPass::Batch::RecordView()
 	if ( gpuViewModels.commands.IsValid() )
 		++s.stats.gpuModelViews;
 	bool worldDepthReady = depthPrepassSafe;
+	// A material's depth-only pipeline (its normal and depth, no SSR targets)
+	// in the view's draw state; `ready` falls when it is refused, and the view
+	// with it when `failsView`.
+	const auto depthPrepassPipeline = [&]( const Resources::Material &m, const char *what,
+	                                      bool &ready, bool failsView ) -> std::optional<PipelineId>
+	{
+		auto variant = m.resolver->VariantPipeline( m.program,
+		    material::kSurfaceDepthNormal | material::kSurfaceDepthOnly,
+		    material::kSurfaceSsrTargets );
+		if ( variant )
+		{
+			const auto state = surfaceStatePipeline( m, variant.Value(), target.drawState );
+			if ( state )
+				return state;
+		}
+		else
+			note( std::string( what ) + ": " + variant.Error() );
+		ready = false;
+		complete = complete && !failsView;
+		return std::nullopt;
+	};
 	// The opaque (and alpha-tested) surfaces' depth first, into the target's
 	// own depth with its color masked. Eligible PBR lighting reads that depth
 	// with an equal test and no writes, allowing early rejection despite
@@ -474,21 +501,9 @@ bool WorldPass::Batch::RecordView()
 			encoder.BeginLabel( "core world depth" );
 			encoder.BeginRendering( rendering );
 			encoder.SetViewport( view.viewport );
-			auto depthPipeline = [&]( const Resources::Material &m ) -> std::optional<PipelineId>
+			auto depthPipeline = [&]( const Resources::Material &m )
 			{
-				auto variant = m.resolver->VariantPipeline( m.program,
-				    material::kSurfaceDepthNormal | material::kSurfaceDepthOnly,
-				    material::kSurfaceSsrTargets );
-				if ( !variant )
-				{
-					worldDepthReady = false;
-					note( "the depth prepass: " + variant.Error() );
-					return std::nullopt;
-				}
-				const auto state = surfaceStatePipeline( m, variant.Value(), target.drawState );
-				if ( !state )
-					worldDepthReady = false;
-				return state;
+				return depthPrepassPipeline( m, "the depth prepass", worldDepthReady, false );
 			};
 			// GPU-driven: the view's buckets of opaque materials, from the
 			// lit pass's commands (the same surfaces `opaque` lists).
@@ -515,25 +530,9 @@ bool WorldPass::Batch::RecordView()
 		encoder.BeginLabel( "core model depth" );
 		encoder.BeginRendering( rendering );
 		encoder.SetViewport( view.viewport );
-		auto depthPipeline = [&]( const Resources::Material &m ) -> std::optional<PipelineId>
+		auto depthPipeline = [&]( const Resources::Material &m )
 		{
-			auto variant = m.resolver->VariantPipeline( m.program,
-			    material::kSurfaceDepthNormal | material::kSurfaceDepthOnly,
-			    material::kSurfaceSsrTargets );
-			if ( !variant )
-			{
-				modelDepthReady = false;
-				complete = false;
-				note( "the model depth prepass: " + variant.Error() );
-				return std::nullopt;
-			}
-			const auto state = surfaceStatePipeline( m, variant.Value(), target.drawState );
-			if ( !state )
-			{
-				modelDepthReady = false;
-				complete = false;
-			}
-			return state;
+			return depthPrepassPipeline( m, "the model depth prepass", modelDepthReady, true );
 		};
 		for ( const StaticDraw &draw : staticDraws )
 		{

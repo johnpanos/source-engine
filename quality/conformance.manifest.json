@@ -15072,7 +15072,7 @@
         "jobsystem/parallel_executor.cpp",
         "unittests/rendertest/core/scene/test_scene.cpp"
       ],
-      "min_checks": 17,
+      "min_checks": 20,
       "extra_flags": [
         "-pthread"
       ],

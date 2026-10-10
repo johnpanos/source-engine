@@ -277,9 +277,7 @@ std::optional<std::string> CheckImages( device::IRenderDevice2 &device, Results 
 		// A copy of the mesh record, not of its geometry: the level's staging is
 		// shared, and CheckMotion reads it after the worlds take theirs.
 		world.staticMeshes.push_back( mesh );
-		WorldData::StaticInstance instance;
-		std::copy_n( c.objectToWorld, 16, instance.world );
-		world.staticInstances.push_back( instance );
+		world.AddStaticProp( 0, 0, c.objectToWorld );
 		WorldData rest = world;
 		rest.materials[0].variables[1].second = "0";
 		WorldData reference = rest;
@@ -316,7 +314,7 @@ std::optional<std::string> CheckImages( device::IRenderDevice2 &device, Results 
 				view.motionToClip[i * 5] = view.previousToClip[i * 5] = 1;
 			}
 			view.previousViewValid = history;
-			view.staticInstances = { 0 };
+			view.props.Add( 0 );
 			view.viewport = { 0, 0, 64, 64, 0, 1 };
 			const auto tag = pass.QueueView( std::move( view ) );
 			if ( !tag )

@@ -80,16 +80,12 @@ WorldData SelectionWorld()
 	mesh.AddLevel(
 	    WorldData::StaticMeshLod::MakeLevel( std::move( vertices ), std::move( indices ) ),
 	    std::move( surfaces ) );
+	// The host's level-0 selection, as the composition sets it.
+	mesh.selection = std::vector<std::uint32_t>{ 0 };
 	world.staticMeshes.push_back( std::move( mesh ) );
-	for ( std::uint32_t i = 0; i < 3; ++i )
-	{
-		WorldData::StaticInstance instance;
-		instance.world[0] = instance.world[5] = instance.world[10] = instance.world[15] = 1.0f;
-		instance.surfaceSelection.emplace();
-		if ( i < 2 )
-			instance.surfaceSelection->push_back( i );
-		world.staticInstances.push_back( std::move( instance ) );
-	}
+	// One prop of the mesh; each view selects which surface it draws.
+	const float identity[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	world.AddStaticProp( 0, 0, identity );
 	return world;
 }
 
@@ -176,9 +172,8 @@ WorldData ImportedLodWorld( const mdl::Model &model )
 		    std::move( surfaces ) );
 	}
 	world.staticMeshes.push_back( std::move( mesh ) );
-	WorldData::StaticInstance instance;
-	instance.world[0] = instance.world[5] = instance.world[10] = instance.world[15] = 1.0f;
-	world.staticInstances.push_back( std::move( instance ) );
+	const float identity[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	world.AddStaticProp( 0, 0, identity );
 	return world;
 }
 
@@ -293,14 +288,19 @@ std::optional<std::string> RunChecks(
 	results.That( pass.Stats().viewsFailed == 0 && pass.Stats().viewsDrawn == 3 &&
 	                  pass.Stats().posedDrawsDrawn == 2,
 	    "model-selection.only-selected-surfaces-record", pass.Stats().lastFailure );
-	results.That( pass.DrawsStaticInstance( 0 ) && pass.DrawsStaticInstance( 1 ) &&
-	                  pass.DrawsStaticInstance( 2 ),
+	results.That(
+	    pass.DrawsStaticInstance( 0 ) &&
+	        pass.DrawsPosedModel(
+	            0, 0, RenderCoreDrawPhase::kAll, std::vector<std::uint32_t>{ 0 } ) &&
+	        pass.DrawsPosedModel(
+	            0, 0, RenderCoreDrawPhase::kAll, std::vector<std::uint32_t>{ 1 } ) &&
+	        pass.DrawsPosedModel( 0, 0, RenderCoreDrawPhase::kAll, std::vector<std::uint32_t>{} ),
 	    "model-selection.static-instances-claim-only-their-selected-surfaces" );
 	for ( std::uint32_t i = 0; i < 3; ++i )
 	{
 		WorldView view = SelectionView( world, 0 );
 		view.posedModels.clear();
-		view.staticInstances = { i };
+		view.props.Add( 0, i < 2 ? std::vector<std::uint32_t>{ i } : std::vector<std::uint32_t>{} );
 		const std::uint32_t tag = pass.QueueView( std::move( view ) );
 		CanvasImage image;
 		if ( auto why = render( tag, image ) )
@@ -320,13 +320,16 @@ std::optional<std::string> RunChecks(
 	    "model-selection.capture-replay-keeps-the-earlier-body-selection" );
 	WorldData emptyWorld = world;
 	emptyWorld.staticMeshes[0] = {};
+	// A wholly blank model carries the explicit empty selection the host's
+	// body arithmetic returns, not a null one.
+	emptyWorld.staticMeshes[0].selection = std::vector<std::uint32_t>{};
 	emptyWorld.materials.clear();
 	pass.SetWorld( emptyWorld );
 	const std::uint64_t beforeBlank = pass.Stats().viewsDrawn;
 	WorldView emptyView = SelectionView( emptyWorld, 3 );
 	results.That( pass.DrawsPosedModel( 0, 0, RenderCoreDrawPhase::kAll,
 	                  emptyView.posedModels[0].surfaceSelection ) &&
-	                  pass.DrawsStaticInstance( 2 ),
+	                  pass.DrawsStaticInstance( 0 ),
 	    "model-selection.wholly-blank-model-needs-no-geometry-or-material" );
 	const std::uint32_t emptyTag = pass.QueueView( std::move( emptyView ) );
 	CanvasImage emptyImage;
@@ -393,14 +396,12 @@ std::optional<std::string> RunChecks(
 	results.That( LeftFootprint( replay ) && pass.Stats().viewsFailed == 0,
 	    "model-selection.LOD-capture-replay-keeps-the-earlier-level", pass.Stats().lastFailure );
 	WorldView staticView = ImportedLodView( model, world, 0 );
-	WorldView::StaticInstance staticDraw( 0 );
-	staticDraw.surfaceSelection = staticView.posedModels[0].surfaceSelection;
+	staticView.props.Add( 0, staticView.posedModels[0].surfaceSelection );
 	staticView.posedModels.clear();
-	staticView.staticInstances.push_back( std::move( staticDraw ) );
 	const std::uint32_t staticHighTag = pass.QueueView( staticView );
-	staticView.staticInstances[0].surfaceSelection = low.posedModels[0].surfaceSelection;
+	staticView.props.selections[0] = low.posedModels[0].surfaceSelection;
 	const std::uint32_t staticLowTag = pass.QueueView( staticView );
-	staticView.staticInstances[0].surfaceSelection = noGeometry.posedModels[0].surfaceSelection;
+	staticView.props.selections[0] = noGeometry.posedModels[0].surfaceSelection;
 	const std::uint32_t staticBlankTag = pass.QueueView( staticView );
 	results.That( staticHighTag && staticLowTag && staticBlankTag,
 	    "model-selection.static-LOD-changes-own-their-queued-topology" );
@@ -422,7 +423,7 @@ std::optional<std::string> RunChecks(
 	results.That( LeftFootprint( replay ) && pass.Stats().viewsFailed == 0,
 	    "model-selection.static-LOD-capture-replay-keeps-the-earlier-level",
 	    pass.Stats().lastFailure );
-	staticView.staticInstances[0].surfaceSelection = std::vector<std::uint32_t>{ 2 };
+	staticView.props.selections[0] = std::vector<std::uint32_t>{ 2 };
 	results.That( pass.QueueView( staticView ) == 0,
 	    "model-selection.static-invalid-surface-selection-is-refused" );
 	(void)device->WaitIdle();
