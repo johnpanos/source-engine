@@ -18,6 +18,7 @@ lives in each row's progress record, and the full pre-split text is in the
 
 | File | Read it when |
 | --- | --- |
+| [docs/agents/project.md](docs/agents/project.md) | Always, at session start: the deliverable, milestones, who owns what, and your assigned task |
 | [docs/agents/roadmap.md](docs/agents/roadmap.md) | Choosing or closing work: render priority, the ranked table, current facts |
 | [docs/agents/architecture.md](docs/agents/architecture.md) | Changing a boundary, render code, C++ code or a harness: architecture rules, render binding rules, style, acceptance |
 | [docs/agents/platforms.md](docs/agents/platforms.md) | Platform, toolchain, profile, packaging or distribution work |
