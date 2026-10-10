@@ -2679,7 +2679,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "ChangeHistory in hammer::app: undo/redo stack with a position, a saved marker, a revision counter and a trim limit; no UI or file access."
     },
     {
@@ -2693,7 +2693,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Clipboard paste in hammer::app: renames references, remaps groups and visgroups and applies transforms to scene::MapObject copies."
     },
     {
@@ -2706,7 +2706,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Command-script status names and strict number/vector parsers for the command layer; no file reads in this file."
     },
     {
@@ -2720,7 +2720,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "OpenDocument and SaveDocumentAs go through ports::IMapCodec and ports::IFileStore and replace the session document with a veto-able result."
     },
     {
@@ -2733,7 +2733,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "EditSession: the one edit transaction owner (guards, busy scope, subscriptions, publish, SetMapVersion, MarkSaved) over scene::MapDocument."
     },
     {
@@ -2746,7 +2746,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "LoadFragment reads a map fragment file through IFileStore and decodes it with IMapCodec into a MapFragment for paste."
     },
     {
@@ -2759,7 +2759,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Instance-name policy helpers (case-insensitive prefixes, IsGlobalInstanceName) used when fixing up instance entities; no document writes in this file."
     },
     {
@@ -2772,7 +2772,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "InstancePreview caches instance-file contents read through IFileStore for the instance-preview view, with search roots and a Refresh that reports changes."
     },
     {
@@ -2780,10 +2780,12 @@
       "currentOwner": "hammer.app",
       "destinationModule": "hammer.app",
       "responsibility": "composition",
-      "effects": [],
+      "effects": [
+        "async-delivery"
+      ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MapBuildQueue holds the builder and runner references and a busy flag; it dispatches ports::IMapBuilder work to a task runner and replies on a sequenced runner."
     },
     {
@@ -2796,7 +2798,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Map validation (MapProblem codes, severities, special targets, schema-less keys, solid and material checks) over scene::DocumentReader; it reports problems and does not repair them."
     },
     {
@@ -2809,7 +2811,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Cordon operations on scene::DocumentSettings: form settling, single-box checks and cordon box edits through a DocumentEdit."
     },
     {
@@ -2822,7 +2824,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Create operations build solids and entities in world coordinates (axis mapping, degree-to-radian helpers) and apply class defaults to new entities."
     },
     {
@@ -2835,7 +2837,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSG operations (cap side, WithSide, ReplaceWithPieces) build replacement solids from planes and textures through a DocumentEdit."
     },
     {
@@ -2848,7 +2850,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Overlay/decal operations: validates overlay size and corners and writes basis and corner keys onto overlay entities."
     },
     {
@@ -2861,7 +2863,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Displacement operations (walkable/buildable normal thresholds, sewing epsilon, force-tag bits, per-side refresh) mutate scene::Displacement data through a DocumentEdit."
     },
     {
@@ -2874,7 +2876,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Entity operations: key/value edits on selected entities, reserved-key rules and conventional reference-key rename across the document."
     },
     {
@@ -2888,7 +2890,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Find/replace over entity keys and values with a glob matcher and case folding; replacements are applied through the document edit."
     },
     {
@@ -2901,7 +2903,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Instance operations: lists instance entities, fixes up instance parameters and applies the instance transform to the expanded entity."
     },
     {
@@ -2914,7 +2916,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Prefab operations: replaces names inside prefab-created entities and applies pivot-based transforms through the document edit."
     },
     {
@@ -2927,7 +2929,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Structure operations: group ownership of solids and entities, representative selection and removal of empty containers."
     },
     {
@@ -2941,7 +2943,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Transform operations: applies mapgeometry::Affine to solids, displacements and entities, tidies near-integer values and aligns to a bound axis."
     },
     {
@@ -2955,7 +2957,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Vertex operations: finds shared corner indices with an epsilon and edits face vertex lists of displacement and brush geometry."
     },
     {
@@ -2968,7 +2970,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Visgroup operations: next-id allocation, membership lists, orphan restoration and show/hide of visgroup membership through DocumentEdit."
     },
     {
@@ -2981,7 +2983,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Selection sets (sorted object and face IDs) with Contains checks and ResolvePick granularity mapping from a hit to the selected object."
     },
     {
@@ -3229,7 +3231,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Builds the entity class palette from search, kind and category filters and the active class selection."
     },
     {
@@ -3243,7 +3245,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Validates key/value drafts by key type and applies the entity inspector edits through the session."
     },
     {
@@ -3257,7 +3259,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Folds face texture values across the selection into mixed/single fields and applies shift, justify, align and material edits."
     },
     {
@@ -3271,7 +3273,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Lists undo history entries from the session and routes jump, undo and redo to the change history."
     },
     {
@@ -3284,7 +3286,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Counts material face uses and builds the filtered, recent-limited material list from the material catalog."
     },
     {
@@ -3297,7 +3299,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Formats display labels for entities, solids and groups and tests whether an entity target is procedural."
     },
     {
@@ -3311,7 +3313,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Builds the expandable object tree rows and filter, and routes selection and visibility toggles to the session."
     },
     {
@@ -3324,7 +3326,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Header-only ASCII case-folding, word splitting and counted-text helpers shared by the presenters."
     },
     {
@@ -3338,7 +3340,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Scans the document for problems cached against the session revision and applies Fix and FixAll through the commands."
     },
     {
@@ -3351,7 +3353,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Formats selection summaries, pointer coordinates, grid and snap text, and the message line."
     },
     {
@@ -3365,7 +3367,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Builds the visgroup tree rows and routes create, rename, delete, move and membership actions through the commands."
     },
     {
@@ -3472,7 +3474,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Drags a block on a viewport plane with axis-constrained extents and commits the resulting box through the session."
     },
     {
@@ -3485,7 +3487,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Computes box handle positions, hit tests, cursors and resized rectangles in screen space."
     },
     {
@@ -3498,7 +3500,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Maps pointer, wheel and key events to 2D and 3D camera pan, zoom and fly movement."
     },
     {
@@ -3512,7 +3514,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Places clip lines on a view, keeps the chosen side and applies the clip through the session."
     },
     {
@@ -3526,7 +3528,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Computes entity placement on surfaces or the grid, shows the marker overlay and creates the entity through the session."
     },
     {
@@ -3540,7 +3542,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Picks a 3D face under the pointer and applies face click and key actions through the session."
     },
     {
@@ -3553,7 +3555,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Defines key and pointer event values and the overlay list builders for lines, boxes, polygons, rectangles and handles."
     },
     {
@@ -3566,7 +3568,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Holds drag-threshold, handle-radius, snap and dominant-axis constraint rules shared by the tools."
     },
     {
@@ -3579,7 +3581,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Appends solid edges and object outlines, and staged previews, to a tool overlay list."
     },
     {
@@ -3593,7 +3595,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Handles select-mode pointer gestures and box handle drags, applying transforms through the session."
     },
     {
@@ -3606,7 +3608,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Registers tools by name, activates one at a time and routes pointer, key and wheel events to the active tool."
     },
     {
@@ -3620,7 +3622,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Collects solid vertex handles, tracks the selected handles and drags them, applying the move through the session."
     },
     {
@@ -8154,7 +8156,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "ChangeHistory is a headless undo/redo stack with a saved position and revision counter, and it performs no document mutation itself."
     },
     {
@@ -8168,7 +8170,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Copy builds a MapFragment, and Paste and Duplicate apply it through a DocumentEdit, with FixedPasteName as the pure naming helper."
     },
     {
@@ -8181,7 +8183,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "ParseCommandScript and ValidateCommandArgs are pure, and RunCommandScript only drives a caller-supplied execute callback."
     },
     {
@@ -8195,7 +8197,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "OpenDocument decodes through IMapCodec and IFileStore into an EditSession, and SaveDocumentAs encodes and writes the session's document."
     },
     {
@@ -8208,7 +8210,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "EditSession is the one document authority that commits edits, undo and redo, and raises SessionEvents to subscribers."
     },
     {
@@ -8221,7 +8223,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "EditorSettings is a plain struct of editor defaults (grid, snap, texture lock, primitive and arch specs) with no I/O."
     },
     {
@@ -8234,7 +8236,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "LoadFragment reads a map fragment through IFileStore and IMapCodec and returns a MapFragment or DocumentIoError."
     },
     {
@@ -8247,7 +8249,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Pure helpers that parse fixup style, build instance names and substitute $parameters into instance text."
     },
     {
@@ -8260,7 +8262,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "InstancePreview implements IInstanceContent by reading instance files through IFileStore and caching decoded fragments per path with a revision."
     },
     {
@@ -8269,12 +8271,12 @@
       "destinationModule": "hammer.app",
       "responsibility": "composition",
       "effects": [
-        "file-io"
+        "async-delivery"
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
-      "note": "MapBuildQueue wires an IMapBuilder onto a work runner and reply runner so one build runs at a time; the builder runs tools that read and write map files."
+      "evidence": "observed",
+      "note": "MapBuildQueue wires an IMapBuilder onto a work runner and reply runner so one build runs at a time; the builder behind the port runs the tools, not the queue."
     },
     {
       "path": "public/hammer/app/map_check.h",
@@ -8286,7 +8288,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MapProblem codes and the check over the document produce problems from document state without mutating it."
     },
     {
@@ -8300,7 +8302,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Add, remove, rename and set cordon boxes through DocumentEdit, with ValidCordonBox and InsideCordons as pure queries."
     },
     {
@@ -8314,7 +8316,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CreatePrimitive, CreateArch and PlaceEntity add objects through DocumentEdit, with MakePrimitive and ApplyClassDefaults as pure helpers."
     },
     {
@@ -8328,7 +8330,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "ClipSolids, Carve and Hollow edit solids through DocumentEdit, and SplitSolid is pure plane splitting."
     },
     {
@@ -8342,7 +8344,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "PlaceDecal, PlaceOverlay and overlay size/face edits go through DocumentEdit, with OverlayBasisFor as a pure computation."
     },
     {
@@ -8356,7 +8358,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Create, destroy, power, sculpt, paint and sew displacements through DocumentEdit, with ComputeTriangleTags as pure geometry."
     },
     {
@@ -8370,7 +8372,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "SetKey, SetClass, connections and RenameEntity edit entity data through DocumentEdit, with key-convention and lookup queries as pure helpers."
     },
     {
@@ -8384,7 +8386,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "FindEntities and TextMatches are pure queries, and ReplaceKeyValues rewrites keyvalues through DocumentEdit."
     },
     {
@@ -8398,7 +8400,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "FindInstances and InstanceFile are pure queries, and CollapseInstance replaces an instance through DocumentEdit."
     },
     {
@@ -8412,7 +8414,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "InsertPrefab adds a fragment through DocumentEdit, with FragmentFromDocument, TransformedFragment and ExpandNameKeyword as pure helpers."
     },
     {
@@ -8425,7 +8427,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Delete, group, ungroup, tie-to-entity, hide and unhide all change document structure through DocumentEdit."
     },
     {
@@ -8439,7 +8441,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Translate, rotate, scale, mirror, snap and align apply affine transforms through DocumentEdit, with TransformedSolid and TransformedEntity as pure helpers."
     },
     {
@@ -8453,7 +8455,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares headless vertex operations (MoveVertices, PushFace, ExtrudeFace, RebuildFromVertices) that act through a scene::DocumentEdit, matching its vertex_ops.cpp record."
     },
     {
@@ -8467,7 +8469,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares visgroup create/rename/delete/move/membership/visibility operations on a DocumentEdit plus reader queries, matching visgroup_ops.cpp."
     },
     {
@@ -8480,7 +8482,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Defines Selection, SelectMode and granularity plus pure pick, combine, prune, select-all and invert functions over a DocumentReader with no mutation."
     },
     {
@@ -8807,7 +8809,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "ClassPalette builds filtered, categorized entity class entries from the catalog and the active selection with no mutation, matching class_palette.cpp."
     },
     {
@@ -8821,7 +8823,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "EntityInspector defines key, flag, output and input rows and applies validated key/value edits through the edit session, matching entity_inspector.cpp."
     },
     {
@@ -8835,7 +8837,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "FaceInspector folds face texture fields across the selection and applies shift, justify, align and material edits through the session, matching face_inspector.cpp."
     },
     {
@@ -8849,7 +8851,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "HistoryPanel lists undo history rows from the edit session and routes jump, undo and redo to the change history, matching history_panel.cpp."
     },
     {
@@ -8862,7 +8864,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Material browser model: filtered, MRU and used-in-map rows over the IMaterialInfo port, with no widget."
     },
     {
@@ -8875,7 +8877,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Single labeling rule for entities, solids and groups plus the I/O target match, a stateless pure function."
     },
     {
@@ -8888,7 +8890,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Outliner tree rows built from the document with filter and expansion state, no toolkit."
     },
     {
@@ -8901,7 +8903,7 @@
       ],
       "state": "derived-cache",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Problems rows are a CheckMap result cached by session revision and rescanned on read after a document change."
     },
     {
@@ -8914,7 +8916,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Status bar texts for the selection summary, size and cursor, computed from the session with no toolkit."
     },
     {
@@ -8928,7 +8930,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Visgroup tree model whose actions run through SessionCommands, so each action is one undoable edit."
     },
     {
@@ -9034,7 +9036,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Block tool gesture state for a pending box, creating the primitive through an edit only on Enter commit."
     },
     {
@@ -9047,7 +9049,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Box handle hit and drag geometry in the 2D view plane, shared by the Selection and Block tools."
     },
     {
@@ -9060,7 +9062,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Camera navigation that moves the host-owned viewport camera values and never touches the document."
     },
     {
@@ -9074,7 +9076,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Clip tool gesture state for a 2D clip line whose Apply commits the split through an edit."
     },
     {
@@ -9088,7 +9090,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Entity tool state machine that places a point entity with ops::PlaceEntity as one edit; the placement is an edit, not tool state."
     },
     {
@@ -9102,7 +9104,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Face tool click handling that applies or toggles texture application on faces as one edit on release."
     },
     {
@@ -9115,7 +9117,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Normalized input and ToolResult/overlay value types so tools never see toolkit events."
     },
     {
@@ -9128,7 +9130,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Shared drag threshold, snapping, transform constraint and hit-order policies that every tool calls."
     },
     {
@@ -9141,7 +9143,7 @@
       ],
       "state": "per-view-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Gesture previews that stage the same operation in a scratch DocumentEdit and never commit it."
     },
     {
@@ -9154,7 +9156,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Selection tool state machine that drives EditSession selection operations, with the drag and handle modes."
     },
     {
@@ -9167,7 +9169,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Tool contract: a gesture state machine from normalized input to edits, overlay and cursor intent."
     },
     {
@@ -9180,7 +9182,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Owns the tools, the active tool and pointer capture, and routes normalized input to the active tool."
     },
     {
@@ -9194,7 +9196,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Vertex tool handles and edits over solid vertices and edge midpoints, committing through ops on release."
     },
     {
