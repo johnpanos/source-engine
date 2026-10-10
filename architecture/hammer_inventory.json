@@ -1020,7 +1020,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MFC dialog layout: CAnchorMgr resizes child HWNDs with SetWindowPos on OnSize; the GTK shell lays out its own widgets, so this retires with the dialogs."
     },
     {
@@ -1033,7 +1033,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CAnchorDef/CAnchorMgr over HWND and dialog item IDs, the Win32 dialog-anchoring model that the GTK shell does not use."
     },
     {
@@ -1099,7 +1099,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CFilteredComboBox subclasses CComboBox with an edit-control font, colour and suggestion filtering; this is Win32 combo-box control glue that GTK entry completion replaces."
     },
     {
@@ -1112,7 +1112,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CFilteredComboBox : CComboBox with ICallbacks and suggestion methods, a Win32 control class with no domain state."
     },
     {
@@ -1204,7 +1204,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapDiffDlg is a modal dialog that browses for a .vmf, .rmf or .map file via CFileDialog and compares it with the open document; the comparison UI is replaced by the GTK host."
     },
     {
@@ -1217,7 +1217,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CMapDiffDlg : CDialog with a static MapDiff(CWnd*, CMapDoc*) entry point, the MFC dialog shell."
     },
     {
@@ -1243,7 +1243,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CModelBrowser is a CDialog hosting a vgui EditablePanel with an MDLPicker and saves its layout to an INI section (SaveLoadSettings); the browser UI is replaced by the GTK shell."
     },
     {
@@ -1256,7 +1256,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CModelBrowser : CDialog with CModelBrowserPanel and CMDLPicker forward declarations, the MFC dialog shell over the VGUI model picker."
     },
     {
@@ -1269,7 +1269,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CNewVisGroupDlg is a CDialog that asks for a visgroup name and lists groups with a registered window message; the GTK visgroups panel replaces it."
     },
     {
@@ -1282,7 +1282,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CNewVisGroupDlg : CDialog over CGroupList, the MFC new-visgroup dialog."
     },
     {
@@ -1321,7 +1321,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CObjectPage is the base for MFC property pages with a static s_bRESTRUCTURING flag and UpdateData(Mode) and OnSetActive; the GTK Object Properties window (R08-UI-PROPS) replaces it."
     },
     {
@@ -1400,7 +1400,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CScenePreviewDlg is a CDialog that plays a CChoreoScene on a thread (EndThread, OnIdle) and drives the sound system; the GTK host replaces this preview window."
     },
     {
@@ -1413,7 +1413,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CScenePreviewDlg : CDialog over CChoreoScene and a scene filename, the MFC scene preview shell."
     },
     {
@@ -1453,7 +1453,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSelectModeDlgBar : CHammerBar is an MFC toolbar with BOOL Create(CWnd*), the select-mode bar replaced by GTK toolbar actions."
     },
     {
@@ -1505,7 +1505,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSoundBrowser is a CDialog that lists sounds with a filter history (m_nFilterHistory) and saves its values to an INI section; the GTK shell replaces the sound picker."
     },
     {
@@ -1518,7 +1518,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CSoundBrowser : CDialog constructed from the current sound name, the MFC sound picker shell."
     },
     {
@@ -2028,7 +2028,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CTorusDlg is an MFC CDialog with DDX controls and two preview controls (IDC_PREVIEW and the top-view preview), so the GTK host replaces it."
     },
     {
@@ -2042,7 +2042,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CVGuiWnd and CVGuiPanelWnd host a vgui EditablePanel in an MFC CWnd, override WindowProc and DrawVGuiPanel, and are replaced by the GTK host."
     },
     {
@@ -2292,7 +2292,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CAngleBox (CWnd) is the MFC angle dial: mouse drag sets YAW, paints with the DC, and posts ABN_CHANGED to its parent."
     },
     {
@@ -2305,7 +2305,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the CWnd-derived CAngleBox dial and its CAngleCombo edit partner, owned by the MFC dialogs."
     },
     {
@@ -2318,7 +2318,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CArchDlg (CDialog) edits arch wall parameters persisted via AfxGetApp profile strings and previews the arc with MakeArc."
     },
     {
@@ -2331,7 +2331,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the CArchDlg MFC dialog with its DDX control members and the arch bounds it was constructed with."
     },
     {
@@ -2344,7 +2344,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CAutoSelComboBox (CComboBox) autoselects the matching list item as the user types, through MFC edit notifications."
     },
     {
@@ -2357,7 +2357,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the MFC CAutoSelComboBox subclass with its text-color and edit-update hooks."
     },
     {
@@ -2474,7 +2474,7 @@
       ],
       "state": "derived-cache",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CBSPLighting loads a BSP and its lightmaps, builds lightmap groups with IMaterial vertex formats and draws them through the legacy material system."
     },
     {
@@ -2487,7 +2487,7 @@
       ],
       "state": "derived-cache",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CBSPLighting (IBSPLighting) with its face-material and lightmap-group state, tied to the legacy material system."
     },
     {
@@ -2578,7 +2578,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CChildFrame (CMDIChildWnd) hosts the 2D and 3D views of one CMapDoc and manages splitter maximize/restore."
     },
     {
@@ -2591,7 +2591,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CMySplitterWnd and CChildFrame (CMDIChildWnd) of the MDI document window."
     },
     {
@@ -3781,7 +3781,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MFC dialogs for displacement create, noise and paint-distance settings; the settings model belongs in hammer.app displacement ops and the GTK host replaces the dialogs."
     },
     {
@@ -3794,7 +3794,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the MFC displacement dialogs (CDispCreateDlg, CDispNoiseDlg, CDispPaintDistDlg) with their DDX members; replaced by the GTK host."
     },
     {
@@ -3945,7 +3945,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CDispView is the MFC view for displacement editing: rendering, camera mode, key maps and input; the GTK viewports replace it."
     },
     {
@@ -3985,7 +3985,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CDynamicDialogWnd is an MFC CWnd host that embeds a CDialog for dynamic dialog switching; it has no headless behavior."
     },
     {
@@ -3998,7 +3998,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CDynamicDialogWnd, the CWnd container that swaps the CDialog it hosts."
     },
     {
@@ -4039,7 +4039,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CEditGameConfigs is the MFC dialog for adding, copying and removing game configs in Options.configs; config storage is app-level, not document state."
     },
     {
@@ -4052,7 +4052,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the CEditGameConfigs dialog and its list and edit controls over the game-config store."
     },
     {
@@ -4092,7 +4092,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CEditPathDlg is the MFC dialog for path entity properties (name, class, GameData); it edits values through DDX and the GTK inspector replaces it."
     },
     {
@@ -4105,7 +4105,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the CEditPathDlg MFC dialog and its edit controls for path entities."
     },
     {
@@ -4118,7 +4118,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CEditPathNodeDlg is the MFC dialog for path node properties through DDX; the GTK inspector replaces it."
     },
     {
@@ -4131,7 +4131,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the CEditPathNodeDlg MFC dialog and its edit controls for path nodes."
     },
     {
@@ -4144,7 +4144,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CEditPrefabDlg is the MFC prefab dialog (description, name, library enable and ranges); the GTK host and headless prefab ops replace it."
     },
     {
@@ -4157,7 +4157,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the CEditPrefabDlg MFC dialog and its prefab description and name controls."
     },
     {
@@ -4197,7 +4197,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CEntityHelpDlg is the MFC help dialog that renders FGD class help text with CDC; the class help is external FGD data and the GTK host replaces the dialog."
     },
     {
@@ -4210,7 +4210,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CEntityHelpDlg, the MFC dialog that shows a GDclass's help text from the FGD catalog."
     },
     {
@@ -4472,7 +4472,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CGroupList is an MFC CTreeCtrl showing groups and visgroups, with a context menu and expand-state saving."
     },
     {
@@ -4485,7 +4485,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the MFC CTreeCtrl subclass CGroupList and its GroupListPair records."
     },
     {
@@ -4749,7 +4749,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MFC CDialogBar subclass that lays out docked toolbar controls and raises the parent window on cursor set; the GTK host toolbar replaces it."
     },
     {
@@ -4762,7 +4762,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CHammerBar, a CDialogBar with a ControlInfo_t placement list for docked toolbar layout."
     },
     {
@@ -5010,7 +5010,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMDIFrameWnd main window that routes menu and toolbar commands, saves and loads window state, and opens the prefab and manifest tools; the GTK host shell replaces it."
     },
     {
@@ -5024,7 +5024,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CMainFrame with its bars, the manifest filter control and LoadWindowStates."
     },
     {
@@ -5076,7 +5076,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CManifestMove dialog and manifest list handling for moving or referencing map instances, with Perforce checks; the GTK dialog replaces it."
     },
     {
@@ -5089,7 +5089,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CManifestMove and CManifestListBox, the manifest dialog controls and their menus."
     },
     {
@@ -5129,7 +5129,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CHammerBar animation toolbar with a time slider that plays the animation and creates keyframes in the document."
     },
     {
@@ -5142,7 +5142,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CMapAnimationDlg with its duration, start and time state and the animation tick hooks."
     },
     {
@@ -5195,7 +5195,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CMapCheckDlg and its CheckForProblems entry point with fix controls."
     },
     {
@@ -5342,7 +5342,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapErrorsDlg is an MFC CDialog with message maps and OnClear/OnView handlers; the GTK problems panel in hammer/core/presenters replaces it."
     },
     {
@@ -5355,7 +5355,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapErrorsDlg header declares a CDialog subclass with CWnd parent and standard MFC dialog overrides."
     },
     {
@@ -5449,7 +5449,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapInfoDlg counts entities, faces, solids and textures for an MFC CDialog; a GTK presenter over the scene counts replaces it."
     },
     {
@@ -5462,7 +5462,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapInfoDlg header declares a CDialog subclass with a fixed 1024-entry texture array and CountEntity/CountFace hooks."
     },
     {
@@ -6128,7 +6128,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CFaceSmoothingDlg is an MFC dialog with an OnInitDialog that builds button IDs and saves its window position."
     },
     {
@@ -6141,7 +6141,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CFaceSmoothingDlg and CFaceSmoothingVisualDlg are MFC CDialog classes with control handlers."
     },
     {
@@ -6206,7 +6206,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMessageWnd is an MFC MDI child that creates and appends messages to a log window."
     },
     {
@@ -6219,7 +6219,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMessageWnd privately derives from CMDIChildWnd and declares its message-log entry points."
     },
     {
@@ -6271,7 +6271,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMyCheckListBox derives from the MFC CCheckListBox widget."
     },
     {
@@ -6284,7 +6284,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CNewDocType is an MFC CDialog for choosing a new document type, with DoDataExchange and a message map."
     },
     {
@@ -6297,7 +6297,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CNewDocType declares the MFC CDialog constructor and its document-type dialog."
     },
     {
@@ -6310,7 +6310,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CNewKeyValue is an MFC CDialog that collects a new key/value pair, with DoDataExchange and a message map."
     },
     {
@@ -6323,7 +6323,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CNewKeyValue declares the MFC CDialog constructor for the new key/value dialog."
     },
     {
@@ -6388,7 +6388,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CObjectProperties property sheet edits the selected objects' pages; the GTK Object Properties window (R08-UI-PROPS) is its replacement."
     },
     {
@@ -6401,7 +6401,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the CObjectProperties sheet and the editCMapClass/editCEditGameClass wrappers it edits through."
     },
     {
@@ -6550,7 +6550,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Build settings page for BSP/light/vis/game paths with SHBrowseForFolder; SaveInfo writes the selected game config."
     },
     {
@@ -6563,7 +6563,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COPTBuild, the MFC build-settings property page."
     },
     {
@@ -6577,7 +6577,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Game configurations page: FGD add/edit/remove, folder browsing, and the registry-stored configuration selection."
     },
     {
@@ -6590,7 +6590,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COPTConfigs and its inline GetCurrentConfig accessor."
     },
     {
@@ -6604,7 +6604,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "General options page: autosave toggle and autosave directory browse; OnApply writes the global options."
     },
     {
@@ -6617,7 +6617,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COPTGeneral, the MFC general-options property page."
     },
     {
@@ -6630,7 +6630,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Option property sheet container with standard init and close handling; holds no document data."
     },
     {
@@ -6643,7 +6643,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COptionProperties, the MFC options sheet container."
     },
     {
@@ -6707,7 +6707,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "2D view options page; OnApply writes the 2D view settings applied by the view."
     },
     {
@@ -6720,7 +6720,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COPTView2D, the MFC 2D-view options page."
     },
     {
@@ -6733,7 +6733,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "3D view options page with slider handling and OnApply for the 3D view settings."
     },
     {
@@ -6746,7 +6746,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COPTView3D, the MFC 3D-view options page."
     },
     {
@@ -6886,7 +6886,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CPasteSpecialDlg reads copy, offset, rotate and prefix defaults from the Windows profile INI and writes them back in SaveToIni; the settings model belongs in hammer.app."
     },
     {
@@ -6899,7 +6899,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CPasteSpecialDlg over BoundBox with copies, group, offset, rotation, centre and prefix fields and their DDX map."
     },
     {
@@ -6965,7 +6965,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CPrefabsDlg browses prefab libraries with CFileDialog, opens new documents from prefabs and edits libraries through MFC controls."
     },
     {
@@ -6978,7 +6978,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the CPrefabsDlg CDialog with its prefab list and library controls."
     },
     {
@@ -7018,7 +7018,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CProgressDlg is a modal progress CDialog created over a parent window and updated with percentage and status text; a GTK progress presenter replaces it."
     },
     {
@@ -7031,7 +7031,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CProgressDlg with Create(CWnd*) and its percent and status text controls."
     },
     {
@@ -7122,7 +7122,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CRichEditCtrlEx applies colour and font manipulators to a rich edit control; only the entity help dialog uses it, so a GTK text view replaces it."
     },
     {
@@ -7135,7 +7135,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CRTFBuilder, the CManip family and CRichEditCtrlEx, a rich-edit control that generates RTF."
     },
     {
@@ -7175,7 +7175,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CRunMap persists its compile options (QBSP, vis, light, HDR, game parameters) in the Windows profile and writes them back on OK."
     },
     {
@@ -7188,7 +7188,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CRunMap, the MFC run-map CDialog with its compile option fields."
     },
     {
@@ -7201,7 +7201,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CRunMapCfgDlg is an MFC configuration CDialog for run-map command settings, with DDX and message maps."
     },
     {
@@ -7214,7 +7214,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CRunMapCfgDlg, a CDialog with its DDX controls."
     },
     {
@@ -7228,7 +7228,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CRunMapExpertDlg edits named command sequences: it browses for executables with CFileDialog, stores the last sequence in the profile and inserts $parameters."
     },
     {
@@ -7241,7 +7241,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CRunMapExpertDlg over the RunCommands.h types, with its CDialog controls and command sequence list."
     },
     {
@@ -7281,7 +7281,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CScaleVerticesDlg edits vertex scale values through DDX and posts ID_VSCALE_CHANGED to the active document's command router."
     },
     {
@@ -7294,7 +7294,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CScaleVerticesDlg, a CDialog with its scale fields."
     },
     {
@@ -7562,7 +7562,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Defines the MFC status bar indicator IDs (ID_INDICATOR_*) and declares SetStatusText."
     },
     {
@@ -7748,7 +7748,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CTextureBox is an owner-drawn CComboBox with an MRU list of textures and graphic-list loading."
     },
     {
@@ -7761,7 +7761,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CTextureBox with LoadGraphicList, AddMRU, RebuildMRU and NotifyNewMaterial."
     },
     {
@@ -7815,7 +7815,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CTextureWindow is a scrollable CWnd that lays out textures, filters by keyword and type, and enumerates positions."
     },
     {
@@ -7828,7 +7828,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CTextureWindow with TWENUMPOS, SetTypeFilter, SetKeywords, UpdateScrollSizes and EnableUpdate."
     },
     {
