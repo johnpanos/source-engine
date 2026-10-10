@@ -340,8 +340,15 @@ def load(path, profile_path=PROFILE):
                         (usd.stdout.strip() or usd.stderr.strip()[-120:], tag))
     revision = linked["ktx"]["dependencies"]["ktx_software"]["revision"]
     ktx_version = subprocess.run([toolchain["ktx"], "--version"], capture_output=True, text=True)
-    if revision[:7] not in ktx_version.stdout + ktx_version.stderr:
-        problems.append("ktx: %s is not revision %s" % (toolchain["ktx"], revision[:7]))
+    # The tool embeds the last commit that touched tools/ktx, not the
+    # repository revision, so the expected token is that commit at the pin.
+    source = absolute(profile["layout"]["sources"]) / "ktx_software"
+    touched = subprocess.run(["git", "-C", str(source), "rev-list", "-1", revision, "--",
+                              "tools/ktx"], capture_output=True, text=True)
+    token = touched.stdout.strip()[:7] if touched.returncode == 0 else ""
+    if not token or token not in ktx_version.stdout + ktx_version.stderr:
+        problems.append("ktx: %s does not report the tools/ktx commit %s of pinned revision %s" %
+                        (toolchain["ktx"], token or "unknown", revision[:7]))
     stamp = Path(toolchain["xatlas"]).parent / ".pbrt-map-provisioned.json"
     if not stamp.is_file() or json.loads(stamp.read_text()) != xatlas_stamp(profile):
         problems.append("xatlas: %s was not built from revision %s and the current "
