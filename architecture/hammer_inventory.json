@@ -1073,7 +1073,7 @@
       ],
       "state": "external-resource",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Wraps Win32 CreateFile, CreateEvent and ReadDirectoryChangesW to watch directories and report changed filenames, a platform file-watch adapter."
     },
     {
@@ -1086,7 +1086,7 @@
       ],
       "state": "external-resource",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CFileChangeWatcher with ICallbacks and AddDirectory/Update, the interface over the Win32 directory watcher."
     },
     {
@@ -1125,7 +1125,7 @@
       ],
       "state": "external-resource",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSceneTokenProcessor and LoadFile read choreography .vcd scene files through the scriplib tokenizer and GetFirstSoundInScene resolves a scene's sound, an asset lookup over external files."
     },
     {
@@ -1138,7 +1138,7 @@
       ],
       "state": "external-resource",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares GetFirstSoundInScene and forward-declares CChoreoScene, the scene-asset query used by the sound and scene preview paths."
     },
     {
@@ -1573,7 +1573,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CToolBlockMessageWnd is a CWnd with a message map for 2D menus, and the block tool adds objects through MarkUndoPosition, AddObjectToWorld and KeepNew."
     },
     {
@@ -1602,7 +1602,7 @@
       ],
       "state": "authoritative-document-data",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Camera3D keeps the camera list that is saved with the map (SaveInfo and chunk callbacks), and its cursor and view handling use MFC view types."
     },
     {
@@ -1631,7 +1631,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Clipper3D draws clip results through Render2D/Render3D, adds and deletes solids through MapDoc and History, and sets cursors on MFC views."
     },
     {
@@ -1659,7 +1659,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The cordon tool is a 2D/3D drag tool that uses MFC cursor and view calls and makes no document writes in this file."
     },
     {
@@ -1688,7 +1688,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The decal tool places decal entities through AddObjectToWorld with MarkUndoPosition and KeepNew, and uses MFC cursor and message calls."
     },
     {
@@ -1717,7 +1717,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The entity/prefab placement tool creates entities in the world through the document and history, draws its preview via Render2D/Render3D, and has a CWnd message window."
     },
     {
@@ -1800,7 +1800,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The face-material tool applies textures through MarkUndoPosition and Keep on solids and drives the MFC CFaceEditSheet property sheet."
     },
     {
@@ -1829,7 +1829,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The 2,161-line morph tool records undo positions for its vertex edits, draws through the render views, and carries CMapView 2D/3D state."
     },
     {
@@ -1872,7 +1872,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The overlay tool header is declared over CMapDoc and CMapView3D and holds Shoreline_t records, so its MFC coupling keeps it in the adapter."
     },
     {
@@ -1942,7 +1942,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The point-handle tool has a CWnd message window with nine native-UI matches and edits origins through MarkUndoPosition and Keep on the selection."
     },
     {
@@ -1972,7 +1972,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "The 1,984-line Selection3D tool owns the selection list, transforms selected objects in place (TransformSelection) under the history, and draws through the render views."
     },
     {
@@ -2655,7 +2655,7 @@
       "effects": [],
       "state": "external-resource",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Win32 QueryPerformanceCounter wrapper (I_FloatTime, I_BeginTime, I_EndTime); a platform clock that belongs behind the platform clock contract."
     },
     {
@@ -3959,7 +3959,7 @@
       ],
       "state": "derived-cache",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CDummyTexture is the IEditorTexture placeholder for missing textures; it generates RGB and RGBA pixels and draws through CDC."
     },
     {
@@ -3972,7 +3972,7 @@
       ],
       "state": "derived-cache",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CDummyTexture, the IEditorTexture placeholder for missing textures; its CDC draw path stays in the MFC adapter."
     },
     {
@@ -4223,7 +4223,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MFC CEntityReportDlg list dialog over CMapDoc entities, filter combo and timer refresh; a view, not the document."
     },
     {
@@ -4236,7 +4236,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the MFC CDialog-derived entity report window and its static ShowEntityReport entry point."
     },
     {
@@ -4302,7 +4302,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CFaceEditSheet property sheet that keeps the selected face list (per CMapDoc) and routes face clicks to the sheet pages."
     },
     {
@@ -4315,7 +4315,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CFaceEditSheet, its face-list entry struct, and ClickFace / ClearFaceListByMapDoc."
     },
     {
@@ -4328,7 +4328,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CFilterControl bar with group and visgroup filter panes and icons, bound to the active CMapDoc."
     },
     {
@@ -4341,7 +4341,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the MFC CHammerBar-derived filter control and its activation handler."
     },
     {
@@ -4446,7 +4446,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CGotoBrushDlg is a small MFC dialog that takes a brush number and ends with OnOK; a candidate for a GTK entry dialog."
     },
     {
@@ -4459,7 +4459,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the MFC CDialog-derived Go To Brush dialog and its constructor."
     },
     {
@@ -4710,7 +4710,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CHammer (CWinApp) app object with doc templates, minidump wrapper, and tool launches via ShellExecute and _spawnl; process spawns are not an allowed effect and are recorded only in this note."
     },
     {
@@ -4775,7 +4775,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Static name-to-factory table that instantiates map helper classes (sprite, studio, animator and others) from FGD helper info, with no I/O."
     },
     {
@@ -4788,7 +4788,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the static CHelperFactory::CreateHelper entry point over CHelperInfo and CMapEntity."
     },
     {
@@ -5996,7 +5996,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapView2DBase is an MFC CView with a vgui panel, a CRender2D member and the grid and point-file drawing."
     },
     {
@@ -6009,7 +6009,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapView2DBase declares the CView, CMapView and vgui base classes with CRender2D and grid helpers."
     },
     {
@@ -6023,7 +6023,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapView3D is an MFC CView that owns a CRender3D and handles focus, draw type and 3D message routing."
     },
     {
@@ -6036,7 +6036,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapView3D declares its CRender3D member, the render entry points and the MFC CView base."
     },
     {
@@ -6049,7 +6049,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapViewLogical is the MFC logical view with cascading selection, a render dictionary and entity connection drawing."
     },
     {
@@ -6062,7 +6062,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMapViewLogical declares its render-list state and connection drawing over CMapView2DBase."
     },
     {
@@ -6102,7 +6102,7 @@
       ],
       "state": "external-resource",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMaterial's IEditorTexture implementation loads material images through the material system with preview and image caches."
     },
     {
@@ -6115,7 +6115,7 @@
       ],
       "state": "external-resource",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CMaterial declares the IEditorTexture implementation over IMaterial and the material cache classes."
     },
     {
@@ -6349,7 +6349,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CObjectBar toolbar places prefabs and entities into a view (CreateInBox, random yaw) through MFC controls; GTK's Entity palette replaces it."
     },
     {
@@ -6362,7 +6362,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CObjectBar and its prefab/entity placement entry points used by the MFC object bar."
     },
     {
@@ -6442,7 +6442,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Spawnflags checklist page; SaveData merges flag bits into the selected entities."
     },
     {
@@ -6455,7 +6455,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COP_Flags and its CheckListItem rows for the spawnflags page."
     },
     {
@@ -6469,7 +6469,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Group membership page; SaveData writes the group list back to the selected objects."
     },
     {
@@ -6482,7 +6482,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COP_Groups, the MFC group membership page."
     },
     {
@@ -6681,7 +6681,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Texture options page: adds and removes texture packages, extracts textures and browses folders."
     },
     {
@@ -6694,7 +6694,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares COPTTextures, the MFC texture-options property page."
     },
     {
@@ -6992,7 +6992,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CProcessWnd starts a command line with CreateProcess, pipes its stdout and stderr and polls them; the tool-process provider in hammer.adapters.platform covers this contract."
     },
     {
@@ -7005,7 +7005,7 @@
       ],
       "state": "external-resource",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CProcessWnd, a CWnd that owns the child process's stdin, stdout and stderr pipe handles."
     },
     {
@@ -7335,7 +7335,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSearchBox is a CComboBox subclass that intercepts keystrokes in PreTranslateMessage for the toolbar search field."
     },
     {
@@ -7348,7 +7348,7 @@
       ],
       "state": "per-view-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CSearchBox, a combo box with a PreTranslateMessage override, as the toolbar search field."
     },
     {
@@ -7362,7 +7362,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSelectEntityDlg lists the active document's entities and selects the chosen ones through CMapDoc; the selection rule belongs to hammer.app."
     },
     {
@@ -7375,7 +7375,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CSelectEntityDlg over CMapClass, a CDialog for choosing entities from the active document."
     },
     {
@@ -7388,7 +7388,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "MFC control bar whose UpdateControl* handlers and OnGroups/OnObjects/OnSolids set the document's select mode."
     },
     {
@@ -7402,7 +7402,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Dispatch table routes engine shell commands (map version check, entity creation, rotation) to CMapDoc; its replacement is the headless command layer."
     },
     {
@@ -7416,7 +7416,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CShell with SetDocument and the static ShellDispatchTable_t of engine commands bound to CMapDoc."
     },
     {
@@ -7429,7 +7429,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Hidden CWnd receiving WM_COPYDATA from the engine and forwarding the command text to CShell::SetShell's dispatcher."
     },
     {
@@ -7442,7 +7442,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CShellMessageWnd, a CWnd subclass with SetShell and DECLARE_MESSAGE_MAP for the engine message channel."
     },
     {
@@ -7510,7 +7510,7 @@
       ],
       "state": "derived-cache",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CSpriteCache reference-counts CSpriteModel instances loaded from sprite files and resolves their materials for drawing."
     },
     {
@@ -7575,7 +7575,7 @@
       ],
       "state": "external-resource",
       "factorization": "keep",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Precompiled-header translation unit that only includes stdafx.h, so it carries the MFC PCH into the build."
     },
     {
@@ -7616,7 +7616,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CStrDlg is a CDialog with SetRange, DoDataExchange and OnInitDialog for entering a bounded string or number."
     },
     {
@@ -7629,7 +7629,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CStrDlg with iRangeLow, iRangeHigh, iIncrement and SetRange for its MFC dialog."
     },
     {
@@ -7643,7 +7643,7 @@
       ],
       "state": "derived-cache",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CStudioModelCache loads and reference-counts StudioModel instances, with a file-change watcher and hardware data for drawing."
     },
     {
@@ -7656,7 +7656,7 @@
       ],
       "state": "derived-cache",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CStudioModelCache (FindModel, CreateModel, AddRef, Release) and ModelCache_t reference counts."
     },
     {
@@ -7695,7 +7695,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CTargetNameComboBox fills its suggestion list from the map's entity list and creates its own fonts in a filtered combo."
     },
     {
@@ -7708,7 +7708,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CTargetNameComboBox (a CFilteredComboBox subclass) with SetEntityList and CreateFonts."
     },
     {
@@ -7775,7 +7775,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CTextureConverter walks the world's solids and decals and rewrites face texture names with a progress window."
     },
     {
@@ -7788,7 +7788,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "replace-shell",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares CTextureConverter static entry points (ConvertWorldTextures, ConvertSolids, ConvertDecals)."
     },
     {
@@ -7986,7 +7986,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CTorusDlg is a CDialog that takes the bounds vectors for the torus-creation dialog, so it is native dialog presentation."
     },
     {
@@ -7999,7 +7999,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CTransformDlg::DoDataExchange and BEGIN_MESSAGE_MAP wire the transform dialog's controls to its values."
     },
     {
@@ -8012,7 +8012,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CTransformDlg is a CDialog with DDX-bound mode and X/Y/Z fields and a DoDataExchange, so it is native dialog presentation."
     },
     {
@@ -8025,7 +8025,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CUndoWarningDlg constructor, DoDataExchange and BEGIN_MESSAGE_MAP are the MFC dialog shell."
     },
     {
@@ -8038,7 +8038,7 @@
       ],
       "state": "per-document-session-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CUndoWarningDlg is a CDialog that warns before an undo, so it is native dialog presentation."
     },
     {
@@ -8064,7 +8064,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "LoadViewerSettings and SaveViewerSettings read and write a settings file for the legacy MDL preview; a copy also lives in utils/hlmv."
     },
     {
@@ -8077,7 +8077,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Declares the Half-Life model-viewer settings struct and Init/Load/Save functions, used by hammer/mapstudiomodel.cpp for MDL preview."
     },
     {
@@ -8117,7 +8117,7 @@
       ],
       "state": "external-resource",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "Load(fd, hFile) reads WAD texture data from the file, while Draw and DrawNoImage paint through CDC, so both loading and GDI drawing stay in MFC."
     },
     {
@@ -8130,7 +8130,7 @@
       ],
       "state": "external-resource",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "CWADTexture implements IEditorTexture for WAD textures and its Draw path uses CDC, so the GDI drawing stays on the MFC side."
     },
     {
@@ -8143,7 +8143,7 @@
       ],
       "state": "per-view-state",
       "factorization": "adapt-legacy",
-      "evidence": "hypothesis",
+      "evidence": "observed",
       "note": "wndTex is a CStatic subclass whose OnPaint shows an IEditorTexture, used by the MFC material page and texture bar."
     },
     {
