@@ -1,14 +1,21 @@
 {
-  "schema": "source-android-product-profile/v1",
+  "schema": "source-product-profile/v2",
   "id": "portal-android-native-vulkan-v1",
-  "description": "Android Portal client: SDL3 app integration and the native Vulkan renderer, packaged as a debug- or release-signed APK by build-android-apk.sh.",
+  "description": "Android Portal client: SDL3 app integration and the native Vulkan renderer, packaged as a debug- or release-signed APK by `kiln package`.",
+  "aliases": [
+    "portal@android"
+  ],
   "target": {
     "product": "portal-client",
-    "os": "android",
-    "abis": [
-      "arm64-v8a",
-      "x86_64"
-    ]
+    "os": "android"
+  },
+  "toolchain": {
+    "family": "android-ndk",
+    "version": "r30",
+    "cc": "clang",
+    "cxx": "clang++",
+    "dialect_policy": "quality/toolchain/policy.json",
+    "build_type": "release"
   },
   "intent": {
     "window_provider": "sdl3",
@@ -110,7 +117,20 @@
       "libnativewindow.so",
       "libamidi.so",
       "libsync.so"
-    ]
+    ],
+    "abis": [
+      "arm64-v8a",
+      "x86_64"
+    ],
+    "content": {
+      "location": "/sdcard/Android/data/<application_id>/files (SDL_GetAndroidExternalStoragePath)",
+      "directories": [
+        "platform",
+        "portal",
+        "hl2"
+      ],
+      "extra_arguments": "<content>/commandline.txt, whitespace-separated"
+    }
   },
   "dependencies": {
     "ndk": {
@@ -194,16 +214,49 @@
   "configure_options": {
     "platform_provider": "sdl3",
     "render_backend": "native-vulkan",
-    "build_games": "portal"
+    "build_games": "portal",
+    "build_type": "release",
+    "disable_warns": true
   },
-  "content": {
-    "location": "/sdcard/Android/data/<application_id>/files (SDL_GetAndroidExternalStoragePath)",
-    "directories": [
-      "platform",
-      "portal",
-      "hl2"
-    ],
-    "extra_arguments": "<content>/commandline.txt, whitespace-separated"
+  "build": {
+    "toolchain": "android-ndk",
+    "default_flavor": "arm64-v8a",
+    "flavors": {
+      "arm64-v8a": {
+        "description": "The arm64-v8a APK (the required device ABI)",
+        "configure_options": {}
+      },
+      "x86_64": {
+        "description": "The optional x86_64 APK (emulators)",
+        "configure_options": {}
+      }
+    }
+  },
+  "pipeline": {
+    "stages": [
+      "waf-engine",
+      "android-native-libs"
+    ]
+  },
+  "package": {
+    "form": "android-apk",
+    "directory": "apk"
+  },
+  "deploy": {
+    "transport": "adb",
+    "content_root": "/sdcard/Android/data/org.sourceengine.portal/files",
+    "capabilities": [
+      "install",
+      "content-sync",
+      "launch"
+    ]
+  },
+  "launch": {
+    "game": "portal",
+    "executable": "libmain.so",
+    "arguments": [
+      "org.sourceengine.portal/org.libsdl.app.SDLActivity"
+    ]
   },
   "required_checks": [
     "build-android-apk.sh for each declared ABI",

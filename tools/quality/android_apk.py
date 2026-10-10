@@ -221,7 +221,7 @@ def check_contents(apk_path, profile, abis, failures):
     entry = android["native_entry"]
     facts = {"abis": {}}
 
-    declared = set(profile["target"]["abis"])
+    declared = set(profile["android"]["abis"])
     for abi in abis:
         if abi not in declared:
             failures.add("ABI %s is not declared by the profile" % abi)
@@ -419,7 +419,7 @@ def check_manifest(badging, tree, profile, abis, failures):
 def default_build_tools(profile):
     """The pinned build-tools that build-android-apk.sh extracts."""
     tools = profile["dependencies"]["sdk_build_tools"]
-    return ROOT / "dependencies" / "android" / tools["extracted_directory"]
+    return ROOT / "dependencies" / "android-ndk" / tools["extracted_directory"]
 
 
 def run_tool(args):
@@ -473,7 +473,7 @@ def main(argv=None):
                      help="the build variant the package must be (default: debug)")
     cmd.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
     cmd.add_argument("--build-tools", type=Path, help="SDK build-tools directory "
-                     "(default: the profile's pinned build-tools under dependencies/android)")
+                     "(default: the profile's pinned build-tools under dependencies/android-ndk)")
     cmd.add_argument("--report", type=Path, help="write a JSON report here")
     resolve = sub.add_parser("resolve", help="print a profile with its \"extends\" chain resolved")
     resolve.add_argument("profile", type=Path)

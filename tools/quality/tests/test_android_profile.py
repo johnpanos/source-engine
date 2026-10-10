@@ -31,7 +31,7 @@ class ProfileTests(unittest.TestCase):
         self.android = self.profile["android"]
 
     def test_every_declared_abi_is_mapped(self):
-        abis = self.profile["target"]["abis"]
+        abis = self.android["abis"]
         self.assertTrue(abis)
         for abi in abis:
             self.assertIn(abi, android_apk.ABI_MACHINE)
@@ -81,7 +81,7 @@ class DerivedProfileTests(unittest.TestCase):
         for key in ("application_id", "build_directory"):
             self.assertNotEqual(self.derived["android"][key], self.base["android"][key], key)
         self.assertEqual(self.derived["configure_options"]["build_games"], "portal2")
-        self.assertIn("portal2", self.derived["content"]["directories"])
+        self.assertIn("portal2", self.derived["android"]["content"]["directories"])
         self.assertIn("libvscript.so", self.derived["android"]["packaged_libraries"])
         self.assertEqual(sorted(set(self.derived["android"]["packaged_libraries"]) -
                                 set(self.base["android"]["packaged_libraries"])),

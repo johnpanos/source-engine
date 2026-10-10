@@ -6,7 +6,6 @@
 //=============================================================================//
 
 #include "product/platform_android.h"
-#include "product/stage_waf.h"
 
 #include "process.h"
 
@@ -37,13 +36,17 @@ std::string ReadBytes( const fs::path &path )
 class NativeLibsStage final : public IProductStage
 {
 public:
+	explicit NativeLibsStage( std::string engineInstall ) : m_EngineInstall( std::move( engineInstall ) )
+	{
+	}
+
 	std::string_view Name() const noexcept override { return kAndroidNativeLibsStage; }
 
 	StageDescriptor Describe( const ResolvedProfile & ) const override
 	{
 		StageDescriptor descriptor;
 		descriptor.role = StageRole::kEngine;
-		descriptor.consumes = { std::string( kEngineInstallArtifact ) };
+		descriptor.consumes = { m_EngineInstall };
 		descriptor.produces = { std::string( kAndroidLibsArtifact ) };
 		descriptor.determinism = Determinism::kExact;
 		return descriptor;
@@ -55,7 +58,7 @@ public:
 		if ( !inputs.Processes() || !inputs.Toolchain() )
 			return foundation::MakeUnexpected(
 			    Fail( "invalid-request", "the stage needs the toolchain and a process provider" ) );
-		const Artifact *install = inputs.Get( kEngineInstallArtifact );
+		const Artifact *install = inputs.Get( m_EngineInstall );
 		if ( !install )
 			return foundation::MakeUnexpected(
 			    Fail( "missing-input", "no engine-install artifact" ) );
@@ -138,13 +141,16 @@ public:
 		result.summary = std::to_string( sources.size() ) + " libraries stripped for " + abi;
 		return result;
 	}
+
+private:
+	std::string m_EngineInstall;
 };
 
 } // namespace
 
-std::unique_ptr<IProductStage> CreateAndroidNativeLibsStage()
+std::unique_ptr<IProductStage> CreateAndroidNativeLibsStage( std::string engineInstallArtifact )
 {
-	return std::make_unique<NativeLibsStage>();
+	return std::make_unique<NativeLibsStage>( std::move( engineInstallArtifact ) );
 }
 
 } // namespace product

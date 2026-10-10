@@ -175,7 +175,7 @@ public:
 		const std::string key =
 		    HashHex( std::string( "recipe=" ) + kDependenciesRecipe + " ndk=" + pins["ndk"].sha256 +
 		             " sdl3=" + pins["sdl3"].sha256 + " ktx=" + pins["ktx_software"].sha256 +
-		             " thirdparty=" + android::FirstLine( thirdparty.Value() ) + " api=" + minSdkText +
+		             " thirdparty=" + android::FirstLine( thirdparty.Value().out ) + " api=" + minSdkText +
 		             " abi=" + abi )
 		        .substr( 0, 12 );
 		const fs::path abiHome = home / "abi" / ( abi + "-" + key );
@@ -189,7 +189,7 @@ public:
 		Identity &identity = environment.identity;
 		identity.provider = std::string( kAndroidNdkToolchain );
 		identity.facts["cxx"] = clangxx.string();
-		identity.facts["cxx.version"] = android::FirstLine( clangVersion.Value() );
+		identity.facts["cxx.version"] = android::FirstLine( clangVersion.Value().out );
 		identity.facts["pin.version"] = *version;
 		identity.facts["ndk.revision"] = *ndkRevision;
 		identity.facts["sdk"] = "android-api-" + minSdkText;

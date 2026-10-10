@@ -34,7 +34,7 @@ fi
 case "$platform" in
 linux-x86_64) cxx="g++"; arch="-march=core2 -mfpmath=sse -DPLATFORM_64BITS=1" ;;
 linux-i386) cxx="g++ -m32"; arch="-march=pentium4 -mfpmath=sse" ;;
-android-arm64-v8a) cxx="$root/dependencies/android/android-ndk-r30/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang++"; arch="-DPLATFORM_64BITS=1 -DANDROID=1" ;;
+android-arm64-v8a) cxx="$root/dependencies/android-ndk/android-ndk-r30/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang++"; arch="-DPLATFORM_64BITS=1 -DANDROID=1" ;;
 *) echo "unknown platform $platform" >&2; exit 1 ;;
 esac
 $cxx -std=c++11 -shared -fPIC -O2 -w $arch -D_GLIBCXX_USE_CXX11_ABI=0 -DLINUX=1 -D_LINUX=1 \

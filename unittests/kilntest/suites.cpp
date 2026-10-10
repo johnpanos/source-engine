@@ -98,7 +98,7 @@ Verdict ToolchainSuite( product::ITargetToolchain &toolchain, RecordingProcesses
 	const auto dependenciesBefore = Snapshot( input.dependencyRoot );
 	processes.started.clear();
 	product::ToolchainRequest request{
-	    input.valid, input.sourceRoot, input.dependencyRoot, nullptr };
+	    input.valid, input.sourceRoot, input.dependencyRoot, nullptr, {} };
 	auto first = toolchain.Prepare( request );
 	if ( !first )
 	{
@@ -149,13 +149,13 @@ Verdict ToolchainSuite( product::ITargetToolchain &toolchain, RecordingProcesses
 	product::CancellationFlag cancelled;
 	cancelled.Cancel();
 	auto cancelledRun =
-	    toolchain.Prepare( { input.valid, input.sourceRoot, input.dependencyRoot, &cancelled } );
+	    toolchain.Prepare( { input.valid, input.sourceRoot, input.dependencyRoot, &cancelled, {} } );
 	if ( cancelledRun || cancelledRun.Error().code != product::kCancelled )
 		verdict.Fail( "T8 honours cancellation" );
 	if ( input.wrongPin )
 	{
 		auto mismatch = toolchain.Prepare(
-		    { input.wrongPin, input.sourceRoot, input.dependencyRoot, nullptr } );
+		    { input.wrongPin, input.sourceRoot, input.dependencyRoot, nullptr, {} } );
 		if ( mismatch )
 			verdict.Fail( "T9 verifies the profile's pin before use" );
 	}

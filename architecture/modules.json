@@ -104,6 +104,12 @@
         "allowedEdges": ["product.contracts"]
       },
       {
+        "id": "product.platform.android",
+        "owns": "RFC 0027 L7: the Android platform providers (android-ndk toolchain, native-libs stage, android-apk packager, adb transport)",
+        "paths": ["public/product/platform_android.h", "product/android/"],
+        "allowedEdges": ["product.contracts", "foundation.json"]
+      },
+      {
         "id": "product.toolchain.msvc-wine",
         "owns": "RFC 0027: the windows-msvc-wine target toolchain (MSVC under Wine, provisioned by tools/windows/msvc_wine.py)",
         "paths": ["public/product/toolchain_msvc_wine.h", "product/toolchain/msvc_wine.cpp"],
@@ -157,7 +163,7 @@
         "id": "kiln.composition",
         "owns": "RFC 0027: the default provider catalog (ComposeDefaultCatalog)",
         "paths": ["public/kiln/composition.h", "product/kiln/composition/"],
-        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.toolchain.msvc-wine", "product.stage.waf", "product.stage.fstop", "product.stage.video-av1", "product.display.desktop", "product.run.desktop", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
+        "allowedEdges": ["kiln.core", "product.contracts", "product.toolchain.linux", "product.platform.android", "product.toolchain.msvc-wine", "product.stage.waf", "product.stage.fstop", "product.stage.video-av1", "product.display.desktop", "product.run.desktop", "product.package.linux-dir", "platform.posix", "platform.contracts", "jobs.graph", "foundation"]
       },
       {
         "id": "kiln.app",
@@ -191,7 +197,7 @@
         "kind": "native-test",
         "paths": ["unittests/kilntest/"],
         "externalHeaders": ["signal.h"],
-        "allowedEdges": ["kiln.core", "kiln.composition", "kiln.fixture-platform", "product.contracts", "product.profile", "product.toolchain.linux", "product.toolchain.msvc-wine", "product.stage.waf", "product.package.linux-dir", "content.vpk", "product.display.desktop", "product.run.desktop", "platform.contracts", "platform.posix", "jobs.graph", "foundation", "foundation.json", "testing.contracts"]
+        "allowedEdges": ["kiln.core", "kiln.composition", "kiln.fixture-platform", "product.contracts", "product.profile", "product.toolchain.linux", "product.toolchain.msvc-wine", "product.platform.android", "product.stage.waf", "product.package.linux-dir", "content.vpk", "product.display.desktop", "product.run.desktop", "platform.contracts", "platform.posix", "jobs.graph", "foundation", "foundation.json", "testing.contracts"]
       },
       {
         "id": "content.asset-tests",
@@ -1922,6 +1928,7 @@
       "product_profile": {"allowedUse": ["foundation_json"]},
       "product_contracts": {"allowedUse": ["product_profile", "foundation_json"]},
       "product_toolchain_linux": {"allowedUse": ["product_contracts"]},
+      "product_platform_android": {"allowedUse": ["product_contracts", "foundation_json"]},
       "product_stage_waf": {"allowedUse": ["product_contracts"]},
       "product_package_linux_dir": {"allowedUse": ["product_contracts", "content_vpk"]},
       "product_stage_fstop": {"allowedUse": ["product_contracts", "content_vpk"]},
@@ -1929,10 +1936,10 @@
       "product_display_desktop": {"allowedUse": ["product_contracts"]},
       "product_run_desktop": {"allowedUse": ["product_contracts"]},
       "kiln_core": {"allowedUse": ["product_contracts", "product_profile", "foundation_json", "jobsystem_defaultabi"]},
-      "kiln_composition": {"allowedUse": ["kiln_core", "product_toolchain_linux", "product_stage_waf", "product_package_linux_dir", "product_stage_fstop", "product_stage_video_av1", "product_display_desktop", "product_run_desktop", "platform_posix", "jobsystem_defaultabi"]},
+      "kiln_composition": {"allowedUse": ["kiln_core", "product_toolchain_linux", "product_platform_android", "product_stage_waf", "product_package_linux_dir", "product_stage_fstop", "product_stage_video_av1", "product_display_desktop", "product_run_desktop", "platform_posix", "jobsystem_defaultabi"]},
       "kiln": {"allowedUse": ["kiln_composition", "kiln_core", "foundation_json", "platform_posix"]},
       "kiln_fixture_platform": {"allowedUse": ["product_contracts", "product_profile", "foundation_json"]},
-      "kilntest": {"allowedUse": ["kiln_fixture_platform", "kiln_core", "product_toolchain_linux", "product_stage_waf", "product_package_linux_dir", "content_vpk", "product_display_desktop", "product_run_desktop", "product_contracts", "product_profile", "foundation_json", "platform_posix", "jobsystem_defaultabi"]},
+      "kilntest": {"allowedUse": ["kiln_fixture_platform", "kiln_core", "product_toolchain_linux", "product_platform_android", "product_stage_waf", "product_package_linux_dir", "content_vpk", "product_display_desktop", "product_run_desktop", "product_contracts", "product_profile", "foundation_json", "platform_posix", "jobsystem_defaultabi"]},
       "content_hash": {"allowedUse": []},
       "content_hash_legacyabi": {"allowedUse": []},
       "asset_identity": {"allowedUse": ["content_hash"]},
@@ -2862,10 +2869,10 @@
           ["product.contracts"]
         ],
         "adapters": {
-          "product.contracts": ["product.toolchain.*", "product.recipe.*", "product.stage.*", "product.package.*", "product.deploy.*", "product.display.*", "product.run.*"]
+          "product.contracts": ["product.toolchain.*", "product.recipe.*", "product.stage.*", "product.package.*", "product.deploy.*", "product.display.*", "product.run.*", "product.platform.*"]
         },
         "independent": [
-          ["product.toolchain.*", "product.recipe.*", "product.stage.*", "product.package.*", "product.deploy.*", "product.display.*", "product.run.*"]
+          ["product.toolchain.*", "product.recipe.*", "product.stage.*", "product.package.*", "product.deploy.*", "product.display.*", "product.run.*", "product.platform.*"]
         ],
         "adapterConsumers": ["kiln.composition", "kiln.fixture-platform", "kiln.tests", "kiln.samples"]
       },

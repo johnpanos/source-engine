@@ -150,8 +150,8 @@ std::uint64_t Hash64( std::string_view bytes );
 struct ToolchainRequest
 {
 	const ResolvedProfile *profile = nullptr;
-	std::filesystem::path sourceRoot;     // read-only
-	std::filesystem::path dependencyRoot; // the only writable place
+	// The source root is read-only; the dependency root is the only writable place.
+	std::filesystem::path sourceRoot, dependencyRoot;
 	const ICancellation *cancel = nullptr;
 	// The build flavor. A toolchain whose target varies by flavor (Android's
 	// ABI) reads it; the others ignore it.

@@ -9,7 +9,7 @@
 # the game and the out directory. This script only orchestrates:
 #
 #   1. fetch + verify the pinned NDK, SDL3, KTX-Software, SDK platform and
-#      build-tools archives into dependencies/android/
+#      build-tools archives into dependencies/android-ndk/
 #   2. cross-build the native dependencies per ABI with CMake (SDL3, the
 #      static KTX reader, freetype, libpng, libjpeg, curl from the thirdparty
 #      submodule)

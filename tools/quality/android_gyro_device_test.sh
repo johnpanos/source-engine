@@ -25,7 +25,7 @@ done
 [ -n "$SERIAL" ] && export ANDROID_SERIAL="$SERIAL"
 
 # The same NDK and minimum API level as the APK (build-android-apk.sh).
-NDK="$ROOT/dependencies/android/$(jq -er '.dependencies.ndk.extracted_directory' "$PROFILE")"
+NDK="$ROOT/dependencies/android-ndk/$(jq -er '.dependencies.ndk.extracted_directory' "$PROFILE")"
 MIN_SDK="$(jq -er '.android.min_sdk' "$PROFILE")"
 CXX="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${MIN_SDK}-clang++"
 [ -x "$CXX" ] || { echo "error: no NDK compiler at $CXX (run build-android-apk.sh --fetch-only)" >&2; exit 1; }

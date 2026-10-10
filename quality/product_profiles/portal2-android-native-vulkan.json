@@ -1,10 +1,14 @@
 {
-  "schema": "source-android-product-profile/v1",
+  "schema": "source-product-profile/v2",
   "id": "portal2-android-native-vulkan-v1",
   "extends": "portal-android-native-vulkan.json",
-  "description": "Android Portal 2 client: the Portal profile's SDL3 app shell, pins and native Vulkan renderer with the portal2 game target, packaged by build-android-portal2-apk.sh.",
+  "description": "Android Portal 2 client: the Portal profile's SDL3 app shell, pins and native Vulkan renderer with the portal2 game target, packaged by `kiln package`.",
+  "aliases": [
+    "portal2@android"
+  ],
   "target": {
-    "product": "portal2-client"
+    "product": "portal2-client",
+    "os": "android"
   },
   "intent": {
     "support_scope": "Android build and packaging slice for the separate Portal 2 target. Not platform acceptance: nothing about the Portal profile's device evidence carries over.",
@@ -45,20 +49,29 @@
       "libvscript.so",
       "libvstdlib.so",
       "libvtex_dll.so"
-    ]
+    ],
+    "content": {
+      "staging": "kiln package portal2-content (the portal2 profile's retail seed, links and search paths with custom/* mounted, no engine): the retail search-path order spelled out in portal2/gameinfo.txt, plus <game>/custom/* for the APK's touch icons",
+      "directories": [
+        "platform",
+        "retail_platform",
+        "update",
+        "portal2_dlc2",
+        "portal2_dlc1",
+        "portal2"
+      ]
+    }
   },
   "configure_options": {
     "build_games": "portal2"
   },
-  "content": {
-    "staging": "kiln package portal2-content (the portal2 profile's retail seed, links and search paths with custom/* mounted, no engine): the retail search-path order spelled out in portal2/gameinfo.txt, plus <game>/custom/* for the APK's touch icons",
-    "directories": [
-      "platform",
-      "retail_platform",
-      "update",
-      "portal2_dlc2",
-      "portal2_dlc1",
-      "portal2"
+  "deploy": {
+    "content_root": "/sdcard/Android/data/org.sourceengine.portal2/files"
+  },
+  "launch": {
+    "game": "portal2",
+    "arguments": [
+      "org.sourceengine.portal2/org.libsdl.app.SDLActivity"
     ]
   },
   "evidence": {

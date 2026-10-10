@@ -42,7 +42,14 @@ def row_sources():
 
 
 def sdl_prefix(abi):
-    return os.path.join(ROOT, "build-android", abi, "deps", "prefix")
+    """The newest completed cross-built dependency prefix kiln's android-ndk
+    toolchain made for this ABI (dependencies/android-ndk/abi/<abi>-<key>/)."""
+    import glob
+    done = [d for d in glob.glob(os.path.join(ROOT, "dependencies", "android-ndk", "abi", abi + "-*"))
+            if os.path.isfile(os.path.join(d, "complete"))]
+    done.sort(key=os.path.getmtime)
+    home = done[-1] if done else os.path.join(ROOT, "dependencies", "android-ndk", "abi", abi)
+    return os.path.join(home, "deps", "prefix")
 
 
 def build(out_dir):
@@ -57,7 +64,7 @@ def build(out_dir):
     for abi, triple in sorted(profile["android"]["ndk_triple"].items()):
         prefix = sdl_prefix(abi)
         if not os.path.isfile(os.path.join(prefix, "lib", "libSDL3.so")):
-            print("UNAVAILABLE build %s: no SDL3 at %s (run ./build-android-apk.sh)" % (abi, prefix))
+            print("UNAVAILABLE build %s: no SDL3 at %s (run ./kiln build portal-android-native-vulkan --flavor %s)" % (abi, prefix, abi))
             continue
         cxx = os.path.join(bindir, "%s%d-clang++" % (triple, api))
         out = os.path.join(out_dir, "r18_window-%s" % abi)

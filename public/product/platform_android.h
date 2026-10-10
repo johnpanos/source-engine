@@ -47,9 +47,13 @@ inline constexpr std::string_view kAdbTransport = "adb";
 
 // The process provider is borrowed and must outlive the provider.
 std::unique_ptr<ITargetToolchain> CreateAndroidNdkToolchain( platform::IToolProcessProvider &processes );
-std::unique_ptr<IProductStage> CreateAndroidNativeLibsStage();
+// `engineInstallArtifact` names the Waf engine stage's install artifact; the
+// composition root passes it, as this module may not name a stage adapter.
+std::unique_ptr<IProductStage> CreateAndroidNativeLibsStage( std::string engineInstallArtifact );
 std::unique_ptr<IPackager> CreateAndroidApkPackager( platform::IToolProcessProvider &processes );
-std::unique_ptr<IDeployTransport> CreateAdbTransport( platform::IToolProcessProvider &processes );
+// `adb` names the executable (looked up on PATH when not a path).
+std::unique_ptr<IDeployTransport> CreateAdbTransport(
+    platform::IToolProcessProvider &processes, std::string adb = "adb" );
 
 } // namespace product
 

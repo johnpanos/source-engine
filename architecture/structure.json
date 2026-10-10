@@ -2694,7 +2694,15 @@
         "ceiling": 104
       },
       "kiln.tests": {
-        "ceiling": 2326
+        "ceiling": 2407,
+        "raised": [
+          {
+            "date": "2026-10-10",
+            "from": 2326,
+            "to": 2407,
+            "reason": "RFC 0027 L7: shared-suite checks for the Android providers (APK packager, adb install/sync/launch against a fake adb whose device is a host directory)"
+          }
+        ]
       },
       "launcher/": {
         "ceiling": 1899
@@ -2866,6 +2874,23 @@
       },
       "product.package.linux-dir": {
         "ceiling": 1211
+      },
+      "product.platform.android": {
+        "ceiling": 1224,
+        "raised": [
+          {
+            "date": "2026-10-10",
+            "from": null,
+            "to": 1218,
+            "reason": "RFC 0027 L7: new Android provider module; first area ceiling set at its measured size"
+          },
+          {
+            "date": "2026-10-10",
+            "from": 1218,
+            "to": 1224,
+            "reason": "RFC 0027 L7: the Android providers (NDK toolchain, native-libs stage, APK packager, adb transport) measured at landing; the first ceiling (1218) was recorded before the native-libs stage took its input artifact by name"
+          }
+        ]
       },
       "product.profile": {
         "ceiling": 1031

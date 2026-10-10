@@ -46,8 +46,8 @@ jobs:
       uses: actions/cache@v4
       with:
         path: |
-          dependencies/android/*.zip
-          dependencies/android/*.tar.gz
+          dependencies/android-ndk/*.zip
+          dependencies/android-ndk/*.tar.gz
         key: android-archives-${{ hashFiles('quality/product_profiles/portal-android-native-vulkan.json') }}
 
     - name: Cache compiler output

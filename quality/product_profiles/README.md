@@ -68,7 +68,7 @@ supplied content.
   link against, and the native entry point.
 
 `build-android-apk.sh` fetches and verifies every pinned archive into
-`dependencies/android/`, so no installed Android SDK is used. It needs a JDK,
+`dependencies/android-ndk/`, so no installed Android SDK is used. It needs a JDK,
 plus `adb` for `--install`/`--run`. It builds each ABI under its own Waf lock
 and `build-android/<abi>/` out directory, then packages and signs the APK.
 Finally it runs the independent verifier [`android_apk.py`](../../tools/quality/android_apk.py)

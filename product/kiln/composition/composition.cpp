@@ -15,6 +15,7 @@
 #include "product/stage_waf.h"
 #include "product/toolchain_linux.h"
 #include "product/toolchain_msvc_wine.h"
+#include "product/platform_android.h"
 
 #include "../../../platform/posix/foundation_providers.h"
 #include "../../../platform/posix/process_spawner.h"
@@ -45,6 +46,15 @@ std::optional<Error> AddTo( product::ProviderCatalog &catalog, std::unique_ptr<T
 	return std::nullopt;
 }
 
+// Adds each provider in order; stops at the first refusal.
+template <typename... P>
+std::optional<Error> AddAll( product::ProviderCatalog &catalog, std::unique_ptr<P>... providers )
+{
+	std::optional<Error> error;
+	( ( error = error ? error : AddTo( catalog, std::move( providers ) ) ), ... );
+	return error;
+}
+
 // "<os>-<machine>" as `uname -s -m` reports it, lowercased; asked through
 // the process contract so this module needs no native header.
 std::string HostTag( platform::IToolProcessProvider &processes )
@@ -72,33 +82,19 @@ foundation::Expected<product::ProviderCatalog, Error> ComposeDefaultCatalog(
     platform::IToolProcessProvider &processes )
 {
 	product::ProviderCatalog catalog;
-	if ( auto error = AddTo( catalog, product::CreateLinuxGccToolchain( processes ) ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo( catalog, product::CreateLinuxClangToolchain( processes ) ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo( catalog, product::CreateMsvcWineToolchain( processes ) ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo( catalog, product::CreateWafEngineStage() ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo( catalog, product::CreateFstopContentStage() ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo( catalog, product::CreateVideoAv1Stage() ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo( catalog, product::CreateLinuxDirPackager() ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo( catalog, product::CreateWindowsDirPackager() ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo( catalog, product::CreateUserDisplaySession() ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo( catalog, product::CreateHeadlessDisplaySession() ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo(
-	         catalog, product::CreatePrivateDisplaySession(
-	                      { "/usr/share/dbus-1/session.conf", "/etc/dbus-1/session.conf" } ) ) )
-		return foundation::MakeUnexpected( *error );
-	if ( auto error = AddTo(
-	         catalog, product::CreatePrivateX11DisplaySession(
-	                      { "/usr/share/dbus-1/session.conf", "/etc/dbus-1/session.conf" } ) ) )
+	const std::vector<std::filesystem::path> dbusConfigs = { "/usr/share/dbus-1/session.conf",
+	    "/etc/dbus-1/session.conf" };
+	if ( auto error = AddAll( catalog, product::CreateLinuxGccToolchain( processes ),
+	         product::CreateLinuxClangToolchain( processes ),
+	         product::CreateAndroidNdkToolchain( processes ),
+	         product::CreateAndroidNativeLibsStage( std::string( product::kEngineInstallArtifact ) ),
+	         product::CreateAndroidApkPackager( processes ), product::CreateAdbTransport( processes ),
+	         product::CreateMsvcWineToolchain( processes ), product::CreateWafEngineStage(),
+	         product::CreateFstopContentStage(), product::CreateVideoAv1Stage(),
+	         product::CreateLinuxDirPackager(), product::CreateWindowsDirPackager(),
+	         product::CreateUserDisplaySession(), product::CreateHeadlessDisplaySession(),
+	         product::CreatePrivateDisplaySession( dbusConfigs ),
+	         product::CreatePrivateX11DisplaySession( dbusConfigs ) ) )
 		return foundation::MakeUnexpected( *error );
 	for ( auto *create :
 	    { &product::CreateSingleRunProvider, &product::CreateExternalInstallRunProvider,

@@ -18,6 +18,7 @@
 #include "product/contracts.h"
 #include "product/display_desktop.h"
 #include "product/package_linux_dir.h"
+#include "product/platform_android.h"
 #include "product/run_desktop.h"
 #include "product/profile.h"
 #include "product/stage_waf.h"
@@ -453,7 +454,7 @@ void ToolchainChecks( const Workbench &bench, platform::IToolProcessProvider &po
 			const auto mismatched =
 			    MakeProfile( ToolchainProfile( "linux-gcc", "clang", "g++", "gcc", version ) );
 			Check(
-			    !toolchain->Prepare( { &mismatched, bench.source, bench.dependencies, nullptr } ),
+			    !toolchain->Prepare( { &mismatched, bench.source, bench.dependencies, nullptr, {} } ),
 			    "toolchain.linux-gcc refuses a clang profile" );
 		}
 	}
@@ -521,12 +522,12 @@ void MsvcWineChecks( const Workbench &bench, platform::IToolProcessProvider &pos
 	CheckVerdict( suites::ToolchainSuite(
 	                  *toolchain, processes, { &valid, &wrong, bench.source, bench.dependencies } ),
 	    "toolchain windows-msvc-wine" );
-	auto prepared = toolchain->Prepare( { &valid, bench.source, bench.dependencies, nullptr } );
+	auto prepared = toolchain->Prepare( { &valid, bench.source, bench.dependencies, nullptr, {} } );
 	Check( prepared && prepared.Value().wafOptions ==
 	                       std::vector<std::string>{ "--msvc-wine=" + install.string() },
 	    "toolchain.windows-msvc-wine gives Waf its install" );
 	std::ofstream( install / "msvc-wine-stamp.json" ) << R"({"commit": "other"})";
-	auto refused = toolchain->Prepare( { &valid, bench.source, bench.dependencies, nullptr } );
+	auto refused = toolchain->Prepare( { &valid, bench.source, bench.dependencies, nullptr, {} } );
 	Check( !refused && refused.Error().code == "pin-mismatch",
 	    "toolchain.windows-msvc-wine refuses an install made from other pins" );
 	std::error_code ec;
@@ -1207,6 +1208,104 @@ void BrowserPageChecks( platform::IProcessSpawner &spawner )
 	    "browser-page: a server that never listens fails by name" );
 }
 
+// RFC 0027 L7: the adb transport against a fake `adb` whose device is a host
+// directory, so every sequence it issues is exercised for real.
+void AdbChecks( const Workbench &bench, platform::IToolProcessProvider &posix )
+{
+	const fs::path base = bench.scratch / "adb";
+	const fs::path adb = base / "adb";
+	const fs::path down = base / "down";
+	const fs::path log = base / "calls.log";
+	fs::create_directories( base );
+	WriteExecutable( adb,
+	    "#!/bin/sh\n"
+	    "[ \"$1\" = -s ] && shift 2\n"
+	    "cmd=$1; shift\n"
+	    "echo \"$cmd $*\" >> '" + log.string() + "'\n"
+	    "case $cmd in\n"
+	    "get-state) if [ -e '" + down.string() + "' ]; then echo 'error: no devices' >&2; exit 1; fi;"
+	    " echo device;;\n"
+	    "install) echo Success;;\n"
+	    "shell) case \"$*\" in 'am start'*) echo \"Starting: $*\";; *) sh -c \"$*\";; esac;;\n"
+	    "push) n=$#; for last; do :; done; mkdir -p \"$(dirname \"$last\")\";\n"
+	    "  if [ \"$n\" = 2 ] && [ \"${last%/}\" = \"$last\" ]; then cp -p \"$1\" \"$last\";\n"
+	    "  else i=0; for f; do i=$((i+1)); if [ $i -lt $n ]; then cp -p \"$f\" \"$last\"; fi; done; fi;;\n"
+	    "*) exit 2;;\n"
+	    "esac\n" );
+	auto transport = product::CreateAdbTransport( posix, adb.string() );
+	Check( transport->Install() && transport->ContentSync() && transport->Launch() &&
+	           transport->DeviceFacts(),
+	    "adb: implements install, content-sync, launch and device-facts" );
+
+	product::DeviceAddress device;
+	device.name = "fake";
+	device.contentRoot = base / "device" / "sdcard" / "files";
+	const fs::path source = base / "host";
+	fixture::WriteBytes( source / "a.txt", "alpha" );
+	fixture::WriteBytes( source / "sub" / "b.txt", "bravo" );
+	fixture::WriteBytes( source / "sub" / "c.txt", "charlie" );
+	const auto entries = [&]( const std::string &bHash )
+	{
+		return std::vector<product::SyncEntry>{ { "a.txt", "ha", source / "a.txt" },
+		    { "sub/b.txt", bHash, source / "sub" / "b.txt" },
+		    { "sub/c.txt", "hc", source / "sub" / "c.txt" } };
+	};
+	const auto read = [&]( const char *path )
+	{
+		std::ifstream in( device.contentRoot / path, std::ios::binary );
+		return std::string( std::istreambuf_iterator<char>( in ), {} );
+	};
+
+	auto first = transport->ContentSync()->Sync( device, entries( "hb" ), nullptr );
+	Check( first.HasValue() && first.Value().transferred == 3 && first.Value().unchanged == 0,
+	    "adb: a first sync transfers every entry" );
+	Check( read( "a.txt" ) == "alpha" && read( "sub/b.txt" ) == "bravo" &&
+	           read( "sub/c.txt" ) == "charlie",
+	    "adb: pushed files hold the source bytes" );
+	auto second = transport->ContentSync()->Sync( device, entries( "hb" ), nullptr );
+	Check( second.HasValue() && second.Value().transferred == 0 && second.Value().unchanged == 3,
+	    "adb: a second sync transfers nothing" );
+	fixture::WriteBytes( source / "sub" / "b.txt", "bravo-2" );
+	auto third = transport->ContentSync()->Sync( device, entries( "hb2" ), nullptr );
+	Check( third.HasValue() && third.Value().transferred == 1 && third.Value().unchanged == 2 &&
+	           read( "sub/b.txt" ) == "bravo-2",
+	    "adb: one changed entry transfers only that entry" );
+	std::vector<product::SyncEntry> fewer = { entries( "hb2" )[0], entries( "hb2" )[1] };
+	auto fourth = transport->ContentSync()->Sync( device, fewer, nullptr );
+	Check( fourth.HasValue() && fourth.Value().removed == 1 &&
+	           !fs::exists( device.contentRoot / "sub" / "c.txt" ) &&
+	           fs::exists( device.contentRoot / "a.txt" ),
+	    "adb: an entry no longer wanted is removed, the rest kept" );
+	fixture::WriteBytes( device.contentRoot / "game-wrote.cfg", "keep" );
+	(void)transport->ContentSync()->Sync( device, fewer, nullptr );
+	Check( fs::exists( device.contentRoot / "game-wrote.cfg" ),
+	    "adb: files kiln did not push are never removed" );
+	auto escape = transport->ContentSync()->Sync(
+	    device, { { "../outside.txt", "h", source / "a.txt" } }, nullptr );
+	Check( !escape.HasValue() && !fs::exists( device.contentRoot.parent_path() / "outside.txt" ),
+	    "adb: an entry leaving the content root is refused" );
+
+	product::PackageManifest manifest;
+	manifest.form = "android-apk";
+	manifest.entries.push_back( { "app.apk", "h", "package", 1 } );
+	auto installed = transport->Install()->Install( device, manifest, base, nullptr );
+	Check( installed.HasValue(), "adb: install succeeds on a reachable device" );
+	auto launched = transport->Launch()->Launch( device, { { "org.example/org.libsdl.app.SDLActivity" }, {}, nullptr } );
+	Check( launched.HasValue() && !launched.Value().log.empty() &&
+	           launched.Value().log.front().find( "org.example/org.libsdl.app.SDLActivity" ) !=
+	               std::string::npos,
+	    "adb: launch starts the component named by its first argument" );
+
+	fixture::WriteBytes( down, "" );
+	auto offline = transport->ContentSync()->Sync( device, entries( "hb" ), nullptr );
+	auto offlineInstall = transport->Install()->Install( device, manifest, base, nullptr );
+	Check( !offline.HasValue() && offline.Error().code == product::kUnavailable &&
+	           !offlineInstall.HasValue() && offlineInstall.Error().code == product::kUnavailable,
+	    "adb: an unreachable device is unavailable, never a pass" );
+	fs::remove( down );
+}
+
+
 int main()
 {
 	const fs::path root =
@@ -1233,11 +1332,12 @@ int main()
 	const auto profile =
 	    MakeProfile( ToolchainProfile( "fixture-host", "host", "c++", "cc", version ) );
 	auto toolchain = fixture::CreateHostToolchain( *posix )->Prepare(
-	    { &profile, bench.source, bench.dependencies, nullptr } );
+	    { &profile, bench.source, bench.dependencies, nullptr, {} } );
 	Check( toolchain.HasValue(), "fixture toolchain prepares" );
 	if ( toolchain )
 		StageChecks( bench, *posix, profile, toolchain.Value() );
 	PackagerChecks( bench, profile );
+	AdbChecks( bench, *posix );
 	TransportChecks( bench, *posix );
 	DisplayChecks();
 	CatalogChecks( *posix );
