@@ -13685,3 +13685,119 @@ source lists missed `depth_alpha.cpp` and the VTF decompressor. Fixed in
 - Lab run 3 (final layout): identical per-check results again. Portal 2
   (`portal2-linux-native-vulkan`, warnings on) builds; a headless
   `portal_boot.py` run on `sp_a1_intro4` passes.
+
+## Adapter set reduced to Vulkan, GL/GLES and null (2026-10-10, user direction)
+
+User direction (2026-10-10, [Adapter freeze and scene first](0016-render-core.md#adapter-freeze-and-scene-first-user-direction-2026-10-10)):
+delete the Direct3D 12, WebGPU, Metal and PICA adapters and the products only
+they served. Commits `99cb37a04`, `bf7b5d6bf`, `0010233b7`, `862cb1d26`,
+`410ff4b56`.
+
+### What went
+
+- **Adapters:** `render.device.{d3d12,webgpu,metal,pica}` with their public
+  headers, tests, the `kPica`/`kHlsl`/`kMsl`/`kWgsl` artifact formats, the
+  HLSL/WGSL/MSL generators in `tools/render/shader_artifacts.py` and
+  `shader_toolchain.py` (the three `*_GENERATED` header families and the
+  store's rows for them), the DXC and Dawn pins and fetchers
+  (`quality/toolchain/{dxc,webgpu,emscripten}.json`,
+  `tools/render/{d3d12,webgpu}_lane.py`).
+- **Bridges and labs:** `render.bridge.sdl3-d3d12` and its native test, the
+  `render/lab/pica_portals` lab, the `.pica` programs, the reduced 3DS
+  material model (`render/material/surface_reduced.*`, the GPU-skinned and
+  mesh-stream variants of `SurfaceProgram`, `ProgramResolver::SkinnedPipeline`
+  and `MeshStreamsPipeline`, `WorldView::DynamicDraw::{bonePalette,streams}`,
+  `CoreMeshDraw::{bonePalette,boneCount,streams}`, the ETC1/RGBA4 encoders
+  of the core shader API).
+- **Products:** the 3DS client (`tools/n3ds`, `platform/n3ds`,
+  `launcher_main/n3ds_main.cpp`, `engine/audio/snd_dev_n3ds.cpp`, the n3ds
+  toolchain provider and `portal2-3ds.json`) and the WebAssembly products
+  (`tools/web`, `platform/wasm`, `scripts/waifulib/wasm_localize.py`, the
+  emscripten toolchain provider, `portal-wasm32-webgpu.json`,
+  `portal-webgpu*.json`), `render-d3d12-windows.json`. `dedicated-windows`
+  (MSVC/Wine) stays.
+- **Platform code:** every `PLATFORM_3DS`, `PLATFORM_WASM`, `__3DS__`,
+  `__EMSCRIPTEN__` block (36 C++ files, resolved with a preprocessor-aware
+  rewrite, not a text delete), the `__wasm__` architecture branches, the
+  `--n3ds`, `--emscripten`, `--render-backend=pica`, `--render-core-webgpu`
+  options and the Dawn/DXC configure steps in `wscript`, and the audio
+  hardware-voice interface only the 3DS DSP device implemented.
+- **Registries:** `architecture/modules.json` (11 modules, 4 targets, the
+  adapter `frozenAdapters`/`adapters` entries, one `pending` translation
+  entry), `architecture/structure.json` (`structure --write`: nothing rose),
+  `quality/toolchain/policy.json`, `quality/conformance.manifest.json`
+  (13 suites, plus the deleted sources listed by the 50 suites that named
+  them), `architecture/loader_inventory.json`, the legacy backend and
+  stdshader ratchets.
+- RFCs 0024, 0025, 0026 (PICA200) and 0029 are marked withdrawn; their text
+  is the design record.
+
+### Decisions
+
+1. `LINKED_PICA_BACKEND` was the launcher's "core shader API linked" macro
+   for every desktop client, not a 3DS switch; it is renamed
+   `LINKED_CORE_SHADER_API`, not deleted. The shader API's host binding
+   (`CoreShaderBackend_Bind*`, formerly in
+   `render/device/pica/host_binding.h`) is declared in
+   `materialsystem/shaderapicore/core_renderer.h`: a new header in
+   `public/render/legacy/` raised `render.legacy-frontend`'s ceiling and a
+   new file in `shaderapicore` raised the legacy backend's file count, and
+   neither may go up.
+2. `CShaderAPIEmpty` is `CCoreShaderAPI`; the shader API's adapter reports
+   "Render core device"; its log prefix is `core shader API:`.
+3. The device port keeps ETC1/ETC1A4, `kFloatTargets`, `kPackedRGBA4` and
+   their clauses (D39, D40, D42): they are port capabilities the GL and
+   Vulkan adapters and the device suite still claim, not adapter code. Only
+   the 3DS client's encoders went. Removing them is a port-contract change
+   for the user, not part of this deletion.
+4. Profiles and trees for deleted products (`out/explicit-webgpu`,
+   `out/portal-wasm*`, `out/portal-webgpu*`, `out/portal2-3ds`) are
+   untracked build output; they are not removed here.
+
+### Evidence
+
+- `./kiln build` passes for `portal-linux-native-vulkan`,
+  `portal2-linux-native-vulkan`, `dedicated-linux` and `hammer`; the
+  Android arm64 cross-build (`portal-android-native-vulkan`) passes.
+- Conformance (`tools/quality/conformance.py check`), 29 suites pass:
+  `render.device.v2.{null,sensitivity,vulkan,gl,gles}`, `render.graph.v1`,
+  `render.graph.v1.vulkan`, `render.material.programs`,
+  `render.material.v2`, `render.world.null`, `render.opaque{,.null}`,
+  `render.family.{unlit,water,lightmapped,vertexlit,pbr}` and their `.gl`,
+  `.gles` and cross-backend variants, `render.composition{,.capabilities,
+  .capabilities.gl,.capabilities.gles}`, `render.scene.v1`. Five suites
+  were `unavailable-provider` (the `render_lab` and engine-capture trees:
+  `render.lab.{composition,posed-model,view-state,model-selection}` and
+  `render.scene.culling`); they need a lab and a Portal capture tree that
+  are not on this host and are not run here.
+- `archlint check --all`, `structure --verify`, `baseline --verify`,
+  `inventory --verify`, the archlint unit tests (227) pass;
+  `retirement_scans.py` legacy-backends and legacy-freeze are recorded
+  (22,869 lines remain in 3 backends).
+- Failing, not touched: `roadmap.py check` (R17 done with R08 active,
+  pre-existing). `tools/render/tests` `test_shader_toolchain` has 3 failing
+  cases (`regen_material_spv.py`'s argument check, the inventory fixture and
+  the seeded-byte count over generated headers); none names a deleted
+  adapter. I did not establish that they failed before this change: a
+  partial checkout of the parent could not run them.
+- `git grep -i -E "PLATFORM_3DS|n3ds|pica|webgpu|wgsl|d3d12|kMsl"` outside
+  RFC/ and docs/ returns only: English words containing "pica" ("typical",
+  "replica", "applicable"), `fwgslib` (Waf's flag helper, unrelated),
+  `COLOR_3DSHADOW`-style Win32 names, `3DSkybox`/`Draw3dRect` names,
+  the third-party and csgo trees, `architecture/modules.json` and
+  `structure.json`'s `forbiddenLiterals` and platform-regex entries (they
+  keep rejecting those names in the core), the loader inventory's
+  FSR-vendor reason text, and `render.device.v2.md`'s historical clause
+  text (D39, D40: "RFC 0026").
+
+### Open
+
+- `shaderapicore.cpp` still carries the in-place device memory path
+  (`AllocLinear(…, inPlace)`, `FlushLinear`, `-core_linear_reserve`) and a
+  "linear memory" vocabulary from the 3DS; the desktop path never sets
+  `inPlace`. A follow-up can remove it with its tests.
+- `r_portal_texture` (texture portals for devices without a stencil
+  buffer) is never taken now that no device lacks one; Portal 2's client
+  keeps the code.
+- Render-graph, material and Hammer suites that need `render_lab` or Steam
+  content were not run (see above).
